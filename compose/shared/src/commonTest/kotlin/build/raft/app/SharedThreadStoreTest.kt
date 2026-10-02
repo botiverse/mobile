@@ -19307,16 +19307,9 @@ class SharedThreadStoreTest {
                 )
             }
 
-            // NB: an Empty result clears canLoadMoreBefore, so "empty" runs
-            // last among the older_page branches.
-            // older_page accepted
-            // historyLimited=true keeps canLoadMoreBefore armed so the
-            // subsequent error/no_permission branches still issue.
-            api.olderBodyText =
-                """{"historyLimited":true,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
-            store.accept(SharedThreadIntent.LoadOlder)
-            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "accepted")
-
+            // Ordering matters: a short (< pageSize) older page clears
+            // canLoadMoreBefore via mergePagedMessages, and Empty clears it
+            // outright — so error/no_permission run first, accepted last.
             // older_page error
             api.olderResponseCode = 500
             store.accept(SharedThreadIntent.LoadOlder)
@@ -19328,10 +19321,28 @@ class SharedThreadStoreTest {
             assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "no_permission")
             api.olderResponseCode = 200
 
-            // older_page empty (last: clears canLoadMoreBefore)
+            // older_page empty
             api.olderBodyText = """{"historyLimited":false,"messages":[]}"""
             store.accept(SharedThreadIntent.LoadOlder)
             assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "empty")
+
+            // Re-arm canLoadMoreBefore for the accepted branch: an Empty
+            // result clears it, so restore via a fresh Start generation.
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreBefore = true,
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
+                    )
+                )
+            )
+
+            // older_page accepted (historyLimited=true keeps the flag armed)
+            api.olderBodyText =
+                """{"historyLimited":true,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
+            store.accept(SharedThreadIntent.LoadOlder)
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "accepted")
 
             // newer_page error (HTTP 500 on the afterSeq request)
             api.newerResponseCode = 500
