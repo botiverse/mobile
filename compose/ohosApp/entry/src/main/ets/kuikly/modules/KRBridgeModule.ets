@@ -457,17 +457,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (params == null) {
       return;
     }
-    const payload = params as Record<string, string>;
-    const url = payload['url'];
-    if (url === undefined || url.length === 0) {
+    let payload: Record<string, Object>;
+    try {
+      payload = this.parseRecord(params);
+    } catch (_) {
+      SlockOhosDiagnostics.record("HRBridgeModule", "openUrl invalid JSON payload", Date.now(), "warn");
       return;
     }
+    if (payload == null) {
+      return;
+    }
+    const url = payload['url'];
+    if (typeof url !== 'string' || url.length === 0) {
+      return;
+    }
+    const mimeType = payload['mimeType'];
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
       action: 'ohos.want.action.viewData',
       entities: ['entity.system.browsable'],
       uri: url,
-      type: payload['mimeType']
+      type: typeof mimeType === 'string' ? mimeType : undefined
     }).catch((error: BusinessError) => {
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
       SlockOhosDiagnostics.record(
