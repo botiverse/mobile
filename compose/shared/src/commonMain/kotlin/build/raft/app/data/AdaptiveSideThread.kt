@@ -293,3 +293,25 @@ internal fun SharedAdaptiveWorkspaceSession.acceptsParentFocus(
         current.shellInstanceId == page.shellInstanceId &&
         current.acceptsDetailCallback(page.identityKey, page.generation)
 }
+
+/** What the main detail does with a parent-focus request once it stops waiting for the keyboard. */
+internal enum class AdaptiveParentFocusOutcome(val logValue: String) {
+    Applied("applied"),
+    StaleTarget("stale_target"),
+    KeyboardStillOpen("keyboard_still_open"),
+}
+
+/**
+ * Re-validated after the wait: a target retired meanwhile (channel switch, fold, new selection,
+ * page gone) or a keyboard still open does not focus; only [AdaptiveParentFocusOutcome.Applied]
+ * dispatches the focus.
+ */
+internal fun SharedAdaptiveWorkspaceSession.parentFocusOutcomeAfterWait(
+    page: SlockAdaptiveDetailCloseRequest?,
+    request: AdaptiveParentFocusRequest,
+    keyboardClosed: Boolean,
+): AdaptiveParentFocusOutcome = when {
+    page == null || !acceptsParentFocus(page, request) -> AdaptiveParentFocusOutcome.StaleTarget
+    !keyboardClosed -> AdaptiveParentFocusOutcome.KeyboardStillOpen
+    else -> AdaptiveParentFocusOutcome.Applied
+}

@@ -3,7 +3,9 @@ package build.raft.app
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
+import build.raft.app.data.parentFocusOutcomeAfterWait
 import build.raft.app.data.acceptsParentFocus
 import build.raft.app.data.sideThreadParentFocus
 import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
@@ -5920,16 +5922,12 @@ private fun SharedThreadRouteContentContent(
         // Re-validate after the wait: a channel switch, fold or new selection meanwhile retires
         // the target, and a keyboard still open would only have the anchor drop it — both are
         // reported as not focused instead of dispatching.
-        val page = adaptiveCloseRequest
-        val result =
-            when {
-                page == null || !adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request) ->
-                    "stale_target"
-                !closed -> "keyboard_still_open"
-                else -> "applied"
-            }
-        bridge.log("adaptive_side_thread_parent_focus result=$result generation=${request.target.generation}")
-        if (result == "applied") {
+        val outcome =
+            adaptiveFocusWorkspaceStore.snapshot().parentFocusOutcomeAfterWait(adaptiveCloseRequest, request, closed)
+        bridge.log(
+            "adaptive_side_thread_parent_focus result=${outcome.logValue} generation=${request.target.generation}"
+        )
+        if (outcome == AdaptiveParentFocusOutcome.Applied) {
             threadViewModel.dispatch(
                 SharedThreadIntent.FocusMessage(
                     messageId = request.messageId,

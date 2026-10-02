@@ -277,4 +277,37 @@ class AdaptiveSideThreadTest {
         assertFalse(folded.acceptsParentFocus(folded.mainSource(), stale))
         assertFalse(folded.acceptsParentFocus(stale.target, stale))
     }
+
+    @Test fun aWaitingParentFocusIsRevalidatedAndATimeoutDoesNotFocus() {
+        val root = session()
+        val opened = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val main = opened.mainSource()
+        val request = assertNotNull(opened.sideThreadParentFocus(opened.sideThread!!.closeRequest("shell")))
+        assertEquals(AdaptiveParentFocusOutcome.Applied, opened.parentFocusOutcomeAfterWait(main, request, keyboardClosed = true))
+        // Keyboard still open when the wait ends: reported, not focused.
+        assertEquals(
+            AdaptiveParentFocusOutcome.KeyboardStillOpen,
+            opened.parentFocusOutcomeAfterWait(main, request, keyboardClosed = false),
+        )
+        // The side thread folded into the main detail while waiting: the old main target is retired.
+        val folded = opened.foldSideThreadIntoDetail()
+        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, folded.parentFocusOutcomeAfterWait(main, request, true))
+        assertEquals(
+            AdaptiveParentFocusOutcome.StaleTarget,
+            folded.parentFocusOutcomeAfterWait(folded.mainSource(), request, true),
+        )
+        // Another conversation was selected meanwhile.
+        val switched = opened.copy(
+            workspace = reduceSlockAdaptiveWorkspace(
+                opened.workspace!!,
+                SlockAdaptiveWorkspaceIntent.OpenDetail(WireThreadLaunchPayload(threadId = "c2", sourceThreadId = "c2").toSlockAdaptiveDetailIdentity("server")!!),
+            ),
+        )
+        assertNotEquals(opened.workspace!!.selection, switched.workspace!!.selection)
+        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, switched.parentFocusOutcomeAfterWait(main, request, true))
+        // The page itself went away.
+        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, opened.parentFocusOutcomeAfterWait(null, request, true))
+        // A stale target wins over the keyboard state.
+        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, folded.parentFocusOutcomeAfterWait(main, request, false))
+    }
 }
