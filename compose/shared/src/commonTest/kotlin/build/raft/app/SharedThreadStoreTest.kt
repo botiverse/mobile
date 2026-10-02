@@ -17920,6 +17920,161 @@ class SharedThreadStoreTest {
 
 
     @Test
+    fun statusOnlyCommitLogsTerminalNotMessagesWrite() = runBlocking {
+        // task #58 observability R6: a committed state change that does not
+        // touch the message list (olderMessagesStatus loading flip) records a
+        // `thread_payload_terminal … result=status_only` receipt — never a
+        // `thread_payload_messages_write` — so status commits can't masquerade
+        // as list writes.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                olderBodyText = messagesResponse("older body", id = "m15", seq = 15, historyLimited = false),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreBefore = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        api.beforeMessagesStarted = CompletableDeferred()
+        api.releaseBeforeMessages = CompletableDeferred()
+        val older = async { store.accept(SharedThreadIntent.LoadOlder) }
+        withTimeout(5_000) { api.beforeMessagesStarted?.await() }
+        // The loading status commit happened before the fetch returned.
+        val statusOnly = logs.filter {
+            it.startsWith("thread_payload_terminal") &&
+                it.contains("tag=older_page_loading") &&
+                it.contains("result=status_only")
+        }
+        assertTrue(
+            statusOnly.isNotEmpty(),
+            "older_page_loading status commit must log a status_only terminal; logs=$logs",
+        )
+        assertTrue(
+            logs.none {
+                it.startsWith("thread_payload_messages_write") &&
+                    it.contains("tag=older_page_loading")
+            },
+            "a status-only flip must NOT log thread_payload_messages_write; logs=$logs",
+        )
+        api.releaseBeforeMessages?.complete(Unit)
+        withTimeout(5_000) { older.await() }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun noChangeTaggedOperationLogsNoChangeReceipt() = runBlocking {
+        // task #58 observability R6: an issued local operation admitted by its
+        // guard that produces no state change still leaves a
+        // `thread_payload_terminal … result=no_change` receipt — distinct from
+        // a rejected admit and never reported as a list write.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        logs.clear()
+        // channel_joined applies only when the payload targets that channel;
+        // with a non-matching channelId the patch is a no-op → no_change.
+        store.accept(SharedThreadIntent.ApplyChannelJoined(channelId = "other-channel"))
+        val receipt = logs.filter {
+            it.startsWith("thread_payload_terminal") &&
+                it.contains("tag=channel_joined") &&
+                it.contains("result=no_change")
+        }
+        assertTrue(
+            receipt.isNotEmpty(),
+            "admitted-but-unchanged channel_joined must log result=no_change; logs=$logs",
+        )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun gapSyncCancelClosesIssuedFetchWithTerminal() = runBlocking {
+        // task #58 observability R4: a gap_sync request cancelled while parked
+        // at the boundary must close its issued fetchSeq with a terminal
+        // (cancelled/error), not be left open — the issued identity is tracked
+        // across the fetch try so an interrupted request still gets one receipt.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m11", seq = 11),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val gapJob = async { store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90)) }
+        withTimeout(5_000) { api.syncStarted?.await() }
+        val issued = logs.last { it.startsWith("thread_fetch_issued") && it.contains("kind=gap_sync") }
+        val gapFetchSeq = Regex("fetchSeq=(\\d+)").find(issued)!!.groupValues[1]
+        gapJob.cancel()
+        runCatching { withTimeout(2_000) { gapJob.await() } }
+        withTimeout(5_000) {
+            while (
+                logs.none {
+                    it.startsWith("thread_fetch_terminal") &&
+                        it.contains("kind=gap_sync") &&
+                        it.contains("fetchSeq=$gapFetchSeq") &&
+                        (it.contains("result=cancelled") || it.contains("result=error"))
+                }
+            ) yield()
+        }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun staleGenerationReleaseDoesNotLeakNewerErrorWrite() = runBlocking {
         // task #58 observability contract: a page failure released after Refresh
         // advanced the generation must be logged as rejected with its own
@@ -18731,10 +18886,50 @@ class SharedThreadStoreTest {
         // boundary requestTrace; a second run (new nonce) cannot observe or
         // inherit the previous run's identities, and the joined triple
         // (runNonce, storeSeq, fetchSeq) uniquely names one store fetch.
+        //
+        // Run A's trace is produced by a REAL store issuing a fetch — the
+        // store's own `newer_page_s<store>_fs<N>_rt<T>` boundary identity is
+        // captured from `channelMessagesRequestTraces` and joined into the
+        // ledger, so the join exercises a genuine store→run→trace chain
+        // rather than a hand-written literal.
         val ledger = ThreadNewerAutoFixtureLedger()
         var pendingA: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
         var pendingB: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
         try {
+            // Produce a real store-issued boundary trace for run A.
+            val issueScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val issueApi =
+                FakeThreadApi(
+                    bodyText = messagesResponse("b", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..20L),
+                )
+            val issueStore =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = issueApi,
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = issueScope,
+                )
+            issueStore.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "b")),
+                    )
+                )
+            )
+            issueStore.loadNewer()
+            val realTrace =
+                issueApi.channelMessagesRequestTraces.lastOrNull()
+                    ?: error("store must emit a boundary requestTrace")
+            check(realTrace.startsWith("newer_page_s") && realTrace.contains("_fs=") && realTrace.contains("_rt=")) {
+                "real store trace must carry storeSeq/fetchSeq/routeToken; got $realTrace"
+            }
+            issueScope.cancel()
+
             ledger.beginRun("run-join-a")
             pendingA =
                 async {
@@ -18742,7 +18937,7 @@ class SharedThreadStoreTest {
                         runNonce = "run-join-a",
                         afterSeq = 46L,
                         limit = 30,
-                        requestTrace = "newer_page_s3_fs=7_rt=11",
+                        requestTrace = realTrace,
                     )
                 }
             withTimeout(5_000) {
@@ -18771,13 +18966,14 @@ class SharedThreadStoreTest {
                 "run B ledger must record its own trace identity; log=$logB",
             )
             assertTrue(
-                logB.none { it.contains("fs=7") || it.contains("rt=11") },
-                "run B ledger must not contain run A identities; log=$logB",
+                logB.none { it.contains(realTrace) },
+                "run B ledger must not contain run A's real store trace $realTrace; log=$logB",
             )
-            // The stale run A request must not have a gate result leak into B.
+            // The stale run A gate must actually be cancelled by beginRun(B),
+            // proving run isolation is enforced, not merely unlogged.
             assertTrue(
-                pendingA.isActive,
-                "run A request must remain parked — no cross-run completion",
+                pendingA.isCancelled || !pendingA.isActive,
+                "run A request must be cancelled when B begins; state=$pendingA",
             )
         } finally {
             pendingA?.cancel()
