@@ -18923,9 +18923,9 @@ class SharedThreadStoreTest {
             routeThreadId: String,
             bodySeed: String,
             newerSeqs: LongRange,
+            session: StoredAuthSession = sampleSession(),
         ): Map<String, String> {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val session = sampleSession()
             val api =
                 FakeThreadApi(
                     bodyText = messagesResponse(bodySeed, id = "m16", seq = 16, historyLimited = false),
@@ -19085,7 +19085,19 @@ class SharedThreadStoreTest {
         }
 
         val runA = runStore("run-join-a", "channel-1", "body-a", 17L..20L)
-        val runB = runStore("run-join-b", "channel-1", "body-b", 21L..24L)
+        // Controlled account+server switch: run B runs under a different
+        // principal on a different server. Its boundary requests must still
+        // bind its own routeThreadId, and the envelope fields must join to
+        // its own storeSeq — proving identity survives a context change,
+        // not just same-fixture reuse.
+        val runB =
+            runStore(
+                "run-join-b",
+                "channel-1",
+                "body-b",
+                21L..24L,
+                session = replyResolutionSession("u2").copy(selectedServerId = "server-b"),
+            )
 
         // Distinct runs must not share the store-level identity. fetchSeq is a
         // per-store counter and legitimately collides across runs — storeSeq
@@ -19152,8 +19164,8 @@ class SharedThreadStoreTest {
             )
         }
         assertNotEquals(runA["nonce"], runB["nonce"], "two runs must not share a nonce")
-        assertEquals(runA["sessionUserId"], runB["sessionUserId"],
-            "both runs share the same test session principal — identity is fixed by fixture")
+        assertNotEquals(runA["sessionUserId"], runB["sessionUserId"],
+            "runs must use distinct principals — the envelope comparison is meaningful only if the contexts differ")
 
         // Cross-run isolation on the disambiguating storeSeq.
         assertTrue(
@@ -19385,6 +19397,12 @@ class SharedThreadStoreTest {
                     issuedFields["routeToken"],
                     fields["requestRouteToken"],
                     "$kind terminal must carry the issued routeToken as requestRouteToken; " +
+                        "issued=${issuedFields} terminal=${matching.single()}",
+                )
+                assertEquals(
+                    issuedFields["storeSeq"],
+                    fields["storeSeq"],
+                    "$kind terminal must carry the issuing store's storeSeq; " +
                         "issued=${issuedFields} terminal=${matching.single()}",
                 )
             }
