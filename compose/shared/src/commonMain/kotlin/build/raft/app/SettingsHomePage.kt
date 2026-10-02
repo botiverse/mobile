@@ -10412,6 +10412,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
 ) {
     val action = if (app.installed) CONNECTED_APPS_ACTION_UNINSTALL else CONNECTED_APPS_ACTION_INSTALL
     val busy = actionState.connectedAppsBusyFor(action, app.id)
+    val connectedAppError = actionState.connectedAppsErrorFor(action, app.id)
     SlockUnifiedDialog(
         title = app.name,
         onDismiss = onDismiss,
@@ -10451,8 +10452,8 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
             item {
                 SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
             }
-            actionState.connectedAppsErrorFor(action, app.id)?.let { err ->
-                item { SettingsFormErrorText(err) }
+            if (connectedAppError != null) {
+                item { SettingsFormErrorText(connectedAppError) }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -18705,13 +18706,13 @@ private fun SharedCreateChannelDialog(
                 )
             }
             if (!errorMessage.isNullOrBlank()) {
-                val localizedError =
-                    if (errorMessage == "channel_name_invalid") {
-                        stringResource(MR.strings.channel_create_error_name_format)
-                    } else {
-                        errorMessage
-                    }
                 item {
+                    val localizedError =
+                        if (errorMessage == "channel_name_invalid") {
+                            stringResource(MR.strings.channel_create_error_name_format)
+                        } else {
+                            errorMessage
+                        }
                     Text(
                         text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
                         style = SlockType.Caption,
