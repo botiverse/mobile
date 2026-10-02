@@ -8,6 +8,11 @@ import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.AdaptiveSideThread
 import build.raft.app.data.SLOCK_SIDE_THREAD_COLUMN_DP
+import build.raft.app.data.SLOCK_LIST_PANE_DIVIDER_DP
+import build.raft.app.data.slockListPaneDraggedWidthDp
+import build.raft.app.data.slockListPanePreferredWidthDp
+import build.raft.app.data.slockListPaneStoredWidth
+import build.raft.app.data.slockListPaneWidthDp
 import build.raft.app.data.SLOCK_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
@@ -3302,8 +3307,17 @@ private fun SlockAppShellReadyContent(
     }
     // task #36: when the window (or desktop mode) can no longer hold the side column, fold the
     // side thread into the main detail with the channel in Back history.
+    // task #37: the user's list column width (saved per device) and whether its divider is being
+    // dragged. A drag that squeezes the detail below the column threshold folds the side thread
+    // only when the finger lifts, so dragging across the threshold and back loses nothing.
+    val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+    var adaptiveListPanePreferredDp by remember {
+        mutableStateOf(slockListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
+    }
+    var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     val sideThreadNeedsFold =
-        adaptiveWorkspaceSession.visibleSideThread() != null &&
+        !adaptiveListPaneResizing &&
+            adaptiveWorkspaceSession.visibleSideThread() != null &&
             !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
     LaunchedEffect(sideThreadNeedsFold) {
         if (!sideThreadNeedsFold) return@LaunchedEffect
@@ -6184,7 +6198,8 @@ private fun SlockAppShellReadyContent(
                             adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted }
                         val showSideColumn =
                             sideThread != null &&
-                                adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
+                                (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
+                                    (adaptiveListPaneResizing && desktopModeOnLargeScreen))
                         LaunchedEffect(active, allowSideColumn) {
                             if (active && !allowSideColumn) {
                                 adaptiveWorkspaceStore.update {
@@ -6362,11 +6377,25 @@ private fun SlockAppShellReadyContent(
                         }
                         if (enabled) {
                             val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+                            // task #37: the list width is the user's, clamped to this row so the
+                            // detail keeps its minimum; the divider has a wider drag handle on top.
+                            val density = LocalDensity.current
+                            var rowWidthDp by remember { mutableStateOf<Float?>(null) }
+                            val listWidthDp = slockListPaneWidthDp(adaptiveListPanePreferredDp, rowWidthDp)
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .onSizeChanged { size ->
+                                            val widthDp = with(density) { size.width.toDp().value }
+                                            if (rowWidthDp != widthDp) rowWidthDp = widthDp
+                                        }
+                            ) {
                             Row(modifier = Modifier.fillMaxSize()) {
                                 Box(
                                     modifier =
                                         Modifier
-                                            .width(if (dualPane) 360.dp else 0.dp)
+                                            .width(if (dualPane) listWidthDp.dp else 0.dp)
                                             .fillMaxHeight(),
                                 ) {
                                     if (dualPane) listPane(active)
@@ -6374,7 +6403,7 @@ private fun SlockAppShellReadyContent(
                                 Spacer(
                                     modifier =
                                         Modifier
-                                            .width(if (dualPane) 1.dp else 0.dp)
+                                            .width(if (dualPane) SLOCK_LIST_PANE_DIVIDER_DP.dp else 0.dp)
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
@@ -6399,6 +6428,24 @@ private fun SlockAppShellReadyContent(
                                         listPane(active)
                                     }
                                 }
+                            }
+                            if (dualPane) {
+                                SlockListPaneResizeHandle(
+                                    listWidthDp = listWidthDp,
+                                    onDragStart = { adaptiveListPaneResizing = true },
+                                    onDrag = { startWidthDp, deltaDp ->
+                                        adaptiveListPanePreferredDp =
+                                            slockListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
+                                    },
+                                    onDragEnd = {
+                                        adaptiveListPaneResizing = false
+                                        listPanePreferenceStore.saveAdaptiveListPaneWidth(
+                                            slockListPaneStoredWidth(adaptiveListPanePreferredDp)
+                                        )
+                                        bridge.log("adaptive_list_pane_resize width=$adaptiveListPanePreferredDp row=$rowWidthDp")
+                                    },
+                                )
+                            }
                             }
                         } else {
                             listPane(active)

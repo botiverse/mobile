@@ -331,6 +331,13 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, enabled)
     }
 
+    /** task #37: the saved list column width (dp), read through [slockListPanePreferredWidthDp]. */
+    fun readAdaptiveListPaneWidthSync(): String? = store.getString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP)
+
+    fun saveAdaptiveListPaneWidth(widthDp: String) {
+        store.putString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP, widthDp)
+    }
+
     override fun readCompactConsecutiveMessagesSync(): Boolean =
         store.getBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true)
 
@@ -513,6 +520,7 @@ class KeyValueChatLayoutPreferenceStore(
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "mobile:desktop_mode_on_large_screen"
+        const val KEY_ADAPTIVE_LIST_PANE_WIDTH_DP = "mobile:adaptive_list_pane_width_dp"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
