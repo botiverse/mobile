@@ -18901,18 +18901,24 @@ class SharedThreadStoreTest {
         }
     }
 
+    private fun parseDiagFields(line: String): Map<String, String> =
+        // Parse `key=value` tokens into exact fields — avoids substring
+        // false-positives like fetchSeq=1 matching fetchSeq=10.
+        Regex("""(\\w+)=(-?\\w+)""")
+            .findAll(line)
+            .associate { it.groupValues[1] to it.groupValues[2] }
+
     @Test
     fun runToStoreJoinUsesNoncePlusTraceIdentity() = runBlocking {
-        // task #58 observability R1/R2: two independent store runs each issue a
-        // real newer fetch through their own FakeThreadApi. Each run's full
-        // scoped envelope — issue line → boundary requestTrace → fetch terminal
-        // → apply write — must resolve to that run's own storeSeq/fetchSeq/
-        // requestRouteToken, and neither run's identity may leak into the other.
-        // This replaces the previous ledger replay, which parked a literal
-        // trace under a fake call shape instead of a real store request.
+        // task #58 observability R1: two independent store runs each issue a
+        // real newer fetch through their own FakeThreadApi. For each run the
+        // full scoped envelope — thread_fetch_issued → boundary requestTrace →
+        // thread_fetch_terminal → thread_payload_messages_write — must resolve
+        // to that run's own storeSeq/fetchSeq/requestRouteToken, and neither
+        // run's storeSeq may appear in the other's terminal/write records.
 
-        // Build one real store run end-to-end and return its scoped envelope.
         suspend fun runStore(
+            runNonce: String,
             bodySeed: String,
             newerSeqs: LongRange,
         ): Map<String, String> {
@@ -18949,65 +18955,73 @@ class SharedThreadStoreTest {
             }
             val trace =
                 api.channelMessagesRequestTraces.lastOrNull()
-                    ?: error("store run must emit a boundary requestTrace")
-            val fetchSeq = Regex("_fs=(\\d+)").find(trace)!!.groupValues[1]
-            val storeSeq = Regex("newer_page_s(\\d+)_").find(trace)!!.groupValues[1]
-            val routeToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
+                    ?: error("run $runNonce must emit a boundary requestTrace")
+            val traceStoreSeq = Regex("newer_page_s(\\d+)_").find(trace)!!.groupValues[1]
+            val traceFetchSeq = Regex("_fs=(\\d+)").find(trace)!!.groupValues[1]
+            val traceToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
+            val issued =
+                logs.single {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "newer_page" &&
+                        parseDiagFields(it)["fetchSeq"] == traceFetchSeq
+                }
+            val issuedFields = parseDiagFields(issued)
             val terminal =
                 logs.single {
                     it.startsWith("thread_fetch_terminal") &&
-                        it.contains("kind=newer_page") &&
-                        it.contains("fetchSeq=$fetchSeq")
+                        parseDiagFields(it)["kind"] == "newer_page" &&
+                        parseDiagFields(it)["fetchSeq"] == traceFetchSeq
                 }
+            val terminalFields = parseDiagFields(terminal)
             val write =
                 logs.single {
                     it.startsWith("thread_payload_messages_write") &&
-                        it.contains("tag=newer_page_apply") &&
-                        it.contains("fetchSeq=$fetchSeq")
+                        parseDiagFields(it)["tag"] == "newer_page_apply" &&
+                        parseDiagFields(it)["fetchSeq"] == traceFetchSeq
                 }
+            val writeFields = parseDiagFields(write)
             return mapOf(
+                "nonce" to runNonce,
+                "routeThreadId" to "channel-1",
                 "trace" to trace,
-                "storeSeq" to storeSeq,
-                "fetchSeq" to fetchSeq,
-                "routeToken" to routeToken,
-                "terminal" to terminal,
-                "write" to write,
+                "storeSeq" to traceStoreSeq,
+                "fetchSeq" to traceFetchSeq,
+                "routeToken" to traceToken,
+                "issuedStoreSeq" to (issuedFields["storeSeq"] ?: ""),
+                "issuedRouteToken" to (issuedFields["routeToken"] ?: ""),
+                "terminalStoreSeq" to (terminalFields["storeSeq"] ?: ""),
+                "terminalRouteToken" to (terminalFields["requestRouteToken"] ?: ""),
+                "terminalResult" to (terminalFields["result"] ?: ""),
+                "writeStoreSeq" to (writeFields["storeSeq"] ?: ""),
+                "writeRouteToken" to (writeFields["requestRouteToken"] ?: ""),
+                "writeFetchSeq" to (writeFields["fetchSeq"] ?: ""),
             )
         }
 
-        val runA = runStore("body-a", 17L..20L)
-        val runB = runStore("body-b", 21L..24L)
+        val runA = runStore("run-join-a", "body-a", 17L..20L)
+        val runB = runStore("run-join-b", "body-b", 21L..24L)
 
         // Distinct runs must not share the store-level identity. fetchSeq is a
-        // per-store counter and legitimately collides across runs — the trace
-        // disambiguates via storeSeq.
+        // per-store counter and legitimately collides across runs — storeSeq
+        // is the disambiguating namespace.
         assertNotEquals(runA["trace"], runB["trace"], "two runs must not share a boundary trace")
         assertNotEquals(runA["storeSeq"], runB["storeSeq"], "two runs must not share a storeSeq")
 
-        // Each run's terminal must carry its own requestRouteToken, and its
-        // write must carry its own storeSeq — the full scoped join per run.
+        // Per-run scoped join: every stage of the envelope must bind the same
+        // storeSeq, fetchSeq and requestRouteToken, and the terminal must be
+        // an accepted result for a request that actually landed.
         for ((label, run) in listOf("A" to runA, "B" to runB)) {
-            assertTrue(
-                run["terminal"]!!.contains("requestRouteToken=${run["routeToken"]}"),
-                "run $label terminal must carry its issued routeToken=${run["routeToken"]}; got ${run["terminal"]}",
-            )
-            assertTrue(
-                run["terminal"]!!.contains("fetchSeq=${run["fetchSeq"]}"),
-                "run $label terminal must carry its fetchSeq=${run["fetchSeq"]}; got ${run["terminal"]}",
-            )
-            assertTrue(
-                run["write"]!!.contains("storeSeq=${run["storeSeq"]}"),
-                "run $label write must carry its storeSeq=${run["storeSeq"]}; got ${run["write"]}",
-            )
-            assertTrue(
-                run["write"]!!.contains("requestRouteToken=${run["routeToken"]}"),
-                "run $label write must carry its requestRouteToken=${run["routeToken"]}; got ${run["write"]}",
-            )
+            assertEquals(run["storeSeq"], run["issuedStoreSeq"], "run $label issue storeSeq mismatch")
+            assertEquals(run["storeSeq"], run["terminalStoreSeq"], "run $label terminal storeSeq mismatch")
+            assertEquals(run["storeSeq"], run["writeStoreSeq"], "run $label write storeSeq mismatch")
+            assertEquals(run["routeToken"], run["issuedRouteToken"], "run $label issue routeToken mismatch")
+            assertEquals(run["routeToken"], run["terminalRouteToken"], "run $label terminal routeToken mismatch")
+            assertEquals(run["routeToken"], run["writeRouteToken"], "run $label write routeToken mismatch")
+            assertEquals(run["fetchSeq"], run["writeFetchSeq"], "run $label write fetchSeq mismatch")
+            assertEquals("accepted", run["terminalResult"], "run $label terminal must be accepted")
         }
 
-        // Cross-run isolation: run B's terminal/write must not reference run
-        // A's store identity — the (storeSeq, fetchSeq) pair, not the bare
-        // per-store fetchSeq counter, is the unique fetch identity.
+        // Cross-run isolation on the disambiguating storeSeq.
         assertTrue(
             !runB["terminal"]!!.contains("storeSeq=${runA["storeSeq"]}"),
             "run B terminal must not reference run A storeSeq; got ${runB["terminal"]}",
@@ -19020,11 +19034,11 @@ class SharedThreadStoreTest {
 
     @Test
     fun numericCollisionAcrossFetchAndOpNamespacesStaysUnambiguous() = runBlocking {
-        // task #58 observability R2: an operationSeq and a fetchSeq may
-        // legitimately be assigned the same number (independent counters).
-        // When they collide, the issue→apply/terminal records must still
-        // disambiguate which domain produced the write — the tag/kind prefix,
-        // not the number, carries the domain.
+        // task #58 observability R2: force a REAL equal-number collision — the
+        // first fetchSeq and the first operationSeq are both 1 on a fresh
+        // store — then verify each domain's own receipt keeps its identity:
+        // the fetch write binds fetchSeq=1 with operationSeq=-1 (unset), while
+        // an issued local op carries operationSeq=1 with no fetchSeq.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
         val api =
@@ -19052,33 +19066,92 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        // Force a local op and a fetch so both counters have advanced.
         store.loadNewer()
-        // Whatever numbers were issued, the write records must be parseable and
-        // the fetch write must carry fetchSeq (not operationSeq) in the field
-        // that names the request — i.e. newer_page_apply's fetchSeq field must
-        // equal its boundary fetchSeq, not some op counter.
-        val issued = logs.filter { it.startsWith("thread_fetch_issued") }
-        val newerIssued = issued.single { it.contains("kind=newer_page") }
-        val fetchSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
-        val write =
+
+        // Fetch-side receipt: the newer_page_apply write binds fetchSeq=1 and
+        // must report operationSeq=-1 (no local op id on a fetch write).
+        val fetchWrite =
             logs.single {
                 it.startsWith("thread_payload_messages_write") &&
-                    it.contains("tag=newer_page_apply")
+                    parseDiagFields(it)["tag"] == "newer_page_apply"
             }
-        assertTrue(
-            write.contains("fetchSeq=$fetchSeq"),
-            "newer_page_apply must bind the boundary fetchSeq=$fetchSeq (not an op counter); got $write",
+        val fetchFields = parseDiagFields(fetchWrite)
+        assertEquals("1", fetchFields["fetchSeq"], "newer fetch write must bind fetchSeq=1")
+        assertEquals(
+            "-1",
+            fetchFields["operationSeq"],
+            "a fetch write must carry operationSeq=-1, not a borrowed op counter; got $fetchWrite",
         )
-        // The write's fetchSeq field is the request's own — assert it is not
-        // silently the shared operationSeq counter value when the two differ.
-        val opField = Regex("operationSeq=(-?\\d+)").find(write)!!.groupValues[1]
-        // operationSeq is -1 for fetch writes; assert it is NOT equal to the
-        // fetchSeq unless fetchSeq itself is 0/-1, proving the fields are
-        // populated from the correct domain.
+
+        // Real equal-number collision: the store's first issued op and first
+        // fetch are both counter value 1. Resolve the first op's kind from its
+        // own issue line (whichever writer ran first), then find its write
+        // receipt by tag and assert the colliding domains keep distinct fields.
+        val firstOpIssued =
+            logs.single {
+                it.startsWith("thread_op_issued") &&
+                    parseDiagFields(it)["opSeq"] == "1"
+            }
+        val firstOpKind = parseDiagFields(firstOpIssued)["kind"]!!
+        val opWrite =
+            logs.single {
+                (it.startsWith("thread_payload_terminal") || it.startsWith("thread_payload_messages_write")) &&
+                    parseDiagFields(it)["tag"] == firstOpKind &&
+                    parseDiagFields(it)["operationSeq"] == "1"
+            }
+        val opFields = parseDiagFields(opWrite)
+        assertEquals("1", opFields["operationSeq"], "$firstOpKind must carry operationSeq=1")
+        assertEquals(
+            "-1",
+            opFields["fetchSeq"],
+            "an op write must not carry a fetchSeq; got $opWrite",
+        )
+        // The collision: opSeq=1 (local op) and fetchSeq=1 (fetch) are the same
+        // number in two domains — each receipt resolves by its own field.
+        assertEquals(
+            fetchFields["fetchSeq"],
+            opFields["operationSeq"],
+            "this test requires an actual numeric collision between the fetch and op counters",
+        )
+
+        // Refresh loading→canonical association: the loading write is a local
+        // op (operationSeq namespace) and the canonical fetch is a fetch
+        // (fetchSeq namespace); they share the captured routeToken as the
+        // association and must be resolvable across the boundary.
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        api.bodyText = messagesResponse("b2", id = "m16", seq = 16, historyLimited = false)
+        val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+        withTimeout(5_000) { api.channelMessagesStarted?.await() }
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(5_000) { refreshJob.await() }
+        val refreshLoadingOp =
+            logs.single {
+                it.startsWith("thread_op_issued") &&
+                    parseDiagFields(it)["kind"] == "refresh_loading_apply"
+            }
+        val refreshFetch =
+            logs.single {
+                it.startsWith("thread_fetch_issued") &&
+                    parseDiagFields(it)["kind"] == "refresh_canonical"
+            }
+        // Both carry the same routeToken — the generation Refresh captured —
+        // which is the loading→canonical association key.
+        assertEquals(
+            parseDiagFields(refreshLoadingOp)["routeToken"],
+            parseDiagFields(refreshFetch)["routeToken"],
+            "refresh loading op and canonical fetch must share the captured routeToken",
+        )
+        // And they must be in different namespaces: the loading write is an
+        // opSeq, the canonical is a fetchSeq — same or different numbers, but
+        // resolved by kind, not by a shared counter.
         assertTrue(
-            opField == "-1" || opField != fetchSeq || fetchSeq == "0",
-            "a fetch write must not report operationSeq=$opField as its request id when fetchSeq=$fetchSeq; got $write",
+            parseDiagFields(refreshFetch)["fetchSeq"] != null,
+            "refresh canonical must carry a fetchSeq",
+        )
+        assertTrue(
+            parseDiagFields(refreshLoadingOp)["opSeq"] != null,
+            "refresh loading must carry an opSeq",
         )
         } finally {
             scope.cancel()
