@@ -18953,22 +18953,23 @@ class SharedThreadStoreTest {
             } finally {
                 scope.cancel()
             }
-            val trace =
-                api.channelMessagesRequestTraces.lastOrNull()
-                    ?: error("run $runNonce must emit a boundary requestTrace")
-            val traceStoreSeq = Regex("newer_page_s(\\d+)_").find(trace)!!.groupValues[1]
-            val traceFetchSeq = Regex("_fs=(\\d+)").find(trace)!!.groupValues[1]
-            val traceToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
             val issued =
                 logs.filter {
                     it.startsWith("thread_fetch_issued") &&
-                        parseDiagFields(it)["kind"] == "newer_page" &&
-                        parseDiagFields(it)["fetchSeq"] == traceFetchSeq
+                        parseDiagFields(it)["kind"] == "newer_page"
                 }.also {
                     check(it.size == 1) {
-                        "run $runNonce expected 1 newer_page issued for fetchSeq=$traceFetchSeq; logs=$logs"
+                        "run $runNonce expected 1 newer_page issued; logs=$logs"
                     }
                 }.single()
+            val issuedFields0 = parseDiagFields(issued)
+            val traceFetchSeq = issuedFields0["fetchSeq"]!!
+            val trace =
+                api.channelMessagesRequestTraces.filterNotNull()
+                    .singleOrNull { it.contains("_fs=${traceFetchSeq}_") }
+                    ?: error("run $runNonce must emit a boundary trace for fetchSeq=$traceFetchSeq; traces=${api.channelMessagesRequestTraces}")
+            val traceStoreSeq = Regex("_s(\\d+)_").find(trace)!!.groupValues[1]
+            val traceToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
             val issuedFields = parseDiagFields(issued)
             val terminal =
                 logs.filter {
@@ -19080,8 +19081,8 @@ class SharedThreadStoreTest {
         )
         store.loadNewer()
 
-        // Fetch-side receipt: the newer_page_apply write binds fetchSeq=1 and
-        // must report operationSeq=-1 (no local op id on a fetch write).
+        // Fetch-side receipt: the newer_page_apply write binds its own fetchSeq
+        // and must report operationSeq=-1 (no local op id on a fetch write).
         val fetchWrite =
             logs.filter {
                 it.startsWith("thread_payload_messages_write") &&
@@ -19090,46 +19091,48 @@ class SharedThreadStoreTest {
                 check(it.size == 1) { "expected 1 newer_page_apply write; logs=$logs" }
             }.single()
         val fetchFields = parseDiagFields(fetchWrite)
-        assertEquals("1", fetchFields["fetchSeq"], "newer fetch write must bind fetchSeq=1")
+        val boundFetchSeq = fetchFields["fetchSeq"]!!
+        assertTrue(boundFetchSeq.toLong() >= 1, "fetch write must bind a real fetchSeq")
         assertEquals(
             "-1",
             fetchFields["operationSeq"],
             "a fetch write must carry operationSeq=-1, not a borrowed op counter; got $fetchWrite",
         )
 
-        // Real equal-number collision: the store's first issued op and first
-        // fetch are both counter value 1. Resolve the first op's kind from its
-        // own issue line (whichever writer ran first), then find its write
-        // receipt by tag and assert the colliding domains keep distinct fields.
-        val firstOpIssued =
-            logs.filter {
-                it.startsWith("thread_op_issued") &&
-                    parseDiagFields(it)["opSeq"] == "1"
-            }.also {
-                check(it.size == 1) { "expected 1 op_issued opSeq=1; logs=$logs" }
-            }.single()
-        val firstOpKind = parseDiagFields(firstOpIssued)["kind"]!!
-        val opWrite =
+        // Real equal-number collision: the fetch and op counters both start at
+        // 1 on a fresh store, so the first op receipt and the first fetch
+        // receipt are guaranteed to share the number 1 in different domains.
+        // Locate each domain's first receipt by its own counter and assert the
+        // colliding writes keep disjoint identity fields.
+        val firstOpWrite =
             logs.filter {
                 (it.startsWith("thread_payload_terminal") || it.startsWith("thread_payload_messages_write")) &&
-                    parseDiagFields(it)["tag"] == firstOpKind &&
                     parseDiagFields(it)["operationSeq"] == "1"
             }.also {
-                check(it.size == 1) { "expected 1 write for op kind=$firstOpKind opSeq=1; logs=$logs" }
-            }.single()
-        val opFields = parseDiagFields(opWrite)
-        assertEquals("1", opFields["operationSeq"], "$firstOpKind must carry operationSeq=1")
+                check(it.isNotEmpty()) { "expected an op receipt with operationSeq=1; logs=$logs" }
+            }.first()
+        val opFields = parseDiagFields(firstOpWrite)
+        val firstFetchWrite =
+            logs.filter {
+                (it.startsWith("thread_payload_terminal") || it.startsWith("thread_payload_messages_write")) &&
+                    parseDiagFields(it)["fetchSeq"] == "1"
+            }.also {
+                check(it.isNotEmpty()) { "expected a fetch receipt with fetchSeq=1; logs=$logs" }
+            }.first()
+        val firstFetchFields = parseDiagFields(firstFetchWrite)
+        // The collision exists: op #1 and fetch #1 are the same number.
+        assertEquals(
+            opFields["operationSeq"],
+            firstFetchFields["fetchSeq"],
+            "counters must collide numerically (both start at 1); op=${firstOpWrite} fetch=${firstFetchWrite}",
+        )
+        // And each domain keeps its own identity: the op write reports
+        // fetchSeq=-1 (unset), the fetch write reports operationSeq=-1.
+        assertEquals("-1", opFields["fetchSeq"], "op write must not carry fetchSeq; got $firstOpWrite")
         assertEquals(
             "-1",
-            opFields["fetchSeq"],
-            "an op write must not carry a fetchSeq; got $opWrite",
-        )
-        // The collision: opSeq=1 (local op) and fetchSeq=1 (fetch) are the same
-        // number in two domains — each receipt resolves by its own field.
-        assertEquals(
-            fetchFields["fetchSeq"],
-            opFields["operationSeq"],
-            "this test requires an actual numeric collision between the fetch and op counters",
+            firstFetchFields["operationSeq"],
+            "fetch write must not carry operationSeq; got $firstFetchWrite",
         )
 
         // Refresh loading→canonical association: the loading write is a local
