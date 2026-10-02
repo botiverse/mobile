@@ -18997,6 +18997,8 @@ class SharedThreadStoreTest {
                 "nonce" to runNonce,
                 "routeThreadId" to "channel-1",
                 "trace" to trace,
+                "terminal" to terminal,
+                "write" to write,
                 "storeSeq" to traceStoreSeq,
                 "fetchSeq" to traceFetchSeq,
                 "routeToken" to traceToken,
