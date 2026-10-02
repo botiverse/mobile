@@ -75,6 +75,10 @@ case "${1:-}" in
     exit 0
     ;;
   logcat)
+    if [[ "${MOCK_ADB_HANG:-0}" == "1" ]]; then
+      sleep 60
+      exit 0
+    fi
     if [[ "${2:-}" == "-c" ]]; then
       exit 0
     fi
@@ -440,6 +444,79 @@ test -f "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" || fail 
 grep -Fq "mock-diagnostics-record" "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" || fail "SIGTERM path diagnostics jsonl empty"
 test -f "$TEST_DIR_TERM/first-character-baseline-suite-summary.txt" || fail "SIGTERM path missing summary"
 pass "thread-newer SIGTERM evidence scenario verified"
+
+# 6d. Test scenario: hung adb still lets cleanup finish inside the bound
+# (LiBai review round 3: collection must not stall cleanup past the job kill)
+TEST_DIR_HANG="$TMP_DIR/test_thread_newer_hang"
+mkdir -p "$TEST_DIR_HANG"
+rc_hang=0
+(
+  cd "$TEST_DIR_HANG"
+  export PATH="$MOCK_BIN:$PATH"
+  export MOCK_STATE_DIR="$TEST_DIR_HANG/mock_state"
+  export SKIP_EMULATOR_PREP=true
+  export SKIP_APK_INSTALL=true
+  export THREAD_NEWER_PAGINATION_GATE_REQUIRED=true
+  export MOCK_ADB_HANG=1
+  export THREAD_NEWER_ADB_TIMEOUT_SECONDS=1
+
+  mkdir -p "$TEST_DIR_HANG/scripts_ci"
+  cp "$SUITE_RUNNER" "$TEST_DIR_HANG/scripts_ci/run-first-character-emulator-suite.sh"
+  cp "$MOCK_BIN/run-instrumentation-with-retry.sh" "$TEST_DIR_HANG/scripts_ci/"
+  cp "$MOCK_BIN/prepare_android_emulator_ime.sh" "$TEST_DIR_HANG/scripts_ci/"
+  chmod +x "$TEST_DIR_HANG/scripts_ci/"*
+
+  hang_start=$(date +%s)
+  "$TEST_DIR_HANG/scripts_ci/run-first-character-emulator-suite.sh" "thread-newer-auto-pagination" > suite_out.txt
+  echo "hang_elapsed=$(( $(date +%s) - hang_start ))" > "$TEST_DIR_HANG/hang_elapsed.txt"
+) || rc_hang=$?
+
+test "$rc_hang" -eq 0 || fail "hung-adb scenario exited $rc_hang, expected 0 (test itself passes; only collection degrades)"
+hang_elapsed="$(grep -oE '[0-9]+' "$TEST_DIR_HANG/hang_elapsed.txt")"
+[ "$hang_elapsed" -lt 30 ] || fail "hung-adb collection took ${hang_elapsed}s, bound exceeded"
+test -f "$TEST_DIR_HANG/first-character-baseline-suite-summary.txt" || fail "summary missing under hung adb"
+test -f "$TEST_DIR_HANG/thread-newer-auto-pagination-diagnostics.jsonl" || fail "jsonl missing under hung adb"
+pass "hung-adb bounded collection scenario verified"
+
+# 6e. Test scenario: overall harvest bound on TERM path marks collection
+# incomplete instead of hanging the EXIT trap
+TEST_DIR_HT="$TMP_DIR/test_thread_newer_hang_term"
+mkdir -p "$TEST_DIR_HT"
+cat > "$TEST_DIR_HT/term-retry.sh" <<'FAKE_TERM'
+#!/usr/bin/env bash
+echo "INSTRUMENTATION_STATUS: running" > "$1"
+echo "ready" > "${MOCK_STATE_DIR:?}/instrumentation_started"
+sleep 30
+exit 1
+FAKE_TERM
+chmod +x "$TEST_DIR_HT/term-retry.sh"
+
+mkdir -p "$TEST_DIR_HT/scripts_ci" "$TEST_DIR_HT/mock_state"
+cp "$SUITE_RUNNER" "$TEST_DIR_HT/scripts_ci/run-first-character-emulator-suite.sh"
+cp "$TEST_DIR_HT/term-retry.sh" "$TEST_DIR_HT/scripts_ci/run-instrumentation-with-retry.sh"
+cp "$MOCK_BIN/prepare_android_emulator_ime.sh" "$TEST_DIR_HT/scripts_ci/"
+chmod +x "$TEST_DIR_HT/scripts_ci/"*
+
+setsid env PATH="$MOCK_BIN:$PATH" MOCK_STATE_DIR="$TEST_DIR_HT/mock_state" \
+  SKIP_EMULATOR_PREP=true SKIP_APK_INSTALL=true THREAD_NEWER_PAGINATION_GATE_REQUIRED=true \
+  MOCK_ADB_HANG=1 THREAD_NEWER_ADB_TIMEOUT_SECONDS=1 THREAD_NEWER_COLLECT_TIMEOUT_SECONDS=1 \
+  bash -c 'cd "$1" && bash scripts_ci/run-first-character-emulator-suite.sh "thread-newer-auto-pagination" > suite_out.txt 2>&1' _ "$TEST_DIR_HT" &
+ht_pid=$!
+for _ in $(seq 1 100); do
+  [ -f "$TEST_DIR_HT/mock_state/instrumentation_started" ] && break
+  sleep 0.1
+done
+ht_suite_pid="$(pgrep -P "$ht_pid" -f "run-first-character-emulator-suite.sh" | head -n 1)"
+[ -z "$ht_suite_pid" ] && ht_suite_pid="$(pgrep -f "test_thread_newer_hang_term.*run-first-character" | head -n 1)"
+[ -n "$ht_suite_pid" ] || fail "hang-term: suite pid unresolved"
+kill -TERM "$ht_suite_pid" 2>/dev/null || true
+ht_wait=0
+wait "$ht_pid" 2>/dev/null || ht_wait=$?
+test -f "$TEST_DIR_HT/first-character-baseline-suite-summary.txt" || fail "hang-term: summary missing"
+test -f "$TEST_DIR_HT/thread-newer-auto-pagination-collection-status.txt" || fail "hang-term: incomplete marker missing"
+grep -Fq "COLLECTION_INCOMPLETE reason=abort_harvest_timeout" "$TEST_DIR_HT/thread-newer-auto-pagination-collection-status.txt" || fail "hang-term: marker missing reason"
+pass "hung-adb abort-harvest bound scenario verified"
+
 
 # 7. Test scenario: Premature abort / trap safety
 TEST_DIR_TRAP="$TMP_DIR/test_trap"

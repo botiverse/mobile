@@ -192,8 +192,8 @@ run_pre_hook() {
       # and snapshot the pre-existing diagnostics dir listing so post-hoc
       # nonce correlation can tell this launch's files from earlier tests'
       # (the suite never pm-clears, so raft_diagnostics_logs accumulates).
-      adb logcat -c || true
-      adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
+      adb_bounded logcat -c || true
+      adb_bounded exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
         > thread-newer-auto-pagination-diagnostics-before.txt 2>/dev/null || true
       ;;
     *)
@@ -204,24 +204,37 @@ run_pre_hook() {
 # task #58 observability: thread-newer evidence collector, shared by the
 # normal post-hook and the EXIT trap so a SIGTERM/timeout mid-instrumentation
 # still archives raw logs and diagnostics before cleanup.
+# task #58 observability: bound every adb call in this collector so a hung
+# device cannot stall the EXIT-trap cleanup (job timeout would SIGKILL the
+# whole runner and lose the summary otherwise). 15s per call is generous for
+# logcat -d / run-as ls/cat; a hung call yields an empty/partial file marked
+# by the timeout exit code, which is honest partial evidence.
+THREAD_NEWER_ADB_TIMEOUT_SECONDS="${THREAD_NEWER_ADB_TIMEOUT_SECONDS:-15}"
+
+THREAD_NEWER_COLLECT_TIMEOUT_SECONDS="${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS:-60}"
+
+adb_bounded() {
+  timeout "${THREAD_NEWER_ADB_TIMEOUT_SECONDS}s" adb "$@"
+}
+
 collect_thread_newer_evidence() {
   # Unfiltered raw logcat is the primary file; the SlockKuikly-scoped
   # dump is a convenience view. Filter spec must stay two args
   # ('SlockKuikly:*' '*:S') — a single combined arg is not a valid
   # filterspec and silently yields an empty file.
-  adb logcat -d -v threadtime > thread-newer-auto-pagination-logcat.txt 2>/dev/null || true
-  adb logcat -d -v threadtime 'SlockKuikly:*' '*:S' > thread-newer-auto-pagination-logcat-slockkuikly.txt 2>/dev/null || true
+  adb_bounded logcat -d -v threadtime > thread-newer-auto-pagination-logcat.txt 2>/dev/null || true
+  adb_bounded logcat -d -v threadtime 'SlockKuikly:*' '*:S' > thread-newer-auto-pagination-logcat-slockkuikly.txt 2>/dev/null || true
   # Pull every launch's diagnostics file unfiltered (no "latest" guess —
   # the app is not pm-cleared between tests, so older launches linger).
   # Nonce/launch correlation happens when the archive is reviewed.
-  adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
+  adb_bounded exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
     > thread-newer-auto-pagination-diagnostics-after.txt 2>/dev/null || true
   : > thread-newer-auto-pagination-diagnostics.jsonl
   while IFS= read -r launch_dir; do
     [ -n "$launch_dir" ] || continue
     printf '===== files/raft_diagnostics_logs/%s/raft-diagnostics.jsonl =====\n' "$launch_dir" \
       >> thread-newer-auto-pagination-diagnostics.jsonl
-    adb exec-out run-as build.raft.app.connectedtest cat \
+    adb_bounded exec-out run-as build.raft.app.connectedtest cat \
       "files/raft_diagnostics_logs/$launch_dir/raft-diagnostics.jsonl" \
       >> thread-newer-auto-pagination-diagnostics.jsonl 2>/dev/null || true
   done < thread-newer-auto-pagination-diagnostics-after.txt
@@ -406,7 +419,17 @@ cleanup() {
   # the gap this harvest exists to close.
   trap '' TERM INT
   if [[ "$CURRENT_TEST_IN_FLIGHT" == "thread-newer-auto-pagination" ]]; then
-    collect_thread_newer_evidence
+    # Overall bound on the whole harvest: a wedged adb stack would otherwise
+    # serialize N per-call timeouts and outlive the runner's kill deadline.
+    # On expiry the collector subshell is terminated, partial files stay, and
+    # the summary is marked so reviewers don't read it as complete evidence.
+    timeout "${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}s" bash -c \
+      "$(declare -f adb_bounded collect_thread_newer_evidence); \
+       THREAD_NEWER_ADB_TIMEOUT_SECONDS=$THREAD_NEWER_ADB_TIMEOUT_SECONDS; \
+       collect_thread_newer_evidence" || {
+        echo "COLLECTION_INCOMPLETE reason=abort_harvest_timeout timeout_s=${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}" \
+          > thread-newer-auto-pagination-collection-status.txt
+      }
   fi
   generate_summary
   exit "$exit_code"
@@ -569,7 +592,7 @@ main() {
   # Thread-open budget TELEMETRY (Raft task #20 t2): harvest the frozen-v3
   # perf markers produced during the run. Baseline collection only on push/nightly.
   if [[ "${GITHUB_EVENT_NAME:-push}" != "pull_request" ]]; then
-    adb logcat -d -v threadtime 2>/dev/null | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready|thread_content_compose_start|thread_refresh_result|thread_markdown_body_recompose" > thread-open-budget-telemetry.txt 2>/dev/null || true
+    adb_bounded logcat -d -v threadtime 2>/dev/null | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready|thread_content_compose_start|thread_refresh_result|thread_markdown_body_recompose" > thread-open-budget-telemetry.txt 2>/dev/null || true
   fi
 
   generate_summary
