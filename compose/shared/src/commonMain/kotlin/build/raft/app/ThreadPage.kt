@@ -5916,17 +5916,27 @@ private fun SharedThreadRouteContentContent(
             withTimeoutOrNull(ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS) {
                 snapshotFlow { adaptivePageKeyboardInsetDp }.first { it <= 0f }
             } != null
-        bridge.log(
-            "adaptive_side_thread_parent_focus result=applied keyboardClosed=$closed " +
-                "generation=${request.target.generation}"
-        )
-        threadViewModel.dispatch(
-            SharedThreadIntent.FocusMessage(
-                messageId = request.messageId,
-                switchToTab = KuiklyThreadTab.Chat.wireValue,
-            )
-        )
         pendingAdaptiveParentFocus = null
+        // Re-validate after the wait: a channel switch, fold or new selection meanwhile retires
+        // the target, and a keyboard still open would only have the anchor drop it — both are
+        // reported as not focused instead of dispatching.
+        val page = adaptiveCloseRequest
+        val result =
+            when {
+                page == null || !adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request) ->
+                    "stale_target"
+                !closed -> "keyboard_still_open"
+                else -> "applied"
+            }
+        bridge.log("adaptive_side_thread_parent_focus result=$result generation=${request.target.generation}")
+        if (result == "applied") {
+            threadViewModel.dispatch(
+                SharedThreadIntent.FocusMessage(
+                    messageId = request.messageId,
+                    switchToTab = KuiklyThreadTab.Chat.wireValue,
+                )
+            )
+        }
     }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
