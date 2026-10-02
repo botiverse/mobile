@@ -2148,4 +2148,5 @@
     <string name="search_error_sort_recent">按最新排序</string>
     <string name="search_error_too_broad">搜索范围过大</string>
     <string name="search_error_too_broad_detail">请添加频道、发送者或时间筛选，或按最新排序。</string>
+    <string name="members_select_detail">选择成员以查看详情</string>
 </resources>

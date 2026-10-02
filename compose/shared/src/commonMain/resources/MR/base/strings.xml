@@ -2148,4 +2148,5 @@
     <string name="search_error_sort_recent">Sort by newest</string>
     <string name="search_error_too_broad">Search is too broad</string>
     <string name="search_error_too_broad_detail">Add a channel, sender, or time filter, or sort by newest.</string>
+    <string name="members_select_detail">Select a member to view details</string>
 </resources>
