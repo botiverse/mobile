@@ -3315,8 +3315,13 @@ private fun SlockAppShellReadyContent(
         mutableStateOf(slockListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
     }
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
+    // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
+    // (The handle also reports the end when it goes inactive or leaves composition.)
+    val listPaneResizeDefersFold =
+        adaptiveListPaneResizing && desktopModeOnLargeScreen &&
+            adaptivePane.layout == SlockAdaptivePaneLayout.DualPane
     val sideThreadNeedsFold =
-        !adaptiveListPaneResizing &&
+        !listPaneResizeDefersFold &&
             adaptiveWorkspaceSession.visibleSideThread() != null &&
             !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
     LaunchedEffect(sideThreadNeedsFold) {
@@ -6199,7 +6204,7 @@ private fun SlockAppShellReadyContent(
                         val showSideColumn =
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
-                                    (adaptiveListPaneResizing && desktopModeOnLargeScreen))
+                                    listPaneResizeDefersFold)
                         LaunchedEffect(active, allowSideColumn) {
                             if (active && !allowSideColumn) {
                                 adaptiveWorkspaceStore.update {
@@ -6431,6 +6436,7 @@ private fun SlockAppShellReadyContent(
                             }
                             if (dualPane) {
                                 SlockListPaneResizeHandle(
+                                    active = active,
                                     listWidthDp = listWidthDp,
                                     onDragStart = { adaptiveListPaneResizing = true },
                                     onDrag = { startWidthDp, deltaDp ->
