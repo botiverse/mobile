@@ -18966,10 +18966,16 @@ class SharedThreadStoreTest {
             val traceFetchSeq = issuedFields0["fetchSeq"]!!
             val trace =
                 api.channelMessagesRequestTraces.filterNotNull()
-                    .singleOrNull { it.contains("_fs=${traceFetchSeq}_") }
+                    .singleOrNull {
+                        it.startsWith("newer_page_") && it.contains("_fs=${traceFetchSeq}_")
+                    }
                     ?: error("run $runNonce must emit a boundary trace for fetchSeq=$traceFetchSeq; traces=${api.channelMessagesRequestTraces}")
-            val traceStoreSeq = Regex("_s(\\d+)_").find(trace)!!.groupValues[1]
-            val traceToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
+            val traceStoreSeq =
+                Regex("_s(\\d+)_").find(trace)?.groupValues?.get(1)
+                    ?: error("run $runNonce trace missing storeSeq; trace=$trace")
+            val traceToken =
+                Regex("_rt=(\\d+)").find(trace)?.groupValues?.get(1)
+                    ?: error("run $runNonce trace missing routeToken; trace=$trace")
             val issuedFields = parseDiagFields(issued)
             val terminal =
                 logs.filter {
