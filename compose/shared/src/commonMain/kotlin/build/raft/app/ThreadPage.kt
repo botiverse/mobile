@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
+import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.acceptsParentFocus
+import build.raft.app.data.sideThreadParentFocus
+import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 
@@ -229,6 +233,8 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -5874,6 +5880,34 @@ private fun SharedThreadRouteContentContent(
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
+    // task #36: the side thread's "open parent channel" keeps the column and hands focus to the
+    // main detail: the side page drops its own input focus (keyboard down) and asks the main page,
+    // by its key/generation, to scroll to and highlight the parent message. The composer is never
+    // focused, so no keyboard pops up; retired pages ignore the request.
+    val adaptiveFocusManager = LocalFocusManager.current
+    val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
+    val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
+        val page = adaptiveCloseRequest
+        val subscription =
+            page?.let {
+                eventBus.observe(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                    crossProcess = true,
+                ) { eventData ->
+                    val request = eventData?.toAdaptiveParentFocusRequestOrNull() ?: return@observe
+                    if (!adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request)) return@observe
+                    bridge.log("adaptive_side_thread_parent_focus result=applied generation=${page.generation}")
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.FocusMessage(
+                            messageId = request.messageId,
+                            switchToTab = KuiklyThreadTab.Chat.wireValue,
+                        )
+                    )
+                }
+            }
+        onDispose { subscription?.close() }
+    }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
@@ -11044,7 +11078,21 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == "openParentMessage" -> {
-                    if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
+                    val sideParentFocus =
+                        adaptiveCloseRequest?.let { source ->
+                            adaptiveFocusWorkspaceStore.snapshot().sideThreadParentFocus(source)
+                        }
+                    if (sideParentFocus != null) {
+                        adaptiveFocusManager.clearFocus(force = true)
+                        adaptiveKeyboardController?.hide()
+                        bridge.log("adaptive_side_thread_parent_focus result=requested generation=${sideParentFocus.target.generation}")
+                        eventBus.post(
+                            eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                            eventData = sideParentFocus.toJson(),
+                            crossProcess = true,
+                            source = "adaptive_side_thread_parent",
+                        )
+                    } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
                             "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
                                 "threadId=${renderedThread.sourceThreadId.orEmpty()} " +

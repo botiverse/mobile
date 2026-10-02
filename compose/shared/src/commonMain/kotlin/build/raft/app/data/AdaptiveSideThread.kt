@@ -11,7 +11,9 @@ import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
 import build.raft.app.nextAdaptiveGeneration
 import build.raft.app.reduceSlockAdaptiveWorkspace
+import build.raft.app.toSlockAdaptiveDetailCloseRequestOrNull
 import build.raft.app.toSlockAdaptiveDetailIdentity
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 /**
  * task #36: below this window width the reply thread keeps replacing the channel in the detail
@@ -240,4 +242,54 @@ internal fun SharedAdaptiveWorkspaceSession.foldSideThreadIntoDetail(): SharedAd
         detailHistory = AdaptiveDetailHistory(selection, previous + mainPayload),
         sideThread = null,
     )
+}
+
+/** task #36: the side thread's "open parent channel" hands focus to the main detail's parent message. */
+internal const val SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT = "slockAdaptiveDetailFocusMessage"
+internal const val SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID = "slockAdaptiveDetailFocusMessageId"
+
+/** Focus [messageId] in the detail page identified by [target] (its own key/generation). */
+internal data class AdaptiveParentFocusRequest(
+    val target: SlockAdaptiveDetailCloseRequest,
+    val messageId: String,
+) {
+    fun toJson(): JSONObject = target.toJson().put(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
+}
+
+internal fun JSONObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
+    val target = toSlockAdaptiveDetailCloseRequestOrNull() ?: return null
+    val messageId = optString(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID).trim().takeIf(String::isNotBlank) ?: return null
+    return AdaptiveParentFocusRequest(target, messageId)
+}
+
+/**
+ * The side column's parent action: when [source] is the live side thread, the request that makes
+ * the main detail (its parent channel) focus the parent message — the column stays open. Null for
+ * any other page, so the existing parent navigation applies.
+ */
+internal fun SharedAdaptiveWorkspaceSession.sideThreadParentFocus(
+    source: SlockAdaptiveDetailCloseRequest,
+): AdaptiveParentFocusRequest? {
+    val current = workspace ?: return null
+    val main = current.selection ?: return null
+    val side = visibleSideThread() ?: return null
+    if (current.shellInstanceId != source.shellInstanceId ||
+        side.identity.key != source.identityKey || side.generation != source.generation
+    ) return null
+    val messageId = side.payload.parentMessageId?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return AdaptiveParentFocusRequest(
+        SlockAdaptiveDetailCloseRequest(current.shellInstanceId, main.identity.key, main.generation),
+        messageId,
+    )
+}
+
+/** Whether the detail page [page] applies [request]: addressed to it and it is still the main detail. */
+internal fun SharedAdaptiveWorkspaceSession.acceptsParentFocus(
+    page: SlockAdaptiveDetailCloseRequest,
+    request: AdaptiveParentFocusRequest,
+): Boolean {
+    val current = workspace ?: return false
+    return request.target == page &&
+        current.shellInstanceId == page.shellInstanceId &&
+        current.acceptsDetailCallback(page.identityKey, page.generation)
 }

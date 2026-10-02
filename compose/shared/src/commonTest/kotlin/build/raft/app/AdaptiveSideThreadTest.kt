@@ -245,4 +245,36 @@ class AdaptiveSideThreadTest {
         assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(null, true, "server"))
         assertEquals(AdaptiveThreadOpenRoute.Standalone, SharedAdaptiveWorkspaceSession().routeThreadOpen(null, false, null))
     }
+
+    @Test fun sideParentActionFocusesTheParentMessageInTheMainDetailAndKeepsTheColumn() {
+        val root = session()
+        val opened = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val side = opened.sideThread!!.closeRequest("shell")
+        val focus = assertNotNull(opened.sideThreadParentFocus(side))
+        assertEquals(opened.mainSource(), focus.target)
+        assertEquals("message", focus.messageId)
+        // The main page accepts it; the side page, a retired main and another shell do not.
+        assertTrue(opened.acceptsParentFocus(opened.mainSource(), focus))
+        assertFalse(opened.acceptsParentFocus(side, focus))
+        assertFalse(opened.acceptsParentFocus(opened.mainSource().copy(shellInstanceId = "other"), focus))
+        // Wire round trip.
+        assertEquals(focus, focus.toJson().toAdaptiveParentFocusRequestOrNull())
+        // The main page's own parent action is not a side action (existing navigation applies).
+        assertNull(opened.sideThreadParentFocus(opened.mainSource()))
+    }
+
+    @Test fun retiredSideThreadParentActionRequestsNothing() {
+        val root = session()
+        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val oldSide = s1.sideThread!!.closeRequest("shell")
+        val s2 = s1.openSideThread(s1.mainSource(), otherReply, "server", true).opened()
+        assertNull(s2.sideThreadParentFocus(oldSide))
+        assertNull(s2.closeSideThread(s2.sideThread!!.closeRequest("shell")).sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
+        val folded = s2.foldSideThreadIntoDetail()
+        assertNull(folded.sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
+        // A focus addressed to the pre-fold main detail is not applied by the folded main.
+        val stale = assertNotNull(s2.sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
+        assertFalse(folded.acceptsParentFocus(folded.mainSource(), stale))
+        assertFalse(folded.acceptsParentFocus(stale.target, stale))
+    }
 }
