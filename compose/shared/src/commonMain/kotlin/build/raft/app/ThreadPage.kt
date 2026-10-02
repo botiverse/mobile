@@ -4748,7 +4748,11 @@ internal fun ThreadMembersPageContent(
             leadingContent = {
                 SlockTopPageHeaderAction(
                     icon = SlockLucideIconName.ArrowLeft,
-                    onClick = { if (addDialogVisible) onAddVisibleChange(false) else onBack() }
+                    onClick = {
+                        if (addDialogVisible) {
+                            if (addMemberStatus != "adding") onAddVisibleChange(false)
+                        } else onBack()
+                    }
                 )
             },
         )
