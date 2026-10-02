@@ -19233,7 +19233,7 @@ class SharedThreadStoreTest {
     @Test
     fun fetchTerminalBranchMatrixClosesEachIssueExactlyOnce() = runBlocking {
         // task #58 observability: every issued fetch must produce exactly one
-        // terminal receipt carrying its own fetchSeq + requestRouteToken,
+        // terminal receipt keyed by its own fetchSeq + requestRouteToken,
         // across the accepted / empty / error / no_permission / rejected /
         // cancelled branches and across fetch kinds.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -19242,7 +19242,6 @@ class SharedThreadStoreTest {
             val api =
                 FakeThreadApi(
                     bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
-                    olderBodyText = "",
                     newerBodyText = newerRowsBody(17L..20L),
                 )
             val store =
@@ -19266,80 +19265,77 @@ class SharedThreadStoreTest {
                 )
             )
 
-            fun terminals(kind: String): List<Pair<Long, Map<String, String>>> =
-                logs.withIndex()
-                    .filter { (_, line) ->
-                        line.startsWith("thread_fetch_terminal") &&
-                            parseDiagFields(line)["kind"] == kind
-                    }
-                    .map { (idx, line) -> idx.toLong() to parseDiagFields(line) }
-                    .sortedBy { it.first }
+            val issuedSeqs = mutableSetOf<String>()
 
-            fun assertSingleTerminalSince(
+            // Snapshot-free join: locate the NEXT thread_fetch_issued of the
+            // kind (fetchSeq is a per-store global counter, unique per issue),
+            // then assert exactly one terminal closed that same fetchSeq.
+            fun nextIssuedFetchSeq(kind: String): Pair<String, Map<String, String>> {
+                val issued =
+                    logs.lastOrNull {
+                        it.startsWith("thread_fetch_issued") &&
+                            parseDiagFields(it)["kind"] == kind &&
+                            parseDiagFields(it)["fetchSeq"] !in issuedSeqs
+                    }
+                check(issued != null) { "expected a new $kind issued; logs=$logs" }
+                val fields = parseDiagFields(issued)
+                val seq = fields["fetchSeq"]!!
+                issuedSeqs += seq
+                return seq to fields
+            }
+
+            fun assertTerminalFor(
                 kind: String,
+                fetchSeq: String,
                 expected: String,
-                floorIndex: Long,
-            ): Map<String, String> {
+            ) {
                 val matching =
-                    terminals(kind).filter { it.first > floorIndex }
+                    logs.filter {
+                        it.startsWith("thread_fetch_terminal") &&
+                            parseDiagFields(it)["kind"] == kind &&
+                            parseDiagFields(it)["fetchSeq"] == fetchSeq
+                    }
                 check(matching.size == 1) {
-                    "expected exactly 1 $kind terminal after index $floorIndex; " +
+                    "expected exactly 1 $kind terminal for fetchSeq=$fetchSeq; " +
                         "got ${matching.size}; logs=$logs"
                 }
-                val fields = matching.single().second
-                assertEquals(
-                    expected,
-                    fields["result"],
-                    "$kind terminal result mismatch: ${matching.single()}",
-                )
-                assertTrue(
-                    fields["fetchSeq"]?.toLong() != null && fields["fetchSeq"]!!.toLong() >= 1,
-                    "$kind terminal must carry its issued fetchSeq",
-                )
+                val fields = parseDiagFields(matching.single())
+                assertEquals(expected, fields["result"], "$kind terminal result mismatch: ${matching.single()}")
                 assertTrue(
                     fields["requestRouteToken"]?.toLong() != null,
                     "$kind terminal must carry the issued requestRouteToken",
                 )
-                return fields
             }
 
-            var floor = logs.size.toLong() - 1
-
-            // NB: an Empty result clears canLoadMoreBefore, so "empty" must
-            // run last among the older_page branches.
+            // NB: an Empty result clears canLoadMoreBefore, so "empty" runs
+            // last among the older_page branches.
             // older_page accepted
-            floor = logs.size.toLong() - 1
             api.olderBodyText =
                 """{"historyLimited":false,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
             store.accept(SharedThreadIntent.LoadOlder)
-            assertSingleTerminalSince("older_page", "accepted", floor)
-            floor = logs.size.toLong() - 1
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "accepted")
 
             // older_page error
             api.olderResponseCode = 500
             store.accept(SharedThreadIntent.LoadOlder)
-            assertSingleTerminalSince("older_page", "error", floor)
-            floor = logs.size.toLong() - 1
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "error")
 
             // older_page no_permission
             api.olderResponseCode = 403
             store.accept(SharedThreadIntent.LoadOlder)
-            assertSingleTerminalSince("older_page", "no_permission", floor)
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "no_permission")
             api.olderResponseCode = 200
-            floor = logs.size.toLong() - 1
 
             // older_page empty (last: clears canLoadMoreBefore)
             api.olderBodyText = """{"historyLimited":false,"messages":[]}"""
             store.accept(SharedThreadIntent.LoadOlder)
-            assertSingleTerminalSince("older_page", "empty", floor)
-            floor = logs.size.toLong() - 1
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "empty")
 
             // newer_page error (HTTP 500 on the afterSeq request)
             api.newerResponseCode = 500
             store.loadNewer()
-            assertSingleTerminalSince("newer_page", "error", floor)
+            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page").first, "error")
             api.newerResponseCode = 200
-            floor = logs.size.toLong() - 1
 
             // newer_page rejected: park the fetch, then invalidate its
             // generation with Refresh (advances the route stale token), then
@@ -19351,11 +19347,11 @@ class SharedThreadStoreTest {
             store.accept(SharedThreadIntent.Refresh)
             api.releaseAfterMessages?.complete(Unit)
             withTimeout(5_000) { parkedNewer.await() }
-            assertSingleTerminalSince("newer_page", "rejected", floor)
-            floor = logs.size.toLong() - 1
-            // Restore a loadable tail for the cancelled case below: Refresh
-            // commits the canonical single-message payload which clears
-            // canLoadMoreAfter.
+            val rejectedSeq = nextIssuedFetchSeq("newer_page").first
+            assertTerminalFor("newer_page", rejectedSeq, "rejected")
+
+            // Restore a loadable tail for the cancelled case below: Start on
+            // the same route commits a fresh generation with canLoadMoreAfter.
             store.accept(
                 SharedThreadIntent.Start(
                     basePayload().copy(
@@ -19364,7 +19360,6 @@ class SharedThreadStoreTest {
                     )
                 )
             )
-            floor = logs.size.toLong() - 1
 
             // newer_page cancelled: park the fetch, cancel the job; the
             // finally closes the issued interval with result=cancelled.
@@ -19378,7 +19373,7 @@ class SharedThreadStoreTest {
                 runCatching { withTimeout(2_000) { cancelledNewer.cancelAndJoin() } }.isSuccess,
                 "cancelled loadNewer must join within 2s",
             )
-            assertSingleTerminalSince("newer_page", "cancelled", floor)
+            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page").first, "cancelled")
             Unit
         } finally {
             scope.cancel()
