@@ -10319,11 +10319,15 @@ internal class SharedThreadStore(
         if (staleToken.isCurrent(routeStaleToken)) {
             return true
         }
-        diagnosticsLogger?.invoke(
-            "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
-                "reason=stale_token token=${staleToken.value} currentToken=${routeStaleToken.value}"
-        )
+        // task #58: guard-side logging must be fail-safe — a throwing sink
+        // must not convert a genuine stale rejection into an error terminal.
+        runCatching {
+            diagnosticsLogger?.invoke(
+                "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
+                    "reason=stale_token token=${staleToken.value} currentToken=${routeStaleToken.value}"
+            )
+        }
         return false
     }
 
@@ -10336,13 +10340,15 @@ internal class SharedThreadStore(
         if (currentPayload.isUsableCachedPayloadForRoute(routePayload)) {
             return true
         }
-        diagnosticsLogger?.invoke(
-            "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
-                "routeSurface=${routePayload.surfaceKind} currentSurface=${currentPayload.surfaceKind} " +
-                "routeParentMessageId=${routePayload.parentMessageId.orEmpty()} " +
-                "currentParentMessageId=${currentPayload.parentMessageId.orEmpty()}"
-        )
+        runCatching {
+            diagnosticsLogger?.invoke(
+                "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
+                    "routeSurface=${routePayload.surfaceKind} currentSurface=${currentPayload.surfaceKind} " +
+                    "routeParentMessageId=${routePayload.parentMessageId.orEmpty()} " +
+                    "currentParentMessageId=${currentPayload.parentMessageId.orEmpty()}"
+            )
+        }
         return false
     }
 

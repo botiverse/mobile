@@ -20421,10 +20421,100 @@ class SharedThreadStoreTest {
                 )
                 if (receiptFields["result"] == "status_only") statusOnlySeen += 1
             }
+            // Failure/reject receipt shape: force a second Refresh generation
+            // while the route stays current — Start again on a DIFFERENT route
+            // moves the route; the previous generation's pending refresh
+            // loading ops then close refused→rejected instead of status_only.
+            // (Both shapes are receipts; what the contract pins is exactly-one
+            // per opSeq, asserted above for every issued op in this run.)
             assertTrue(
                 statusOnlySeen >= 1,
                 "at least one refresh_loading_apply must close status_only " +
                     "(loading flips flags, not messages); statusOnlySeen=$statusOnlySeen logs=$logs",
+            )
+        } finally {
+            scope.cancel()
+        }
+        Unit
+    }
+
+    @Test
+    fun staleRejectUnderThrowingLoggerStillClosesAsRejected() = runBlocking {
+        // task #58 observability safety (reject path): the stale-drop guard
+        // logs BEFORE the rejected terminal is recorded. A throwing logger on
+        // that path must not turn a genuine stale rejection into an error —
+        // the terminal must still close as `rejected` against the issued
+        // fetchSeq/token. (Covers the unguarded staleTokenStillCurrent/
+        // routeStillCurrent callouts; the records themselves are guarded.)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..20L),
+                )
+            // Record lines but throw while recording — models a sink that
+            // persists what it saw and still throws at the caller.
+            val throwingLogger: (String) -> Unit = { message ->
+                logs += message
+                throw IllegalStateException("log boom")
+            }
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = api,
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = throwingLogger,
+                )
+            runCatching {
+                store.accept(
+                    SharedThreadIntent.Start(
+                        basePayload().copy(
+                            canLoadMoreAfter = true,
+                            messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
+                        )
+                    )
+                )
+            }
+
+            // Park a newer fetch, advance the generation via Refresh, release —
+            // the stale-token guard must reject, and the rejection must survive
+            // the throwing stale-drop logger.
+            api.afterMessagesStarted = CompletableDeferred()
+            api.releaseAfterMessages = CompletableDeferred()
+            val parked = async { runCatching { store.loadNewer() } }
+            withTimeout(5_000) { api.afterMessagesStarted?.await() }
+            val issued =
+                logs.lastOrNull {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "newer_page"
+                }
+            check(issued != null) { "expected newer_page issued; logs=$logs" }
+            val fetchSeq = parseDiagFields(issued)["fetchSeq"]!!
+
+            runCatching { store.accept(SharedThreadIntent.Refresh) }
+            api.releaseAfterMessages?.complete(Unit)
+            withTimeout(5_000) { parked.await() }
+
+            val terminals =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["fetchSeq"] == fetchSeq
+                }
+            check(terminals.size == 1) {
+                "stale newer fetch must close exactly once under a throwing logger; " +
+                    "got ${terminals.size}; logs=$logs"
+            }
+            assertEquals(
+                "rejected",
+                parseDiagFields(terminals.single())["result"],
+                "stale rejection must not be reclassified as error by a throwing logger; " +
+                    "got ${terminals.single()}",
             )
         } finally {
             scope.cancel()
