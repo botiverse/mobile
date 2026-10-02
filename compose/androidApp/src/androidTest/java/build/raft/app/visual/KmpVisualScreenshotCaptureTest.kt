@@ -3647,7 +3647,7 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_thread_followers_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,
-            beforeScreenshot = { tapDp(310f, 28f); Thread.sleep(500) },
+            beforeScreenshot = { tapDp(265f, 28f); Thread.sleep(500) },
         )
     }
 
