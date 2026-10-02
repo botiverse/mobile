@@ -18057,18 +18057,42 @@ class SharedThreadStoreTest {
         withTimeout(5_000) { api.syncStarted?.await() }
         val issued = logs.last { it.startsWith("thread_fetch_issued") && it.contains("kind=gap_sync") }
         val gapFetchSeq = Regex("fetchSeq=(\\d+)").find(issued)!!.groupValues[1]
+        val gapToken = Regex("routeToken=(\\d+)").find(issued)!!.groupValues[1]
         gapJob.cancel()
-        runCatching { withTimeout(2_000) { gapJob.await() } }
+        // Bounded join: cancellation must let the issued fetch close inside a
+        // bounded window — a stuck gap recovery is itself a contract failure.
+        assertTrue(
+            runCatching { withTimeout(2_000) { gapJob.await() } }.isFailure ||
+                gapJob.isCancelled,
+            "cancelled gap job must settle (cancel or bounded join); state=$gapJob",
+        )
         withTimeout(5_000) {
             while (
                 logs.none {
                     it.startsWith("thread_fetch_terminal") &&
                         it.contains("kind=gap_sync") &&
-                        it.contains("fetchSeq=$gapFetchSeq") &&
-                        (it.contains("result=cancelled") || it.contains("result=error"))
+                        it.contains("fetchSeq=$gapFetchSeq")
                 }
             ) yield()
         }
+        val gapTerminals = logs.filter {
+            it.startsWith("thread_fetch_terminal") &&
+                it.contains("kind=gap_sync") &&
+                it.contains("fetchSeq=$gapFetchSeq")
+        }
+        assertEquals(
+            1,
+            gapTerminals.size,
+            "cancelled gap fetch must produce exactly one terminal; got $gapTerminals",
+        )
+        assertTrue(
+            gapTerminals[0].contains("result=cancelled"),
+            "cancelled gap fetch must classify as cancelled (not error); got ${gapTerminals[0]}",
+        )
+        assertTrue(
+            gapTerminals[0].contains("requestRouteToken=$gapToken"),
+            "gap terminal must carry the issued requestRouteToken=$gapToken; got ${gapTerminals[0]}",
+        )
         } finally {
             scope.cancel()
         }

@@ -6646,11 +6646,12 @@ internal class SharedThreadStore(
                 "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
         )
         val (refreshLoadingOpSeq, refreshLoadingToken) =
-            issueOperationSeq("refresh_loading_apply", "threadId=${basePayload.sourceThreadId.orEmpty()}")
+            issueOperationSeq("refresh_loading_apply", "threadId=${basePayload.sourceThreadId.orEmpty()}", capturedToken = staleToken)
         val loadingAdmitted =
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                 reducePayloadPatch(writeTag = "refresh_loading_apply", operationSeq = refreshLoadingOpSeq, requestRouteToken = refreshLoadingToken) { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
+                        pendingPatchAdmissionRefused = true
                         return@reducePayloadPatch currentPayload
                     }
                     currentPayload.withThreadContentProjectionFrom(loadingBase)
@@ -6666,6 +6667,11 @@ internal class SharedThreadStore(
         }
         val (refreshFetchSeq, refreshFetchToken) =
             issueFetchSeq("refresh_canonical", "threadId=${basePayload.sourceThreadId.orEmpty()}", capturedToken = staleToken)
+        // task #58 observability: the issued canonical fetch must close with
+        // exactly one terminal. A cancellation/throw anywhere between issue and
+        // the post-commit terminal would otherwise leave it open.
+        var refreshTerminalLogged = false
+        try {
         val result =
             dataSource.fetchThreadPayloadForContext(
                 basePayload = basePayload,
@@ -6680,6 +6686,7 @@ internal class SharedThreadStore(
             !dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) ||
             (result is DataResult.Error && result.error.code == ReplyCacheProvenanceStaleCode)
         ) {
+            refreshTerminalLogged = true
             dropForOwnerChange("after_fetch", result, terminalFetchSeq = refreshFetchSeq, terminalRequestToken = refreshFetchToken)
             return
         }
@@ -6696,6 +6703,7 @@ internal class SharedThreadStore(
                 )
             }
             abortRepliesRebaseline()
+            refreshTerminalLogged = true
             logFetchTerminal(
                 "refresh_canonical",
                 refreshFetchSeq,
@@ -6723,6 +6731,7 @@ internal class SharedThreadStore(
                     )
                 }
         if (!dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance)) {
+            refreshTerminalLogged = true
             dropForOwnerChange("after_rebaseline", result, terminalFetchSeq = refreshFetchSeq, terminalRequestToken = refreshFetchToken)
             return
         }
@@ -6892,12 +6901,14 @@ internal class SharedThreadStore(
             }
         if (committed != true) {
             if (committed == null) {
-                dropForOwnerChange("commit", result, terminalFetchSeq = refreshFetchSeq, terminalRequestToken = refreshFetchToken)
+                refreshTerminalLogged = true
+            dropForOwnerChange("commit", result, terminalFetchSeq = refreshFetchSeq, terminalRequestToken = refreshFetchToken)
             } else {
                 abortRepliesRebaseline()
                 // Guard admitted the attempt but rejected the commit (stale
                 // route/token inside access_apply): truthful terminal receipt.
-                logFetchTerminal(
+                refreshTerminalLogged = true
+            logFetchTerminal(
                     "refresh_canonical",
                     refreshFetchSeq,
                     refreshFetchToken,
@@ -6926,6 +6937,7 @@ internal class SharedThreadStore(
         if (currentProvenance == null) {
             // Committed to state but provenance moved before the cache step —
             // the fetch still landed on the current route; close it accepted.
+            refreshTerminalLogged = true
             logFetchTerminal(
                 "refresh_canonical",
                 refreshFetchSeq,
@@ -6936,7 +6948,8 @@ internal class SharedThreadStore(
             )
             return
         }
-        logFetchTerminal(
+        refreshTerminalLogged = true
+            logFetchTerminal(
             "refresh_canonical",
             refreshFetchSeq,
             refreshFetchToken,
@@ -6962,6 +6975,17 @@ internal class SharedThreadStore(
                     !basePayload.needsReplyThreadStreamResolution(),
             launchMembersHydration = nextPayload.hasRenderableThreadContent()
         )
+        } finally {
+            if (!refreshTerminalLogged) {
+                logFetchTerminal(
+                    "refresh_canonical",
+                    refreshFetchSeq,
+                    refreshFetchToken,
+                    if (currentCoroutineContext()[Job]?.isCancelled == true) "cancelled" else "error",
+                    "reason=thrown_or_cancelled",
+                )
+            }
+        }
     }
 
     private fun queueAuxiliaryHydration(
@@ -7627,6 +7651,7 @@ internal class SharedThreadStore(
                             ) ||
                             !routeStillCurrent(routePayload, "thread_home_context", "apply", currentPayload)
                         ) {
+                            pendingPatchAdmissionRefused = true
                             return@reducePayloadPatch currentPayload
                         }
                         currentPayload.withHomeContextProjectionFrom(hydratedPayload)
@@ -7834,6 +7859,7 @@ internal class SharedThreadStore(
                     ) ||
                     !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", applyingPayload)
                 ) {
+                    pendingPatchAdmissionRefused = true
                     return@reducePayloadPatch applyingPayload
                 }
                 applyingPayload.withSecondaryTimelineProjectionFrom(
@@ -7969,6 +7995,7 @@ internal class SharedThreadStore(
                     val (op, tok) = issueOperationSeq("members_load_apply", "threadId=$threadKey")
                     reducePayloadPatch(cachePayload = true, writeTag = "members_load_apply", operationSeq = op, requestRouteToken = tok) { currentPayload ->
                         if (!routeStillCurrent(basePayload, "thread_members_load", "apply", currentPayload)) {
+                            pendingPatchAdmissionRefused = true
                             return@reducePayloadPatch currentPayload
                         }
                         currentPayload.withMembersPatchFrom(outcome.payload)
@@ -8534,6 +8561,7 @@ internal class SharedThreadStore(
         reducePayloadPatch(writeTag = "older_page_apply", requestFetchSeq = olderFetchSeq, requestRouteToken = olderFetchToken, relatedRequestId = olderFetchSeq) { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
                 olderApplyRejected = true
+                pendingPatchAdmissionRefused = true
                 return@reducePayloadPatch currentPayload
             }
             currentPayload.withThreadContentProjectionFrom(nextPayload)
@@ -8749,6 +8777,7 @@ internal class SharedThreadStore(
                                     "currentMaxSeq=${latestPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
                             )
                         }
+                        pendingPatchAdmissionRefused = true
                         return@reducePayloadPatch latestPayload
                     }
                     appliedToCurrentRoute = true
@@ -9216,6 +9245,7 @@ internal class SharedThreadStore(
                                         )
                                     ) {
                                         gapApplyAdmitted = false
+                                        pendingPatchAdmissionRefused = true
                                         return@reducePayloadPatch latestPayload
                                     }
                                     latestPayload.withThreadContentProjectionFrom(selected)
@@ -9261,7 +9291,8 @@ internal class SharedThreadStore(
                                     !gapApplyEmitted -> "ignored"
                                     else -> "accepted"
                                 },
-                                "recoveryId=$recoveryId madeProgress=$madeProgress " +
+                                "recoveryId=$recoveryId fetchedProgress=$madeProgress " +
+                                    "applied=$gapApplyAdmitted emitted=$gapApplyEmitted " +
                                     "continues=$shouldContinue nextSinceSeq=$nextSinceSeq" +
                                     (if (!gapApplyAdmitted) " stage=apply" else ""),
                             )
@@ -9412,6 +9443,7 @@ internal class SharedThreadStore(
         val (local_send_appendOpSeq, local_send_appendToken) = issueOperationSeq("local_send_append", "")
         reducePayloadPatchAndCache(cachePayload = true, writeTag = "local_send_append", operationSeq = local_send_appendOpSeq, requestRouteToken = local_send_appendToken) { payload ->
             if (!routeStillCurrent(routePayload, "thread_send", "append_apply", payload)) {
+                pendingPatchAdmissionRefused = true
                 return@reducePayloadPatchAndCache payload
             }
             val appended =
@@ -9677,9 +9709,11 @@ internal class SharedThreadStore(
         fun applyToCurrentPayload(): Boolean =
             reducePayloadPatch(writeTag = "local_send_replace_apply", operationSeq = replaceOp, requestRouteToken = replaceTok) { payload ->
                 if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
+                    pendingPatchAdmissionRefused = true
                     return@reducePayloadPatch payload
                 }
                 if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
+                    pendingPatchAdmissionRefused = true
                     return@reducePayloadPatch payload
                 }
                 val appended =
@@ -9800,6 +9834,7 @@ internal class SharedThreadStore(
             val (op, tok) = issueOperationSeq("reaction_mutation_apply", "messageId=${currentPayload.sourceThreadId.orEmpty()}")
             reducePayloadPatch(writeTag = "reaction_mutation_apply", operationSeq = op, requestRouteToken = tok) { payload ->
                 if (!routeStillCurrent(currentPayload, "thread_reaction", "mutation_apply", payload)) {
+                    pendingPatchAdmissionRefused = true
                     return@reducePayloadPatch payload
                 }
                 payload.withThreadContentProjectionFrom(selected)
@@ -10096,6 +10131,12 @@ internal class SharedThreadStore(
         }
     }
 
+    // task #58 observability: set by a patch lambda whose route/stale guard
+    // refuses the write before returning the unchanged payload. Lets reduceState
+    // report a refused admit as `rejected` rather than `no_change`, so the
+    // low-level receipt matches the authoritative guard outcome.
+    private var pendingPatchAdmissionRefused = false
+
     private fun reduceState(
         nextState: SharedThreadState,
         writeTag: String? = null,
@@ -10108,11 +10149,13 @@ internal class SharedThreadStore(
         val synchronizedState = nextState.withSynchronizedTimelineSlice()
         val emitted = synchronizedState != previousState
         if (!emitted) {
-            // task #58 observability: a tagged operation that committed
-            // nothing still leaves a receipt — accepted by the guard but
-            // produced no state change ("no_change"), distinct from a
-            // rejected admit.
+            // A tagged operation that committed nothing still leaves a receipt.
+            // The guard that ran inside the patch sets pendingPatchAdmissionRefused
+            // when it refused the write; that refused admit is `rejected`, while an
+            // admitted-but-identical projection is `no_change`.
             if (writeTag != null) {
+                val refused = pendingPatchAdmissionRefused
+                pendingPatchAdmissionRefused = false
                 runCatching {
                     diagnosticsLogger?.invoke(
                         "thread_payload_terminal tag=$writeTag " +
@@ -10122,12 +10165,13 @@ internal class SharedThreadStore(
                             "operationSeq=${operationSeq ?: -1L} " +
                             "requestId=${relatedRequestId ?: -1L} " +
                             "fetchSeq=${requestFetchSeq ?: -1L} " +
-                            "result=no_change"
+                            "result=${if (refused) "rejected" else "no_change"}"
                     )
                 }
             }
             return false
         }
+        pendingPatchAdmissionRefused = false
         // Observation is strictly post-write and fail-safe: diagnostics must
         // never block or veto a state commit (task #58 instrumented probe).
         val messagesChanged = synchronizedState.payload.messages !== previousState.payload.messages
