@@ -3701,6 +3701,11 @@ private fun SlockAppShellReadyContent(
                     )
             )
         }
+    // The native shell can dispatch Back directly to popMainRoute, bypassing
+    // a child Kuikly page's BackHandler. Keep the same selection in both hosts.
+    val membersDetailSelection = remember(navigationStoreScope, readySession?.user?.id, readyServerId) {
+        mutableStateOf<KuiklyMemberDetailPayload?>(null)
+    }
     val latestReadySession by rememberUpdatedState(readySession)
     val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
@@ -4715,6 +4720,10 @@ private fun SlockAppShellReadyContent(
         if (homeState.serverSwitcherExpanded) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            return true
+        }
+        if (selectedTab == "members" && membersDetailSelection.value != null) {
+            membersDetailSelection.value = null
             return true
         }
         if (desktopModeOnLargeScreen && adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
@@ -6453,6 +6462,7 @@ private fun SlockAppShellReadyContent(
                             },
                             paneLayout = shellScope.adaptivePane.layout,
                             desktopMembersEnabled = desktopModeOnLargeScreen,
+                            detailSelection = membersDetailSelection,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -17402,6 +17412,7 @@ private fun SharedMembersScreen(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     desktopMembersEnabled: Boolean = false,
+    detailSelection: androidx.compose.runtime.MutableState<KuiklyMemberDetailPayload?>,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -17411,9 +17422,7 @@ private fun SharedMembersScreen(
     val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
     val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-    var selectedDetail by remember(storeScope, session?.user?.id, currentServerId) {
-        mutableStateOf<KuiklyMemberDetailPayload?>(null)
-    }
+    var selectedDetail by detailSelection
     val showMemberSplit = desktopMembersEnabled && paneLayout == SlockAdaptivePaneLayout.DualPane
     SlockBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
     var state by remember(currentServerId) {
