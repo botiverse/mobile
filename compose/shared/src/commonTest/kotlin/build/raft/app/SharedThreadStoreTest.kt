@@ -20017,6 +20017,17 @@ class SharedThreadStoreTest {
                 syncTerminal["requestRouteToken"],
                 "gap_sync terminal must carry its issued token",
             )
+            assertEquals(
+                syncIssued["storeSeq"],
+                syncTerminal["storeSeq"],
+                "gap_sync terminal must carry the issuing storeSeq",
+            )
+            assertEquals(
+                syncIssued["recoveryId"],
+                syncTerminal["recoveryId"],
+                "gap_sync terminal must bind the same recoveryId; got $syncTerminal",
+            )
+            assertEquals("false", syncTerminal["armed"], "gap_sync terminal must record armed=false; got $syncTerminal")
             assertTrue(
                 logs.any {
                     it.startsWith("thread_fetch_terminal") &&
@@ -20055,6 +20066,12 @@ class SharedThreadStoreTest {
                 syncIssued["recoveryId"] != null,
                 "gap issued must carry a recoveryId; got $syncIssued",
             )
+            assertEquals(
+                tailIssued["recoveryId"],
+                tailTerminal["recoveryId"],
+                "gap_tail_fallback terminal must bind the same recoveryId; got $tailTerminal",
+            )
+            assertEquals("true", tailTerminal["armed"], "gap_tail_fallback terminal must record armed=true; got $tailTerminal")
             // The tail fallback really fetched the canonical tail via
             // getThread — proven by an incremental request carrying the tail
             // fetch's own requestTrace (gap_tail_s<storeSeq>_fs=<fetchSeq>),

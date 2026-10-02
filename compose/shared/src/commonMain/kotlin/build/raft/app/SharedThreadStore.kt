@@ -9159,7 +9159,7 @@ internal class SharedThreadStore(
                                     fetchSeq,
                                     gapFetchToken,
                                     "ignored",
-                                    "reason=missing_active_recovery recoveryId=$recoveryId",
+                                    "reason=missing_active_recovery recoveryId=$recoveryId armed=$tailFallbackArmed",
                                 )
                                 return@withLock
                             }
@@ -9186,7 +9186,7 @@ internal class SharedThreadStore(
                             fetchSeq,
                             gapFetchToken,
                             "rejected",
-                            "reason=stale_or_route_moved stage=after_fetch recoveryId=$recoveryId",
+                            "reason=stale_or_route_moved stage=after_fetch recoveryId=$recoveryId armed=$tailFallbackArmed",
                         )
                         return@withLock
                     }
@@ -9291,7 +9291,7 @@ internal class SharedThreadStore(
                                     !gapApplyEmitted -> "ignored"
                                     else -> "accepted"
                                 },
-                                "recoveryId=$recoveryId fetchedProgress=$madeProgress " +
+                                "recoveryId=$recoveryId armed=$tailFallbackArmed fetchedProgress=$madeProgress " +
                                     "applied=$gapApplyAdmitted emitted=$gapApplyEmitted " +
                                     "continues=$shouldContinue nextSinceSeq=$nextSinceSeq" +
                                     (if (!gapApplyAdmitted) " stage=apply" else ""),
@@ -9317,7 +9317,7 @@ internal class SharedThreadStore(
                                     fetchSeq,
                                     gapFetchToken,
                                     "empty",
-                                    "recoveryId=$recoveryId tailFallbackArmed=true",
+                                    "recoveryId=$recoveryId armed=$tailFallbackArmed tailFallbackArmed=true",
                                 )
                             } else {
                                 reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_terminal_status", requestFetchSeq = fetchSeq, requestRouteToken = gapFetchToken, relatedRequestId = recoveryId) { latestPayload ->
@@ -9333,7 +9333,7 @@ internal class SharedThreadStore(
                                     fetchSeq,
                                     gapFetchToken,
                                     "empty",
-                                    "recoveryId=$recoveryId terminal=true",
+                                    "recoveryId=$recoveryId armed=$tailFallbackArmed terminal=true",
                                 )
                             }
                         }
@@ -9351,7 +9351,7 @@ internal class SharedThreadStore(
                                 fetchSeq,
                                 gapFetchToken,
                                 "error",
-                                "recoveryId=$recoveryId code=${result.error.code}",
+                                "recoveryId=$recoveryId armed=$tailFallbackArmed code=${result.error.code}",
                             )
                         }
                         is DataResult.NoPermission -> {
@@ -9368,7 +9368,7 @@ internal class SharedThreadStore(
                                 fetchSeq,
                                 gapFetchToken,
                                 "no_permission",
-                                "recoveryId=$recoveryId code=${result.blocker.code}",
+                                "recoveryId=$recoveryId armed=$tailFallbackArmed code=${result.blocker.code}",
                             )
                         }
                     }
@@ -9391,7 +9391,7 @@ internal class SharedThreadStore(
                     inFlightGapFetchSeq,
                     inFlightGapFetchToken,
                     if (currentCoroutineContext()[Job]?.isCancelled == true) "cancelled" else "error",
-                    "reason=thrown_or_cancelled recoveryId=$recoveryId",
+                    "reason=thrown_or_cancelled recoveryId=$recoveryId armed=${inFlightGapKind == "gap_tail_fallback"}",
                 )
             }
             realtimeGapRecoveryMutex.withLock {
