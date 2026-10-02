@@ -213,8 +213,18 @@ THREAD_NEWER_ADB_TIMEOUT_SECONDS="${THREAD_NEWER_ADB_TIMEOUT_SECONDS:-15}"
 
 THREAD_NEWER_COLLECT_TIMEOUT_SECONDS="${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS:-60}"
 
+THREAD_NEWER_STATUS_FILE="thread-newer-auto-pagination-collection-status.txt"
+
+# Every bounded adb call that times out is recorded in the status file —
+# partial evidence is still uploaded, but the timeout must not be silent.
 adb_bounded() {
-  timeout "${THREAD_NEWER_ADB_TIMEOUT_SECONDS}s" adb "$@"
+  local rc=0
+  timeout -k 5 "${THREAD_NEWER_ADB_TIMEOUT_SECONDS}s" adb "$@" || rc=$?
+  if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+    echo "COLLECTION_PARTIAL reason=adb_call_timeout timeout_s=${THREAD_NEWER_ADB_TIMEOUT_SECONDS} cmd="adb $*"" \
+      >> "$THREAD_NEWER_STATUS_FILE"
+  fi
+  return "$rc"
 }
 
 collect_thread_newer_evidence() {
@@ -284,7 +294,14 @@ run_post_hook() {
       adb logcat -d -v threadtime > child-page-visibility-logcat.txt 2>/dev/null || true
       ;;
     thread-newer-auto-pagination)
-      collect_thread_newer_evidence
+      timeout -k 5 "${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}s" bash -c \
+        "$(declare -f adb_bounded collect_thread_newer_evidence); \
+         THREAD_NEWER_ADB_TIMEOUT_SECONDS=$THREAD_NEWER_ADB_TIMEOUT_SECONDS; \
+         THREAD_NEWER_STATUS_FILE=$THREAD_NEWER_STATUS_FILE; \
+         collect_thread_newer_evidence" || {
+          echo "COLLECTION_INCOMPLETE reason=post_hook_harvest_timeout timeout_s=${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}" \
+            >> "$THREAD_NEWER_STATUS_FILE"
+        }
       ;;
     *)
       ;;
@@ -410,6 +427,16 @@ generate_summary() {
   printf '%s\n' "$summary_content" > "$SUMMARY_FILE"
 }
 
+append_collection_status_to_summary() {
+  if [[ -f "$THREAD_NEWER_STATUS_FILE" ]]; then
+    {
+      echo ""
+      echo "thread-newer-auto-pagination evidence collection status:"
+      cat "$THREAD_NEWER_STATUS_FILE"
+    } >> "$SUMMARY_FILE"
+  fi
+}
+
 cleanup() {
   local exit_code=$?
   # A signal/timeout that kills instrumentation mid-flight never reaches
@@ -423,15 +450,17 @@ cleanup() {
     # serialize N per-call timeouts and outlive the runner's kill deadline.
     # On expiry the collector subshell is terminated, partial files stay, and
     # the summary is marked so reviewers don't read it as complete evidence.
-    timeout "${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}s" bash -c \
+    timeout -k 5 "${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}s" bash -c \
       "$(declare -f adb_bounded collect_thread_newer_evidence); \
        THREAD_NEWER_ADB_TIMEOUT_SECONDS=$THREAD_NEWER_ADB_TIMEOUT_SECONDS; \
+       THREAD_NEWER_STATUS_FILE=$THREAD_NEWER_STATUS_FILE; \
        collect_thread_newer_evidence" || {
         echo "COLLECTION_INCOMPLETE reason=abort_harvest_timeout timeout_s=${THREAD_NEWER_COLLECT_TIMEOUT_SECONDS}" \
-          > thread-newer-auto-pagination-collection-status.txt
+          >> "$THREAD_NEWER_STATUS_FILE"
       }
   fi
   generate_summary
+  append_collection_status_to_summary
   exit "$exit_code"
 }
 trap cleanup EXIT

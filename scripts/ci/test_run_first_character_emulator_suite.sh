@@ -76,6 +76,7 @@ case "${1:-}" in
     ;;
   logcat)
     if [[ "${MOCK_ADB_HANG:-0}" == "1" ]]; then
+      trap '' TERM
       sleep 60
       exit 0
     fi
@@ -237,7 +238,8 @@ grep -Fq "files/raft_diagnostics_logs/launch-mock001/raft-diagnostics.jsonl" "$T
 grep -Fq "mock-diagnostics-record" "$TEST_DIR_PASS/thread-newer-auto-pagination-diagnostics.jsonl" || fail "diagnostics jsonl missing pulled records"
 grep -Fq "logcat -c" "$TEST_DIR_PASS/mock_state/adb_calls.txt" || fail "thread-newer pre-hook did not clear logcat"
 # upload manifest must carry every collected file
-for f in   thread-newer-auto-pagination-logcat.txt   thread-newer-auto-pagination-logcat-slockkuikly.txt   thread-newer-auto-pagination-diagnostics-before.txt   thread-newer-auto-pagination-diagnostics-after.txt   thread-newer-auto-pagination-diagnostics.jsonl; do
+for f in   thread-newer-auto-pagination-logcat.txt   thread-newer-auto-pagination-logcat-slockkuikly.txt   thread-newer-auto-pagination-diagnostics-before.txt   thread-newer-auto-pagination-diagnostics-after.txt   thread-newer-auto-pagination-diagnostics.jsonl \
+  thread-newer-auto-pagination-collection-status.txt; do
   grep -Fq "$f" "$WORKFLOW" || fail "workflow upload manifest missing $f"
 done
 pass "full suite pass scenario verified"
@@ -476,6 +478,9 @@ hang_elapsed="$(grep -oE '[0-9]+' "$TEST_DIR_HANG/hang_elapsed.txt")"
 [ "$hang_elapsed" -lt 30 ] || fail "hung-adb collection took ${hang_elapsed}s, bound exceeded"
 test -f "$TEST_DIR_HANG/first-character-baseline-suite-summary.txt" || fail "summary missing under hung adb"
 test -f "$TEST_DIR_HANG/thread-newer-auto-pagination-diagnostics.jsonl" || fail "jsonl missing under hung adb"
+test -f "$TEST_DIR_HANG/thread-newer-auto-pagination-collection-status.txt" || fail "per-call timeout status file missing"
+grep -Fq "COLLECTION_PARTIAL reason=adb_call_timeout" "$TEST_DIR_HANG/thread-newer-auto-pagination-collection-status.txt" || fail "per-call timeout not recorded"
+grep -Fq "thread-newer-auto-pagination evidence collection status:" "$TEST_DIR_HANG/first-character-baseline-suite-summary.txt" || fail "summary missing collection status section"
 pass "hung-adb bounded collection scenario verified"
 
 # 6e. Test scenario: overall harvest bound on TERM path marks collection

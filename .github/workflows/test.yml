@@ -898,6 +898,7 @@ jobs:
             thread-newer-auto-pagination-diagnostics-before.txt
             thread-newer-auto-pagination-diagnostics-after.txt
             thread-newer-auto-pagination-diagnostics.jsonl
+            thread-newer-auto-pagination-collection-status.txt
             thread-open-budget-telemetry.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
