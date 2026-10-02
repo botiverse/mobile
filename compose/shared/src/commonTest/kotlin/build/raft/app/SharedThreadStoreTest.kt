@@ -18422,6 +18422,8 @@ class SharedThreadStoreTest {
                 "concurrently in-flight fetches must get distinct fetchSeqs: $olderIssued / $newerIssued",
             )
             val storeSeq = Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+            val olderToken = Regex("routeToken=(\\d+)").find(olderIssued)!!.groupValues[1]
+            val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertTrue(
                 api.channelMessagesRequestTraces.contains("older_page_s${storeSeq}_fs=${olderSeq}_rt=$olderToken"),
                 "older boundary trace missing; traces=${api.channelMessagesRequestTraces}",
@@ -18440,8 +18442,6 @@ class SharedThreadStoreTest {
                 logs.filter {
                     it.contains("thread_payload_messages_write") && !it.contains("rejected")
                 }
-            val olderToken = Regex("routeToken=(\\d+)").find(olderIssued)!!.groupValues[1]
-            val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertTrue(
                 writes.any {
                     it.contains("tag=older_page_apply") &&
@@ -18694,7 +18694,12 @@ class SharedThreadStoreTest {
             val cancelledJob = async { store.accept(SharedThreadIntent.LoadNewer) }
             withTimeout(5_000) { fenceEntered.await() }
             cancelledJob.cancel()
-            runCatching { withTimeout(2_000) { cancelledJob.await() } }
+            // Bounded: if cancellation wedges inside the fence, join times out
+            // and the assert fails loudly instead of being swallowed.
+            assertTrue(
+                runCatching { withTimeout(2_000) { cancelledJob.cancelAndJoin() } }.isSuccess,
+                "cancelled loadNewer must join within 2s",
+            )
             // Bounded reclamation: the armed gate must be gone and the payload
             // no longer claims a newer page is loading.
             assertNotEquals(
