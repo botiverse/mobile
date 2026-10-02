@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockAdaptiveDetailCloseRequest
+import build.raft.app.SlockAdaptiveDetailIdentity
 import build.raft.app.SlockAdaptiveDetailSelection
 import build.raft.app.SlockAdaptivePaneLayout
 import build.raft.app.SlockAdaptiveWorkspaceIntent
@@ -82,6 +83,27 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
         launchPayload = null,
         detailHistory = null,
     )
+}
+
+/**
+ * Wide-pane open applied to the store's CURRENT session (inside its atomic update). Reducing from a
+ * compose snapshot and writing the whole workspace back is a lost update: a visibility/window
+ * change that landed in between (e.g. the DMs tab just became the visible host) would be reverted.
+ * Returns this session unchanged when the pane cannot host the detail.
+ */
+internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
+    identity: SlockAdaptiveDetailIdentity,
+    target: WireThreadLaunchPayload,
+): SharedAdaptiveWorkspaceSession {
+    val current = workspace ?: return this
+    // The wide pane must be able to host the detail. Checked up front: a compact workspace that
+    // already retains this identity would otherwise look "opened" and skip the full-page route.
+    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane || current.serverId != identity.serverId) {
+        return this
+    }
+    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    if (next.selection?.identity != identity) return this
+    return copy(workspace = next, launchPayload = target)
 }
 
 internal fun SharedAdaptiveWorkspaceSession.detailListSelectionId(): String? =

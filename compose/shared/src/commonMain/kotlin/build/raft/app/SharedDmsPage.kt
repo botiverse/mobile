@@ -82,6 +82,8 @@ internal fun SharedDmsScreen(
     timeContext: SlockTimeContext? = null,
     refreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
+    /** task #33: thread shown in the wide-screen detail pane; its row is highlighted. */
+    selectedThreadId: String? = null,
 ) {
     val listState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -125,14 +127,15 @@ internal fun SharedDmsScreen(
             ) {
                 items(sortedItems.size, key = { i -> sortedItems[i].id }) { index ->
                     val item = sortedItems[index]
+                    val identity = item.toWeChatDmLaunchIdentity()
                     SlockWeChatDirectMessageRow(
                         item = item,
                         onClick = {
-                            val identity = item.toWeChatDmLaunchIdentity()
                             if (identity != null) {
                                 onOpenConversation(identity)
                             }
                         },
+                        selected = isWeChatDmRowSelected(identity?.threadId?.value, selectedThreadId),
                         currentServerId = currentServerId,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -193,6 +196,7 @@ internal fun SlockWeChatDirectMessageRow(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     timeContext: SlockTimeContext? = null,
+    selected: Boolean = false,
 ) {
     val isAgent = item.peerType == "agent" || item.peerType == "bot"
     val memberId = item.presenceMemberId ?: item.id
@@ -217,7 +221,7 @@ internal fun SlockWeChatDirectMessageRow(
         modifier = modifier
             .fillMaxWidth()
             .height(WeChatDmRowHeight)
-            .background(SlockColor.SurfaceWhite)
+            .background(if (selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
             .clickable(onClick = onClick)
             .padding(horizontal = WeChatDmRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
@@ -448,6 +452,10 @@ internal fun formatWeChatDmHeaderTitle(baseTitle: String, unreadCount: Int): Str
  */
 internal fun totalWeChatDmUnreadCount(directMessages: List<SlockHomeConversationItem>): Int =
     directMessages.filterNot { it.activityMuted }.sumOf { it.unreadCount.coerceAtLeast(0) }
+
+/** task #33: a DM row is highlighted when its thread is the one open in the wide detail pane. */
+internal fun isWeChatDmRowSelected(rowThreadId: String?, selectedThreadId: String?): Boolean =
+    rowThreadId != null && selectedThreadId != null && rowThreadId == selectedThreadId
 
 /**
  * Resolves a [ThreadLaunchConversationIdentity] from a DM conversation row, guaranteeing
