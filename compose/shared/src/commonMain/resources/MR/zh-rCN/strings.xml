@@ -2149,4 +2149,8 @@
     <string name="search_error_too_broad">搜索范围过大</string>
     <string name="search_error_too_broad_detail">请添加频道、发送者或时间筛选，或按最新排序。</string>
     <string name="members_select_detail">选择成员以查看详情</string>
+    <string name="thread_members_heading">成员</string>
+    <string name="thread_members_search_placeholder">搜索成员…</string>
+    <string name="thread_members_channel_admin">频道管理员</string>
+    <string name="thread_members_add_selected">添加所选（%1$d）</string>
 </resources>

@@ -2149,4 +2149,8 @@
     <string name="search_error_too_broad">Search is too broad</string>
     <string name="search_error_too_broad_detail">Add a channel, sender, or time filter, or sort by newest.</string>
     <string name="members_select_detail">Select a member to view details</string>
+    <string name="thread_members_heading">Members</string>
+    <string name="thread_members_search_placeholder">Search members…</string>
+    <string name="thread_members_channel_admin">Channel admin</string>
+    <string name="thread_members_add_selected">Add selected (%1$d)</string>
 </resources>

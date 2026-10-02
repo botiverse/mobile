@@ -2142,4 +2142,8 @@
     <string name="search_error_too_broad">検索範囲が広すぎます</string>
     <string name="search_error_too_broad_detail">チャンネル、送信者、期間で絞り込むか、新しい順で検索してください。</string>
     <string name="members_select_detail">メンバーを選択して詳細を表示</string>
+    <string name="thread_members_heading">メンバー</string>
+    <string name="thread_members_search_placeholder">メンバーを検索…</string>
+    <string name="thread_members_channel_admin">チャンネル管理者</string>
+    <string name="thread_members_add_selected">選択したメンバーを追加（%1$d）</string>
 </resources>

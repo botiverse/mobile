@@ -750,6 +750,7 @@ internal fun SlockModalCompactMemberRow(
     // caller can surface a hint. Distinct from `enabled`, which gates clicks.
     trailingMuted: Boolean = false,
     roleBadgeLabel: String? = null,
+    channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     onClick: () -> Unit = {}
@@ -765,7 +766,7 @@ internal fun SlockModalCompactMemberRow(
             .fillMaxWidth()
             .background(rowBackground)
             .clickable(enabled = enabled && clickEnabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = if (channelPageStyle) 0.dp else 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -787,6 +788,7 @@ internal fun SlockModalCompactMemberRow(
             onTrailingClick = onTrailingClick,
             trailingMuted = trailingMuted,
             roleBadgeLabel = roleBadgeLabel,
+            channelPageStyle = channelPageStyle,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId
         )
@@ -816,6 +818,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
     onTrailingClick: (() -> Unit)?,
     trailingMuted: Boolean = false,
     roleBadgeLabel: String? = null,
+    channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.SlockAvatarCacheSubject?,
     cacheServerId: String?
 ) {
@@ -857,7 +860,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = badge.uppercase(),
+                            text = if (channelPageStyle) badge else badge.uppercase(),
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
@@ -877,14 +880,16 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
             }
         }
         roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            Box(Modifier.background(SlockColor.SurfaceCream).padding(horizontal = 5.dp, vertical = 2.dp)) {
-                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray,
+            Box(Modifier.background(if (channelPageStyle) Color(0xFFE7E5E4) else SlockColor.SurfaceCream)
+                .then(if (channelPageStyle) Modifier.border(1.dp, SlockColor.BorderBlack) else Modifier)
+                .padding(horizontal = 5.dp, vertical = 2.dp)) {
+                Text(text = label, style = SlockType.Caption.copy(fontSize = if (channelPageStyle) 10.sp else 12.sp), color = SlockColor.TextMutedGray,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         when {
             trailingIcon != null && onTrailingClick != null -> {
-                if (trailingIcon == SlockLucideIconName.X) {
+                if (trailingIcon == SlockLucideIconName.X || channelPageStyle) {
                     SlockModalMemberRemoveButton(
                         icon = trailingIcon,
                         onClick = onTrailingClick,
