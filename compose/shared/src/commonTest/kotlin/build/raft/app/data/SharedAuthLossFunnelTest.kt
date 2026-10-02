@@ -72,7 +72,7 @@ class SharedAuthLossFunnelTest {
     }
 
     @Test
-    fun diagnosticFingerprintCollisionDoesNotMergeDifferentCapturedAuthorities() = runBlocking {
+    fun diagnosticFingerprintCollisionDoesNotMergeDifferentCapturedAuthorities() = runBlocking<Unit> {
         val scope = CoroutineScope(SupervisorJob())
         val bothRestoresStarted = CompletableDeferred<Unit>()
         val releaseRestores = CompletableDeferred<Unit>()
