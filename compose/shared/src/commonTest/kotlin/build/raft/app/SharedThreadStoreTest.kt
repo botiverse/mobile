@@ -19316,6 +19316,37 @@ class SharedThreadStoreTest {
                 "refresh loading must carry an opSeq",
             )
         }
+        // Canonical complete chain: every issued refresh_canonical fetch must
+        // close with exactly one terminal carrying the issued fetchSeq and
+        // requestRouteToken — the full issue→boundary→terminal association for
+        // the canonical/Refresh contract (task #58).
+        for (fetch in refreshFetches) {
+            val fetchFields = parseDiagFields(fetch)
+            val fetchSeq = fetchFields["fetchSeq"]!!
+            val terminals =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["kind"] == "refresh_canonical" &&
+                        parseDiagFields(it)["fetchSeq"] == fetchSeq
+                }
+            check(terminals.size == 1) {
+                "refresh_canonical fetchSeq=$fetchSeq must close with exactly 1 terminal; " +
+                    "got ${terminals.size}; logs=$logs"
+            }
+            val terminalFields = parseDiagFields(terminals.single())
+            assertEquals(
+                fetchFields["routeToken"],
+                terminalFields["requestRouteToken"],
+                "refresh_canonical terminal must carry the issued routeToken; " +
+                    "issued=$fetchFields terminal=$terminalFields",
+            )
+            assertEquals(
+                fetchFields["storeSeq"],
+                terminalFields["storeSeq"],
+                "refresh_canonical terminal must carry the issuing storeSeq; " +
+                    "issued=$fetchFields terminal=$terminalFields",
+            )
+        }
         } finally {
             scope.cancel()
         }
