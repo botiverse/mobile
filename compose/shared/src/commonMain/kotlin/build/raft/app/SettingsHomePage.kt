@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.backFromDetail
-import build.raft.app.data.closeSideThread
+import build.raft.app.data.closeFromDetailPage
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.foldSideThreadIntoDetail
 import build.raft.app.data.sideThreadColumnAvailable
@@ -3683,11 +3683,8 @@ private fun SlockAppShellReadyContent(
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
                 val before = adaptiveWorkspaceStore.snapshot()
                 val after =
-                    adaptiveWorkspaceStore.update { current ->
-                        // task #36: a side-column page's close only closes the column.
-                        val closedSide = current.closeSideThread(request)
-                        if (closedSide !== current) closedSide else current.backFromDetail(request)
-                    }
+                    // task #36: a side-column page's close only closes the column.
+                    adaptiveWorkspaceStore.update { current -> current.closeFromDetailPage(request) }
                 if (before.workspace?.selection != after.workspace?.selection) {
                     releaseAdaptiveHandoffLease(request.generation)
                     homeShellStore.dispatch(

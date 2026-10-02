@@ -159,6 +159,51 @@ internal fun SharedAdaptiveWorkspaceSession.openWithinWideDetail(
         }
     }
 
+/**
+ * Whether [source] is a live adaptive detail page of this session: the current main detail or the
+ * current side thread of that detail. Retired pages (an older main generation, a closed or folded
+ * side thread) are not.
+ */
+internal fun SharedAdaptiveWorkspaceSession.acceptsAdaptiveSource(source: SlockAdaptiveDetailCloseRequest): Boolean {
+    val current = workspace ?: return false
+    if (current.shellInstanceId != source.shellInstanceId) return false
+    if (current.acceptsDetailCallback(source.identityKey, source.generation)) return true
+    val side = sideThread ?: return false
+    return side.owner == current.selection &&
+        side.identity.key == source.identityKey && side.generation == source.generation
+}
+
+/** Where a thread page routes a thread open. */
+internal enum class AdaptiveThreadOpenRoute { WithinDetail, Standalone, Ignored }
+
+/**
+ * A page outside the adaptive detail ([source] null) opens a standalone page as before. An adaptive
+ * page is validated first: a retired one opens nothing, whatever the desktop mode, pane or server;
+ * only a live one may use the standalone fallback when the wide detail cannot take the open.
+ */
+internal fun SharedAdaptiveWorkspaceSession.routeThreadOpen(
+    source: SlockAdaptiveDetailCloseRequest?,
+    desktopModeEnabled: Boolean,
+    targetServerId: String?,
+): AdaptiveThreadOpenRoute = when {
+    source == null -> AdaptiveThreadOpenRoute.Standalone
+    !acceptsAdaptiveSource(source) -> AdaptiveThreadOpenRoute.Ignored
+    shouldOpenWithinAdaptiveDetail(source, workspace, desktopModeEnabled, targetServerId) ->
+        AdaptiveThreadOpenRoute.WithinDetail
+    else -> AdaptiveThreadOpenRoute.Standalone
+}
+
+/**
+ * The shell's handler for a detail page's close event: a side-column page closes only the column;
+ * otherwise the existing one-level Back of the main detail. A retired request changes nothing.
+ */
+internal fun SharedAdaptiveWorkspaceSession.closeFromDetailPage(
+    request: SlockAdaptiveDetailCloseRequest,
+): SharedAdaptiveWorkspaceSession {
+    val closedSide = closeSideThread(request)
+    return if (closedSide !== this) closedSide else backFromDetail(request)
+}
+
 /** Back on a visible detail with its side column showing closes the column first. */
 internal fun SharedAdaptiveWorkspaceSession.backClosesSideThreadFirst(desktopModeOnLargeScreen: Boolean): Boolean =
     workspace?.parentVisible == true &&

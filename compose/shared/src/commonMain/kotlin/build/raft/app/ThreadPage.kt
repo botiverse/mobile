@@ -2,7 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
-import build.raft.app.data.shouldOpenWithinAdaptiveDetail
+import build.raft.app.data.AdaptiveThreadOpenRoute
+import build.raft.app.data.routeThreadOpen
 
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
@@ -4120,18 +4121,19 @@ private fun ThreadPageScreen(
         val openPage = {
             val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
             val source = adaptiveCloseRequest
-            val pane = workspaceStore.snapshot().workspace
+            val session = workspaceStore.snapshot()
+            val pane = session.workspace
             val desktopModeEnabled =
                 KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
-            if (shouldOpenWithinAdaptiveDetail(
-                    source = source,
-                    workspace = pane,
-                    desktopModeEnabled = desktopModeEnabled,
-                    targetServerId = targetStoreScope.initialServerId,
-                ) && source != null && pane != null
-            ) {
-                // task #36: a reply under the shown channel opens in the side column when it fits;
-                // otherwise the in-pane replace; a stale source changes nothing.
+            // task #36: an adaptive page is validated before any route, so a retired main/side
+            // page opens nothing even after desktop mode turns off, the pane goes compact or the
+            // server changes.
+            val route = session.routeThreadOpen(source, desktopModeEnabled, targetStoreScope.initialServerId)
+            if (route == AdaptiveThreadOpenRoute.Ignored) {
+                bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+            } else if (route == AdaptiveThreadOpenRoute.WithinDetail && source != null && pane != null) {
+                // A reply under the shown channel opens in the side column when it fits;
+                // otherwise the in-pane replace; a source retired meanwhile changes nothing.
                 val next = workspaceStore.update { current ->
                     current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
                 }

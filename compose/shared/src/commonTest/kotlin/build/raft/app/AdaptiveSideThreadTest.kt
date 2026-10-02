@@ -197,12 +197,52 @@ class AdaptiveSideThreadTest {
         assertEquals(otherReply.toSlockAdaptiveDetailIdentity("server"), mainNow.identity)
         assertNotEquals(oldSideT.generation, mainNow.generation)
         assertFalse(folded.workspace!!.acceptsDetailCallback(oldSideT.identityKey, oldSideT.generation))
-        // The stale side close is not a main Back, and a stale side open changes nothing.
-        assertEquals(folded, folded.backFromDetail(oldSideT))
-        assertSame(folded, folded.closeSideThread(oldSideT))
+        // Through the shell's close dispatcher the retired side close is not a main Back, and a
+        // retired side open changes nothing: main, side and history all stay as they are.
+        assertEquals(folded, folded.closeFromDetailPage(oldSideT))
         assertSame(folded, folded.openWithinWideDetail(oldSideT, reply, "server", true))
+        assertEquals(AdaptiveThreadOpenRoute.Ignored, folded.routeThreadOpen(oldSideT, true, "server"))
         // Every side generation is unique against every main generation.
         assertTrue(s1.sideThread!!.generation > root.workspace!!.selection!!.generation)
         assertTrue(s2.sideThread!!.generation > s1.sideThread!!.generation)
+    }
+
+    @Test fun aRetiredAdaptivePageOpensNothingWhateverTheModePaneOrServer() {
+        // LiBai #2809: the thread page validates its adaptive source before any route, so a
+        // retired page never reaches the standalone fallback.
+        val root = session()
+        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val liveSide = s1.sideThread!!.closeRequest("shell")
+        val folded = s1.foldSideThreadIntoDetail()
+        val compact = folded.copy(workspace = folded.workspace!!.copy(pane = pane(1440).copy(layout = SlockAdaptivePaneLayout.Compact)))
+        for (session in listOf(folded, compact)) {
+            for (desktop in listOf(true, false)) {
+                for (server in listOf("server", "other-server")) {
+                    assertEquals(AdaptiveThreadOpenRoute.Ignored, session.routeThreadOpen(liveSide, desktop, server))
+                    assertEquals(AdaptiveThreadOpenRoute.Ignored, session.routeThreadOpen(root.mainSource(), desktop, server))
+                }
+            }
+        }
+        // Another shell's page is not this session's source either.
+        assertEquals(AdaptiveThreadOpenRoute.Ignored, folded.routeThreadOpen(folded.mainSource().copy(shellInstanceId = "other"), true, "server"))
+        // No workspace at all: an adaptive page is retired.
+        assertEquals(AdaptiveThreadOpenRoute.Ignored, SharedAdaptiveWorkspaceSession().routeThreadOpen(liveSide, false, "server"))
+    }
+
+    @Test fun aLivePageKeepsItsRoutesAndNonAdaptivePagesStayStandalone() {
+        val root = session()
+        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val side = s1.sideThread!!.closeRequest("shell")
+        for (source in listOf(s1.mainSource(), side)) {
+            assertEquals(AdaptiveThreadOpenRoute.WithinDetail, s1.routeThreadOpen(source, true, "server"))
+            // A live page may still use the standalone fallback the wide detail cannot take.
+            assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, false, "server"))
+            assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, true, "other-server"))
+        }
+        val compact = s1.copy(workspace = s1.workspace!!.copy(pane = pane(1440).copy(layout = SlockAdaptivePaneLayout.Compact)))
+        assertEquals(AdaptiveThreadOpenRoute.Standalone, compact.routeThreadOpen(s1.mainSource(), true, "server"))
+        // Pages outside the adaptive detail keep opening standalone pages.
+        assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(null, true, "server"))
+        assertEquals(AdaptiveThreadOpenRoute.Standalone, SharedAdaptiveWorkspaceSession().routeThreadOpen(null, false, null))
     }
 }
