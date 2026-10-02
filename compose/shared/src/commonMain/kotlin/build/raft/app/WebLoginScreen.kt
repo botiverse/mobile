@@ -17,17 +17,11 @@ import build.raft.app.data.SlockWebLoginCompletion
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -74,14 +68,11 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
             AuthTermsAgreement(
                 checked = consentAccepted,
                 onCheckedChange = { consentAccepted = it },
-                label = stringResource(MR.strings.auth_web_login_consent),
             )
-            WebLoginLegalLink(stringResource(MR.strings.auth_link_terms_of_service)) {
-                linkNavigator.open(AUTH_TERMS_URL)
-            }
-            WebLoginLegalLink(stringResource(MR.strings.auth_link_privacy_policy)) {
-                linkNavigator.open(AUTH_PRIVACY_URL)
-            }
+            AuthLegalNotice(
+                onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
+                onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
+            )
             AuthActionButton(
                 text = stringResource(MR.strings.auth_web_login_button),
                 tone = AuthButtonTone.Pink,
@@ -110,24 +101,5 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
                 textAlign = TextAlign.Center,
             )
         }
-    }
-}
-
-/** Uses the same clickable path as the working OHOS login action, with a full touch target. */
-@Composable
-private fun WebLoginLegalLink(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(44.dp)
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = SlockType.Caption.copy(
-                color = SlockColor.TextMutedGray,
-                textDecoration = TextDecoration.Underline,
-            ),
-            textAlign = TextAlign.Center,
-        )
     }
 }

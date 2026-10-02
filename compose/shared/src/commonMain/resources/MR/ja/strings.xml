@@ -2127,5 +2127,4 @@
     <string name="auth_web_login_button">Raft にログイン</string>
     <string name="auth_web_login_hint">raft.build からログイン</string>
     <string name="auth_web_login_failed">ログインを完了できませんでした。もう一度お試しください。</string>
-    <string name="auth_web_login_consent">利用規約とプライバシーポリシーを読み、同意します。</string>
 </resources>

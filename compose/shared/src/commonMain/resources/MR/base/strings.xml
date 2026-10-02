@@ -2134,5 +2134,4 @@
     <string name="auth_web_login_button">Sign in to Raft</string>
     <string name="auth_web_login_hint">Sign in through raft.build</string>
     <string name="auth_web_login_failed">Unable to finish sign-in. Please try again.</string>
-    <string name="auth_web_login_consent">I have read and agree to the Terms of Service and Privacy Policy.</string>
 </resources>

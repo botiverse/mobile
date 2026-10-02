@@ -1849,7 +1849,7 @@ private fun AuthLegalAcceptanceContent(
 }
 
 @Composable
-private fun AuthLegalNotice(
+internal fun AuthLegalNotice(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit
 ) {
@@ -1896,9 +1896,9 @@ private fun AuthLegalNotice(
 internal fun AuthTermsAgreement(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    label: String? = null,
 ) {
-    val agreementText = label?.let { AnnotatedString(it) } ?: authTermsAgreementText(
+    val agreementText =
+        authTermsAgreementText(
             prefix = stringResource(MR.strings.auth_terms_agreement_prefix),
             terms = stringResource(MR.strings.auth_link_terms_of_service),
             connector = stringResource(MR.strings.auth_terms_agreement_connector),
