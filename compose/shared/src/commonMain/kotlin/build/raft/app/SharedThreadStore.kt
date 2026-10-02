@@ -6651,7 +6651,7 @@ internal class SharedThreadStore(
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                 reducePayloadPatch(writeTag = "refresh_loading_apply", operationSeq = refreshLoadingOpSeq, requestRouteToken = refreshLoadingToken) { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
-                        pendingPatchAdmissionRefused = true
+                        refused = true
                         return@reducePayloadPatch currentPayload
                     }
                     currentPayload.withThreadContentProjectionFrom(loadingBase)
@@ -7651,7 +7651,7 @@ internal class SharedThreadStore(
                             ) ||
                             !routeStillCurrent(routePayload, "thread_home_context", "apply", currentPayload)
                         ) {
-                            pendingPatchAdmissionRefused = true
+                            refused = true
                             return@reducePayloadPatch currentPayload
                         }
                         currentPayload.withHomeContextProjectionFrom(hydratedPayload)
@@ -7859,7 +7859,7 @@ internal class SharedThreadStore(
                     ) ||
                     !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", applyingPayload)
                 ) {
-                    pendingPatchAdmissionRefused = true
+                    refused = true
                     return@reducePayloadPatch applyingPayload
                 }
                 applyingPayload.withSecondaryTimelineProjectionFrom(
@@ -7995,7 +7995,7 @@ internal class SharedThreadStore(
                     val (op, tok) = issueOperationSeq("members_load_apply", "threadId=$threadKey")
                     reducePayloadPatch(cachePayload = true, writeTag = "members_load_apply", operationSeq = op, requestRouteToken = tok) { currentPayload ->
                         if (!routeStillCurrent(basePayload, "thread_members_load", "apply", currentPayload)) {
-                            pendingPatchAdmissionRefused = true
+                            refused = true
                             return@reducePayloadPatch currentPayload
                         }
                         currentPayload.withMembersPatchFrom(outcome.payload)
@@ -8561,7 +8561,7 @@ internal class SharedThreadStore(
         reducePayloadPatch(writeTag = "older_page_apply", requestFetchSeq = olderFetchSeq, requestRouteToken = olderFetchToken, relatedRequestId = olderFetchSeq) { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
                 olderApplyRejected = true
-                pendingPatchAdmissionRefused = true
+                refused = true
                 return@reducePayloadPatch currentPayload
             }
             currentPayload.withThreadContentProjectionFrom(nextPayload)
@@ -8777,7 +8777,7 @@ internal class SharedThreadStore(
                                     "currentMaxSeq=${latestPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
                             )
                         }
-                        pendingPatchAdmissionRefused = true
+                        refused = true
                         return@reducePayloadPatch latestPayload
                     }
                     appliedToCurrentRoute = true
@@ -9245,7 +9245,7 @@ internal class SharedThreadStore(
                                         )
                                     ) {
                                         gapApplyAdmitted = false
-                                        pendingPatchAdmissionRefused = true
+                                        refused = true
                                         return@reducePayloadPatch latestPayload
                                     }
                                     latestPayload.withThreadContentProjectionFrom(selected)
@@ -9443,7 +9443,7 @@ internal class SharedThreadStore(
         val (local_send_appendOpSeq, local_send_appendToken) = issueOperationSeq("local_send_append", "")
         reducePayloadPatchAndCache(cachePayload = true, writeTag = "local_send_append", operationSeq = local_send_appendOpSeq, requestRouteToken = local_send_appendToken) { payload ->
             if (!routeStillCurrent(routePayload, "thread_send", "append_apply", payload)) {
-                pendingPatchAdmissionRefused = true
+                refused = true
                 return@reducePayloadPatchAndCache payload
             }
             val appended =
@@ -9709,11 +9709,11 @@ internal class SharedThreadStore(
         fun applyToCurrentPayload(): Boolean =
             reducePayloadPatch(writeTag = "local_send_replace_apply", operationSeq = replaceOp, requestRouteToken = replaceTok) { payload ->
                 if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
-                    pendingPatchAdmissionRefused = true
+                    refused = true
                     return@reducePayloadPatch payload
                 }
                 if (!payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) {
-                    pendingPatchAdmissionRefused = true
+                    refused = true
                     return@reducePayloadPatch payload
                 }
                 val appended =
@@ -9834,7 +9834,7 @@ internal class SharedThreadStore(
             val (op, tok) = issueOperationSeq("reaction_mutation_apply", "messageId=${currentPayload.sourceThreadId.orEmpty()}")
             reducePayloadPatch(writeTag = "reaction_mutation_apply", operationSeq = op, requestRouteToken = tok) { payload ->
                 if (!routeStillCurrent(currentPayload, "thread_reaction", "mutation_apply", payload)) {
-                    pendingPatchAdmissionRefused = true
+                    refused = true
                     return@reducePayloadPatch payload
                 }
                 payload.withThreadContentProjectionFrom(selected)
@@ -10135,8 +10135,6 @@ internal class SharedThreadStore(
     // refuses the write before returning the unchanged payload. Lets reduceState
     // report a refused admit as `rejected` rather than `no_change`, so the
     // low-level receipt matches the authoritative guard outcome.
-    private var pendingPatchAdmissionRefused = false
-
     private fun reduceState(
         nextState: SharedThreadState,
         writeTag: String? = null,
@@ -10144,18 +10142,17 @@ internal class SharedThreadStore(
         requestFetchSeq: Long? = null,
         requestRouteToken: Long? = null,
         relatedRequestId: Long? = null,
+        admissionRefused: Boolean = false,
     ): Boolean {
         val previousState = _state.value
         val synchronizedState = nextState.withSynchronizedTimelineSlice()
         val emitted = synchronizedState != previousState
         if (!emitted) {
             // A tagged operation that committed nothing still leaves a receipt.
-            // The guard that ran inside the patch sets pendingPatchAdmissionRefused
-            // when it refused the write; that refused admit is `rejected`, while an
-            // admitted-but-identical projection is `no_change`.
+            // The patch guard passes admissionRefused when it refused the write;
+            // a refused admit is `rejected`, an admitted-but-identical
+            // projection is `no_change`.
             if (writeTag != null) {
-                val refused = pendingPatchAdmissionRefused
-                pendingPatchAdmissionRefused = false
                 runCatching {
                     diagnosticsLogger?.invoke(
                         "thread_payload_terminal tag=$writeTag " +
@@ -10165,13 +10162,12 @@ internal class SharedThreadStore(
                             "operationSeq=${operationSeq ?: -1L} " +
                             "requestId=${relatedRequestId ?: -1L} " +
                             "fetchSeq=${requestFetchSeq ?: -1L} " +
-                            "result=${if (refused) "rejected" else "no_change"}"
+                            "result=${if (admissionRefused) "rejected" else "no_change"}"
                     )
                 }
             }
             return false
         }
-        pendingPatchAdmissionRefused = false
         // Observation is strictly post-write and fail-safe: diagnostics must
         // never block or veto a state commit (task #58 instrumented probe).
         val messagesChanged = synchronizedState.payload.messages !== previousState.payload.messages
@@ -10214,19 +10210,29 @@ internal class SharedThreadStore(
         return true
     }
 
+    // Per-invocation admission handle: a patch lambda refuses its write by
+    // setting refused=true before returning the unchanged payload; the flag is
+    // scoped to this call only so concurrent patches cannot steal each other's
+    // refusal.
+    internal class PatchAdmission {
+        var refused = false
+    }
+
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
         writeTag: String? = null,
         operationSeq: Long? = null,
         requestRouteToken: Long? = null,
-        patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
+        patch: PatchAdmission.(KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
     ): Boolean {
-        val nextPayload = patch(_state.value.payload)
+        val admission = PatchAdmission()
+        val nextPayload = admission.patch(_state.value.payload)
         val emitted = reduceState(
             _state.value.copy(payload = nextPayload),
             writeTag = writeTag,
             operationSeq = operationSeq,
             requestRouteToken = requestRouteToken,
+            admissionRefused = admission.refused,
         )
         if (emitted && cachePayload) {
             dataSource.cachePayload(
@@ -10347,9 +10353,10 @@ internal class SharedThreadStore(
         requestFetchSeq: Long? = null,
         requestRouteToken: Long? = null,
         relatedRequestId: Long? = null,
-        patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
+        patch: PatchAdmission.(KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
     ): Boolean {
-        val nextPayload = patch(_state.value.payload)
+        val admission = PatchAdmission()
+        val nextPayload = admission.patch(_state.value.payload)
         val emitted =
             reduceState(
                 _state.value.copy(payload = nextPayload),
@@ -10358,6 +10365,7 @@ internal class SharedThreadStore(
                 requestFetchSeq = requestFetchSeq,
                 requestRouteToken = requestRouteToken,
                 relatedRequestId = relatedRequestId,
+                admissionRefused = admission.refused,
             )
         if (emitted && cachePayload) {
             dataSource.cachePayload(

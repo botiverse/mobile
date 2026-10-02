@@ -18059,13 +18059,10 @@ class SharedThreadStoreTest {
         val gapFetchSeq = Regex("fetchSeq=(\\d+)").find(issued)!!.groupValues[1]
         val gapToken = Regex("routeToken=(\\d+)").find(issued)!!.groupValues[1]
         gapJob.cancel()
-        // Bounded join: cancellation must let the issued fetch close inside a
-        // bounded window — a stuck gap recovery is itself a contract failure.
-        assertTrue(
-            runCatching { withTimeout(2_000) { gapJob.await() } }.isFailure ||
-                gapJob.isCancelled,
-            "cancelled gap job must settle (cancel or bounded join); state=$gapJob",
-        )
+        // Bounded cancelAndJoin — does not swallow the timeout: if the gap
+        // recovery does not release its issued fetch and settle within 2s, the
+        // assertion fails rather than absorbing the timeout.
+        withTimeout(2_000) { gapJob.cancelAndJoin() }
         withTimeout(5_000) {
             while (
                 logs.none {
