@@ -19564,6 +19564,108 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun inFlightFetchKeepsOriginalOwnerAcrossAccountSwitch() = runBlocking {
+        // task #58 observability R1 (context switch): park a canonical fetch
+        // mid-flight, then switch the session principal+server. The in-flight
+        // request must close against its ORIGINAL owner context — terminal
+        // reports owner_changed/ignored carrying the issued requestRouteToken
+        // — and the write must not land under the new owner's authority.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
+                )
+            val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = api,
+                            sessionStore = sessionStore,
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
+                )
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
+                    )
+                )
+            )
+
+            // Park the canonical refresh at the boundary, flip the account,
+            // then release the response.
+            api.channelMessagesStarted = CompletableDeferred()
+            api.releaseChannelMessages = CompletableDeferred()
+            api.bodyText = messagesResponse("switched body", id = "m16", seq = 16, historyLimited = false)
+            val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+            withTimeout(5_000) { api.channelMessagesStarted?.await() }
+
+            val issued =
+                logs.lastOrNull {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "refresh_canonical"
+                }
+            check(issued != null) { "expected a refresh_canonical issued; logs=$logs" }
+            val issuedFields = parseDiagFields(issued)
+            val parkedFetchSeq = issuedFields["fetchSeq"]!!
+            val parkedToken = issuedFields["routeToken"]!!
+
+            // Controlled account+server switch while the request is in flight.
+            sessionStore.saveSession(replyResolutionSession("u2").copy(selectedServerId = "server-b"))
+            api.releaseChannelMessages?.complete(Unit)
+            withTimeout(5_000) { refreshJob.await() }
+
+            // The terminal for the parked fetchSeq must close with
+            // ignored/owner_changed and the ORIGINAL requestRouteToken — the
+            // in-flight request's own identity survives the account switch
+            // rather than being absorbed into the new owner.
+            val terminals =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["kind"] == "refresh_canonical" &&
+                        parseDiagFields(it)["fetchSeq"] == parkedFetchSeq
+                }
+            check(terminals.size == 1) {
+                "expected exactly 1 refresh_canonical terminal for fetchSeq=$parkedFetchSeq; " +
+                    "got ${terminals.size}; logs=$logs"
+            }
+            val fields = parseDiagFields(terminals.single())
+            assertEquals(
+                "ignored",
+                fields["result"],
+                "in-flight fetch closed under a changed owner must be ignored; got ${terminals.single()}",
+            )
+            assertTrue(
+                terminals.single().contains("reason=owner_changed"),
+                "terminal must name owner_changed; got ${terminals.single()}",
+            )
+            assertEquals(
+                parkedToken,
+                fields["requestRouteToken"],
+                "terminal must carry the pre-switch requestRouteToken=$parkedToken; got $fields",
+            )
+            // And no messages write may be attributed to that fetchSeq under
+            // the new owner.
+            val wrongOwnerWrites =
+                logs.filter {
+                    it.startsWith("thread_payload_messages_write") &&
+                        parseDiagFields(it)["fetchSeq"] == parkedFetchSeq
+                }
+            assertTrue(
+                wrongOwnerWrites.isEmpty(),
+                "an owner-switched fetch must not produce a messages write; got $wrongOwnerWrites",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
