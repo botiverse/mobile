@@ -18924,6 +18924,7 @@ class SharedThreadStoreTest {
                     bodyText = messagesResponse("b", id = "m16", seq = 16, historyLimited = false),
                     newerBodyText = newerRowsBody(17L..20L),
                 )
+            val issueLogs = mutableListOf<String>()
             val issueStore =
                 SharedThreadStore(
                     dataSource =
@@ -18933,6 +18934,7 @@ class SharedThreadStoreTest {
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         ),
                     scope = issueScope,
+                    diagnosticsLogger = issueLogs::add,
                 )
             issueStore.accept(
                 SharedThreadIntent.Start(
@@ -18949,6 +18951,44 @@ class SharedThreadStoreTest {
             check(realTrace.startsWith("newer_page_s") && realTrace.contains("_fs=") && realTrace.contains("_rt=")) {
                 "real store trace must carry storeSeq/fetchSeq/routeToken; got $realTrace"
             }
+            // Join the real trace's fetchSeq to the store's own terminal and
+            // write lines — the trace is not just a boundary string, it names
+            // the fetch that produced a terminal and a messages write.
+            val realFetchSeq =
+                Regex("_fs=(\\d+)").find(realTrace)!!.groupValues[1]
+            val realStoreSeq =
+                Regex("newer_page_s(\\d+)_").find(realTrace)!!.groupValues[1]
+            val realToken =
+                Regex("_rt=(\\d+)").find(realTrace)!!.groupValues[1]
+            val realTerminal =
+                issueLogs.single {
+                    it.startsWith("thread_fetch_terminal") &&
+                        it.contains("kind=newer_page") &&
+                        it.contains("fetchSeq=$realFetchSeq")
+                }
+            assertTrue(
+                realTerminal.contains("requestRouteToken=$realToken"),
+                "terminal for fetchSeq=$realFetchSeq must carry its issued routeToken=$realToken; got $realTerminal",
+            )
+            val realWrite =
+                issueLogs.single {
+                    it.startsWith("thread_payload_messages_write") &&
+                        it.contains("tag=newer_page_apply") &&
+                        it.contains("fetchSeq=$realFetchSeq")
+                }
+            assertTrue(
+                realWrite.contains("storeSeq=$realStoreSeq"),
+                "apply write for fetchSeq=$realFetchSeq must carry storeSeq=$realStoreSeq; got $realWrite",
+            )
+            // Namespace unambiguity (R2): a fetch seq and an op seq may share
+            // the same number; the kind/tag prefix disambiguates. Assert the
+            // fetchSeq namespace is distinct from the operationSeq namespace
+            // so a numeric equality can never alias across kinds.
+            val opIssued = issueLogs.filter { it.startsWith("thread_op_issued") }
+            assertTrue(
+                opIssued.none { it.contains("kind=newer_page") },
+                "fetchSeq namespace must not reuse the newer_page kind in op namespace; ops=$opIssued",
+            )
             issueScope.cancel()
 
             ledger.beginRun("run-join-a")
@@ -18967,13 +19007,17 @@ class SharedThreadStoreTest {
             // Same call numbers, different run: beginRun resets and the trace
             // from run A must not appear in run B's ledger.
             ledger.beginRun("run-join-b")
+            // Run B uses a trace whose fs/rt differ from run A's real values —
+            // same call shape, distinct identity.
+            val runBTrace = "newer_page_s3_fs=2_rt=12"
+            check(runBTrace != realTrace) { "run B trace must differ from run A's real trace" }
             pendingB =
                 async {
                     ledger.awaitAfterResponse(
                         runNonce = "run-join-b",
                         afterSeq = 46L,
                         limit = 30,
-                        requestTrace = "newer_page_s3_fs=2_rt=12",
+                        requestTrace = runBTrace,
                     )
                 }
             withTimeout(5_000) {
@@ -18983,7 +19027,7 @@ class SharedThreadStoreTest {
             withTimeout(5_000) { pendingB.await() }
             val logB = ledger.snapshot("run-join-b").requestLog
             assertTrue(
-                logB.any { it.contains("trace=newer_page_s3_fs=2_rt=12") },
+                logB.any { it.contains("trace=$runBTrace") },
                 "run B ledger must record its own trace identity; log=$logB",
             )
             assertTrue(
