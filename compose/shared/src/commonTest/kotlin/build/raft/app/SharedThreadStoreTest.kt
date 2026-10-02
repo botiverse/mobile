@@ -19362,7 +19362,14 @@ class SharedThreadStoreTest {
             )
             // The paired loading op must itself be a recorded local op — its
             // opSeq is the receipt identity (op namespace, fetchSeq=-1).
-            val loadingOp = parseDiagFields(paired.single())
+            val pairedLoading =
+                refreshLoadingOps.filter {
+                    parseDiagFields(it)["routeToken"] == fetchFields["routeToken"]
+                }
+            check(pairedLoading.size == 1) {
+                "expected exactly 1 loading op for routeToken=${fetchFields["routeToken"]}; logs=$logs"
+            }
+            val loadingOp = parseDiagFields(pairedLoading.single())
             assertEquals(
                 fetchFields["routeToken"],
                 loadingOp["routeToken"],
