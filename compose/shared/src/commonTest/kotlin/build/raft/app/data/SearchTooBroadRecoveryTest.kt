@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import build.raft.app.sharedHomeSearchErrorAction
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -65,6 +66,38 @@ class SearchTooBroadRecoveryTest {
     }
 
     @Test
+    fun recentRecoveryReplacesRetainedPagesInsteadOfAppending() = runTest {
+        val auth = InMemorySlockAuthSessionStore(canonicalV2TestSession())
+        val network = RecoveryNetworkClient(respond = { query ->
+            when {
+                query.any { it == ("sort" to "recent") } -> recoveryPage("newest", hasMore = false)
+                query.any { it == ("offset" to "0") } -> recoveryPage("old", hasMore = true)
+                else -> HomeNetworkResponse(422, null, """{"code":"QUERY_TOO_BROAD"}""")
+            }
+        })
+        val store = SharedHomeSearchSavedStore(
+            authStore = auth, savedRepository = RealSavedRepository(auth, network),
+            searchRepository = RealSearchRepository(auth, network), scope = this,
+        )
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        store.state.first { it.search.items.isNotEmpty() }
+        val oldItems = store.state.value.search.items
+        store.dispatch(SharedHomeSearchSavedIntent.LoadMoreSearch)
+        store.state.first { it.search.errorCode != null }
+        assertEquals("1", network.calls.last().single { it.first == "offset" }.second)
+        val failed = store.state.value.search
+        store.dispatch(assertNotNull(sharedHomeSearchErrorAction(failed.errorCode.orEmpty(), failed.sort)))
+        store.state.first { it.search.sort == SearchSort.Recent && it.search.items != oldItems }
+        val result = store.state.value.search
+        assertEquals(1, result.items.size)
+        assertEquals(false, result.items.any { it in oldItems })
+        assertEquals(false, result.hasMore)
+        assertNull(result.errorCode)
+        assertEquals("0", network.calls.last().single { it.first == "offset" }.second)
+        store.clear()
+    }
+
+    @Test
     fun alreadyRecentHasNoActionAndOtherErrorsKeepOrdinaryRetry() {
         for (sort in SearchSort.entries) {
             for (code in listOf("http_422", "network_parse_failed", "SEARCH_TIMEOUT", "server_forbidden")) {
@@ -99,7 +132,10 @@ class SearchTooBroadRecoveryTest {
     }
 }
 
-private class RecoveryNetworkClient(val response: HomeNetworkResponse? = null) : SlockNetworkClient {
+private class RecoveryNetworkClient(
+    val response: HomeNetworkResponse? = null,
+    val respond: ((List<Pair<String, String>>) -> HomeNetworkResponse)? = null,
+) : SlockNetworkClient {
     val calls = mutableListOf<List<Pair<String, String>>>()
     override suspend fun request(
         priority: DataRequestPriority, path: String, method: String,
@@ -108,10 +144,15 @@ private class RecoveryNetworkClient(val response: HomeNetworkResponse? = null) :
         assertEquals("messages/search", path)
         assertEquals(ServerId("server-1"), serverIdOverride)
         calls += query
-        return response ?: if (query.any { it == "sort" to "recent" }) {
+        return respond?.invoke(query) ?: response ?: if (query.any { it == "sort" to "recent" }) {
             HomeNetworkResponse(200, "")
         } else {
             HomeNetworkResponse(422, null, """{"error":"Search query is too broad.","code":"QUERY_TOO_BROAD"}""")
         }
     }
 }
+
+private fun recoveryPage(id: String, hasMore: Boolean) = HomeNetworkResponse(
+    200,
+    """{"results":[{"id":"$id","seq":1,"channelId":"channel-1","channelName":"general","channelType":"channel","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Alice","content":"release","snippet":"release","createdAt":"2026-10-01T00:00:00Z"}],"hasMore":$hasMore}""",
+)
