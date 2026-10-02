@@ -76,6 +76,22 @@ class AdaptiveDetailNavigationTest {
         assertSame(live, live.withOpenedDetail(foreign, channel))
     }
 
+    @Test fun taskOverlayCloseAfterInDetailNavigationClosesTheWholeDetail() {
+        // task #34: task -> in-detail navigation (reply -> parent) -> close button/scrim must
+        // return to the board, not just step back one level like Back does.
+        val root = session()
+        val opened = root.navigateDetail(root.source(), reply, "server")
+        assertTrue(opened.hasVisibleDetailBackHistory())
+        assertNotNull(opened.backFromDetail(opened.source()).workspace!!.selection)
+        val closed = opened.closeDetailCompletely()
+        assertNull(closed.workspace!!.selection)
+        assertNull(closed.launchPayload)
+        assertNull(closed.detailHistory)
+        assertFalse(closed.hasVisibleDetailBackHistory())
+        assertTrue(closed.workspace.generationCursor > opened.workspace!!.generationCursor)
+        assertEquals(closed, closed.closeDetailCompletely())
+    }
+
     @Test fun onlyAnEmbeddedWideDesktopPageInterceptsNativeNavigation() {
         val root = session()
         assertTrue(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "server"))
