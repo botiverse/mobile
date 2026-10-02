@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.*
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import com.tencent.kuikly.compose.setContent
