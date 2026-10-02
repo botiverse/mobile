@@ -6631,7 +6631,7 @@ internal class SharedThreadStore(
                 persistResult = true,
                 reusePrewarm = reusePrewarm,
                 replaceReplyAccessFailure = explicitRetry,
-                requestTrace = "refresh_canonical_s${storeInstanceSeq}_fs=$refreshFetchSeq",
+                requestTrace = "refresh_canonical_s${storeInstanceSeq}_fs=${refreshFetchSeq}_rt=$refreshFetchToken",
             )
         val latest = _state.value.payload
         if (
@@ -8373,7 +8373,7 @@ internal class SharedThreadStore(
         reducePayloadPatch(writeTag = "older_page_loading", requestFetchSeq = olderFetchSeq, requestRouteToken = olderFetchToken) { currentPayload ->
             currentPayload.copy(olderMessagesStatus = "loading", errorCode = null)
         }
-        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq, requestTrace = "older_page_s${storeInstanceSeq}_fs=$olderFetchSeq")
+        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq, requestTrace = "older_page_s${storeInstanceSeq}_fs=${olderFetchSeq}_rt=$olderFetchToken")
         val latest = _state.value.payload
         if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
             runCatching {
@@ -8486,7 +8486,7 @@ internal class SharedThreadStore(
                 issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId", capturedToken = staleToken)
             fetchSeq = issuedPair.first
             newerFetchToken = issuedPair.second
-            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=$fetchSeq")
+            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=${fetchSeq}_rt=$newerFetchToken")
             realtimeGapRecoveryMutex.withLock {
                 val active =
                     loadNewerState
@@ -8899,9 +8899,9 @@ internal class SharedThreadStore(
                     )
                 val result =
                     if (tailFallbackArmed) {
-                        dataSource.fetchReplyThreadTailGapPayload(requestPayload, requestTrace = "gap_tail_s${storeInstanceSeq}_fs=$fetchSeq")
+                        dataSource.fetchReplyThreadTailGapPayload(requestPayload, requestTrace = "gap_tail_s${storeInstanceSeq}_fs=${fetchSeq}_rt=$gapFetchToken")
                     } else {
-                        dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq, requestTrace = "gap_sync_s${storeInstanceSeq}_fs=$fetchSeq")
+                        dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq, requestTrace = "gap_sync_s${storeInstanceSeq}_fs=${fetchSeq}_rt=$gapFetchToken")
                     }
                 var shouldContinue = false
                 var nextSinceSeq = nextRequest.sinceSeq

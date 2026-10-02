@@ -17855,7 +17855,7 @@ class SharedThreadStoreTest {
         val fetchSeq = Regex("fetchSeq=(\\d+)").find(issuedNewer)!!.groupValues[1]
         val trace = api.channelMessagesRequestTraces.last()
         assertEquals(
-            "newer_page_s${storeSeq}_fs=$fetchSeq",
+            "newer_page_s${storeSeq}_fs=${fetchSeq}_rt=${Regex("routeToken=(\\d+)").find(issuedNewer)!!.groupValues[1]}",
             trace,
             "boundary requestTrace must carry the same storeSeq+fetchSeq as thread_fetch_issued",
         )
@@ -18054,6 +18054,8 @@ class SharedThreadStoreTest {
         val refreshIssued = fetchIssued.last { it.contains("kind=refresh_canonical") }
         val newerFetchSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
         val refreshFetchSeq = Regex("fetchSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]
+        val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
+        val refreshToken = Regex("routeToken=(\\d+)").find(refreshIssued)!!.groupValues[1]
         assertNotEquals(
             newerFetchSeq,
             refreshFetchSeq,
@@ -18062,11 +18064,11 @@ class SharedThreadStoreTest {
         )
         // The boundary trace for each fetch must carry its own storeSeq+fetchSeq.
         assertTrue(
-            api.channelMessagesRequestTraces.any { it == "newer_page_s${Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]}_fs=$newerFetchSeq" },
+            api.channelMessagesRequestTraces.any { it == "newer_page_s${Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]}_fs=${newerFetchSeq}_rt=$newerToken" },
             "newer fetch trace missing; traces=${api.channelMessagesRequestTraces}",
         )
         assertTrue(
-            api.channelMessagesRequestTraces.any { it == "refresh_canonical_s${Regex("storeSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]}_fs=$refreshFetchSeq" },
+            api.channelMessagesRequestTraces.any { it == "refresh_canonical_s${Regex("storeSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]}_fs=${refreshFetchSeq}_rt=$refreshToken" },
             "refresh fetch trace missing; traces=${api.channelMessagesRequestTraces}",
         )
 
@@ -18082,8 +18084,6 @@ class SharedThreadStoreTest {
         // Cross-generation: the reject must name the request's ORIGINAL
         // generation (requestRouteToken from its own issue log), while the
         // current routeToken field shows the refresh's newer generation.
-        val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
-        val refreshToken = Regex("routeToken=(\\d+)").find(refreshIssued)!!.groupValues[1]
         assertNotEquals(newerToken, refreshToken, "refresh must advance the route generation")
         assertTrue(
             newerReject.any {
@@ -18423,11 +18423,11 @@ class SharedThreadStoreTest {
             )
             val storeSeq = Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertTrue(
-                api.channelMessagesRequestTraces.contains("older_page_s${storeSeq}_fs=$olderSeq"),
+                api.channelMessagesRequestTraces.contains("older_page_s${storeSeq}_fs=${olderSeq}_rt=$olderToken"),
                 "older boundary trace missing; traces=${api.channelMessagesRequestTraces}",
             )
             assertTrue(
-                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=$newerSeq"),
+                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=${newerSeq}_rt=$newerToken"),
                 "newer boundary trace missing; traces=${api.channelMessagesRequestTraces}",
             )
             api.releaseAfterMessages?.complete(Unit)
@@ -18631,7 +18631,7 @@ class SharedThreadStoreTest {
             val newerSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
             val storeSeq = Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertTrue(
-                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=$newerSeq"),
+                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=${newerSeq}_rt=$newerToken"),
                 "newer boundary trace missing; traces=${api.channelMessagesRequestTraces}",
             )
             val newerReject =
@@ -18645,6 +18645,74 @@ class SharedThreadStoreTest {
                         it.contains("fetchSeq=$newerSeq")
                 },
                 "reject must name original token $newerToken + current $refreshToken + fetchSeq=$newerSeq; got $newerReject",
+            )
+        } finally {
+            store?.onNewerPageIssueFenceForTest = null
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun fenceCancelDuringIssueLeavesNoStuckLoadingGate() = runBlocking {
+        // task #58 observability contract: if the issue fence is cancelled
+        // (or throws) after loadNewerState was armed, the outer finally must
+        // disarm the gate — no stuck "loading" status and a later loadNewer
+        // must be able to arm a fresh request.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var store: SharedThreadStore? = null
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..46L),
+                )
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+                )
+            store =
+                SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = null)
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            val fenceEntered = CompletableDeferred<Unit>()
+            val neverRelease = CompletableDeferred<Unit>()
+            store!!.onNewerPageIssueFenceForTest = {
+                if (!fenceEntered.isCompleted) {
+                    fenceEntered.complete(Unit)
+                    neverRelease.await()
+                }
+            }
+            val cancelledJob = async { store.accept(SharedThreadIntent.LoadNewer) }
+            withTimeout(5_000) { fenceEntered.await() }
+            cancelledJob.cancel()
+            runCatching { withTimeout(2_000) { cancelledJob.await() } }
+            // Bounded reclamation: the armed gate must be gone and the payload
+            // no longer claims a newer page is loading.
+            assertNotEquals(
+                "loading",
+                store.state.value.payload.newerMessagesStatus,
+                "fence-cancelled loadNewer must not leave newerMessagesStatus=loading",
+            )
+            // A subsequent loadNewer must actually issue a fetch — proof the
+            // gate was disarmed, not merely the flag reset.
+            api.afterMessagesStarted = CompletableDeferred()
+            api.releaseAfterMessages = CompletableDeferred()
+            val retryJob = async { store.accept(SharedThreadIntent.LoadNewer) }
+            withTimeout(5_000) { api.afterMessagesStarted?.await() }
+            api.releaseAfterMessages?.complete(Unit)
+            withTimeout(5_000) { retryJob.await() }
+            assertTrue(
+                api.afterSeqs.isNotEmpty(),
+                "post-cancel loadNewer must reach the boundary; afterSeqs=${api.afterSeqs}",
             )
         } finally {
             store?.onNewerPageIssueFenceForTest = null
