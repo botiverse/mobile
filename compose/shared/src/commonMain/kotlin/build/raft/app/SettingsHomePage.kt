@@ -1835,10 +1835,14 @@ private fun localizedSharedHomeErrorDisplay(
     )
 
 @Composable
-private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
+private fun localizedSharedHomeSearchErrorDisplay(
+    code: String,
+    action: SharedHomeSearchSavedIntent? = SharedHomeSearchSavedIntent.RefreshSearch
+): SlockHomeInlineError =
     SlockHomeInlineError(
         title =
             when {
+                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_unavailable)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout)
                 code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
@@ -1847,6 +1851,7 @@ private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInline
             },
         detail =
             when {
+                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad_detail)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_permission_detail)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout_detail)
                 code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.search_error_offline_detail)
@@ -1854,7 +1859,11 @@ private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInline
                 else -> code.userFacingErrorCodeMessage(localizedErrorPresentationStrings())
             },
         code = code.ifBlank { "unknown_error" },
-        actionLabel = stringResource(MR.strings.common_retry)
+        actionLabel = when (action) {
+            is SharedHomeSearchSavedIntent.SetSearchSort -> stringResource(MR.strings.search_error_sort_recent)
+            null -> ""
+            else -> stringResource(MR.strings.common_retry)
+        }
     )
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
@@ -19228,14 +19237,17 @@ internal fun SharedHomeSearchPanel(
                             (state.errorCode != null && !hasSearchRows) ||
                             (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
                     ) {
+                        val errorCode = state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
+                        val recoveryAction = sharedHomeSearchErrorAction(errorCode, state.sort)
                         HomeInlineErrorCard(
-                            error = localizedSharedHomeSearchErrorDisplay(
-                                state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
-                            ),
+                            error = localizedSharedHomeSearchErrorDisplay(errorCode, recoveryAction),
                             modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
+                            showAction = recoveryAction != null,
                             onAction = {
-                                onIntent(SharedHomeSearchSavedIntent.RefreshSearch)
-                                onRefreshComputers()
+                                recoveryAction?.let(onIntent)
+                                if (recoveryAction == SharedHomeSearchSavedIntent.RefreshSearch) {
+                                    onRefreshComputers()
+                                }
                             }
                         )
                     } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {

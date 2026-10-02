@@ -4276,6 +4276,7 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 internal fun HomeInlineErrorCard(
     error: SlockHomeInlineError,
     modifier: Modifier = Modifier,
+    showAction: Boolean = true,
     onAction: () -> Unit
 ) {
     val visibleCopy = error.toVisibleCopy()
@@ -4317,12 +4318,14 @@ internal fun HomeInlineErrorCard(
                     )
                 }
             }
-            SlockBrutalActionButton(
-                label = visibleCopy.actionLabel,
-                onClick = onAction,
-                leadingIcon = SlockLucideIconName.RefreshCw,
-                backgroundColor = SlockColor.SurfaceWhite
-            )
+            if (showAction) {
+                SlockBrutalActionButton(
+                    label = visibleCopy.actionLabel,
+                    onClick = onAction,
+                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
+            }
         }
     }
 }

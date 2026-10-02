@@ -10,6 +10,9 @@ import kotlin.test.assertTrue
 class SearchHomeResourceTest {
     private val keys =
         listOf(
+            "search_error_sort_recent",
+            "search_error_too_broad",
+            "search_error_too_broad_detail",
             "search_home_history",
             "search_home_frequent",
             "search_home_edit",
