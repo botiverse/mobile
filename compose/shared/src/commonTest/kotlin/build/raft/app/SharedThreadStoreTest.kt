@@ -18725,6 +18725,68 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun runToStoreJoinUsesNoncePlusTraceIdentity() = runBlocking {
+        // task #58 observability R1: the fixture ledger records each request's
+        // boundary requestTrace; a second run (new nonce) cannot observe or
+        // inherit the previous run's identities, and the joined triple
+        // (runNonce, storeSeq, fetchSeq) uniquely names one store fetch.
+        val ledger = ThreadNewerAutoFixtureLedger()
+        var pendingA: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
+        var pendingB: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
+        try {
+            ledger.beginRun("run-join-a")
+            pendingA =
+                async {
+                    ledger.awaitAfterResponse(
+                        runNonce = "run-join-a",
+                        afterSeq = 46L,
+                        limit = 30,
+                        requestTrace = "newer_page_s3_fs=7_rt=11",
+                    )
+                }
+            withTimeout(5_000) {
+                while (ledger.snapshot("run-join-a").afterRequests.isEmpty()) yield()
+            }
+            // Same call numbers, different run: beginRun resets and the trace
+            // from run A must not appear in run B's ledger.
+            ledger.beginRun("run-join-b")
+            pendingB =
+                async {
+                    ledger.awaitAfterResponse(
+                        runNonce = "run-join-b",
+                        afterSeq = 46L,
+                        limit = 30,
+                        requestTrace = "newer_page_s3_fs=2_rt=12",
+                    )
+                }
+            withTimeout(5_000) {
+                while (ledger.snapshot("run-join-b").afterRequests.isEmpty()) yield()
+            }
+            ledger.release("run-join-b", 1, ThreadNewerAutoFixtureResponse.Success(3))
+            withTimeout(5_000) { pendingB.await() }
+            val logB = ledger.snapshot("run-join-b").requestLog
+            assertTrue(
+                logB.any { it.contains("trace=newer_page_s3_fs=2_rt=12") },
+                "run B ledger must record its own trace identity; log=$logB",
+            )
+            assertTrue(
+                logB.none { it.contains("fs=7") || it.contains("rt=11") },
+                "run B ledger must not contain run A identities; log=$logB",
+            )
+            // The stale run A request must not have a gate result leak into B.
+            assertTrue(
+                pendingA.isActive,
+                "run A request must remain parked — no cross-run completion",
+            )
+        } finally {
+            pendingA?.cancel()
+            pendingB?.cancel()
+            runCatching { pendingA?.let { withTimeout(1_000) { it.await() } } }
+            runCatching { pendingB?.let { withTimeout(1_000) { it.await() } } }
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
