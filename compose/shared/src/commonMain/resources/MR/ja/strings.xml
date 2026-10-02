@@ -2141,4 +2141,5 @@
     <string name="search_error_sort_recent">新しい順で再検索</string>
     <string name="search_error_too_broad">検索範囲が広すぎます</string>
     <string name="search_error_too_broad_detail">チャンネル、送信者、期間で絞り込むか、新しい順で検索してください。</string>
+    <string name="members_select_detail">メンバーを選択して詳細を表示</string>
 </resources>

@@ -6452,6 +6452,7 @@ private fun SlockAppShellReadyContent(
                                 membersListState = it
                             },
                             paneLayout = shellScope.adaptivePane.layout,
+                            desktopMembersEnabled = desktopModeOnLargeScreen,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -17400,6 +17401,7 @@ private fun SharedMembersScreen(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    desktopMembersEnabled: Boolean = false,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -17409,6 +17411,11 @@ private fun SharedMembersScreen(
     val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
     val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    var selectedDetail by remember(storeScope, session?.user?.id, currentServerId) {
+        mutableStateOf<KuiklyMemberDetailPayload?>(null)
+    }
+    val showMemberSplit = desktopMembersEnabled && paneLayout == SlockAdaptivePaneLayout.DualPane
+    SlockBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
@@ -17717,108 +17724,139 @@ private fun SharedMembersScreen(
                     build.raft.app.data.slockSharedPreferenceStore()
                 )
             }
-            MembersRouteContent(
-                payload = renderMembersPayload,
-                refreshing = refreshing,
-                paneLayout = paneLayout,
-                onAddHuman = {
-                    onForegroundActivity("add_human")
-                    loadInviteJoinLink()
-                },
-                agentStatusResolver = agentStatusResolver,
-                onOpenMemberDetail = { member ->
-                    onForegroundActivity("open_member")
-                    routeScope.launch {
-                        val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                        val accessMode = identity.memberDetailAccessMode(serverId)
-                        val launchPayload =
-                            if (
-                                member.kind == MemberKind.Agent &&
-                                    accessMode.allowsPrivateAgentSurfaces &&
-                                    (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                            ) {
-                                loadAgentPanelTabOrderForSharedMembers()
-                                    ?.also { order ->
-                                        agentPanelTabOrderStore.applyLoaded(
-                                            serverId = serverId,
-                                            order = order,
-                                            source = "shared_members_detail_open_preload",
-                                            logger = slockLogger("SlockAgentPanelTabOrder")
-                                        )
+            MembersAdaptiveWorkspace(
+                split = showMemberSplit,
+                selected = selectedDetail != null,
+                listPane = {
+                    MembersRouteContent(
+                        selectedIdentity = selectedDetail?.identity,
+                        selectedLocalServerId = ServerId(serverId),
+                        payload = renderMembersPayload,
+                        refreshing = refreshing,
+                        paneLayout = paneLayout,
+                        onAddHuman = {
+                            onForegroundActivity("add_human")
+                            loadInviteJoinLink()
+                        },
+                        agentStatusResolver = agentStatusResolver,
+                        onOpenMemberDetail = { member ->
+                            onForegroundActivity("open_member")
+                            if (showMemberSplit) {
+                                // Resolve local fallback now, never from a later selected server.
+                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
+                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toKuiklyMemberDetailPayload()
+                            } else routeScope.launch {
+                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                                val accessMode = identity.memberDetailAccessMode(serverId)
+                                val launchPayload =
+                                    if (
+                                        member.kind == MemberKind.Agent &&
+                                            accessMode.allowsPrivateAgentSurfaces &&
+                                            (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                                    ) {
+                                        loadAgentPanelTabOrderForSharedMembers()
+                                            ?.also { order ->
+                                                agentPanelTabOrderStore.applyLoaded(
+                                                    serverId = serverId,
+                                                    order = order,
+                                                    source = "shared_members_detail_open_preload",
+                                                    logger = slockLogger("SlockAgentPanelTabOrder")
+                                                )
+                                            }
+                                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                                            ?: membersPayload
+                                    } else {
+                                        membersPayload
                                     }
-                                    ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                                    ?: membersPayload
-                            } else {
-                                membersPayload
-                            }
-                        val pageData =
-                            launchPayload.toMemberDetailPageData(
-                                identity
-                            )
-                        if (pageData == null) {
-                            bridge.toast(openProfileFailedMessage)
-                            bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
-                        } else {
-                            val seedMember =
-                                member.copy(
-                                    serverId =
-                                        member.serverId
-                                            ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                                )
-                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                            pager.openSlockPage(
-                                pageName = MEMBER_DETAIL_PAGE,
-                                pageData = pageData,
-                                storeScopeOverride = storeScope,
-                                onMissingScope = {
+                                val pageData =
+                                    launchPayload.toMemberDetailPageData(
+                                        identity
+                                    )
+                                if (pageData == null) {
                                     bridge.toast(openProfileFailedMessage)
-                                    bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                    bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                                } else {
+                                    val seedMember =
+                                        member.copy(
+                                            serverId =
+                                                member.serverId
+                                                    ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                                        )
+                                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                                    pager.openSlockPage(
+                                        pageName = MEMBER_DETAIL_PAGE,
+                                        pageData = pageData,
+                                        storeScopeOverride = storeScope,
+                                        onMissingScope = {
+                                            bridge.toast(openProfileFailedMessage)
+                                            bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                        }
+                                    )
                                 }
+                            }
+                        },
+                        canCreateAgents = membersPayload.canCreateAgents,
+                        createAgent = MembersCreateAgentInputs(
+                            createAgentSubmit = createAgentSubmit,
+                            createAgentMachines = computersSlice.machines,
+                            createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+                            createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+                            createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
+                            createAgentLoadMachines = loadMachines,
+                            createAgentRetryMachines = retryMachines,
+                            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+                            createAgentLoadRuntimeModels = loadRuntimeModels,
+                            createAgentFormStore = createAgentFormStore,
+                            createAgentServerId = serverId
+                        ),
+                        inviteHuman = MembersInviteHumanInputs(
+                            inviteHumanSubmit = inviteHumanSubmit,
+                            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+                            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+                            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+                            inviteHumanJoinLinkCopy = { url ->
+                                onForegroundActivity("copy_invite_link")
+                                bridge.copyToPasteboard(url)
+                                inviteJoinLinkCopied = true
+                            },
+                            inviteHumanLoadJoinLink = {
+                                onForegroundActivity("load_invite_link")
+                                loadInviteJoinLink()
+                            }
+                        ),
+                        bottomContentPadding = bottomContentPadding,
+                        scrollToTopRequest = scrollToTopRequest,
+                        initialListState = initialListState,
+                        onListStateSnapshot = onListStateSnapshot,
+                        // Task #409: persist per-machine collapse under the session user id.
+                        currentUserId = current.currentUserId,
+                        agentGroupCollapseStore = membersAgentGroupCollapseStore,
+                        onRefresh = {
+                            onForegroundActivity("refresh")
+                            onRetry()
+                        }
+                    )
+                },
+                detailPane = {
+                    val detail = selectedDetail
+                    if (detail == null) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(stringResource(MR.strings.members_select_detail), color = SlockColor.TextMutedGray)
+                        }
+                    } else if (active) {
+                        // Dispose all detail-local effects on identity changes. Canonical
+                        // store selectors still enforce server/member/access ownership.
+                        key(storeScope, session?.user?.id, currentServerId, detail.identity) {
+                            MemberDetailPageContent(
+                                pageVisibleTick = 0,
+                                embeddedPayload = detail,
+                                storeScopeOverride = storeScope,
+                                onClose = { selectedDetail = null },
                             )
                         }
                     }
                 },
-                canCreateAgents = membersPayload.canCreateAgents,
-                createAgent = MembersCreateAgentInputs(
-                    createAgentSubmit = createAgentSubmit,
-                    createAgentMachines = computersSlice.machines,
-                    createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-                    createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-                    createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                    createAgentLoadMachines = loadMachines,
-                    createAgentRetryMachines = retryMachines,
-                    createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-                    createAgentLoadRuntimeModels = loadRuntimeModels,
-                    createAgentFormStore = createAgentFormStore,
-                    createAgentServerId = serverId
-                ),
-                inviteHuman = MembersInviteHumanInputs(
-                    inviteHumanSubmit = inviteHumanSubmit,
-                    inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-                    inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-                    inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                    inviteHumanJoinLinkCopy = { url ->
-                        onForegroundActivity("copy_invite_link")
-                        bridge.copyToPasteboard(url)
-                        inviteJoinLinkCopied = true
-                    },
-                    inviteHumanLoadJoinLink = {
-                        onForegroundActivity("load_invite_link")
-                        loadInviteJoinLink()
-                    }
-                ),
-                bottomContentPadding = bottomContentPadding,
-                scrollToTopRequest = scrollToTopRequest,
-                initialListState = initialListState,
-                onListStateSnapshot = onListStateSnapshot,
-                // Task #409: persist per-machine collapse under the session user id.
-                currentUserId = current.currentUserId,
-                agentGroupCollapseStore = membersAgentGroupCollapseStore,
-                onRefresh = {
-                    onForegroundActivity("refresh")
-                    onRetry()
-                }
             )
             // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
         }
