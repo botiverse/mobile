@@ -8475,9 +8475,17 @@ internal class SharedThreadStore(
             } ?: return ThreadNewerPageLoadOutcome.Ignored
         var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
-        onNewerPageIssueFenceForTest?.invoke()
-        val (fetchSeq, newerFetchToken) = issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId", capturedToken = staleToken)
+        // Issue + fence run inside the fetch try so a fence throw/cancel takes
+        // the normal cleanup path (the outer finally disarms loadNewerState and
+        // resets the "loading" status).
+        var fetchSeq = 0L
+        var newerFetchToken = 0L
         try {
+            onNewerPageIssueFenceForTest?.invoke()
+            val issuedPair =
+                issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId", capturedToken = staleToken)
+            fetchSeq = issuedPair.first
+            newerFetchToken = issuedPair.second
             val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=$fetchSeq")
             realtimeGapRecoveryMutex.withLock {
                 val active =

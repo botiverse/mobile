@@ -18509,16 +18509,24 @@ class SharedThreadStoreTest {
             // starts (without it the test could pass on a purely sequential
             // schedule).
             val startBarrier = CompletableDeferred<Unit>()
+            val readyA = CompletableDeferred<Unit>()
+            val readyB = CompletableDeferred<Unit>()
             val jobA =
                 async(Dispatchers.Default) {
+                    readyA.complete(Unit)
                     startBarrier.await()
                     store.accept(SharedThreadIntent.LoadNewer)
                 }
             val jobB =
                 async(Dispatchers.Default) {
+                    readyB.complete(Unit)
                     startBarrier.await()
                     store.accept(SharedThreadIntent.LoadOlder)
                 }
+            // Common start: both coroutines are actually parked on the barrier
+            // before it opens, so the race window is real, not sequential.
+            withTimeout(5_000) { readyA.await() }
+            withTimeout(5_000) { readyB.await() }
             startBarrier.complete(Unit)
             // Both requests must actually reach the boundary (started gates
             // prove the two issues interleaved past allocation before either
@@ -18552,6 +18560,7 @@ class SharedThreadStoreTest {
         // generation advances between that capture and issueFetchSeq, the
         // issue log and the boundary trace still name the ORIGINAL token.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var store: SharedThreadStore? = null
         try {
             val api =
                 FakeThreadApi(
@@ -18566,7 +18575,7 @@ class SharedThreadStoreTest {
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
-            val store =
+            store =
                 SharedThreadStore(
                     dataSource = dataSource,
                     scope = scope,
@@ -18590,7 +18599,7 @@ class SharedThreadStoreTest {
             api.releaseAfterMessages = CompletableDeferred()
             val fenceReached = CompletableDeferred<Unit>()
             val refreshParked = CompletableDeferred<Unit>()
-            store.onNewerPageIssueFenceForTest = {
+            store!!.onNewerPageIssueFenceForTest = {
                 if (!fenceReached.isCompleted) {
                     fenceReached.complete(Unit)
                     refreshParked.await()
@@ -18612,8 +18621,8 @@ class SharedThreadStoreTest {
             val issued = logs.filter { it.startsWith("thread_fetch_issued") }
             val newerIssued = issued.last { it.contains("kind=newer_page") }
             val refreshIssued = issued.last { it.contains("kind=refresh_canonical") }
-            val newerToken = Regex("routeToken=(\d+)").find(newerIssued)!!.groupValues[1]
-            val refreshToken = Regex("routeToken=(\d+)").find(refreshIssued)!!.groupValues[1]
+            val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
+            val refreshToken = Regex("routeToken=(\\d+)").find(refreshIssued)!!.groupValues[1]
             assertNotEquals(
                 newerToken,
                 refreshToken,
@@ -18638,7 +18647,7 @@ class SharedThreadStoreTest {
                 "reject must name original token $newerToken + current $refreshToken + fetchSeq=$newerSeq; got $newerReject",
             )
         } finally {
-            store.onNewerPageIssueFenceForTest = null
+            store?.onNewerPageIssueFenceForTest = null
             scope.cancel()
         }
     }
