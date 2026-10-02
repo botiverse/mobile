@@ -18920,10 +18920,12 @@ class SharedThreadStoreTest {
 
         suspend fun runStore(
             runNonce: String,
+            routeThreadId: String,
             bodySeed: String,
             newerSeqs: LongRange,
         ): Map<String, String> {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val session = sampleSession()
             val api =
                 FakeThreadApi(
                     bodyText = messagesResponse(bodySeed, id = "m16", seq = 16, historyLimited = false),
@@ -18935,7 +18937,7 @@ class SharedThreadStoreTest {
                     dataSource =
                         testSharedThreadDataSource(
                             networkApi = api,
-                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            sessionStore = InMemorySlockAuthSessionStore(session),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         ),
                     scope = scope,
@@ -18945,6 +18947,8 @@ class SharedThreadStoreTest {
                 store.accept(
                     SharedThreadIntent.Start(
                         basePayload().copy(
+                            sourceThreadId = routeThreadId,
+                            streamChannelId = routeThreadId,
                             canLoadMoreAfter = true,
                             messages = listOf(payloadMessage(id = "m16", seq = 16, body = bodySeed)),
                         )
@@ -19002,7 +19006,9 @@ class SharedThreadStoreTest {
             val writeFields = parseDiagFields(write)
             return mapOf(
                 "nonce" to runNonce,
-                "routeThreadId" to "channel-1",
+                "routeThreadId" to routeThreadId,
+                "sessionUserId" to session.user.id,
+                "apiThreadIds" to api.channelIds.distinct().joinToString(","),
                 "trace" to trace,
                 "terminal" to terminal,
                 "write" to write,
@@ -19020,8 +19026,8 @@ class SharedThreadStoreTest {
             )
         }
 
-        val runA = runStore("run-join-a", "body-a", 17L..20L)
-        val runB = runStore("run-join-b", "body-b", 21L..24L)
+        val runA = runStore("run-join-a", "channel-1", "body-a", 17L..20L)
+        val runB = runStore("run-join-b", "channel-1", "body-b", 21L..24L)
 
         // Distinct runs must not share the store-level identity. fetchSeq is a
         // per-store counter and legitimately collides across runs — storeSeq
@@ -19042,6 +19048,33 @@ class SharedThreadStoreTest {
             assertEquals(run["fetchSeq"], run["writeFetchSeq"], "run $label write fetchSeq mismatch")
             assertEquals("accepted", run["terminalResult"], "run $label terminal must be accepted")
         }
+
+        // Original route-owner envelope: the run's captured routeThreadId and
+        // session principal must appear in the issued/terminal records, and
+        // the nonce must distinguish the runs.
+        for ((label, run) in listOf("A" to runA, "B" to runB)) {
+            assertEquals(run["routeThreadId"], "channel-1", "run $label routeThreadId must be the issued route")
+            assertTrue(run["nonce"]!!.startsWith("run-join-"), "run $label nonce must be recorded")
+            // Route-owner binding: every boundary request this run issued must
+            // have carried the run's own routeThreadId at the API surface —
+            // not a literal, but the recorded channelMessages threadIds.
+            assertEquals(
+                run["routeThreadId"],
+                run["apiThreadIds"],
+                "run $label boundary calls must all target its own routeThreadId",
+            )
+            assertTrue(
+                run["terminal"]!!.contains("storeSeq=${run["storeSeq"]}"),
+                "run $label terminal must carry its own storeSeq; got ${run["terminal"]}",
+            )
+            assertTrue(
+                run["write"]!!.contains("storeSeq=${run["storeSeq"]}"),
+                "run $label write must carry its own storeSeq; got ${run["write"]}",
+            )
+        }
+        assertNotEquals(runA["nonce"], runB["nonce"], "two runs must not share a nonce")
+        assertEquals(runA["sessionUserId"], runB["sessionUserId"],
+            "both runs share the same test session principal — identity is fixed by fixture")
 
         // Cross-run isolation on the disambiguating storeSeq.
         assertTrue(
