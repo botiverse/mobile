@@ -5226,19 +5226,7 @@ internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
         contentAlignment = Alignment.Center
     ) {
         if (presentation.avatarWireValue == null) {
-            Text(
-                presentation.fallbackLabel,
-                style =
-                    SlockType.Button.copy(
-                        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
-                        fontSize = 17.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
-                color = SlockColor.BrandYellow,
-                maxLines = 1,
-                textAlign = TextAlign.Center
-            )
+            ServerAvatarFallbackLabel(presentation.fallbackLabel)
         }
         presentation.avatarWireValue?.let { source ->
             if (source.toPixelAvatarSpec() != null) {
@@ -5260,11 +5248,30 @@ internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                     source = source,
                     modifier = Modifier.fillMaxSize(),
                     cacheSubject = SlockAvatarCacheSubject.Server(server.id),
-                    cacheServerId = server.id
+                    cacheServerId = server.id,
+                    serverDiagnosticsId = server.id,
+                    fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel) }
                 )
             }
         }
     }
+}
+
+@Composable
+private fun ServerAvatarFallbackLabel(label: String) {
+    Text(
+        label,
+        style =
+            SlockType.Button.copy(
+                fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                fontSize = 17.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Normal
+            ),
+        color = SlockColor.BrandYellow,
+        maxLines = 1,
+        textAlign = TextAlign.Center
+    )
 }
 
 internal data class ServerSwitcherAvatarPresentation(
@@ -5317,7 +5324,8 @@ private fun ServerSwitcherAvatarPrewarmSurface(
                     source = source,
                     modifier = Modifier.fillMaxSize(),
                     cacheSubject = SlockAvatarCacheSubject.Server(server.id),
-                    cacheServerId = server.id
+                    cacheServerId = server.id,
+                    serverDiagnosticsId = server.id
                 )
             }
         }
@@ -6473,7 +6481,8 @@ internal fun SlockAvatarHttpImage(
     diagnostics: SlockAvatarRowDiagnostics? = null,
     cacheSubject: SlockAvatarCacheSubject? = null,
     cacheServerId: String? = null,
-    fallback: @Composable () -> Unit = {}
+    fallback: @Composable () -> Unit = {},
+    serverDiagnosticsId: String? = null
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -6611,6 +6620,18 @@ internal fun SlockAvatarHttpImage(
         val row = diagnostics ?: return@LaunchedEffect
         row.logger(
             "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
+                "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
+                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
+                "painter=${loadState.painter.diagnosticsName()} " +
+                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
+        )
+    }
+    LaunchedEffect(serverDiagnosticsId, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
+        val serverId = serverDiagnosticsId ?: return@LaunchedEffect
+        slockLogInfo(
+            "SlockServerAvatar",
+            "server_avatar_painter serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
                 "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
                 "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
                 "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +

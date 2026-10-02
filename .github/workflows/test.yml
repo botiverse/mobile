@@ -1229,6 +1229,20 @@ jobs:
           fi
           exit "$status"
 
+      - name: Test native image loader completion
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosAppUITests \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -only-testing:iosAppTests/SlockImageLoaderTests \
+            CODE_SIGNING_ALLOWED=NO test-without-building \
+            > "$GITHUB_WORKSPACE/xcodebuild-image-loader-tests.log" 2>&1
+          tail -50 "$GITHUB_WORKSPACE/xcodebuild-image-loader-tests.log"
+
       - name: Upload xcodebuild log
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
@@ -1237,6 +1251,7 @@ jobs:
           path: |
             xcodebuild-ios.log
             xcodebuild-adaptive-editor-tests.log
+            xcodebuild-image-loader-tests.log
           if-no-files-found: ignore
           retention-days: 7
 
