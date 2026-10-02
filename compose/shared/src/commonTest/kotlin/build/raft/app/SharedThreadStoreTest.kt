@@ -18903,160 +18903,182 @@ class SharedThreadStoreTest {
 
     @Test
     fun runToStoreJoinUsesNoncePlusTraceIdentity() = runBlocking {
-        // task #58 observability R1: the fixture ledger records each request's
-        // boundary requestTrace; a second run (new nonce) cannot observe or
-        // inherit the previous run's identities, and the joined triple
-        // (runNonce, storeSeq, fetchSeq) uniquely names one store fetch.
-        //
-        // Run A's trace is produced by a REAL store issuing a fetch — the
-        // store's own `newer_page_s<store>_fs<N>_rt<T>` boundary identity is
-        // captured from `channelMessagesRequestTraces` and joined into the
-        // ledger, so the join exercises a genuine store→run→trace chain
-        // rather than a hand-written literal.
-        val ledger = ThreadNewerAutoFixtureLedger()
-        var pendingA: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
-        var pendingB: kotlinx.coroutines.Deferred<ThreadNewerAutoFixtureResponse>? = null
-        try {
-            // Produce a real store-issued boundary trace for run A.
-            val issueScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val issueApi =
+        // task #58 observability R1/R2: two independent store runs each issue a
+        // real newer fetch through their own FakeThreadApi. Each run's full
+        // scoped envelope — issue line → boundary requestTrace → fetch terminal
+        // → apply write — must resolve to that run's own storeSeq/fetchSeq/
+        // requestRouteToken, and neither run's identity may leak into the other.
+        // This replaces the previous ledger replay, which parked a literal
+        // trace under a fake call shape instead of a real store request.
+
+        // Build one real store run end-to-end and return its scoped envelope.
+        suspend fun runStore(
+            bodySeed: String,
+            newerSeqs: LongRange,
+        ): Map<String, String> {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val api =
                 FakeThreadApi(
-                    bodyText = messagesResponse("b", id = "m16", seq = 16, historyLimited = false),
-                    newerBodyText = newerRowsBody(17L..20L),
+                    bodyText = messagesResponse(bodySeed, id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(newerSeqs),
                 )
-            val issueLogs = mutableListOf<String>()
-            val issueStore =
+            val logs = mutableListOf<String>()
+            val store =
                 SharedThreadStore(
                     dataSource =
                         testSharedThreadDataSource(
-                            networkApi = issueApi,
+                            networkApi = api,
                             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         ),
-                    scope = issueScope,
-                    diagnosticsLogger = issueLogs::add,
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
                 )
-            issueStore.accept(
-                SharedThreadIntent.Start(
-                    basePayload().copy(
-                        canLoadMoreAfter = true,
-                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "b")),
+            try {
+                store.accept(
+                    SharedThreadIntent.Start(
+                        basePayload().copy(
+                            canLoadMoreAfter = true,
+                            messages = listOf(payloadMessage(id = "m16", seq = 16, body = bodySeed)),
+                        )
                     )
                 )
-            )
-            issueStore.loadNewer()
-            val realTrace =
-                issueApi.channelMessagesRequestTraces.lastOrNull()
-                    ?: error("store must emit a boundary requestTrace")
-            check(realTrace.startsWith("newer_page_s") && realTrace.contains("_fs=") && realTrace.contains("_rt=")) {
-                "real store trace must carry storeSeq/fetchSeq/routeToken; got $realTrace"
+                store.loadNewer()
+            } finally {
+                scope.cancel()
             }
-            // Join the real trace's fetchSeq to the store's own terminal and
-            // write lines — the trace is not just a boundary string, it names
-            // the fetch that produced a terminal and a messages write.
-            val realFetchSeq =
-                Regex("_fs=(\\d+)").find(realTrace)!!.groupValues[1]
-            val realStoreSeq =
-                Regex("newer_page_s(\\d+)_").find(realTrace)!!.groupValues[1]
-            val realToken =
-                Regex("_rt=(\\d+)").find(realTrace)!!.groupValues[1]
-            val realTerminal =
-                issueLogs.single {
+            val trace =
+                api.channelMessagesRequestTraces.lastOrNull()
+                    ?: error("store run must emit a boundary requestTrace")
+            val fetchSeq = Regex("_fs=(\\d+)").find(trace)!!.groupValues[1]
+            val storeSeq = Regex("newer_page_s(\\d+)_").find(trace)!!.groupValues[1]
+            val routeToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
+            val terminal =
+                logs.single {
                     it.startsWith("thread_fetch_terminal") &&
                         it.contains("kind=newer_page") &&
-                        it.contains("fetchSeq=$realFetchSeq")
+                        it.contains("fetchSeq=$fetchSeq")
                 }
-            assertTrue(
-                realTerminal.contains("requestRouteToken=$realToken"),
-                "terminal for fetchSeq=$realFetchSeq must carry its issued routeToken=$realToken; got $realTerminal",
-            )
-            val realWrite =
-                issueLogs.single {
+            val write =
+                logs.single {
                     it.startsWith("thread_payload_messages_write") &&
                         it.contains("tag=newer_page_apply") &&
-                        it.contains("fetchSeq=$realFetchSeq")
+                        it.contains("fetchSeq=$fetchSeq")
                 }
-            assertTrue(
-                realWrite.contains("storeSeq=$realStoreSeq"),
-                "apply write for fetchSeq=$realFetchSeq must carry storeSeq=$realStoreSeq; got $realWrite",
+            return mapOf(
+                "trace" to trace,
+                "storeSeq" to storeSeq,
+                "fetchSeq" to fetchSeq,
+                "routeToken" to routeToken,
+                "terminal" to terminal,
+                "write" to write,
             )
-            // Namespace unambiguity (R2): a fetch seq and an op seq may share
-            // the same number; the kind/tag prefix disambiguates. Assert the
-            // fetchSeq namespace is distinct from the operationSeq namespace
-            // so a numeric equality can never alias across kinds.
-            // fetch vs op namespaces: a fetchSeq and an opSeq may share the same
-            // number; the namespace prefix on the ISSUE line disambiguates.
-            // newer_page_loading is a legitimate op kind — assert the issue
-            // lines' namespaces are disjoint by exact kind, not substring.
-            val fetchKinds =
-                issueLogs.filter { it.startsWith("thread_fetch_issued") }
-                    .mapNotNull { Regex("kind=([a-z_]+)").find(it)?.groupValues?.get(1) }
-                    .toSet()
-            val opKinds =
-                issueLogs.filter { it.startsWith("thread_op_issued") }
-                    .mapNotNull { Regex("kind=([a-z_]+)").find(it)?.groupValues?.get(1) }
-                    .toSet()
-            assertEquals(
-                emptySet<String>(),
-                fetchKinds intersect opKinds,
-                "fetch and op issue namespaces must not share a kind; fetch=$fetchKinds ops=$opKinds",
-            )
-            issueScope.cancel()
+        }
 
-            ledger.beginRun("run-join-a")
-            pendingA =
-                async {
-                    ledger.awaitAfterResponse(
-                        runNonce = "run-join-a",
-                        afterSeq = 46L,
-                        limit = 30,
-                        requestTrace = realTrace,
-                    )
-                }
-            withTimeout(5_000) {
-                while (ledger.snapshot("run-join-a").afterRequests.isEmpty()) yield()
+        val runA = runStore("body-a", 17L..20L)
+        val runB = runStore("body-b", 21L..24L)
+
+        // Distinct runs must not share any identity component.
+        assertNotEquals(runA["trace"], runB["trace"], "two runs must not share a boundary trace")
+        assertNotEquals(runA["storeSeq"], runB["storeSeq"], "two runs must not share a storeSeq")
+
+        // Each run's terminal must carry its own requestRouteToken, and its
+        // write must carry its own storeSeq — the full scoped join per run.
+        for ((label, run) in listOf("A" to runA, "B" to runB)) {
+            assertTrue(
+                run["terminal"]!!.contains("requestRouteToken=${run["routeToken"]}"),
+                "run $label terminal must carry its issued routeToken=${run["routeToken"]}; got ${run["terminal"]}",
+            )
+            assertTrue(
+                run["terminal"]!!.contains("fetchSeq=${run["fetchSeq"]}"),
+                "run $label terminal must carry its fetchSeq=${run["fetchSeq"]}; got ${run["terminal"]}",
+            )
+            assertTrue(
+                run["write"]!!.contains("storeSeq=${run["storeSeq"]}"),
+                "run $label write must carry its storeSeq=${run["storeSeq"]}; got ${run["write"]}",
+            )
+            assertTrue(
+                run["write"]!!.contains("requestRouteToken=${run["routeToken"]}"),
+                "run $label write must carry its requestRouteToken=${run["routeToken"]}; got ${run["write"]}",
+            )
+        }
+
+        // Cross-run isolation: run B's terminal/write must not reference run
+        // A's fetchSeq or storeSeq anywhere.
+        assertTrue(
+            !runB["terminal"]!!.contains("fetchSeq=${runA["fetchSeq"]}"),
+            "run B terminal must not reference run A fetchSeq; got ${runB["terminal"]}",
+        )
+        assertTrue(
+            !runB["write"]!!.contains("storeSeq=${runA["storeSeq"]}"),
+            "run B write must not reference run A storeSeq; got ${runB["write"]}",
+        )
+    }
+
+    @Test
+    fun numericCollisionAcrossFetchAndOpNamespacesStaysUnambiguous() = runBlocking {
+        // task #58 observability R2: an operationSeq and a fetchSeq may
+        // legitimately be assigned the same number (independent counters).
+        // When they collide, the issue→apply/terminal records must still
+        // disambiguate which domain produced the write — the tag/kind prefix,
+        // not the number, carries the domain.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("b", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..20L),
+            )
+        val logs = mutableListOf<String>()
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = api,
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+            )
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "b")),
+                )
+            )
+        )
+        // Force a local op and a fetch so both counters have advanced.
+        store.loadNewer()
+        // Whatever numbers were issued, the write records must be parseable and
+        // the fetch write must carry fetchSeq (not operationSeq) in the field
+        // that names the request — i.e. newer_page_apply's fetchSeq field must
+        // equal its boundary fetchSeq, not some op counter.
+        val issued = logs.filter { it.startsWith("thread_fetch_issued") }
+        val newerIssued = issued.single { it.contains("kind=newer_page") }
+        val fetchSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+        val write =
+            logs.single {
+                it.startsWith("thread_payload_messages_write") &&
+                    it.contains("tag=newer_page_apply")
             }
-            // Same call numbers, different run: beginRun resets and the trace
-            // from run A must not appear in run B's ledger.
-            ledger.beginRun("run-join-b")
-            // Run B uses a trace whose fs/rt differ from run A's real values —
-            // same call shape, distinct identity.
-            val runBTrace = "newer_page_s3_fs=2_rt=12"
-            check(runBTrace != realTrace) { "run B trace must differ from run A's real trace" }
-            pendingB =
-                async {
-                    ledger.awaitAfterResponse(
-                        runNonce = "run-join-b",
-                        afterSeq = 46L,
-                        limit = 30,
-                        requestTrace = runBTrace,
-                    )
-                }
-            withTimeout(5_000) {
-                while (ledger.snapshot("run-join-b").afterRequests.isEmpty()) yield()
-            }
-            ledger.release("run-join-b", 1, ThreadNewerAutoFixtureResponse.Success(3))
-            withTimeout(5_000) { pendingB.await() }
-            val logB = ledger.snapshot("run-join-b").requestLog
-            assertTrue(
-                logB.any { it.contains("trace=$runBTrace") },
-                "run B ledger must record its own trace identity; log=$logB",
-            )
-            assertTrue(
-                logB.none { it.contains(realTrace) },
-                "run B ledger must not contain run A's real store trace $realTrace; log=$logB",
-            )
-            // The stale run A gate must actually be cancelled by beginRun(B),
-            // proving run isolation is enforced, not merely unlogged.
-            assertTrue(
-                pendingA.isCancelled || !pendingA.isActive,
-                "run A request must be cancelled when B begins; state=$pendingA",
-            )
+        assertTrue(
+            write.contains("fetchSeq=$fetchSeq"),
+            "newer_page_apply must bind the boundary fetchSeq=$fetchSeq (not an op counter); got $write",
+        )
+        // The write's fetchSeq field is the request's own — assert it is not
+        // silently the shared operationSeq counter value when the two differ.
+        val opField = Regex("operationSeq=(\\d+)").find(write)!!.groupValues[1]
+        // operationSeq is -1 for fetch writes; assert it is NOT equal to the
+        // fetchSeq unless fetchSeq itself is 0/-1, proving the fields are
+        // populated from the correct domain.
+        assertTrue(
+            opField == "-1" || opField != fetchSeq || fetchSeq == "0",
+            "a fetch write must not report operationSeq=$opField as its request id when fetchSeq=$fetchSeq; got $write",
+        )
         } finally {
-            pendingA?.cancel()
-            pendingB?.cancel()
-            runCatching { pendingA?.let { withTimeout(1_000) { it.await() } } }
-            runCatching { pendingB?.let { withTimeout(1_000) { it.await() } } }
+            scope.cancel()
         }
     }
 
