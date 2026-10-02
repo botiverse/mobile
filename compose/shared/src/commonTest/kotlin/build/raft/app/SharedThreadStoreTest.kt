@@ -19857,6 +19857,159 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun gapSyncEmptyArmsTailFallbackWhichClosesWithOwnTerminal() = runBlocking {
+        // task #58 observability: reply-thread gap where the delta sync
+        // returns Empty but the reply-count target is unmet arms the one-shot
+        // gap_tail_fallback fetch. Both issued intervals must each close with
+        // exactly one terminal carrying their own fetchSeq/requestRouteToken:
+        // gap_sync → empty (tailFallbackArmed=true), gap_tail_fallback → the
+        // terminal result of the getThread response.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("parent", id = "m1", seq = 1, historyLimited = false),
+                )
+            // Reply-thread snapshot: parent message + 1 loaded reply, while the
+            // realtime event claims replyCount=3 — a 2-reply shortfall.
+            val repository =
+                FakeConversationRepository(
+                    threadResult =
+                        DataResult.Content(
+                            threadSnapshot(
+                                body = "tail recovered",
+                                messages =
+                                    listOf(
+                                        message(
+                                            threadId = "thread-m1",
+                                            id = "m10",
+                                            seq = 10,
+                                            body = "loaded reply",
+                                            threadChannelId = "thread-m1",
+                                            replyCount = 0
+                                        ),
+                                        message(
+                                            threadId = "thread-m1",
+                                            id = "m11",
+                                            seq = 11,
+                                            body = "tail recovered",
+                                            threadChannelId = "thread-m1",
+                                            replyCount = 0
+                                        )
+                                    )
+                            )
+                        ),
+                    threadReplySummariesResult =
+                        DataResult.Content(
+                            ThreadReplySummariesSnapshot(threads = emptyList(), followedThreadKeys = emptySet())
+                        )
+                )
+            // Delta sync returns Empty — replies owed live below the visible
+            // tail and cannot be reached by sinceSeq.
+            repository.newerResult = DataResult.Empty(EmptyReason.NoMessages)
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                    conversationRepository = repository,
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+            val route =
+                replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(
+                    canLoadMoreAfter = false,
+                    messages =
+                        listOf(
+                            payloadMessage(id = "m1", seq = 1, body = "parent"),
+                            payloadMessage(id = "m10", seq = 10, body = "loaded reply"),
+                        ),
+                )
+            store.accept(SharedThreadIntent.Start(route))
+
+            // ThreadUpdated claims 3 replies but only 1 reply row is loaded —
+            // the shortfall arms the tail-fallback path once the delta comes
+            // back Empty.
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    ThreadUpdated(
+                        threadChannelId = ChannelId("thread-m1"),
+                        parentMessageId = MessageId("m1"),
+                        replyCount = 3,
+                        lastReplyAt = "2026-05-19T16:02:00Z",
+                        participantIds = emptyList()
+                    ),
+                    activeReplyParentMessageId = MessageId("m1")
+                )
+            )
+
+            fun issuedOf(kind: String): Map<String, String> {
+                val line =
+                    logs.lastOrNull {
+                        it.startsWith("thread_fetch_issued") &&
+                            parseDiagFields(it)["kind"] == kind
+                    }
+                check(line != null) { "expected a $kind issued; logs=$logs" }
+                return parseDiagFields(line)
+            }
+            fun terminalFor(kind: String, fetchSeq: String): Map<String, String> {
+                val matching =
+                    logs.filter {
+                        it.startsWith("thread_fetch_terminal") &&
+                            parseDiagFields(it)["kind"] == kind &&
+                            parseDiagFields(it)["fetchSeq"] == fetchSeq
+                    }
+                check(matching.size == 1) {
+                    "expected exactly 1 $kind terminal for fetchSeq=$fetchSeq; got ${matching.size}; logs=$logs"
+                }
+                return parseDiagFields(matching.single())
+            }
+
+            val syncIssued = issuedOf("gap_sync")
+            val tailIssued = issuedOf("gap_tail_fallback")
+            assertNotEquals(
+                syncIssued["fetchSeq"],
+                tailIssued["fetchSeq"],
+                "gap_sync and gap_tail_fallback must be distinct issued fetches",
+            )
+            val syncTerminal = terminalFor("gap_sync", syncIssued["fetchSeq"]!!)
+            assertEquals("empty", syncTerminal["result"], "gap_sync must close empty; got $syncTerminal")
+            assertEquals(
+                syncIssued["routeToken"],
+                syncTerminal["requestRouteToken"],
+                "gap_sync terminal must carry its issued token",
+            )
+            assertTrue(
+                logs.any {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["kind"] == "gap_sync" &&
+                        it.contains("tailFallbackArmed=true")
+                },
+                "gap_sync terminal must record tailFallbackArmed=true; logs=$logs",
+            )
+            val tailTerminal = terminalFor("gap_tail_fallback", tailIssued["fetchSeq"]!!)
+            assertEquals("accepted", tailTerminal["result"], "gap_tail_fallback must close accepted; got $tailTerminal")
+            assertEquals(
+                tailIssued["routeToken"],
+                tailTerminal["requestRouteToken"],
+                "gap_tail_fallback terminal must carry its issued token",
+            )
+            assertEquals(
+                tailIssued["storeSeq"],
+                tailTerminal["storeSeq"],
+                "gap_tail_fallback terminal must carry the issuing storeSeq",
+            )
+            // The tail fallback really fetched the canonical tail via getThread.
+            assertTrue(
+                repository.getThreadRequests.isNotEmpty(),
+                "tail fallback must reach repository.getThread; requests=${repository.getThreadRequests}",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
