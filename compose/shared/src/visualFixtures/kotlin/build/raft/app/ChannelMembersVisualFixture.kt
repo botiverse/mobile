@@ -7,6 +7,10 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -20,7 +24,14 @@ internal class ChannelMembersParityVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         val variant = pageData.params.optString("variant", "roster")
-        setContent { SlockThemeProvider(brutalTheme) { ChannelMembersParityContent(variant) } }
+        setContent {
+            SlockThemeProvider(brutalTheme) {
+                // Match ThreadMembersPageScreen's production outer surface.
+                Box(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                    ChannelMembersParityContent(variant)
+                }
+            }
+        }
     }
 }
 
