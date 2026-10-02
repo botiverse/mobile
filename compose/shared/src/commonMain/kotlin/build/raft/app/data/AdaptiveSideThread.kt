@@ -60,37 +60,60 @@ internal fun slockSideThreadColumnAvailable(
         detailPaneWidthDp >=
         SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
 
+/** task #36: what the caller of [openSideThread] must do. */
+internal sealed interface AdaptiveSideThreadOpen {
+    /** The thread now shows in the side column; store [session]. */
+    data class Opened(val session: SharedAdaptiveWorkspaceSession) : AdaptiveSideThreadOpen
+
+    /**
+     * A valid, current source whose thread cannot go in the column (no room, not a reply under the
+     * shown channel, or the main detail is itself a thread): use the existing in-pane replace.
+     */
+    data object FallbackToReplace : AdaptiveSideThreadOpen
+
+    /**
+     * Stale or foreign source (an old generation, another shell/server/account, a hidden
+     * workspace): do nothing — no replace, no column change, no history.
+     */
+    data object Ignored : AdaptiveSideThreadOpen
+}
+
 /**
  * Opens [target] as the side thread when it is a reply thread under the channel/DM shown in the
  * main detail and the column has room. [source] is the close request of the page asking — the main
- * detail or the current side thread. Returns null when the caller should fall back to the
- * existing in-pane replace ([navigateDetail]).
+ * detail or the current side thread.
  */
 internal fun SharedAdaptiveWorkspaceSession.openSideThread(
     source: SlockAdaptiveDetailCloseRequest,
     target: WireThreadLaunchPayload,
     serverId: String,
     columnAvailable: Boolean,
-): SharedAdaptiveWorkspaceSession? {
-    if (!columnAvailable) return null
-    val current = workspace ?: return null
-    val main = current.selection ?: return null
+): AdaptiveSideThreadOpen {
+    val current = workspace ?: return AdaptiveSideThreadOpen.Ignored
+    val main = current.selection ?: return AdaptiveSideThreadOpen.Ignored
     if (current.shellInstanceId != source.shellInstanceId || !current.parentVisible ||
         current.pane.layout != SlockAdaptivePaneLayout.DualPane || current.serverId != serverId
-    ) return null
+    ) return AdaptiveSideThreadOpen.Ignored
     val fromMain = current.acceptsDetailCallback(source.identityKey, source.generation)
-    val fromSide = sideThread?.let { it.identity.key == source.identityKey && it.generation == source.generation } == true
-    if (!fromMain && !fromSide) return null
-    if (main.identity.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
-    val identity = target.toSlockAdaptiveDetailIdentity(serverId) ?: return null
-    if (identity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val side = sideThread
+    val fromSide = side != null && side.owner == main &&
+        side.identity.key == source.identityKey && side.generation == source.generation
+    if (!fromMain && !fromSide) return AdaptiveSideThreadOpen.Ignored
+    if (!columnAvailable || main.identity.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        return AdaptiveSideThreadOpen.FallbackToReplace
+    }
+    val identity = target.toSlockAdaptiveDetailIdentity(serverId) ?: return AdaptiveSideThreadOpen.FallbackToReplace
     val mainChannelId = main.identity.channelId ?: main.identity.threadId
-    if (identity.parentChannelId != mainChannelId) return null
-    if (sideThread?.identity == identity) return this
+    if (identity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || identity.parentChannelId != mainChannelId) {
+        return AdaptiveSideThreadOpen.FallbackToReplace
+    }
+    if (side?.identity == identity) return AdaptiveSideThreadOpen.Opened(this)
     val generation = sideThreadGenerationCursor + 1
-    return copy(
-        sideThread = AdaptiveSideThread(main, identity, target, generation),
-        sideThreadGenerationCursor = generation,
+    return AdaptiveSideThreadOpen.Opened(
+        copy(
+            sideThread = AdaptiveSideThread(main, identity, target, generation),
+            sideThreadGenerationCursor = generation,
+        )
     )
 }
 

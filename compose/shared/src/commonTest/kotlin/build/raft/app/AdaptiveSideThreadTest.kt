@@ -27,6 +27,9 @@ class AdaptiveSideThreadTest {
         )
     }
 
+    private fun AdaptiveSideThreadOpen.opened(): SharedAdaptiveWorkspaceSession =
+        assertIs<AdaptiveSideThreadOpen.Opened>(this).session
+
     private fun SharedAdaptiveWorkspaceSession.mainSource(): SlockAdaptiveDetailCloseRequest =
         SlockAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
 
@@ -46,41 +49,59 @@ class AdaptiveSideThreadTest {
 
     @Test fun replyUnderTheShownChannelOpensBesideItWithoutChangingTheMainDetail() {
         val root = session()
-        val opened = assertNotNull(root.openSideThread(root.mainSource(), reply, "server", columnAvailable = true))
+        val opened = root.openSideThread(root.mainSource(), reply, "server", columnAvailable = true).opened()
         assertEquals(root.workspace, opened.workspace)
         assertEquals(channel, opened.launchPayload)
         assertEquals(reply, opened.sideThread!!.payload)
         assertEquals(root.workspace!!.selection, opened.sideThread!!.owner)
         // Same thread again: no new generation.
-        assertSame(opened, opened.openSideThread(opened.mainSource(), reply, "server", columnAvailable = true))
+        assertSame(opened, opened.openSideThread(opened.mainSource(), reply, "server", columnAvailable = true).opened())
     }
 
     @Test fun anotherReplyFromChannelOrSideColumnReplacesTheColumn() {
         val root = session()
-        val first = root.openSideThread(root.mainSource(), reply, "server", true)!!
-        val fromSide = first.openSideThread(first.sideThread!!.closeRequest("shell"), otherReply, "server", true)!!
+        val first = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val fromSide = first.openSideThread(first.sideThread!!.closeRequest("shell"), otherReply, "server", true).opened()
         assertEquals(otherReply, fromSide.sideThread!!.payload)
         assertTrue(fromSide.sideThread!!.generation > first.sideThread!!.generation)
         assertEquals(channel, fromSide.launchPayload)
     }
 
-    @Test fun fallsBackToInPaneReplaceWhenTheColumnDoesNotApply() {
+    @Test fun validSourceFallsBackToInPaneReplaceWhenTheColumnDoesNotApply() {
         val root = session()
-        assertNull(root.openSideThread(root.mainSource(), reply, "server", columnAvailable = false))
+        val fallback = AdaptiveSideThreadOpen.FallbackToReplace
+        assertEquals(fallback, root.openSideThread(root.mainSource(), reply, "server", columnAvailable = false))
         // Not a reply thread under the shown channel.
-        assertNull(root.openSideThread(root.mainSource(), foreignReply, "server", true))
-        assertNull(root.openSideThread(root.mainSource(), channel, "server", true))
-        // Stale source (an older generation) or another server.
-        val stale = SlockAdaptiveDetailCloseRequest("shell", root.workspace!!.selection!!.identity.key, 999L)
-        assertNull(root.openSideThread(stale, reply, "server", true))
-        assertNull(root.openSideThread(root.mainSource(), reply, "other-server", true))
+        assertEquals(fallback, root.openSideThread(root.mainSource(), foreignReply, "server", true))
+        assertEquals(fallback, root.openSideThread(root.mainSource(), channel, "server", true))
+    }
+
+    @Test fun staleOrForeignSourceIsIgnoredAndChangesNothing() {
+        val root = session()
+        val withSide = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val ignored = AdaptiveSideThreadOpen.Ignored
+        // An old generation of the main detail, another shell, another server.
+        val staleMain = SlockAdaptiveDetailCloseRequest("shell", root.workspace!!.selection!!.identity.key, 999L)
+        assertEquals(ignored, withSide.openSideThread(staleMain, otherReply, "server", true))
+        val otherShell = withSide.mainSource().copy(shellInstanceId = "other-shell")
+        assertEquals(ignored, withSide.openSideThread(otherShell, otherReply, "server", true))
+        assertEquals(ignored, withSide.openSideThread(withSide.mainSource(), otherReply, "other-server", true))
+        // A close request from a side thread that has since been replaced.
+        val replaced = withSide.openSideThread(withSide.mainSource(), otherReply, "server", true).opened()
+        assertEquals(ignored, replaced.openSideThread(withSide.sideThread!!.closeRequest("shell"), reply, "server", true))
+        // Ignored means the caller leaves main detail, side column and history untouched.
+        assertEquals(withSide.launchPayload, channel)
+        assertEquals(replaced.sideThread!!.payload, otherReply)
+        assertNull(replaced.detailHistory)
+        // The in-pane replace would also refuse the stale main source.
+        assertEquals(withSide, withSide.navigateDetail(staleMain, otherReply, "server"))
     }
 
     @Test fun sideColumnCloseOnlyClosesTheColumnAndIgnoresStaleRequests() {
         val root = session()
-        val first = root.openSideThread(root.mainSource(), reply, "server", true)!!
+        val first = root.openSideThread(root.mainSource(), reply, "server", true).opened()
         val oldRequest = first.sideThread!!.closeRequest("shell")
-        val second = first.openSideThread(oldRequest, otherReply, "server", true)!!
+        val second = first.openSideThread(oldRequest, otherReply, "server", true).opened()
         // A close from the replaced thread arriving late must not close the new one.
         assertSame(second, second.closeSideThread(oldRequest))
         val closed = second.closeSideThread(second.sideThread!!.closeRequest("shell"))
@@ -94,21 +115,21 @@ class AdaptiveSideThreadTest {
     @Test fun switchingConversationDropsTheColumnInTheStore() {
         val store = SharedAdaptiveWorkspaceStore()
         store.update { session() }
-        store.update { it.openSideThread(it.mainSource(), reply, "server", true)!! }
+        store.update { it.openSideThread(it.mainSource(), reply, "server", true).opened() }
         assertNotNull(store.snapshot().sideThread)
         val dm = WireThreadLaunchPayload(threadId = "dm", sourceThreadId = "dm", surfaceKind = KuiklyThreadSurfaceKind.DirectMessage)
         store.update { it.withOpenedDetail(dm.toSlockAdaptiveDetailIdentity("server")!!, dm) }
         assertNull(store.snapshot().sideThread)
         // Authority (server/account) change also retires it.
         store.update { session() }
-        store.update { it.openSideThread(it.mainSource(), reply, "server", true)!! }
+        store.update { it.openSideThread(it.mainSource(), reply, "server", true).opened() }
         store.update { it.copy(workspace = reduceSlockAdaptiveWorkspace(it.workspace!!, SlockAdaptiveWorkspaceIntent.AuthorityChanged("other"))) }
         assertNull(store.snapshot().sideThread)
     }
 
     @Test fun narrowingFoldsTheColumnIntoInPaneHistoryOnce() {
         val root = session()
-        val opened = root.openSideThread(root.mainSource(), reply, "server", true)!!
+        val opened = root.openSideThread(root.mainSource(), reply, "server", true).opened()
         val folded = opened.foldSideThreadIntoDetail()
         assertNull(folded.sideThread)
         assertEquals(reply, folded.launchPayload)
