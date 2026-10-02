@@ -893,6 +893,11 @@ jobs:
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
+            thread-newer-auto-pagination-logcat.txt
+            thread-newer-auto-pagination-logcat-slockkuikly.txt
+            thread-newer-auto-pagination-diagnostics-before.txt
+            thread-newer-auto-pagination-diagnostics-after.txt
+            thread-newer-auto-pagination-diagnostics.jsonl
             thread-open-budget-telemetry.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn

@@ -186,6 +186,16 @@ run_pre_hook() {
     ime-visibility-probe|composer-session-retirement|attachment-private-file-provider|child-page-visibility)
       adb logcat -c || true
       ;;
+    thread-newer-auto-pagination)
+      # task #58 observability: capture store/fetch diagnostics for this run.
+      # Clear logcat so the raw dump below is scoped to this test's window,
+      # and snapshot the pre-existing diagnostics dir listing so post-hoc
+      # nonce correlation can tell this launch's files from earlier tests'
+      # (the suite never pm-clears, so raft_diagnostics_logs accumulates).
+      adb logcat -c || true
+      adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
+        > thread-newer-auto-pagination-diagnostics-before.txt 2>/dev/null || true
+      ;;
     *)
       ;;
   esac
@@ -229,6 +239,28 @@ run_post_hook() {
       adb exec-out run-as build.raft.app.connectedtest cat files/child-page-visibility-accepted.png > child-page-visibility-accepted.png 2>/dev/null || rm -f child-page-visibility-accepted.png
       adb exec-out screencap -p > child-page-visibility-terminal.png 2>/dev/null || true
       adb logcat -d -v threadtime > child-page-visibility-logcat.txt 2>/dev/null || true
+      ;;
+    thread-newer-auto-pagination)
+      # Unfiltered raw logcat is the primary file; the SlockKuikly-scoped
+      # dump is a convenience view. Filter spec must stay two args
+      # ('SlockKuikly:*' '*:S') — a single combined arg is not a valid
+      # filterspec and silently yields an empty file.
+      adb logcat -d -v threadtime > thread-newer-auto-pagination-logcat.txt 2>/dev/null || true
+      adb logcat -d -v threadtime 'SlockKuikly:*' '*:S' > thread-newer-auto-pagination-logcat-slockkuikly.txt 2>/dev/null || true
+      # Pull every launch's diagnostics file unfiltered (no "latest" guess —
+      # the app is not pm-cleared between tests, so older launches linger).
+      # Nonce/launch correlation happens when the archive is reviewed.
+      adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
+        > thread-newer-auto-pagination-diagnostics-after.txt 2>/dev/null || true
+      : > thread-newer-auto-pagination-diagnostics.jsonl
+      while IFS= read -r launch_dir; do
+        [ -n "$launch_dir" ] || continue
+        printf '===== files/raft_diagnostics_logs/%s/raft-diagnostics.jsonl =====\n' "$launch_dir" \
+          >> thread-newer-auto-pagination-diagnostics.jsonl
+        adb exec-out run-as build.raft.app.connectedtest cat \
+          "files/raft_diagnostics_logs/$launch_dir/raft-diagnostics.jsonl" \
+          >> thread-newer-auto-pagination-diagnostics.jsonl 2>/dev/null || true
+      done < thread-newer-auto-pagination-diagnostics-after.txt
       ;;
     *)
       ;;

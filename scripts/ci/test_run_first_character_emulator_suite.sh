@@ -82,6 +82,20 @@ case "${1:-}" in
     exit 0
     ;;
   exec-out)
+    shift
+    if [[ "${1:-}" == "run-as" && "${2:-}" == "build.raft.app.connectedtest" ]]; then
+      shift 2
+      case "${1:-}" in
+        ls)
+          echo "launch-mock001"
+          exit 0
+          ;;
+        cat)
+          echo "mock-diagnostics-record"
+          exit 0
+          ;;
+      esac
+    fi
     echo "mock exec-out"
     exit 0
     ;;
@@ -207,6 +221,21 @@ grep -Fq "Suite verdict:   PASSED" "$TEST_DIR_PASS/first-character-baseline-suit
 grep -Fq "Executed:        17 (17 passed, 0 failed)" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected 17 passed"
 grep -Fq "Not run:         0" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected 0 not run"
 grep -Fq "status=passed test=thread-newer-auto-pagination" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "missing manifest row"
+
+# task #58 observability: thread-newer-auto-pagination must collect store-side
+# diagnostics evidence (pre/post launch listings, unfiltered raw logcat,
+# scoped SlockKuikly logcat, per-launch diagnostics JSONL).
+for f in   thread-newer-auto-pagination-logcat.txt   thread-newer-auto-pagination-logcat-slockkuikly.txt   thread-newer-auto-pagination-diagnostics-before.txt   thread-newer-auto-pagination-diagnostics-after.txt   thread-newer-auto-pagination-diagnostics.jsonl; do
+  test -f "$TEST_DIR_PASS/$f" || fail "missing thread-newer collection file $f"
+done
+grep -Fq "launch-mock001" "$TEST_DIR_PASS/thread-newer-auto-pagination-diagnostics-after.txt" || fail "post launch listing missing mock launch"
+grep -Fq "files/raft_diagnostics_logs/launch-mock001/raft-diagnostics.jsonl" "$TEST_DIR_PASS/thread-newer-auto-pagination-diagnostics.jsonl" || fail "diagnostics jsonl missing per-launch header"
+grep -Fq "mock-diagnostics-record" "$TEST_DIR_PASS/thread-newer-auto-pagination-diagnostics.jsonl" || fail "diagnostics jsonl missing pulled records"
+grep -Fq "logcat -c" "$TEST_DIR_PASS/mock_state/adb_calls.txt" || fail "thread-newer pre-hook did not clear logcat"
+# upload manifest must carry every collected file
+for f in   thread-newer-auto-pagination-logcat.txt   thread-newer-auto-pagination-logcat-slockkuikly.txt   thread-newer-auto-pagination-diagnostics-before.txt   thread-newer-auto-pagination-diagnostics-after.txt   thread-newer-auto-pagination-diagnostics.jsonl; do
+  grep -Fq "$f" "$WORKFLOW" || fail "workflow upload manifest missing $f"
+done
 pass "full suite pass scenario verified"
 
 # 4. Test scenario: Conditional skip (THREAD_NEWER_PAGINATION_GATE_REQUIRED=false)
@@ -306,6 +335,43 @@ test "$rc_assert" -eq 1 || fail "Expected exit 1 on assertion failure, got $rc_a
 grep -Fq "status=failed test=attachment-download-runtime" "$TEST_DIR_ASSERT/first-character-baseline-suite-summary.txt" || fail "expected failed status for attachment-download-runtime"
 grep -Fq "reason=assertion_failed" "$TEST_DIR_ASSERT/first-character-baseline-suite-summary.txt" || fail "expected assertion_failed reason"
 pass "post-assertion failure scenario verified"
+
+# 6b. Test scenario: thread-newer-auto-pagination failure still collects diagnostics
+# (task #58: store/fetch write evidence must survive a failing run, collected
+# before any cleanup and without guessing the newest launch dir)
+TEST_DIR_TN="$TMP_DIR/test_thread_newer_fail"
+mkdir -p "$TEST_DIR_TN"
+rc_tn=0
+(
+  cd "$TEST_DIR_TN"
+  export PATH="$MOCK_BIN:$PATH"
+  export MOCK_STATE_DIR="$TEST_DIR_TN/mock_state"
+  export SKIP_EMULATOR_PREP=true
+  export SKIP_APK_INSTALL=true
+  export THREAD_NEWER_PAGINATION_GATE_REQUIRED=true
+  export MOCK_FAILING_CLASS="SlockThreadNewerAutoPaginationConnectedTest"
+
+  mkdir -p "$TEST_DIR_TN/scripts_ci"
+  cp "$SUITE_RUNNER" "$TEST_DIR_TN/scripts_ci/run-first-character-emulator-suite.sh"
+  cp "$MOCK_BIN/run-instrumentation-with-retry.sh" "$TEST_DIR_TN/scripts_ci/"
+  cp "$MOCK_BIN/prepare_android_emulator_ime.sh" "$TEST_DIR_TN/scripts_ci/"
+  chmod +x "$TEST_DIR_TN/scripts_ci/"*
+
+  "$TEST_DIR_TN/scripts_ci/run-first-character-emulator-suite.sh" "thread-newer-auto-pagination" > suite_out.txt
+) || rc_tn=$?
+
+test "$rc_tn" -eq 1 || fail "Expected exit 1 on thread-newer failure, got $rc_tn"
+grep -Fq "status=failed test=thread-newer-auto-pagination" "$TEST_DIR_TN/first-character-baseline-suite-summary.txt" || fail "expected failed status for thread-newer-auto-pagination"
+for f in \
+  thread-newer-auto-pagination-logcat.txt \
+  thread-newer-auto-pagination-logcat-slockkuikly.txt \
+  thread-newer-auto-pagination-diagnostics-before.txt \
+  thread-newer-auto-pagination-diagnostics-after.txt \
+  thread-newer-auto-pagination-diagnostics.jsonl; do
+  test -f "$TEST_DIR_TN/$f" || fail "failed run missing collection file $f"
+done
+grep -Fq "mock-diagnostics-record" "$TEST_DIR_TN/thread-newer-auto-pagination-diagnostics.jsonl" || fail "failed run diagnostics jsonl empty"
+pass "thread-newer failure collection scenario verified"
 
 # 7. Test scenario: Premature abort / trap safety
 TEST_DIR_TRAP="$TMP_DIR/test_trap"
