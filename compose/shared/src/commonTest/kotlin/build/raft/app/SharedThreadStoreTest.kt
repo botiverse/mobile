@@ -19462,6 +19462,90 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun gapSyncEmptyResultClosesIssuedFetchWithEmptyTerminal() = runBlocking {
+        // task #58 observability: the repository-backed gap_sync path reaches
+        // DataResult.Empty — verify the issued fetchSeq closes with exactly
+        // one terminal result=empty carrying the issued requestRouteToken.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                )
+            val repository =
+                FakeConversationRepository(
+                    threadResult =
+                        DataResult.Content(
+                            threadSnapshot(
+                                body = "foreground body",
+                                messages =
+                                    listOf(
+                                        message(
+                                            threadId = "channel-1",
+                                            id = "m10",
+                                            seq = 10,
+                                            body = "current body",
+                                            threadChannelId = "thread-m10",
+                                            replyCount = 0
+                                        )
+                                    )
+                            )
+                        ),
+                    threadReplySummariesResult =
+                        DataResult.Content(
+                            ThreadReplySummariesSnapshot(threads = emptyList(), followedThreadKeys = emptySet())
+                        )
+                )
+            repository.newerResult = DataResult.Empty(EmptyReason.NoMessages)
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                    conversationRepository = repository,
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m10", seq = 10, body = "current body")),
+                    )
+                )
+            )
+            store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+
+            val issued =
+                logs.lastOrNull {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "gap_sync"
+                }
+            check(issued != null) { "expected a gap_sync issued; logs=$logs" }
+            val issuedFields = parseDiagFields(issued)
+            val gapSeq = issuedFields["fetchSeq"]!!
+            val terminals =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["fetchSeq"] == gapSeq &&
+                        (parseDiagFields(it)["kind"] == "gap_sync" || parseDiagFields(it)["kind"] == "gap_tail_fallback")
+                }
+            check(terminals.size == 1) {
+                "expected exactly 1 gap terminal for fetchSeq=$gapSeq; got ${terminals.size}; logs=$logs"
+            }
+            val fields = parseDiagFields(terminals.single())
+            assertEquals("empty", fields["result"], "gap terminal must be empty; got ${terminals.single()}")
+            assertEquals(
+                issuedFields["routeToken"],
+                fields["requestRouteToken"],
+                "gap terminal must carry the issued routeToken; issued=$issuedFields terminal=$fields",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
