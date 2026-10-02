@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.backFromDetail
+import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.detailListSelectionId
@@ -1224,6 +1225,7 @@ internal fun appShellSharedDetailSurfaceVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
     railInlineSecondaryDestination: String?,
+    tasksDetailOverlayOpen: Boolean = false,
 ): Boolean =
     pageVisible &&
         (
@@ -1231,6 +1233,9 @@ internal fun appShellSharedDetailSurfaceVisible(
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
                 // task #33: the Slack-nav DMs tab hosts the same list + detail split.
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                // task #34: the Tasks board hosts the detail in a bounded overlay while a task
+                // opened from the board is showing.
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
                 railInlineSecondaryDestination != null
         )
 
@@ -1252,13 +1257,48 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectedTab: String,
     railInlineSecondaryDestination: String?,
     selectionPresent: Boolean,
+    tasksDetailOverlayOpen: Boolean = false,
 ): Boolean =
     selectionPresent &&
         (
             railInlineSecondaryDestination != null ||
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
         )
+
+/**
+ * task #34: on a wide desktop-mode screen a task opened from the Tasks board shows its thread in
+ * a bounded overlay above the board, so the board (filters, column scroll, selection) stays put.
+ * [overlayActive] is set by a board open and kept while the user navigates inside the detail
+ * (thread → parent channel advances the selection generation); it is cleared when the overlay
+ * closes, the selection ends, the user leaves the Tasks tab, or the wide layout goes away — so a
+ * conversation selected elsewhere (Home, Activity, Search) never pops up over the board.
+ */
+internal fun appShellTasksDetailOverlayOpen(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    selectionPresent: Boolean,
+    overlayActive: Boolean,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        dualPane &&
+        retainedAppShellSelectedTab(selectedTab) == "tasks" &&
+        selectionPresent &&
+        overlayActive
+
+/** task #34: the overlay ownership ends once any of these no longer holds. */
+internal fun appShellTasksDetailOverlayStaysActive(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    selectionPresent: Boolean,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        dualPane &&
+        retainedAppShellSelectedTab(selectedTab) == "tasks" &&
+        selectionPresent
 
 /**
  * task #13 destination preservation: once the wide rail (or an inline rail destination like
@@ -2123,6 +2163,8 @@ private fun SlockAppShellReadyContent(
     val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()
     val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
     val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
+    // task #34: a task opened from the Tasks board owns the bounded detail overlay.
+    var tasksDetailOverlayActive by remember { mutableStateOf(false) }
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -3248,6 +3290,27 @@ private fun SlockAppShellReadyContent(
             realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(previousOwner))
         }
     }
+    val tasksDetailOverlayKeepsOwnership =
+        appShellTasksDetailOverlayStaysActive(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            selectedTab = selectedTab,
+            selectionPresent = adaptiveWorkspaceState?.selection != null,
+        )
+    LaunchedEffect(tasksDetailOverlayKeepsOwnership) {
+        if (!tasksDetailOverlayKeepsOwnership && tasksDetailOverlayActive) {
+            bridge.log("tasks_detail_overlay_release reason=surface_or_selection_changed")
+            tasksDetailOverlayActive = false
+        }
+    }
+    val tasksDetailOverlayOpen =
+        appShellTasksDetailOverlayOpen(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            selectedTab = selectedTab,
+            selectionPresent = adaptiveWorkspaceState?.selection != null,
+            overlayActive = tasksDetailOverlayActive,
+        )
     LaunchedEffect(
         desktopModeOnLargeScreen,
         storeScope.shellInstanceId,
@@ -3258,6 +3321,7 @@ private fun SlockAppShellReadyContent(
         selectedHomeDestination,
         authoritativeHomeStartAllowed,
         railInlineSecondaryDestination,
+        tasksDetailOverlayOpen,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
@@ -3300,6 +3364,7 @@ private fun SlockAppShellReadyContent(
                 selectedTab = selectedTab,
                 selectedHomeDestination = selectedHomeDestination,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
+                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
             )
         // Capture the dropped pending opens BEFORE the update so the reject/nack path
         // can still see them (they are cleared inside the update for the authority change).
@@ -4318,6 +4383,37 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    /**
+     * Opens [launchPayload] in the shared workspace detail when the wide dual-pane workspace can
+     * show it. Returns the new selection, or null when the caller must fall back to a native push.
+     *
+     * task #33: reduces on the store's CURRENT session inside the atomic update. Seeding from the
+     * compose snapshot here was a lost update: a first tap right after switching to the DMs tab
+     * could write back parentVisible=false (pre-switch), leaving the new detail inactive while the
+     * previous conversation (e.g. Home's #all) stayed on screen.
+     */
+    fun openLaunchPayloadInAdaptiveDetail(launchPayload: WireThreadLaunchPayload): SlockAdaptiveDetailSelection? {
+        val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
+        if (!desktopModeOnLargeScreen || adaptiveIdentity == null) return null
+        var before: SharedAdaptiveWorkspaceSession? = null
+        val after =
+            adaptiveWorkspaceStore.update { current ->
+                before = current
+                current.withOpenedDetail(adaptiveIdentity, launchPayload)
+            }
+        val opened =
+            after.workspace?.selection?.takeIf { after !== before && it.identity == adaptiveIdentity }
+                ?: return null
+        if (opened != before?.workspace?.selection || before?.launchPayload == null) {
+            installAdaptiveHandoffLease(opened, launchPayload)
+        }
+        // Dual-pane detail does not push a native controller, so it must neither become
+        // a Forward entry nor leave an older native-push branch reachable.
+        conversationForwardHistory.clear()
+        bridge.setConversationForwardGestureEnabled(false)
+        return opened
+    }
+
     fun openHomeConversation(
         conversation: ThreadLaunchConversationIdentity,
         source: String,
@@ -4366,29 +4462,7 @@ private fun SlockAppShellReadyContent(
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
         val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
-        if (desktopModeOnLargeScreen && adaptiveIdentity != null) {
-            // task #33: reduce on the store's CURRENT session inside the atomic update. Seeding from
-            // the compose snapshot here was a lost update: a first tap right after switching to the
-            // DMs tab could write back parentVisible=false (pre-switch), leaving the new detail
-            // inactive while the previous conversation (e.g. Home's #all) stayed on screen.
-            var before: SharedAdaptiveWorkspaceSession? = null
-            val after =
-                adaptiveWorkspaceStore.update { current ->
-                    before = current
-                    current.withOpenedDetail(adaptiveIdentity, launchPayload)
-                }
-            val opened = after.workspace?.selection?.takeIf { after !== before && it.identity == adaptiveIdentity }
-            if (opened != null) {
-                if (opened != before?.workspace?.selection || before?.launchPayload == null) {
-                    installAdaptiveHandoffLease(opened, launchPayload)
-                }
-                // Dual-pane detail does not push a native controller, so it must neither become
-                // a Forward entry nor leave an older native-push branch reachable.
-                conversationForwardHistory.clear()
-                bridge.setConversationForwardGestureEnabled(false)
-                return
-            }
-        }
+        if (openLaunchPayloadInAdaptiveDetail(launchPayload) != null) return
         // task #45: while desktop mode is OFF the standalone push still owns the screen,
         // but a parked workspace (same server) must track the user's current selection —
         // otherwise the next ON tick would resurrect a stale pre-OFF detail.
@@ -4720,6 +4794,20 @@ private fun SlockAppShellReadyContent(
         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(next.detailListSelectionId()))
     }
 
+    /**
+     * task #34: the task overlay's close button / scrim closes the whole detail, including any
+     * thread → channel navigation made inside it (Back still unwinds one level at a time).
+     */
+    fun closeTasksDetailOverlay() {
+        val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection
+        bridge.log("tasks_detail_overlay_close selection=${selection?.identity?.key.orEmpty()}")
+        tasksDetailOverlayActive = false
+        if (selection == null) return
+        adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
+        releaseAdaptiveHandoffLease(selection.generation)
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+    }
+
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
@@ -4756,6 +4844,7 @@ private fun SlockAppShellReadyContent(
                                     )
                             )
                     },
+                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -6053,52 +6142,9 @@ private fun SlockAppShellReadyContent(
                             }
                         )
                     }
-                    val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
-                        SharedTasksScreen(
-                            state = tasksState,
-                            onIntent = { intent ->
-                                prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
-                                tasksViewModel.dispatch(intent)
-                            },
-                            scrollToTopRequest = tabScrollToTopRequests.tasks,
-                            bottomContentPadding = appShellBottomContentInset,
-                            draftProjection = draftProjection,
-                            initialListPosition = tasksListPosition,
-                            onListPositionSnapshot = {
-                                prewarmAdmissionGate.invalidate("tasks_scroll")
-                                tasksListPosition = it
-                            },
-                            identityOptions = tasksServerMembersEntry.members,
-                            timeContext = threadTimeContext,
-                            onOpenTask = { task ->
-                                prewarmAdmissionGate.invalidate("tasks_open_task")
-                                pager.openStandaloneTaskThreadPage(
-                                    task = task,
-                                    serverId = readyServerId.orEmpty(),
-                                    conversationDirectory = appShellConversationDirectory,
-                                    timeContext = threadTimeContext,
-                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                    compactConsecutiveMessages = compactConsecutiveMessages,
-                                                            storeScope = navigationStoreScope
-                                )
-                            }
-                        )
-                    }
-                    // task #13: shared list-detail host — the Activity tab renders the same
-                    // split (360dp list + workspace detail) the Home tab uses, driven by the
-                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
-                    // slot across wide/compact transitions so the native child controller,
-                    // draft and scroll state are retained rather than remounted by branch
-                    // movement; task #22 lifts only the detail slot above the floating dock.
-                    val adaptiveSplitListDetail:
-                        @Composable
-                        (
-                            enabled: Boolean,
-                            active: Boolean,
-                            listPane: @Composable (Boolean) -> Unit,
-                            detailAccepted: Boolean,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted ->
+                    // task #34: the shared workspace detail child, hosted by the list + detail split
+                    // (Home, Activity, DMs, Search) and by the Tasks board overlay.
+                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean) -> Unit = { modifier, active, detailAccepted ->
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -6124,7 +6170,6 @@ private fun SlockAppShellReadyContent(
                                         .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
                                 }
                             }
-                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
                             if (detailPageData == null) {
                                 Box(
                                     modifier = modifier.fillMaxSize(),
@@ -6150,6 +6195,86 @@ private fun SlockAppShellReadyContent(
                                     },
                                 )
                             }
+                    }
+                    val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                        SharedTasksScreen(
+                            state = tasksState,
+                            onIntent = { intent ->
+                                prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
+                                tasksViewModel.dispatch(intent)
+                            },
+                            scrollToTopRequest = tabScrollToTopRequests.tasks,
+                            bottomContentPadding = appShellBottomContentInset,
+                            draftProjection = draftProjection,
+                            initialListPosition = tasksListPosition,
+                            onListPositionSnapshot = {
+                                prewarmAdmissionGate.invalidate("tasks_scroll")
+                                tasksListPosition = it
+                            },
+                            identityOptions = tasksServerMembersEntry.members,
+                            timeContext = threadTimeContext,
+                            onOpenTask = { task ->
+                                prewarmAdmissionGate.invalidate("tasks_open_task")
+                                // task #34: wide desktop mode keeps the board and opens the task's
+                                // thread in a bounded overlay; otherwise the full-page push stays.
+                                val overlaySelection =
+                                    buildStandaloneTaskThreadLaunchPayload(
+                                        task = task,
+                                        serverId = readyServerId.orEmpty(),
+                                        conversationDirectory = appShellConversationDirectory,
+                                        timeContext = threadTimeContext,
+                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                        compactConsecutiveMessages = compactConsecutiveMessages,
+                                    )?.let(::openLaunchPayloadInAdaptiveDetail)
+                                if (overlaySelection != null) {
+                                    tasksDetailOverlayActive = true
+                                    bridge.log(
+                                        "tasks_detail_overlay_open task=${task.id} " +
+                                            "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
+                                    )
+                                    return@SharedTasksScreen
+                                }
+                                pager.openStandaloneTaskThreadPage(
+                                    task = task,
+                                    serverId = readyServerId.orEmpty(),
+                                    conversationDirectory = appShellConversationDirectory,
+                                    timeContext = threadTimeContext,
+                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                    compactConsecutiveMessages = compactConsecutiveMessages,
+                                                            storeScope = navigationStoreScope
+                                )
+                            }
+                        )
+                        if (tasksDetailOverlayOpen) {
+                            SlockTasksDetailOverlay(
+                                onDismiss = ::closeTasksDetailOverlay,
+                                bottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                            ) { modifier ->
+                                adaptiveDetailPane(modifier, active, true)
+                            }
+                        }
+                        }
+                    }
+                    // task #13: shared list-detail host — the Activity tab renders the same
+                    // split (360dp list + workspace detail) the Home tab uses, driven by the
+                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
+                    // slot across wide/compact transitions so the native child controller,
+                    // draft and scroll state are retained rather than remounted by branch
+                    // movement; task #22 lifts only the detail slot above the floating dock.
+                    val adaptiveSplitListDetail:
+                        @Composable
+                        (
+                            enabled: Boolean,
+                            active: Boolean,
+                            listPane: @Composable (Boolean) -> Unit,
+                            detailAccepted: Boolean,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted ->
+                        val workspace = adaptiveWorkspaceState
+                        val selection = workspace?.selection?.takeIf { detailAccepted }
+                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
+                            adaptiveDetailPane(modifier, active, detailAccepted)
                         }
                         if (enabled) {
                             val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane

@@ -106,6 +106,20 @@ internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
     return copy(workspace = next, launchPayload = target)
 }
 
+/**
+ * task #34: close the whole detail, including any in-detail navigation history (the task overlay's
+ * close button / scrim). Back keeps using [backFromDetail], which unwinds one level at a time.
+ */
+internal fun SharedAdaptiveWorkspaceSession.closeDetailCompletely(): SharedAdaptiveWorkspaceSession {
+    val current = workspace ?: return this
+    if (current.selection == null) return copy(launchPayload = null, detailHistory = null)
+    return copy(
+        workspace = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail),
+        launchPayload = null,
+        detailHistory = null,
+    )
+}
+
 internal fun SharedAdaptiveWorkspaceSession.detailListSelectionId(): String? =
     detailHistory?.takeIf { it.owner == workspace?.selection }?.previous?.firstOrNull()
         ?.toSlockAdaptiveDetailIdentity(workspace?.serverId.orEmpty())?.threadId
