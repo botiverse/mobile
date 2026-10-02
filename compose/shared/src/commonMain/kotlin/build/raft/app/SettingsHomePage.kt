@@ -1227,6 +1227,8 @@ internal fun appShellSharedDetailSurfaceVisible(
         (
             (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null) ||
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                // task #33: the Slack-nav DMs tab hosts the same list + detail split.
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
                 railInlineSecondaryDestination != null
         )
 
@@ -1243,7 +1245,8 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectionPresent &&
         (
             railInlineSecondaryDestination != null ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms
         )
 
 /**
@@ -6364,12 +6367,17 @@ private fun SlockAppShellReadyContent(
                             }
                         val liveDmsTimeContext =
                             hostThreadTimeContextProvider.current?.withTimeFormat(sessionTimeFormat) ?: threadTimeContext
+                        // task #33: on DualPane the DMs list stays at left and the opened DM renders
+                        // in the shared workspace detail slot, like the Home and Activity tabs.
+                        // Before this, OpenDetail updated a detail no surface on this tab showed.
+                        val dmsListPane: @Composable (Boolean) -> Unit = { listActive ->
                         SharedDmsScreen(
-                            active = active,
+                            active = listActive,
                             directMessages = projectedDirectMessages,
                             onOpenConversation = { identity ->
                                 openHomeConversation(identity, "dms")
                             },
+                            selectedThreadId = adaptiveWorkspaceState?.selection?.identity?.threadId,
                             showHeader = true,
                             scrollToTopRequest = tabScrollToTopRequests.dms,
                             bottomContentPadding = appShellBottomContentInset,
@@ -6381,6 +6389,12 @@ private fun SlockAppShellReadyContent(
                             onRefresh = {
                                 homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                             }
+                        )
+                        }
+                        adaptiveSplitListDetail(
+                            desktopModeOnLargeScreen,
+                            active,
+                            dmsListPane,
                         )
                     }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
