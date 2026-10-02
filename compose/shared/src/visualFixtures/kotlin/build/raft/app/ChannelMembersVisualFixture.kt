@@ -69,7 +69,7 @@ private fun ChannelMembersParityContent(variant: String) {
         onExternalExpandedChange = { externalExpanded = it }, addDialogVisible = addVisible,
         onAddVisibleChange = { addVisible = it }, addMemberStatus = "idle", addMemberErrorCode = null,
         removalGate = ThreadMemberRemovalGateState(), membersFailed = false, membersLoading = false,
-        refreshing = false, canAddMembers = true, agentStatusResolver = resolver,
+        refreshing = false, canAddMembers = true, canCreateAgents = true, agentStatusResolver = resolver,
         memberAvatarResolver = EmptySlockMemberAvatarResolver, onBack = {}, onRefresh = {},
         onOpenMember = {}, onRemoveMember = {}, onSubmit = {},
     )

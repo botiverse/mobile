@@ -7,7 +7,7 @@ rollout: immediate
 ---
 
 ## zh-CN
-频道成员页按人类、Agent 顺序分组，统一标题计数、头像、角色标签与移除按钮样式。添加成员在当前页展开，候选列表支持多选和滚动，批量添加确认按钮固定在底部。
+频道成员页按人类、Agent 顺序分组，统一标题计数、头像、角色标签与移除按钮样式。添加成员在当前页展开，候选列表支持多选和滚动，批量添加确认按钮固定在底部，并提供创建新 Agent 后加入频道的入口。
 
 ## en
-Channel members now group humans before agents, with consistent header counts, avatars, role badges, and removal controls. Adding a member opens within the current page, with a scrollable multi-select candidate list and a fixed batch confirmation button.
+Channel members now group humans before agents, with consistent header counts, avatars, role badges, and removal controls. Adding a member opens within the current page, with a scrollable multi-select candidate list and a fixed batch confirmation button, plus an entry to create a new agent and join it to the channel.

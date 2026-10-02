@@ -2153,4 +2153,7 @@
     <string name="thread_members_search_placeholder">Search members…</string>
     <string name="thread_members_channel_admin">Channel admin</string>
     <string name="thread_members_add_selected">Add selected (%1$d)</string>
+    <string name="thread_members_create_agent">Create a new Agent</string>
+    <string name="thread_members_create_no_permission">You do not have permission to create agents.</string>
+    <string name="thread_members_created_join_failed">Agent created, but joining this channel failed. Retry joining without creating another agent.</string>
 </resources>

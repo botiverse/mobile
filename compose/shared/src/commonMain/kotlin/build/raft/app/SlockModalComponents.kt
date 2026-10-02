@@ -737,6 +737,7 @@ internal fun SlockModalCompactMemberRow(
     statusColor: Color?,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    selectionChecked: Boolean? = null,
     enabled: Boolean = true,
     clickEnabled: Boolean = enabled,
     avatarSize: Dp = 30.dp,
@@ -770,6 +771,10 @@ internal fun SlockModalCompactMemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        selectionChecked?.let { checked ->
+            build.raft.app.components.SlockCheckbox(checked = checked,
+                onCheckedChange = { onClick() }, enabled = enabled && clickEnabled)
+        }
         // Task #258 (artin msg=ed597ee6): the same member-row visuals are reused by
         // the task detail assignee popover (inside a native Button for dispatch).
         SlockModalCompactMemberRowContent(

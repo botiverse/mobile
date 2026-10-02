@@ -4467,6 +4467,16 @@ private fun ThreadMembersPageScreen() {
         query.isBlank() || member.displayName.lowercase().contains(query) ||
             member.handles.any { it.lowercase().contains(query) }
     }
+    var createAgentName by remember(routeOwner) { mutableStateOf<String?>(null) }
+    var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
+    LaunchedEffect(liveOwner, routeOwner) {
+        canCreateAgents = false
+        if (liveOwner == routeOwner) {
+            val session = sharedStores.authStore(storeScope).readSession()
+            canCreateAgents = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
+                ?.toServerSummary()?.permissions?.canManageSettings == true
+        } else createAgentName = null
+    }
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
@@ -4626,6 +4636,8 @@ private fun ThreadMembersPageScreen() {
             canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver, memberAvatarResolver = memberAvatarResolver,
             onBack = { router.closePage() }, onRefresh = ::refreshMembers,
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
+            canCreateAgents = canCreateAgents,
+            onCreateAgent = { if (canCreateAgents && liveOwner == routeOwner) createAgentName = it },
             onSubmit = { selectedMembers ->
                 val profiles = selectedMembers.mapNotNull { it.toMemberProfile() }
                 if (profiles.isEmpty() || profiles.size != selectedMembers.size) return@ThreadMembersPageContent
@@ -4669,6 +4681,15 @@ private fun ThreadMembersPageScreen() {
         )
         SlockBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
             if (addMemberStatus != "adding") addDialogVisible = false
+        }
+        createAgentName?.let { initialName ->
+            ChannelMembersCreateAgentDialog(
+                owner = routeOwner, channelId = route.channelId, initialName = initialName,
+                authority = authorityGateway, computersStore = sharedStores.computersStore(storeScope),
+                formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
+                onDismiss = { createAgentName = null; refreshMembers() },
+                onJoined = { createAgentName = null; addDialogVisible = false; refreshMembers() },
+            )
         }
         removalGate.pending?.let { confirmation ->
             ThreadRemoveMemberConfirmationDialog(
@@ -4731,6 +4752,8 @@ internal fun ThreadMembersPageContent(
     onOpenMember: (KuiklyThreadMemberItem) -> Unit,
     onRemoveMember: (KuiklyThreadMemberItem) -> Unit,
     onSubmit: (List<KuiklyThreadMemberItem>) -> Unit,
+    canCreateAgents: Boolean = false,
+    onCreateAgent: (String) -> Unit = {},
 ) {
     val rosterListState = rememberLazyListState()
     Column(modifier = Modifier.fillMaxSize()) {
@@ -4764,6 +4787,7 @@ internal fun ThreadMembersPageContent(
                 addMemberErrorCode = addMemberErrorCode,
                 onDismiss = { onAddVisibleChange(false) },
                 onSubmit = { onSubmit(listOf(it)) }, onSubmitBatch = onSubmit,
+                canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
             )
         } else {
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -31140,7 +31164,9 @@ private fun ThreadAddMemberModal(
     inline: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit,
-    onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null
+    onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null,
+    canCreateAgents: Boolean = false,
+    onCreateAgent: (String) -> Unit = {},
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     // Caller-local TextFieldValue is the sole editor owner for the search box;
@@ -31252,10 +31278,11 @@ private fun ThreadAddMemberModal(
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = interaction.selected,
+                                selectionChecked = if (inline) interaction.selected else null,
                                 enabled = interaction.enabled,
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
@@ -31295,10 +31322,11 @@ private fun ThreadAddMemberModal(
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = interaction.selected,
+                                selectionChecked = if (inline) interaction.selected else null,
                                 enabled = interaction.enabled,
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
@@ -31317,6 +31345,13 @@ private fun ThreadAddMemberModal(
             }
             if (inline) {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.thread_members_create_agent),
+                    modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
+                    enabled = !adding && canCreateAgents,
+                    onClick = { onCreateAgent(query.text.trim().removePrefix("@")) },
+                )
+                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = SlockType.Caption)
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
                     modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
