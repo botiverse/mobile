@@ -1,6 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.navigateDetail
+import build.raft.app.data.openWithinWideDetail
+import build.raft.app.data.visibleSideThread
 import build.raft.app.data.shouldOpenWithinAdaptiveDetail
 
 import build.raft.app.components.SlockAnchoredMetaChip
@@ -4120,17 +4121,21 @@ private fun ThreadPageScreen(
             val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
             val source = adaptiveCloseRequest
             val pane = workspaceStore.snapshot().workspace
+            val desktopModeEnabled =
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
             if (shouldOpenWithinAdaptiveDetail(
                     source = source,
                     workspace = pane,
-                    desktopModeEnabled = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync(),
+                    desktopModeEnabled = desktopModeEnabled,
                     targetServerId = targetStoreScope.initialServerId,
                 ) && source != null && pane != null
             ) {
+                // task #36: a reply under the shown channel opens in the side column when it fits;
+                // otherwise the in-pane replace; a stale source changes nothing.
                 val next = workspaceStore.update { current ->
-                    current.navigateDetail(source, launchPayload, pane.serverId)
+                    current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
                 }
-                if (next.launchPayload != launchPayload) {
+                if (next.launchPayload != launchPayload && next.visibleSideThread()?.payload != launchPayload) {
                     bridge.toast(unableToOpenThreadLabel)
                     bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
                 }

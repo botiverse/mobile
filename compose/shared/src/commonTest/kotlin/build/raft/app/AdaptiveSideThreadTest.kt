@@ -142,4 +142,46 @@ class AdaptiveSideThreadTest {
         // Folding again (re-crossing the threshold) adds nothing.
         assertSame(folded, folded.foldSideThreadIntoDetail())
     }
+
+    @Test fun wideDetailRoutingUsesSessionWidthAndKeepsStaleSourcesInert() {
+        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val wide = session().copy(detailPaneWidthDp = needed)
+        // Room for the column: opens beside the channel.
+        val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", desktopModeOnLargeScreen = true)
+        assertEquals(reply, side.visibleSideThread()!!.payload)
+        assertEquals(channel, side.launchPayload)
+        // No room (unmeasured): the valid source falls back to the in-pane replace.
+        val narrow = session().copy(detailPaneWidthDp = null)
+        val replaced = narrow.openWithinWideDetail(narrow.mainSource(), reply, "server", true)
+        assertNull(replaced.sideThread)
+        assertEquals(reply, replaced.launchPayload)
+        // Desktop mode off behaves like no room.
+        assertEquals(reply, wide.openWithinWideDetail(wide.mainSource(), reply, "server", false).launchPayload)
+        // Stale source: nothing changes.
+        val stale = SlockAdaptiveDetailCloseRequest("shell", wide.workspace!!.selection!!.identity.key, 999L)
+        assertSame(side, side.openWithinWideDetail(stale, otherReply, "server", true))
+    }
+
+    @Test fun sideColumnSourceThatCannotUseTheColumnReplacesOnBehalfOfItsOwner() {
+        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val wide = session().copy(detailPaneWidthDp = needed)
+        val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
+        val sideSource = side.visibleSideThread()!!.closeRequest("shell")
+        // From the side column, the parent channel's sibling thread elsewhere: not under the shown
+        // channel, so the main detail is replaced (with Back history) and the column goes away.
+        val result = side.openWithinWideDetail(sideSource, foreignReply, "server", true)
+        assertEquals(foreignReply, result.launchPayload)
+        assertNull(result.visibleSideThread())
+        assertEquals(listOf(channel), result.detailHistory!!.previous)
+    }
+
+    @Test fun backClosesAVisibleSideColumnFirst() {
+        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val wide = session().let { it.copy(detailPaneWidthDp = needed, workspace = it.workspace!!.copy(parentVisible = true)) }
+        assertFalse(wide.backClosesSideThreadFirst(true))
+        val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
+        assertTrue(side.backClosesSideThreadFirst(true))
+        assertFalse(side.backClosesSideThreadFirst(false))
+        assertFalse(side.copy(workspace = side.workspace!!.copy(parentVisible = false)).backClosesSideThreadFirst(true))
+    }
 }

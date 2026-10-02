@@ -117,6 +117,50 @@ internal fun SharedAdaptiveWorkspaceSession.openSideThread(
     )
 }
 
+/** Whether this session's current host can show the side column right now. */
+internal fun SharedAdaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen: Boolean): Boolean {
+    val pane = workspace?.pane ?: return false
+    return slockSideThreadColumnAvailable(desktopModeOnLargeScreen, pane, detailPaneWidthDp)
+}
+
+/**
+ * The side thread to render beside the main detail, or null when there is none for the current
+ * selection.
+ */
+internal fun SharedAdaptiveWorkspaceSession.visibleSideThread(): AdaptiveSideThread? =
+    sideThread?.takeIf { it.owner == workspace?.selection }
+
+/**
+ * Routes a thread open requested from inside the wide detail (main page or side column):
+ * side column first, then the existing in-pane replace for a valid source that cannot use it.
+ * An ignored (stale/foreign) source leaves the session untouched.
+ */
+internal fun SharedAdaptiveWorkspaceSession.openWithinWideDetail(
+    source: SlockAdaptiveDetailCloseRequest,
+    target: WireThreadLaunchPayload,
+    serverId: String,
+    desktopModeOnLargeScreen: Boolean,
+): SharedAdaptiveWorkspaceSession =
+    when (val outcome = openSideThread(source, target, serverId, sideThreadColumnAvailable(desktopModeOnLargeScreen))) {
+        is AdaptiveSideThreadOpen.Opened -> outcome.session
+        AdaptiveSideThreadOpen.Ignored -> this
+        AdaptiveSideThreadOpen.FallbackToReplace -> {
+            // A valid side-column source replaces the main detail on behalf of its owner.
+            val main = workspace?.selection
+            val replaceSource =
+                if (main != null && workspace?.acceptsDetailCallback(source.identityKey, source.generation) != true) {
+                    SlockAdaptiveDetailCloseRequest(source.shellInstanceId, main.identity.key, main.generation)
+                } else source
+            navigateDetail(replaceSource, target, serverId)
+        }
+    }
+
+/** Back on a visible detail with its side column showing closes the column first. */
+internal fun SharedAdaptiveWorkspaceSession.backClosesSideThreadFirst(desktopModeOnLargeScreen: Boolean): Boolean =
+    workspace?.parentVisible == true &&
+        visibleSideThread() != null &&
+        sideThreadColumnAvailable(desktopModeOnLargeScreen)
+
 /** Closes the side column when [request] is the current side thread's own close request. */
 internal fun SharedAdaptiveWorkspaceSession.closeSideThread(
     request: SlockAdaptiveDetailCloseRequest,
