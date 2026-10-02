@@ -19346,6 +19346,7 @@ class SharedThreadStoreTest {
                 "cancelled loadNewer must join within 2s",
             )
             assertSingleTerminalSince("newer_page", "cancelled", floor)
+            Unit
         } finally {
             scope.cancel()
         }
