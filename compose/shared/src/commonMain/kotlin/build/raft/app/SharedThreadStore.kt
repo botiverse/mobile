@@ -7361,11 +7361,11 @@ internal class SharedThreadStore(
                                     accessResolution = nextResolution,
                                     homeLookupComplete = true,
                                     homeAccessCandidate = candidate
-                                ),
-                            writeTag = "access_apply",
-                            operationSeq = accessOp,
-                            requestRouteToken = accessTok,
-                        )
+                                )
+                        ),
+                        writeTag = "access_apply",
+                        operationSeq = accessOp,
+                        requestRouteToken = accessTok,
                     )
                 }
                 if (
@@ -7966,7 +7966,7 @@ internal class SharedThreadStore(
                     return
                 }
                 run {
-                    val (op, tok) = issueOperationSeq("members_load_apply", "threadId=$threadKey", capturedToken = staleToken)
+                    val (op, tok) = issueOperationSeq("members_load_apply", "threadId=$threadKey")
                     reducePayloadPatch(cachePayload = true, writeTag = "members_load_apply", operationSeq = op, requestRouteToken = tok) { currentPayload ->
                         if (!routeStillCurrent(basePayload, "thread_members_load", "apply", currentPayload)) {
                             return@reducePayloadPatch currentPayload
@@ -8552,6 +8552,14 @@ internal class SharedThreadStore(
             },
             "result=${result.threadDiagnosticsResult()}",
         )
+            val applied = _state.value.payload
+            if (
+                result is DataResult.Content &&
+                staleToken.isCurrent(routeStaleToken) &&
+                routeStillCurrent(existing, "thread_page", "older_secondary", applied)
+            ) {
+                launchSecondaryTimelineRefresh(applied, staleToken)
+            }
         } finally {
             if (!olderTerminalLogged) {
                 logFetchTerminal(
@@ -8562,14 +8570,6 @@ internal class SharedThreadStore(
                     "reason=thrown_or_cancelled",
                 )
             }
-        }
-        val applied = _state.value.payload
-        if (
-            result is DataResult.Content &&
-            staleToken.isCurrent(routeStaleToken) &&
-            routeStillCurrent(existing, "thread_page", "older_secondary", applied)
-        ) {
-            launchSecondaryTimelineRefresh(applied, staleToken)
         }
     }
 
