@@ -5832,6 +5832,9 @@ internal class SharedThreadStore(
     initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     private val beforeFocusedOriginCommit: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
     private val afterRefreshLoadingStateApplied: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
+    // task #58 observability test seam: fires inside loadNewer after the route
+    // token is captured and the load gate is armed, before the fetchSeq issue.
+    internal var onNewerPageIssueFenceForTest: (suspend () -> Unit)? = null,
     private val threadRepliesSyncHost: ThreadRepliesSyncHost = ThreadRepliesSyncHost(),
     // task #243: the initial-access lookup deadline as an injectable SIGNAL rather than a bare
     // duration. Production keeps the wall clock; a test can hand in a barrier it completes
@@ -8472,6 +8475,7 @@ internal class SharedThreadStore(
             } ?: return ThreadNewerPageLoadOutcome.Ignored
         var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
+        onNewerPageIssueFenceForTest?.invoke()
         val (fetchSeq, newerFetchToken) = issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId", capturedToken = staleToken)
         try {
             val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=$fetchSeq")

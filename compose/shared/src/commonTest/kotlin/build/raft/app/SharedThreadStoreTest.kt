@@ -131,6 +131,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -15878,6 +15880,7 @@ class SharedThreadStoreTest {
         var failChannelMessages: Boolean = false,
         var channelMessagesResponseCode: Int = 200
     ) : SharedThreadNetworkApi {
+        private val recordMutex = Mutex()
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
         var readAllDelayMillis: Long = 0L
@@ -15928,10 +15931,12 @@ class SharedThreadStoreTest {
             afterSeq: Long?,
             requestTrace: String?
         ): HomeNetworkResponse {
-            channelMessagesRequestTraces += requestTrace
-            channelMessageCalls += 1
-            channelIds += threadId
-            channelMessageLimits += limit
+            recordMutex.withLock {
+                channelMessagesRequestTraces += requestTrace
+                channelMessageCalls += 1
+                channelIds += threadId
+                channelMessageLimits += limit
+            }
             if (beforeSeq == null && afterSeq == null) {
                 channelMessagesStarted?.complete(Unit)
                 channelMessagesStartedByThreadId[threadId]?.complete(Unit)
@@ -15942,13 +15947,13 @@ class SharedThreadStoreTest {
             val responseBody = bodyTextByThreadId[threadId] ?: bodyText
             return when {
                 beforeSeq != null -> {
-                    beforeSeqs += beforeSeq
+                    recordMutex.withLock { beforeSeqs += beforeSeq }
                     beforeMessagesStarted?.complete(Unit)
                     releaseBeforeMessages?.await()
                     HomeNetworkResponse(code = 200, bodyText = olderBodyText)
                 }
                 afterSeq != null -> {
-                    afterSeqs += afterSeq
+                    recordMutex.withLock { afterSeqs += afterSeq }
                     afterMessagesStarted?.complete(Unit)
                     releaseAfterMessages?.await()
                     HomeNetworkResponse(code = newerResponseCode, bodyText = newerBodyText)
@@ -15958,12 +15963,17 @@ class SharedThreadStoreTest {
         }
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
-            syncRequestTraces += requestTrace
-            val startedSignal = syncStartedSignals.removeFirstOrNull()
-            val callRelease = syncReleases.removeFirstOrNull()
-            val responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
-            syncSinceSeqs += sinceSeq
-            syncLimits += limit
+            val startedSignal: CompletableDeferred<Unit>?
+            val callRelease: CompletableDeferred<Unit>?
+            val responseBody: String
+            recordMutex.withLock {
+                syncRequestTraces += requestTrace
+                startedSignal = syncStartedSignals.removeFirstOrNull()
+                callRelease = syncReleases.removeFirstOrNull()
+                responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
+                syncSinceSeqs += sinceSeq
+                syncLimits += limit
+            }
             startedSignal?.complete(Unit)
             syncStarted?.complete(Unit)
             (callRelease ?: releaseSync)?.await()
@@ -18490,17 +18500,31 @@ class SharedThreadStoreTest {
             )
             api.releaseAfterMessages = CompletableDeferred()
             api.releaseBeforeMessages = CompletableDeferred()
+            api.afterMessagesStarted = CompletableDeferred()
+            api.beforeMessagesStarted = CompletableDeferred()
             // Both accept() calls race on Dispatchers.Default — whichever
             // reaches issueFetchSeq first wins; the atomic counter must still
-            // hand out two distinct seqs.
-            // async on Default so the two accept() bodies actually interleave
-            // at their issue points; inherit from runBlocking would serialize
-            // them before any suspension.
-            val jobA = async(Dispatchers.Default) { store.accept(SharedThreadIntent.LoadNewer) }
-            val jobB = async(Dispatchers.Default) { store.accept(SharedThreadIntent.LoadOlder) }
-            withTimeout(5_000) {
-                while (api.afterSeqs.isEmpty() || api.beforeSeqs.isEmpty()) yield()
-            }
+            // hand out two distinct seqs. A common start barrier aligns their
+            // first suspension so neither can finish issuing before the other
+            // starts (without it the test could pass on a purely sequential
+            // schedule).
+            val startBarrier = CompletableDeferred<Unit>()
+            val jobA =
+                async(Dispatchers.Default) {
+                    startBarrier.await()
+                    store.accept(SharedThreadIntent.LoadNewer)
+                }
+            val jobB =
+                async(Dispatchers.Default) {
+                    startBarrier.await()
+                    store.accept(SharedThreadIntent.LoadOlder)
+                }
+            startBarrier.complete(Unit)
+            // Both requests must actually reach the boundary (started gates
+            // prove the two issues interleaved past allocation before either
+            // response is released).
+            withTimeout(5_000) { api.afterMessagesStarted?.await() }
+            withTimeout(5_000) { api.beforeMessagesStarted?.await() }
             api.releaseAfterMessages?.complete(Unit)
             api.releaseBeforeMessages?.complete(Unit)
             withTimeout(5_000) { jobA.await() }
@@ -18517,6 +18541,104 @@ class SharedThreadStoreTest {
                 "racing issue points must not allocate the same fetchSeq: $olderIssued / $newerIssued",
             )
         } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun generationAdvanceBetweenCaptureAndIssueKeepsOriginalTokenOnIdentity() = runBlocking {
+        // task #58 observability contract: the request identity must carry the
+        // token captured at the operation's own context — if the route
+        // generation advances between that capture and issueFetchSeq, the
+        // issue log and the boundary trace still name the ORIGINAL token.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..46L),
+                )
+            val logChannel = Channel<String>(capacity = Channel.UNLIMITED)
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = scope,
+                    diagnosticsLogger = { logChannel.trySend(it) },
+                )
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            // Controlled interleave: when loadNewer reaches the fence (token
+            // already captured, fetchSeq not yet issued), advance the route
+            // generation via a concurrent Refresh parked at the canonical
+            // boundary; the newer page then issues under the OLD token.
+            api.channelMessagesStarted = CompletableDeferred()
+            api.releaseChannelMessages = CompletableDeferred()
+            api.afterMessagesStarted = CompletableDeferred()
+            api.releaseAfterMessages = CompletableDeferred()
+            val fenceReached = CompletableDeferred<Unit>()
+            val refreshParked = CompletableDeferred<Unit>()
+            store.onNewerPageIssueFenceForTest = {
+                if (!fenceReached.isCompleted) {
+                    fenceReached.complete(Unit)
+                    refreshParked.await()
+                }
+            }
+            val newerJob = async { store.accept(SharedThreadIntent.LoadNewer) }
+            withTimeout(5_000) { fenceReached.await() }
+            val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+            withTimeout(5_000) { api.channelMessagesStarted?.await() }
+            refreshParked.complete(Unit)
+            api.releaseAfterMessages?.complete(Unit)
+            withTimeout(5_000) { newerJob.await() }
+            api.bodyText =
+                messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
+            api.releaseChannelMessages?.complete(Unit)
+            withTimeout(5_000) { refreshJob.await() }
+
+            val logs = generateSequence { logChannel.tryReceive().getOrNull() }.toList()
+            val issued = logs.filter { it.startsWith("thread_fetch_issued") }
+            val newerIssued = issued.last { it.contains("kind=newer_page") }
+            val refreshIssued = issued.last { it.contains("kind=refresh_canonical") }
+            val newerToken = Regex("routeToken=(\d+)").find(newerIssued)!!.groupValues[1]
+            val refreshToken = Regex("routeToken=(\d+)").find(refreshIssued)!!.groupValues[1]
+            assertNotEquals(
+                newerToken,
+                refreshToken,
+                "Refresh must advance the generation between capture and issue: $newerIssued / $refreshIssued",
+            )
+            val newerSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+            val storeSeq = Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+            assertTrue(
+                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=$newerSeq"),
+                "newer boundary trace missing; traces=${api.channelMessagesRequestTraces}",
+            )
+            val newerReject =
+                logs.filter {
+                    it.contains("thread_payload_messages_write_rejected") && it.contains("tag=newer_")
+                }
+            assertTrue(
+                newerReject.any {
+                    it.contains("requestRouteToken=$newerToken") &&
+                        it.contains("routeToken=$refreshToken") &&
+                        it.contains("fetchSeq=$newerSeq")
+                },
+                "reject must name original token $newerToken + current $refreshToken + fetchSeq=$newerSeq; got $newerReject",
+            )
+        } finally {
+            store.onNewerPageIssueFenceForTest = null
             scope.cancel()
         }
     }
