@@ -20071,6 +20071,126 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun realtimeWriterInterleavedInsideInFlightFetchKeepsDisjointAttribution() = runBlocking {
+        // task #58 observability: a realtime MessageNew write that lands while
+        // a refresh_canonical fetch is parked mid-flight is a LOCAL op source —
+        // it must carry its own operationSeq and fetchSeq=-1, and the fetch's
+        // terminal must still close against its own fetchSeq/token. The two
+        // write sources interleaved inside one issue→terminal window must not
+        // borrow each other's identity.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = api,
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
+                )
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
+                    )
+                )
+            )
+
+            // Park the canonical refresh fetch at the boundary.
+            api.channelMessagesStarted = CompletableDeferred()
+            api.releaseChannelMessages = CompletableDeferred()
+            api.bodyText = messagesResponse("refreshed", id = "m16", seq = 16, historyLimited = false)
+            val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+            withTimeout(5_000) { api.channelMessagesStarted?.await() }
+            val canonicalIssued =
+                logs.lastOrNull {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "refresh_canonical"
+                }
+            check(canonicalIssued != null) { "expected a refresh_canonical issued; logs=$logs" }
+            val canonicalFields = parseDiagFields(canonicalIssued)
+            val canonicalFetchSeq = canonicalFields["fetchSeq"]!!
+
+            // Interleave a realtime writer while the fetch is in flight.
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(
+                        Message(
+                            id = MessageId("m17"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            author = member("u2", "Stdrc"),
+                            seq = 17,
+                            timestampLabel = "2026-05-19T16:01:00Z",
+                            body = "interleaved realtime body"
+                        )
+                    )
+                )
+            )
+            api.releaseChannelMessages?.complete(Unit)
+            withTimeout(5_000) { refreshJob.await() }
+
+            // The realtime write is attributed as a local op: its own
+            // operationSeq, fetchSeq=-1, and it never borrows the parked
+            // fetch's fetchSeq.
+            val realtimeWrites =
+                logs.filter {
+                    it.startsWith("thread_payload_messages_write") &&
+                        parseDiagFields(it)["tag"] == "realtime_stable_selected_apply"
+                }
+            check(realtimeWrites.isNotEmpty()) {
+                "expected a realtime_stable_selected_apply messages write; logs=$logs"
+            }
+            for (write in realtimeWrites) {
+                val fields = parseDiagFields(write)
+                assertNotEquals(
+                    canonicalFetchSeq,
+                    fields["fetchSeq"],
+                    "realtime write must not carry the parked fetch's fetchSeq; got $write",
+                )
+                assertEquals(
+                    "-1",
+                    fields["fetchSeq"],
+                    "realtime write is a local op source — fetchSeq must be -1; got $write",
+                )
+                assertTrue(
+                    fields["operationSeq"]!!.toLong() >= 1,
+                    "realtime write must carry its own operationSeq; got $write",
+                )
+            }
+            // The parked fetch still closes with exactly one terminal bound to
+            // its own fetchSeq/token — the interleaved writer did not consume
+            // or duplicate it.
+            val terminals =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["kind"] == "refresh_canonical" &&
+                        parseDiagFields(it)["fetchSeq"] == canonicalFetchSeq
+                }
+            check(terminals.size == 1) {
+                "expected exactly 1 refresh_canonical terminal for fetchSeq=$canonicalFetchSeq; " +
+                    "got ${terminals.size}; logs=$logs"
+            }
+            assertEquals(
+                canonicalFields["routeToken"],
+                parseDiagFields(terminals.single())["requestRouteToken"],
+                "canonical terminal must carry the issued routeToken; issued=$canonicalFields",
+            )
+        } finally {
+            scope.cancel()
+        }
+        Unit
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
