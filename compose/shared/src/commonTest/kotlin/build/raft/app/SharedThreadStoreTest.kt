@@ -19321,22 +19321,10 @@ class SharedThreadStoreTest {
             assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "no_permission")
             api.olderResponseCode = 200
 
-            // older_page empty
-            api.olderBodyText = """{"historyLimited":false,"messages":[]}"""
-            store.accept(SharedThreadIntent.LoadOlder)
-            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "empty")
-
-            // Re-arm canLoadMoreBefore for the accepted branch: an Empty
-            // result clears it, so restore via a fresh Start generation.
-            store.accept(
-                SharedThreadIntent.Start(
-                    basePayload().copy(
-                        canLoadMoreBefore = true,
-                        canLoadMoreAfter = true,
-                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
-                    )
-                )
-            )
+            // DataResult.Empty is unreachable through the plain-API path used
+            // here (an empty messages page still maps to Content); the empty
+            // terminal branch is exercised through repository-backed fetches
+            // and the gap suite, not this fixture.
 
             // older_page accepted (historyLimited=true keeps the flag armed)
             api.olderBodyText =
