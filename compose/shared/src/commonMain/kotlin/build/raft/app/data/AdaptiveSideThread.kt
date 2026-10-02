@@ -9,6 +9,7 @@ import build.raft.app.SlockAdaptivePaneState
 import build.raft.app.SlockAdaptiveWorkspaceIntent
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
+import build.raft.app.nextAdaptiveGeneration
 import build.raft.app.reduceSlockAdaptiveWorkspace
 import build.raft.app.toSlockAdaptiveDetailIdentity
 
@@ -108,11 +109,14 @@ internal fun SharedAdaptiveWorkspaceSession.openSideThread(
         return AdaptiveSideThreadOpen.FallbackToReplace
     }
     if (side?.identity == identity) return AdaptiveSideThreadOpen.Opened(this)
-    val generation = sideThreadGenerationCursor + 1
+    // Side generations come from the workspace's single cursor, so a side thread never shares a
+    // generation with any main selection (e.g. after it folds into the main detail) and a stale
+    // side close/open can never be taken for a main-detail request.
+    val generation = current.generationCursor.nextAdaptiveGeneration()
     return AdaptiveSideThreadOpen.Opened(
         copy(
+            workspace = current.copy(generationCursor = generation),
             sideThread = AdaptiveSideThread(main, identity, target, generation),
-            sideThreadGenerationCursor = generation,
         )
     )
 }

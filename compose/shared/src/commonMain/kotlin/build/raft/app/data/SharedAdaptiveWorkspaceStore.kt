@@ -28,7 +28,6 @@ internal data class SharedAdaptiveWorkspaceSession(
     val lastWindowFactCapturedAtMillis: Long = 0L,
     /** task #36: reply thread shown in its own column beside the selected channel/DM. */
     val sideThread: AdaptiveSideThread? = null,
-    val sideThreadGenerationCursor: Long = 0L,
     /**
      * task #36: measured width (dp) of the detail pane on the host currently showing it, after the
      * rail, list, dividers and insets. Null while unmeasured or on a host without a side column.

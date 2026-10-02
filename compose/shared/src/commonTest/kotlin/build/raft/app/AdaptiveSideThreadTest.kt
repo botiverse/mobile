@@ -50,7 +50,7 @@ class AdaptiveSideThreadTest {
     @Test fun replyUnderTheShownChannelOpensBesideItWithoutChangingTheMainDetail() {
         val root = session()
         val opened = root.openSideThread(root.mainSource(), reply, "server", columnAvailable = true).opened()
-        assertEquals(root.workspace, opened.workspace)
+        assertEquals(root.workspace!!.selection, opened.workspace!!.selection)
         assertEquals(channel, opened.launchPayload)
         assertEquals(reply, opened.sideThread!!.payload)
         assertEquals(root.workspace!!.selection, opened.sideThread!!.owner)
@@ -183,5 +183,26 @@ class AdaptiveSideThreadTest {
         assertTrue(side.backClosesSideThreadFirst(true))
         assertFalse(side.backClosesSideThreadFirst(false))
         assertFalse(side.copy(workspace = side.workspace!!.copy(parentVisible = false)).backClosesSideThreadFirst(true))
+    }
+
+    @Test fun aFoldedSideThreadNeverSharesAGenerationWithAnOldSideRequest() {
+        // LiBai #2809: main gen 1, side S then T, then fold T into the main detail. The old side
+        // T close/open request must not be accepted as a main-detail request afterwards.
+        val root = session()
+        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
+        val s2 = s1.openSideThread(s1.mainSource(), otherReply, "server", true).opened()
+        val oldSideT = s2.sideThread!!.closeRequest("shell")
+        val folded = s2.foldSideThreadIntoDetail()
+        val mainNow = folded.workspace!!.selection!!
+        assertEquals(otherReply.toSlockAdaptiveDetailIdentity("server"), mainNow.identity)
+        assertNotEquals(oldSideT.generation, mainNow.generation)
+        assertFalse(folded.workspace!!.acceptsDetailCallback(oldSideT.identityKey, oldSideT.generation))
+        // The stale side close is not a main Back, and a stale side open changes nothing.
+        assertEquals(folded, folded.backFromDetail(oldSideT))
+        assertSame(folded, folded.closeSideThread(oldSideT))
+        assertSame(folded, folded.openWithinWideDetail(oldSideT, reply, "server", true))
+        // Every side generation is unique against every main generation.
+        assertTrue(s1.sideThread!!.generation > root.workspace!!.selection!!.generation)
+        assertTrue(s2.sideThread!!.generation > s1.sideThread!!.generation)
     }
 }
