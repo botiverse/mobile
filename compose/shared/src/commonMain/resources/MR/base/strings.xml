@@ -487,7 +487,7 @@
     <string name="thread_members_remove_confirm_question">Remove %1$s from #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Ordinary channel delivery stops for them. Existing followed threads are not automatically unfollowed; followed public threads can still notify them until they unfollow or manage those threads. Private content remains gated by current access.</string>
     <string name="thread_members_refresh_detail">REFRESH THIS CONVERSATION AND TRY AGAIN.</string>
-    <string name="thread_members_search_placeholder">Search members</string>
+    <string name="thread_members_search_placeholder">Search members…</string>
     <string name="thread_members_external">Slack participants</string>
     <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">Search</string>
@@ -2149,4 +2149,11 @@
     <string name="search_error_too_broad">Search is too broad</string>
     <string name="search_error_too_broad_detail">Add a channel, sender, or time filter, or sort by newest.</string>
     <string name="members_select_detail">Select a member to view details</string>
+    <string name="thread_members_heading">Members</string>
+    <string name="thread_members_channel_admin">Channel admin</string>
+    <string name="thread_members_add_selected">Add selected (%1$d)</string>
+    <string name="thread_members_create_agent">Create a new Agent</string>
+    <string name="thread_members_create_no_permission">You do not have permission to create agents.</string>
+    <string name="thread_members_created_join_failed">Agent created, but joining this channel failed. Retry joining without creating another agent.</string>
+    <string name="thread_members_create_named_agent">Create %1$s</string>
 </resources>

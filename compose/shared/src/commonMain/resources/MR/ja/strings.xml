@@ -487,7 +487,7 @@
     <string name="thread_members_remove_confirm_question">%1$s を #%2$s から削除しますか？</string>
     <string name="thread_members_remove_confirm_detail">このメンバーへの通常のチャンネル配信は停止します。フォロー中のスレッドは自動的には解除されず、フォロー中の公開スレッドからは本人が解除または整理するまで通知が届く場合があります。非公開コンテンツは引き続き現在のアクセス権で保護されます。</string>
     <string name="thread_members_refresh_detail">この会話を更新して、もう一度お試しください。</string>
-    <string name="thread_members_search_placeholder">メンバーを検索</string>
+    <string name="thread_members_search_placeholder">メンバーを検索…</string>
     <string name="thread_members_external">Slack 参加者</string>
     <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">検索</string>
@@ -2142,4 +2142,11 @@
     <string name="search_error_too_broad">検索範囲が広すぎます</string>
     <string name="search_error_too_broad_detail">チャンネル、送信者、期間で絞り込むか、新しい順で検索してください。</string>
     <string name="members_select_detail">メンバーを選択して詳細を表示</string>
+    <string name="thread_members_heading">メンバー</string>
+    <string name="thread_members_channel_admin">チャンネル管理者</string>
+    <string name="thread_members_add_selected">選択したメンバーを追加（%1$d）</string>
+    <string name="thread_members_create_agent">新しい Agent を作成</string>
+    <string name="thread_members_create_no_permission">Agent を作成する権限がありません。</string>
+    <string name="thread_members_created_join_failed">Agent は作成されましたが、チャンネルへの参加に失敗しました。再作成せずに参加を再試行できます。</string>
+    <string name="thread_members_create_named_agent">%1$s を作成</string>
 </resources>

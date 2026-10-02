@@ -487,7 +487,7 @@
     <string name="thread_members_remove_confirm_question">要将 %1$s 移出 #%2$s 吗？</string>
     <string name="thread_members_remove_confirm_detail">该成员将停止接收此频道的普通消息。已关注的消息列不会自动取消关注；在其取消关注或管理这些消息列之前，已关注的公开消息列仍可能通知该成员。私密内容仍按当前访问权限控制。</string>
     <string name="thread_members_refresh_detail">请刷新当前对话后重试。</string>
-    <string name="thread_members_search_placeholder">搜索成员</string>
+    <string name="thread_members_search_placeholder">搜索成员…</string>
     <string name="thread_members_external">Slack 参与者</string>
     <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">搜索</string>
@@ -2149,4 +2149,11 @@
     <string name="search_error_too_broad">搜索范围过大</string>
     <string name="search_error_too_broad_detail">请添加频道、发送者或时间筛选，或按最新排序。</string>
     <string name="members_select_detail">选择成员以查看详情</string>
+    <string name="thread_members_heading">成员</string>
+    <string name="thread_members_channel_admin">频道管理员</string>
+    <string name="thread_members_add_selected">添加所选（%1$d）</string>
+    <string name="thread_members_create_agent">创建一个新 Agent</string>
+    <string name="thread_members_create_no_permission">没有创建 Agent 的权限。</string>
+    <string name="thread_members_created_join_failed">Agent 已创建，但加入频道失败。请重试加入，不会重复创建。</string>
+    <string name="thread_members_create_named_agent">创建 %1$s</string>
 </resources>
