@@ -20454,11 +20454,22 @@ class SharedThreadStoreTest {
                     bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
                     newerBodyText = newerRowsBody(17L..20L),
                 )
-            // Record lines but throw while recording — models a sink that
-            // persists what it saw and still throws at the caller.
+            // Record lines but throw while recording ONLY the task #58
+            // lifecycle records (issue/terminal/payload receipts) and the
+            // stale-drop guard lines — the sites that sit on the reject path
+            // before a terminal is written. Narrative logs stay silent.
             val throwingLogger: (String) -> Unit = { message ->
                 logs += message
-                throw IllegalStateException("log boom")
+                if (
+                    message.startsWith("thread_fetch_issued") ||
+                    message.startsWith("thread_op_issued") ||
+                    message.startsWith("thread_fetch_terminal") ||
+                    message.startsWith("thread_payload_terminal") ||
+                    message.startsWith("thread_payload_messages_write") ||
+                    message.contains("_stale_drop")
+                ) {
+                    throw IllegalStateException("log boom")
+                }
             }
             val store =
                 SharedThreadStore(
