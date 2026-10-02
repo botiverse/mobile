@@ -14,7 +14,6 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
 import build.raft.app.components.SlockAnchoredToolbarChip
-import build.raft.app.components.SlockBrutalPanelShell
 import build.raft.app.components.SlockBrutalReadOnlyField
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalSectionLabel
@@ -18660,7 +18659,7 @@ private fun SharedCreateChannelDialog(
                     enabled = !submitting,
                     hint = stringResource(MR.strings.channel_create_hint_name_format),
                     error = nameError,
-                    autoFocus = true
+                    autoFocus = false
                 )
             }
             item {
@@ -18842,69 +18841,64 @@ private fun SharedCreateChannelMemberPicker(
                     placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
                     onValueChange = onQueryChange
                 )
-                SlockBrutalPanelShell(
-                    modifier =
+                SlockModalListShell(
+                    height = 192.dp,
+                    listModifier =
                         Modifier
-                            .fillMaxWidth()
-                            .height(192.dp)
+                            .bouncesEnable(false)
+                            .nestedScroll(
+                                scrollUp = NestedScrollMode.PARENT_FIRST,
+                                scrollDown = NestedScrollMode.SELF_FIRST
+                            )
                 ) {
                     if (!hasFilteredMembers) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 18.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray
-                            )
+                        item(key = "empty-search-state") {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 18.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
+                                    style = SlockType.Caption,
+                                    color = SlockColor.TextMutedGray
+                                )
+                            }
                         }
                     } else {
-                        LazyColumn(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .bouncesEnable(false)
-                                    .nestedScroll(
-                                        scrollUp = NestedScrollMode.SELF_ONLY,
-                                        scrollDown = NestedScrollMode.SELF_ONLY
+                        if (filteredAgentMembers.isNotEmpty()) {
+                            item(key = "agents-header") {
+                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
+                            }
+                            filteredAgentMembers.forEach { member ->
+                                item(key = member.memberSelectionKey) {
+                                    SharedCreateChannelMemberRow(
+                                        member = member,
+                                        selected = member.memberSelectionKey in selectedKeys,
+                                        enabled = enabled,
+                                        agentStatusResolver = agentStatusResolver,
+                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                                        onClick = { onToggle(member.memberSelectionKey) }
                                     )
-                        ) {
-                            if (filteredAgentMembers.isNotEmpty()) {
-                                item(key = "agents-header") {
-                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
-                                }
-                                filteredAgentMembers.forEach { member ->
-                                    item(key = member.memberSelectionKey) {
-                                        SharedCreateChannelMemberRow(
-                                            member = member,
-                                            selected = member.memberSelectionKey in selectedKeys,
-                                            enabled = enabled,
-                                            agentStatusResolver = agentStatusResolver,
-                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                            onClick = { onToggle(member.memberSelectionKey) }
-                                        )
-                                    }
                                 }
                             }
-                            if (filteredHumanMembers.isNotEmpty()) {
-                                item(key = "humans-header") {
-                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
-                                }
-                                filteredHumanMembers.forEach { member ->
-                                    item(key = member.memberSelectionKey) {
-                                        SharedCreateChannelMemberRow(
-                                            member = member,
-                                            selected = member.memberSelectionKey in selectedKeys,
-                                            enabled = enabled,
-                                            agentStatusResolver = agentStatusResolver,
-                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                            onClick = { onToggle(member.memberSelectionKey) }
-                                        )
-                                    }
+                        }
+                        if (filteredHumanMembers.isNotEmpty()) {
+                            item(key = "humans-header") {
+                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
+                            }
+                            filteredHumanMembers.forEach { member ->
+                                item(key = member.memberSelectionKey) {
+                                    SharedCreateChannelMemberRow(
+                                        member = member,
+                                        selected = member.memberSelectionKey in selectedKeys,
+                                        enabled = enabled,
+                                        agentStatusResolver = agentStatusResolver,
+                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                                        onClick = { onToggle(member.memberSelectionKey) }
+                                    )
                                 }
                             }
                         }

@@ -1686,6 +1686,7 @@ internal fun SlockBrutalListShell(
     height: Dp,
     modifier: Modifier = Modifier,
     shadowOffset: Dp = SlockShadow.Brutal,
+    listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
     // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on
@@ -1715,7 +1716,8 @@ internal fun SlockBrutalListShell(
                     .fillMaxWidth()
                     .height(height)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .then(listModifier),
             verticalArrangement = Arrangement.spacedBy(0.dp),
             content = content
         )

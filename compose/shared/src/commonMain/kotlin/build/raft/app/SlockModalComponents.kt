@@ -720,9 +720,16 @@ internal fun SlockModalSquareActionButton(
 @Composable
 internal fun SlockModalListShell(
     height: Dp,
+    modifier: Modifier = Modifier,
+    listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
-    SlockBrutalListShell(height = height, content = content)
+    SlockBrutalListShell(
+        height = height,
+        modifier = modifier,
+        listModifier = listModifier,
+        content = content
+    )
 }
 
 @Composable
