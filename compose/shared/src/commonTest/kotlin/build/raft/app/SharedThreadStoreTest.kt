@@ -20241,6 +20241,102 @@ class SharedThreadStoreTest {
         Unit
     }
 
+    @Test
+    fun refreshLoadingApplyOpClosesWithExactlyOnePayloadReceipt() = runBlocking {
+        // task #58 observability (loading-op terminal receipt): every issued
+        // `refresh_loading_apply` op must resolve to exactly one payload
+        // receipt — a `thread_payload_terminal` (status_only / no_change /
+        // rejected) or a messages write — carrying its own opSeq and issued
+        // requestRouteToken. The loading apply only flips
+        // status/backgroundRefreshing (never the message list), so the
+        // canonical receipt shape is `result=status_only`.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText = messagesResponse("base", id = "m16", seq = 16, historyLimited = false),
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = api,
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
+                )
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "base")),
+                    )
+                )
+            )
+            store.accept(SharedThreadIntent.Refresh)
+
+            val loadingIssues =
+                logs.filter {
+                    it.startsWith("thread_op_issued") &&
+                        parseDiagFields(it)["kind"] == "refresh_loading_apply"
+                }
+            check(loadingIssues.isNotEmpty()) {
+                "expected refresh_loading_apply op issues; logs=$logs"
+            }
+            var statusOnlySeen = 0
+            for (issue in loadingIssues) {
+                val issuedFields = parseDiagFields(issue)
+                val opSeq = issuedFields["opSeq"]!!
+                val terminals =
+                    logs.filter {
+                        it.startsWith("thread_payload_terminal") &&
+                            parseDiagFields(it)["tag"] == "refresh_loading_apply" &&
+                            parseDiagFields(it)["operationSeq"] == opSeq
+                    }
+                val writes =
+                    logs.filter {
+                        it.startsWith("thread_payload_messages_write") &&
+                            parseDiagFields(it)["tag"] == "refresh_loading_apply" &&
+                            parseDiagFields(it)["operationSeq"] == opSeq
+                    }
+                check(terminals.size + writes.size == 1) {
+                    "loading opSeq=$opSeq must close with exactly 1 receipt " +
+                        "(terminal or messages write); got terminals=${terminals.size} " +
+                        "writes=${writes.size}; logs=$logs"
+                }
+                val receiptFields =
+                    parseDiagFields((terminals + writes).single())
+                assertEquals(
+                    issuedFields["routeToken"],
+                    receiptFields["requestRouteToken"],
+                    "loading op receipt must carry the issued requestRouteToken; " +
+                        "issued=$issuedFields receipt=$receiptFields",
+                )
+                assertEquals(
+                    issuedFields["storeSeq"],
+                    receiptFields["storeSeq"],
+                    "loading op receipt must carry the issuing storeSeq",
+                )
+                assertEquals(
+                    "-1",
+                    receiptFields["fetchSeq"],
+                    "loading op is a local-op source — receipt fetchSeq must be -1; got $receiptFields",
+                )
+                if (receiptFields["result"] == "status_only") statusOnlySeen += 1
+            }
+            assertTrue(
+                statusOnlySeen >= 1,
+                "at least one refresh_loading_apply must close status_only " +
+                    "(loading flips flags, not messages); statusOnlySeen=$statusOnlySeen logs=$logs",
+            )
+        } finally {
+            scope.cancel()
+        }
+        Unit
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
