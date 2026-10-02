@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.AdaptiveParentFocusRequest
 import build.raft.app.data.acceptsParentFocus
 import build.raft.app.data.sideThreadParentFocus
 import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
@@ -1712,6 +1713,9 @@ internal fun threadHeaderDisplayTitle(
     surfaceKind: String = KuiklyThreadSurfaceKind.Channel
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
+
+/** task #36: longest wait for the keyboard to close before the main detail focuses a parent. */
+private const val ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS = 1_500L
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
@@ -5887,6 +5891,8 @@ private fun SharedThreadRouteContentContent(
     val adaptiveFocusManager = LocalFocusManager.current
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
     DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
         val page = adaptiveCloseRequest
         val subscription =
@@ -5897,16 +5903,30 @@ private fun SharedThreadRouteContentContent(
                 ) { eventData ->
                     val request = eventData?.toAdaptiveParentFocusRequestOrNull() ?: return@observe
                     if (!adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request)) return@observe
-                    bridge.log("adaptive_side_thread_parent_focus result=applied generation=${page.generation}")
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.FocusMessage(
-                            messageId = request.messageId,
-                            switchToTab = KuiklyThreadTab.Chat.wireValue,
-                        )
-                    )
+                    pendingAdaptiveParentFocus = request
                 }
             }
         onDispose { subscription?.close() }
+    }
+    // The focus anchor drops (does not defer) a request while the keyboard is open (task #990),
+    // and the side page's keyboard is the window's, so wait for it to close before focusing.
+    LaunchedEffect(pendingAdaptiveParentFocus) {
+        val request = pendingAdaptiveParentFocus ?: return@LaunchedEffect
+        val closed =
+            withTimeoutOrNull(ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS) {
+                snapshotFlow { adaptivePageKeyboardInsetDp }.first { it <= 0f }
+            } != null
+        bridge.log(
+            "adaptive_side_thread_parent_focus result=applied keyboardClosed=$closed " +
+                "generation=${request.target.generation}"
+        )
+        threadViewModel.dispatch(
+            SharedThreadIntent.FocusMessage(
+                messageId = request.messageId,
+                switchToTab = KuiklyThreadTab.Chat.wireValue,
+            )
+        )
+        pendingAdaptiveParentFocus = null
     }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
@@ -10572,6 +10592,7 @@ private fun SharedThreadRouteContentContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -14003,6 +14024,7 @@ private class ThreadPageContentCallbacks(
     val onClearChannelProfileUpdateStatus: () -> Unit,
     val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
     val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerKeyboardInsetChanged: (Float) -> Unit,
     val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
 )
@@ -14099,6 +14121,7 @@ fun ThreadPageContent(
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
     onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
+    onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -14203,6 +14226,7 @@ fun ThreadPageContent(
                 onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
                 onForwardMessagesDelivered = onForwardMessagesDelivered,
                 onOpenForwardDestination = onOpenForwardDestination,
+                onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
                 onComposerSendRequest = onComposerSendRequest,
                 onComposerEvent = onComposerEvent,
             ),
@@ -14303,6 +14327,7 @@ private fun ThreadPageContentContent(
     val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
     val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
     val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onComposerKeyboardInsetChanged = callbacks.onComposerKeyboardInsetChanged
     val onThreadEvent = data.onThreadEvent
     val onComposerSendRequest = callbacks.onComposerSendRequest
     val onComposerEvent = callbacks.onComposerEvent
@@ -15413,6 +15438,7 @@ private fun ThreadPageContentContent(
                                 onKeyboardHeightChange = { nextInset ->
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
+                                        onComposerKeyboardInsetChanged(nextInset)
                                     }
                                 },
                                 adaptiveNativeEditingStateReader =
