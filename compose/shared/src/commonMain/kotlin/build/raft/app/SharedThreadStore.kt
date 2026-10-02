@@ -6305,6 +6305,8 @@ internal class SharedThreadStore(
                 producerContext?.let { context ->
                     dataSource.withCurrentReplyCacheProvenance(context.provenance) {
                         visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                        val (startWriteOpSeq, startWriteToken) =
+                            issueOperationSeq("start_visible_payload", "")
                         reduceState(
                             SharedThreadState(
                                 payload = visiblePayload,
@@ -7749,7 +7751,14 @@ internal class SharedThreadStore(
                 return false
             }
             val commitPatch = patch.withAcceptedThreadRepliesProjection(accepted, currentPayload)
-            emitted = reducePayloadPatch(cachePayload = false) { applyingPayload ->
+            val (secondaryOpSeq, secondaryToken) =
+                issueOperationSeq("secondary_timeline_apply", "source=secondary_refresh", capturedToken = staleToken)
+            emitted = reducePayloadPatch(
+                cachePayload = false,
+                writeTag = "secondary_timeline_apply",
+                operationSeq = secondaryOpSeq,
+                requestRouteToken = secondaryToken,
+            ) { applyingPayload ->
                 if (
                     !staleTokenStillCurrent(
                         staleToken,
