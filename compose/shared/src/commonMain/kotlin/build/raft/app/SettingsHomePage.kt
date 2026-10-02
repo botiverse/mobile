@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.backFromDetail
+import build.raft.app.data.withOpenedDetail
+import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.detailListSelectionId
 import build.raft.app.data.hasVisibleDetailBackHistory
 
@@ -1231,6 +1233,15 @@ internal fun appShellSharedDetailSurfaceVisible(
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
                 railInlineSecondaryDestination != null
         )
+
+/**
+ * task #33: the DMs tab only shows a DM (or a reply thread inside a DM) in its detail pane. A
+ * channel selected on Home stays Home's; next to the DMs list it renders the empty placeholder
+ * instead of a channel composer.
+ */
+internal fun appShellDmsTabShowsDetail(surfaceKind: String?, parentSurfaceKind: String?): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+        (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage)
 
 /**
  * task #13 two-step Back contract: while a rail surface (Activity tab or an inline secondary
@@ -4349,27 +4360,22 @@ private fun SlockAppShellReadyContent(
                 "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
-        val adaptiveState = adaptiveWorkspaceState
         val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
-        if (
-            desktopModeOnLargeScreen &&
-            adaptiveState?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
-            adaptiveIdentity != null
-        ) {
-            val next =
-                reduceSlockAdaptiveWorkspace(
-                    adaptiveState,
-                    SlockAdaptiveWorkspaceIntent.OpenDetail(adaptiveIdentity),
-                )
-            if (next.selection?.identity == adaptiveIdentity) {
-                if (next.selection != adaptiveState.selection || adaptiveDetailLaunchPayload == null) {
-                    installAdaptiveHandoffLease(next.selection, launchPayload)
-                }
+        if (desktopModeOnLargeScreen && adaptiveIdentity != null) {
+            // task #33: reduce on the store's CURRENT session inside the atomic update. Seeding from
+            // the compose snapshot here was a lost update: a first tap right after switching to the
+            // DMs tab could write back parentVisible=false (pre-switch), leaving the new detail
+            // inactive while the previous conversation (e.g. Home's #all) stayed on screen.
+            var before: SharedAdaptiveWorkspaceSession? = null
+            val after =
                 adaptiveWorkspaceStore.update { current ->
-                    current.copy(
-                        workspace = next,
-                        launchPayload = launchPayload,
-                    )
+                    before = current
+                    current.withOpenedDetail(adaptiveIdentity, launchPayload)
+                }
+            val opened = after.workspace?.selection?.takeIf { after !== before && it.identity == adaptiveIdentity }
+            if (opened != null) {
+                if (opened != before?.workspace?.selection || before?.launchPayload == null) {
+                    installAdaptiveHandoffLease(opened, launchPayload)
                 }
                 // Dual-pane detail does not push a native controller, so it must neither become
                 // a Forward entry nor leave an older native-push branch reachable.
@@ -4729,7 +4735,18 @@ private fun SlockAppShellReadyContent(
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
-                selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
+                selectionPresent =
+                    adaptiveWorkspaceStore.snapshot().let { session ->
+                        session.workspace?.selection != null &&
+                            // The DMs tab does not show (so must not dismiss) a channel selection.
+                            (
+                                retainedAppShellSelectedTab(selectedTab) != SlockSlackNavTabs.Dms ||
+                                    appShellDmsTabShowsDetail(
+                                        surfaceKind = session.launchPayload?.surfaceKind,
+                                        parentSurfaceKind = session.launchPayload?.parentSurfaceKind,
+                                    )
+                            )
+                    },
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -6071,10 +6088,13 @@ private fun SlockAppShellReadyContent(
                             enabled: Boolean,
                             active: Boolean,
                             listPane: @Composable (Boolean) -> Unit,
-                        ) -> Unit = { enabled, active, listPane ->
+                            detailAccepted: Boolean,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted ->
                         val workspace = adaptiveWorkspaceState
-                        val selection = workspace?.selection
-                        val detailPayload = adaptiveDetailLaunchPayload
+                        // task #33: a surface may decline the shared selection (the DMs tab shows only
+                        // DMs); a declined selection renders the empty placeholder, never its composer.
+                        val selection = workspace?.selection?.takeIf { detailAccepted }
+                        val detailPayload = adaptiveDetailLaunchPayload?.takeIf { detailAccepted }
                         val childActive =
                             active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
                         val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
@@ -6321,6 +6341,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             active,
                             homeListPane,
+                            true,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -6404,6 +6425,10 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             active,
                             dmsListPane,
+                            appShellDmsTabShowsDetail(
+                                surfaceKind = adaptiveDetailLaunchPayload?.surfaceKind,
+                                parentSurfaceKind = adaptiveDetailLaunchPayload?.parentSurfaceKind,
+                            ),
                         )
                     }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
@@ -6442,6 +6467,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             active,
                             activityListPane,
+                            true,
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->

@@ -44,6 +44,30 @@ class AdaptiveDetailNavigationTest {
         assertNull(restored.backFromDetail(restored.source()).workspace!!.selection)
     }
 
+    @Test fun wideOpenKeepsAVisibilityChangeThatLandedFirst() {
+        // task #33: the DMs tab became the visible host (parentVisible=true in the store) just
+        // before the first tap; the open must keep that instead of reverting to a stale snapshot.
+        val stale = session().let { it.copy(workspace = it.workspace!!.copy(parentVisible = false)) }
+        val live = stale.copy(workspace = stale.workspace!!.copy(parentVisible = true))
+        val replyIdentity = reply.toSlockAdaptiveDetailIdentity("server")!!
+        val opened = live.withOpenedDetail(replyIdentity, reply)
+        assertTrue(opened.workspace!!.parentVisible)
+        assertEquals(replyIdentity, opened.workspace.selection!!.identity)
+        assertEquals(reply, opened.launchPayload)
+        assertEquals(SlockAdaptiveWorkspacePresentation.Split, opened.workspace.presentation)
+        // A compact pane cannot host the detail: the session is left untouched.
+        val compact = live.copy(
+            workspace = reduceSlockAdaptiveWorkspace(
+                live.workspace!!,
+                SlockAdaptiveWorkspaceIntent.WindowChanged(
+                    SlockAdaptivePaneState(widthPx = 800, heightPx = 1600, density = 2f,
+                        posture = SlockAdaptivePanePosture.Flat, layout = SlockAdaptivePaneLayout.Compact)
+                )
+            )
+        )
+        assertSame(compact, compact.withOpenedDetail(replyIdentity, reply))
+    }
+
     @Test fun onlyAnEmbeddedWideDesktopPageInterceptsNativeNavigation() {
         val root = session()
         assertTrue(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "server"))
