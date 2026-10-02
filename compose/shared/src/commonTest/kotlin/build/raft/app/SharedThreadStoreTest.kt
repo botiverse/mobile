@@ -18978,7 +18978,9 @@ class SharedThreadStoreTest {
         val runA = runStore("body-a", 17L..20L)
         val runB = runStore("body-b", 21L..24L)
 
-        // Distinct runs must not share any identity component.
+        // Distinct runs must not share the store-level identity. fetchSeq is a
+        // per-store counter and legitimately collides across runs — the trace
+        // disambiguates via storeSeq.
         assertNotEquals(runA["trace"], runB["trace"], "two runs must not share a boundary trace")
         assertNotEquals(runA["storeSeq"], runB["storeSeq"], "two runs must not share a storeSeq")
 
@@ -19004,10 +19006,11 @@ class SharedThreadStoreTest {
         }
 
         // Cross-run isolation: run B's terminal/write must not reference run
-        // A's fetchSeq or storeSeq anywhere.
+        // A's store identity — the (storeSeq, fetchSeq) pair, not the bare
+        // per-store fetchSeq counter, is the unique fetch identity.
         assertTrue(
-            !runB["terminal"]!!.contains("fetchSeq=${runA["fetchSeq"]}"),
-            "run B terminal must not reference run A fetchSeq; got ${runB["terminal"]}",
+            !runB["terminal"]!!.contains("storeSeq=${runA["storeSeq"]}"),
+            "run B terminal must not reference run A storeSeq; got ${runB["terminal"]}",
         )
         assertTrue(
             !runB["write"]!!.contains("storeSeq=${runA["storeSeq"]}"),
@@ -19069,7 +19072,7 @@ class SharedThreadStoreTest {
         )
         // The write's fetchSeq field is the request's own — assert it is not
         // silently the shared operationSeq counter value when the two differ.
-        val opField = Regex("operationSeq=(\\d+)").find(write)!!.groupValues[1]
+        val opField = Regex("operationSeq=(-?\\d+)").find(write)!!.groupValues[1]
         // operationSeq is -1 for fetch writes; assert it is NOT equal to the
         // fetchSeq unless fetchSeq itself is 0/-1, proving the fields are
         // populated from the correct domain.
