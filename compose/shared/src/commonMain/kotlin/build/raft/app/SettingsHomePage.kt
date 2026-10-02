@@ -6679,6 +6679,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             pageVisible,
                             searchListPane,
+                            true,
                         )
                     } else {
                     AppShellTabs(
