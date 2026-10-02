@@ -2149,4 +2149,5 @@
     <string name="thread_members_create_agent">新しい Agent を作成</string>
     <string name="thread_members_create_no_permission">Agent を作成する権限がありません。</string>
     <string name="thread_members_created_join_failed">Agent は作成されましたが、チャンネルへの参加に失敗しました。再作成せずに参加を再試行できます。</string>
+    <string name="thread_members_create_named_agent">%1$s を作成</string>
 </resources>

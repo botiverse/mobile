@@ -31181,6 +31181,7 @@ private fun ThreadAddMemberModal(
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
     val selectedCandidates = candidates.filter { it.memberKey in selectedKeys && it.memberKey !in currentKeys }
     val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
+    val createName = query.text.trim().removePrefix("@").takeIf { filteredCandidates.isEmpty() }.orEmpty()
     val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
@@ -31346,10 +31347,11 @@ private fun ThreadAddMemberModal(
             if (inline) {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
                 SlockBrutalActionButton(
-                    label = stringResource(MR.strings.thread_members_create_agent),
+                    label = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
+                        else stringResource(MR.strings.thread_members_create_named_agent, createName),
                     modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
                     enabled = !adding && canCreateAgents,
-                    onClick = { onCreateAgent(query.text.trim().removePrefix("@")) },
+                    onClick = { onCreateAgent(createName) },
                 )
                 if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = SlockType.Caption)
                 SlockBrutalActionButton(
