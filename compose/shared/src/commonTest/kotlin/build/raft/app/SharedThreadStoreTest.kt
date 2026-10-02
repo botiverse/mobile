@@ -18954,6 +18954,28 @@ class SharedThreadStoreTest {
                         )
                     )
                 )
+                // Generation-advance proof of original-owner binding: park an
+                // older fetch, advance the route via Refresh, then release —
+                // its terminal must carry the PRE-advance requestRouteToken
+                // while the current routeToken field shows the new generation.
+                api.beforeMessagesStarted = CompletableDeferred()
+                api.releaseBeforeMessages = CompletableDeferred()
+                store.accept(
+                    SharedThreadIntent.Start(
+                        basePayload().copy(
+                            sourceThreadId = routeThreadId,
+                            streamChannelId = routeThreadId,
+                            canLoadMoreBefore = true,
+                            canLoadMoreAfter = true,
+                            messages = listOf(payloadMessage(id = "m16", seq = 16, body = bodySeed)),
+                        )
+                    )
+                )
+                val parkedOlder = async { store.accept(SharedThreadIntent.LoadOlder) }
+                withTimeout(5_000) { api.beforeMessagesStarted?.await() }
+                store.accept(SharedThreadIntent.Refresh)
+                api.releaseBeforeMessages?.complete(Unit)
+                withTimeout(5_000) { parkedOlder.await() }
                 store.loadNewer()
             } finally {
                 scope.cancel()
@@ -19004,6 +19026,35 @@ class SharedThreadStoreTest {
                     }
                 }.single()
             val writeFields = parseDiagFields(write)
+            // The older fetch parked across a generation advance: its issue
+            // recorded routeToken=T, its terminal must read
+            // requestRouteToken=T while the live routeToken field shows T+1
+            // (the Refresh generation). This proves the terminal binds the
+            // ORIGINAL owner token, not the token current at close time.
+            val staleOlderIssued =
+                logs.lastOrNull {
+                    it.startsWith("thread_fetch_issued") &&
+                        parseDiagFields(it)["kind"] == "older_page"
+                }
+            check(staleOlderIssued != null) {
+                "run $runNonce expected an older_page issued; logs=$logs"
+            }
+            val staleOlderIssuedToken = parseDiagFields(staleOlderIssued)["routeToken"] ?: ""
+            val staleOlderSeq = parseDiagFields(staleOlderIssued)["fetchSeq"] ?: ""
+            val staleOlderTerminal =
+                logs.filter {
+                    it.startsWith("thread_fetch_terminal") &&
+                        parseDiagFields(it)["kind"] == "older_page" &&
+                        parseDiagFields(it)["fetchSeq"] == staleOlderSeq
+                }.also {
+                    check(it.size == 1) {
+                        "run $runNonce expected 1 older_page terminal for fetchSeq=$staleOlderSeq; logs=$logs"
+                    }
+                }.single()
+            val staleOlderFields = parseDiagFields(staleOlderTerminal)
+            val staleOlderRequestToken = staleOlderFields["requestRouteToken"] ?: ""
+            val staleOlderCurrentToken = staleOlderFields["routeToken"] ?: ""
+            val staleOlderResult = staleOlderFields["result"] ?: ""
             return mapOf(
                 "nonce" to runNonce,
                 "routeThreadId" to routeThreadId,
@@ -19023,6 +19074,11 @@ class SharedThreadStoreTest {
                 "writeStoreSeq" to (writeFields["storeSeq"] ?: ""),
                 "writeRouteToken" to (writeFields["requestRouteToken"] ?: ""),
                 "writeFetchSeq" to (writeFields["fetchSeq"] ?: ""),
+                "staleOlderIssuedToken" to staleOlderIssuedToken,
+                "staleOlderTerminal" to staleOlderTerminal,
+                "staleOlderRequestToken" to staleOlderRequestToken,
+                "staleOlderCurrentToken" to staleOlderCurrentToken,
+                "staleOlderResult" to staleOlderResult,
             )
         }
 
@@ -19047,6 +19103,25 @@ class SharedThreadStoreTest {
             assertEquals(run["routeToken"], run["writeRouteToken"], "run $label write routeToken mismatch")
             assertEquals(run["fetchSeq"], run["writeFetchSeq"], "run $label write fetchSeq mismatch")
             assertEquals("accepted", run["terminalResult"], "run $label terminal must be accepted")
+            // Original-owner binding across a generation advance: the parked
+            // older fetch's terminal was rejected (its generation died under
+            // it) and must name the pre-advance token as requestRouteToken,
+            // not the live one.
+            assertEquals(
+                "rejected",
+                run["staleOlderResult"],
+                "run $label stale older terminal must be rejected; got ${run["staleOlderTerminal"]}",
+            )
+            assertEquals(
+                run["staleOlderIssuedToken"],
+                run["staleOlderRequestToken"],
+                "run $label stale older terminal must carry its own issued token",
+            )
+            assertNotEquals(
+                run["staleOlderRequestToken"],
+                run["staleOlderCurrentToken"],
+                "run $label stale older terminal's live routeToken must differ from its issued token (proof of generation advance)",
+            )
         }
 
         // Original route-owner envelope: the run's captured routeThreadId and
@@ -19286,9 +19361,10 @@ class SharedThreadStoreTest {
 
             fun assertTerminalFor(
                 kind: String,
-                fetchSeq: String,
+                issue: Pair<String, Map<String, String>>,
                 expected: String,
             ) {
+                val (fetchSeq, issuedFields) = issue
                 val matching =
                     logs.filter {
                         it.startsWith("thread_fetch_terminal") &&
@@ -19301,9 +19377,11 @@ class SharedThreadStoreTest {
                 }
                 val fields = parseDiagFields(matching.single())
                 assertEquals(expected, fields["result"], "$kind terminal result mismatch: ${matching.single()}")
-                assertTrue(
-                    fields["requestRouteToken"]?.toLong() != null,
-                    "$kind terminal must carry the issued requestRouteToken",
+                assertEquals(
+                    issuedFields["routeToken"],
+                    fields["requestRouteToken"],
+                    "$kind terminal must carry the issued routeToken as requestRouteToken; " +
+                        "issued=${issuedFields} terminal=${matching.single()}",
                 )
             }
 
@@ -19313,12 +19391,12 @@ class SharedThreadStoreTest {
             // older_page error
             api.olderResponseCode = 500
             store.accept(SharedThreadIntent.LoadOlder)
-            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "error")
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page"), "error")
 
             // older_page no_permission
             api.olderResponseCode = 403
             store.accept(SharedThreadIntent.LoadOlder)
-            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "no_permission")
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page"), "no_permission")
             api.olderResponseCode = 200
 
             // DataResult.Empty is unreachable through the plain-API path used
@@ -19330,12 +19408,12 @@ class SharedThreadStoreTest {
             api.olderBodyText =
                 """{"historyLimited":true,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
             store.accept(SharedThreadIntent.LoadOlder)
-            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "accepted")
+            assertTerminalFor("older_page", nextIssuedFetchSeq("older_page"), "accepted")
 
             // newer_page error (HTTP 500 on the afterSeq request)
             api.newerResponseCode = 500
             store.loadNewer()
-            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page").first, "error")
+            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page"), "error")
             api.newerResponseCode = 200
 
             // newer_page rejected: park the fetch, then invalidate its
@@ -19348,8 +19426,7 @@ class SharedThreadStoreTest {
             store.accept(SharedThreadIntent.Refresh)
             api.releaseAfterMessages?.complete(Unit)
             withTimeout(5_000) { parkedNewer.await() }
-            val rejectedSeq = nextIssuedFetchSeq("newer_page").first
-            assertTerminalFor("newer_page", rejectedSeq, "rejected")
+            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page"), "rejected")
 
             // Restore a loadable tail for the cancelled case below: Start on
             // the same route commits a fresh generation with canLoadMoreAfter.
@@ -19374,7 +19451,7 @@ class SharedThreadStoreTest {
                 runCatching { withTimeout(2_000) { cancelledNewer.cancelAndJoin() } }.isSuccess,
                 "cancelled loadNewer must join within 2s",
             )
-            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page").first, "cancelled")
+            assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page"), "cancelled")
             Unit
         } finally {
             scope.cancel()
