@@ -17923,6 +17923,68 @@ class SharedThreadStoreTest {
 
 
     @Test
+    fun diagnosticsLoggerThrowingEverywhereDoesNotBlockFetchLifecycle() = runBlocking {
+        // task #58 observability safety: the new lifecycle records must be
+        // fail-safe — issue lines, boundary-adjacent apply/terminal records,
+        // and stale drops — not only the messages-write line. A logger that
+        // throws on every task #58 record type must not prevent a fetch from
+        // issuing, reaching the boundary, committing, or closing a terminal.
+        // (Pre-existing non-lifecycle diagnostic lines are out of scope: they
+        // predate the contract and are not required to be throw-safe.)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..20L),
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = api,
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = { message ->
+                        if (
+                            message.startsWith("thread_fetch_issued") ||
+                            message.startsWith("thread_op_issued") ||
+                            message.startsWith("thread_fetch_terminal") ||
+                            message.startsWith("thread_payload_terminal") ||
+                            message.startsWith("thread_payload_messages_write")
+                        ) {
+                            throw IllegalStateException("log boom")
+                        }
+                    },
+                )
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            store.loadNewer()
+            assertTrue(
+                api.afterSeqs.isNotEmpty(),
+                "boundary fetch must proceed with a throwing logger; afterSeqs=${api.afterSeqs}",
+            )
+            val seqs = store.state.value.payload.messages.mapNotNull { it.seq }.toSet()
+            assertTrue(
+                (17L..20L).all { it in seqs },
+                "write must commit even when every log throws; missing=${(17L..20L).filter { it !in seqs }}",
+            )
+        } finally {
+            scope.cancel()
+        }
+        Unit
+    }
+
+    @Test
     fun statusOnlyCommitLogsTerminalNotMessagesWrite() = runBlocking {
         // task #58 observability R6: a committed state change that does not
         // touch the message list (olderMessagesStatus loading flip) records a
@@ -19540,6 +19602,39 @@ class SharedThreadStoreTest {
                 "cancelled loadNewer must join within 2s",
             )
             assertTerminalFor("newer_page", nextIssuedFetchSeq("newer_page"), "cancelled")
+
+            // refresh_canonical accepted: a parked canonical fetch released
+            // against the current route commits and closes accepted.
+            api.channelMessagesStarted = CompletableDeferred()
+            api.releaseChannelMessages = CompletableDeferred()
+            api.bodyText = messagesResponse("canonical body", id = "m16", seq = 16, historyLimited = false)
+            val canonicalRefresh = async { store.accept(SharedThreadIntent.Refresh) }
+            withTimeout(5_000) { api.channelMessagesStarted?.await() }
+            api.releaseChannelMessages?.complete(Unit)
+            withTimeout(5_000) { canonicalRefresh.await() }
+            assertTerminalFor(
+                "refresh_canonical",
+                nextIssuedFetchSeq("refresh_canonical"),
+                "accepted",
+            )
+
+            // refresh_canonical cancelled: park the fetch, cancel the job;
+            // the finally must close the issued interval with result=cancelled.
+            api.channelMessagesStarted = CompletableDeferred()
+            api.releaseChannelMessages = CompletableDeferred()
+            val cancelledCanonical = async { store.accept(SharedThreadIntent.Refresh) }
+            withTimeout(5_000) { api.channelMessagesStarted?.await() }
+            cancelledCanonical.cancel()
+            api.releaseChannelMessages?.complete(Unit)
+            assertTrue(
+                runCatching { withTimeout(2_000) { cancelledCanonical.cancelAndJoin() } }.isSuccess,
+                "cancelled refresh must join within 2s",
+            )
+            assertTerminalFor(
+                "refresh_canonical",
+                nextIssuedFetchSeq("refresh_canonical"),
+                "cancelled",
+            )
             Unit
         } finally {
             scope.cancel()
