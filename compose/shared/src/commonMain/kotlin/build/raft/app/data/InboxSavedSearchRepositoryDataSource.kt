@@ -368,6 +368,7 @@ class RealSearchRepository(
             },
             emptyWhen = { it.items.isEmpty() },
             errorTextDecoder = HomeNetworkResponse::searchRouteErrorTextOrNull,
+            errorCodeDecoder = HomeNetworkResponse::searchRouteErrorCodeOrNull,
             source = "search_messages",
             warningLogger = warningLogger,
             mapper = { bodyText ->
@@ -423,6 +424,7 @@ private suspend fun <T> executeInboxLike(
     emptyWhen: (T) -> Boolean = { false },
     errorTextDecoder: (HomeNetworkResponse) -> String?,
     source: String,
+    errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
     mapOnDefault: Boolean = true,
     diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
@@ -432,7 +434,7 @@ private suspend fun <T> executeInboxLike(
     return try {
         val response = block()
         statusCode = response.code
-        if (!response.isSuccessful) return response.toInboxLikeDataError(errorTextDecoder(response))
+        if (!response.isSuccessful) return response.toInboxLikeDataError(errorTextDecoder(response), errorCodeDecoder(response))
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
         val result =
@@ -464,7 +466,7 @@ private fun authRequired(): DataResult.NoPermission =
 private fun authRequired(serverMessage: String?): DataResult.NoPermission =
     authSessionRequiredResult(serverMessage)
 
-private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?): DataResult<T> =
+private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?, publicCode: String? = null): DataResult<T> =
     when (code) {
         401 -> authRequired(serverMessage)
         403 ->
@@ -478,7 +480,7 @@ private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?)
         in 500..599 ->
             DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
         else ->
-            DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
+            DataResult.Error(ScreenError(code = publicCode ?: "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }
 
 @Serializable
@@ -488,13 +490,21 @@ private data class InboxRouteErrorDto(val error: String? = null)
 private data class SavedRouteErrorDto(val error: String? = null)
 
 @Serializable
-private data class SearchRouteErrorDto(val error: String? = null)
+private data class SearchRouteErrorDto(val error: String? = null, val code: String? = null)
 
 private fun HomeNetworkResponse.inboxRouteErrorTextOrNull(): String? =
     inboxLikeRouteErrorTextOrNull(InboxRouteErrorDto.serializer()) { it.error }
 
 private fun HomeNetworkResponse.savedRouteErrorTextOrNull(): String? =
     inboxLikeRouteErrorTextOrNull(SavedRouteErrorDto.serializer()) { it.error }
+
+// Public /api/messages/search contract: HTTP 422 with code (not agent-api errorCode).
+// botiverse/slock 7596737a389288234b9f794ceb10057e4975f4e8, messages.api.test.ts.
+private fun HomeNetworkResponse.searchRouteErrorCodeOrNull(): String? =
+    if (code == 422) {
+        inboxLikeRouteErrorTextOrNull(SearchRouteErrorDto.serializer()) { it.code }
+            ?.takeIf { it == "QUERY_TOO_BROAD" }
+    } else null
 
 private fun HomeNetworkResponse.searchRouteErrorTextOrNull(): String? =
     inboxLikeRouteErrorTextOrNull(SearchRouteErrorDto.serializer()) { it.error }

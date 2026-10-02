@@ -2145,4 +2145,7 @@
     <string name="member_row_status_external">外部</string>
     <string name="member_row_status_working">工作中</string>
     <string name="member_row_status_thinking">思考中</string>
+    <string name="search_error_sort_recent">按最新排序</string>
+    <string name="search_error_too_broad">搜索范围过大</string>
+    <string name="search_error_too_broad_detail">请添加频道、发送者或时间筛选，或按最新排序。</string>
 </resources>
