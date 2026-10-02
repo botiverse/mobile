@@ -19870,7 +19870,14 @@ class SharedThreadStoreTest {
         try {
             val api =
                 FakeThreadApi(
-                    bodyText = messagesResponse("parent", id = "m1", seq = 1, historyLimited = false),
+                    bodyText =
+                        messagesResponse(
+                            "loaded reply",
+                            id = "m10",
+                            seq = 10,
+                            historyLimited = false,
+                            channelId = "thread-m1"
+                        ),
                 )
             // Reply-thread snapshot: parent message + 1 loaded reply, while the
             // realtime event claims replyCount=3 — a 2-reply shortfall.
@@ -19920,11 +19927,6 @@ class SharedThreadStoreTest {
             val route =
                 replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(
                     canLoadMoreAfter = false,
-                    messages =
-                        listOf(
-                            payloadMessage(id = "m1", seq = 1, body = "parent"),
-                            payloadMessage(id = "m10", seq = 10, body = "loaded reply"),
-                        ),
                 )
             store.accept(SharedThreadIntent.Start(route))
 
