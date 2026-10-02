@@ -6,6 +6,7 @@ import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -47,7 +49,26 @@ internal fun SlockTasksDetailOverlay(
     bottomInset: Dp,
     content: @Composable (Modifier) -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxSize().padding(bottom = bottomInset)) {
+    Box(modifier = Modifier.fillMaxSize().padding(bottom = bottomInset)) {
+    // Touch guard under the whole overlay: Compose-level events that the panel does not consume
+    // (it hosts a native child page outside Compose hit testing) stop here instead of reaching
+    // the board underneath — a tap on the panel's send button must not also open a task card.
+    // It only swallows; dismissing is the scrim regions' job, so the panel never closes itself.
+    Box(
+        modifier =
+            Modifier
+                .matchParentSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                            if (event.changes.all { !it.pressed }) break
+                        }
+                    }
+                }
+    )
+    Row(modifier = Modifier.fillMaxSize()) {
         SlockTasksDetailOverlayScrim(onDismiss, Modifier.weight(1f).fillMaxHeight())
         Column(
             modifier =
@@ -84,6 +105,7 @@ internal fun SlockTasksDetailOverlay(
             SlockTasksDetailOverlayScrim(onDismiss, Modifier.fillMaxWidth().weight(edge))
         }
         SlockTasksDetailOverlayScrim(onDismiss, Modifier.weight(1f).fillMaxHeight())
+    }
     }
 }
 
