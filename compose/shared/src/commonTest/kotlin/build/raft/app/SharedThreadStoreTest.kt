@@ -19146,38 +19146,43 @@ class SharedThreadStoreTest {
         withTimeout(5_000) { api.channelMessagesStarted?.await() }
         api.releaseChannelMessages?.complete(Unit)
         withTimeout(5_000) { refreshJob.await() }
-        val refreshLoadingOp =
+        // Start already performs a canonical refresh, so multiple
+        // refresh_canonical fetches and refresh_loading_apply ops exist.
+        // Each explicit Refresh generation pairs them by shared routeToken —
+        // verify EVERY canonical fetch resolves to exactly one loading op via
+        // that key (the loading→canonical association contract).
+        val refreshLoadingOps =
             logs.filter {
                 it.startsWith("thread_op_issued") &&
                     parseDiagFields(it)["kind"] == "refresh_loading_apply"
-            }.also {
-                check(it.size == 1) { "expected 1 refresh_loading_apply op; logs=$logs" }
-            }.single()
-        val refreshFetch =
+            }
+        val refreshFetches =
             logs.filter {
                 it.startsWith("thread_fetch_issued") &&
                     parseDiagFields(it)["kind"] == "refresh_canonical"
-            }.also {
-                check(it.size == 1) { "expected 1 refresh_canonical fetch; logs=$logs" }
-            }.single()
-        // Both carry the same routeToken — the generation Refresh captured —
-        // which is the loading→canonical association key.
-        assertEquals(
-            parseDiagFields(refreshLoadingOp)["routeToken"],
-            parseDiagFields(refreshFetch)["routeToken"],
-            "refresh loading op and canonical fetch must share the captured routeToken",
-        )
-        // And they must be in different namespaces: the loading write is an
-        // opSeq, the canonical is a fetchSeq — same or different numbers, but
-        // resolved by kind, not by a shared counter.
-        assertTrue(
-            parseDiagFields(refreshFetch)["fetchSeq"] != null,
-            "refresh canonical must carry a fetchSeq",
-        )
-        assertTrue(
-            parseDiagFields(refreshLoadingOp)["opSeq"] != null,
-            "refresh loading must carry an opSeq",
-        )
+            }
+        check(refreshFetches.isNotEmpty()) { "expected refresh_canonical fetches; logs=$logs" }
+        check(refreshLoadingOps.isNotEmpty()) { "expected refresh_loading_apply ops; logs=$logs" }
+        val loadingTokens = refreshLoadingOps.map { parseDiagFields(it)["routeToken"] }
+        check(loadingTokens.toSet().size == loadingTokens.size) {
+            "each refresh generation must own a distinct routeToken; tokens=$loadingTokens"
+        }
+        for (fetch in refreshFetches) {
+            val fetchFields = parseDiagFields(fetch)
+            val token = fetchFields["routeToken"]
+            val paired =
+                refreshLoadingOps.filter { parseDiagFields(it)["routeToken"] == token }
+            check(paired.size == 1) {
+                "refresh fetch routeToken=$token must pair with exactly 1 loading op; logs=$logs"
+            }
+            // Different namespaces: the loading write is an opSeq, the
+            // canonical is a fetchSeq — resolved by kind, not a shared counter.
+            assertTrue(fetchFields["fetchSeq"] != null, "refresh canonical must carry a fetchSeq")
+            assertTrue(
+                parseDiagFields(paired.single())["opSeq"] != null,
+                "refresh loading must carry an opSeq",
+            )
+        }
         } finally {
             scope.cancel()
         }

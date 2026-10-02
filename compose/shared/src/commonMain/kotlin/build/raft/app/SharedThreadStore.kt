@@ -6913,7 +6913,7 @@ internal class SharedThreadStore(
                     refreshFetchSeq,
                     refreshFetchToken,
                     "rejected",
-                    "reason=stale_route stage=access_apply result=${result.threadDiagnosticsResult()}",
+                    "reason=stale_route stage=access_apply fetchResult=${result.threadDiagnosticsResult()}",
                 )
             }
             return
@@ -6943,7 +6943,7 @@ internal class SharedThreadStore(
                 refreshFetchSeq,
                 refreshFetchToken,
                 "accepted",
-                "result=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size} " +
+                "fetchResult=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size} " +
                     "cache=skipped_provenance_moved",
             )
             return
@@ -6954,7 +6954,7 @@ internal class SharedThreadStore(
             refreshFetchSeq,
             refreshFetchToken,
             "accepted",
-            "result=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size}",
+            "fetchResult=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size}",
         )
         diagnosticsLogger?.invoke(
             "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -8578,7 +8578,7 @@ internal class SharedThreadStore(
                 result is DataResult.NoPermission -> "no_permission"
                 else -> "accepted"
             },
-            "result=${result.threadDiagnosticsResult()}",
+            "fetchResult=${result.threadDiagnosticsResult()}",
         )
             val applied = _state.value.payload
             if (
@@ -8817,7 +8817,7 @@ internal class SharedThreadStore(
                         result is DataResult.NoPermission -> "no_permission"
                         else -> "accepted"
                     },
-                    "requestId=$loadId result=${result.threadDiagnosticsResult()}",
+                    "requestId=$loadId fetchResult=${result.threadDiagnosticsResult()}",
                 )
                 loadNewerState = null
                 val pendingTarget = active.pendingTargetSeq
