@@ -19310,8 +19310,10 @@ class SharedThreadStoreTest {
             // NB: an Empty result clears canLoadMoreBefore, so "empty" runs
             // last among the older_page branches.
             // older_page accepted
+            // historyLimited=true keeps canLoadMoreBefore armed so the
+            // subsequent error/no_permission branches still issue.
             api.olderBodyText =
-                """{"historyLimited":false,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
+                """{"historyLimited":true,"messages":[{"id":"m10","seq":10,"channelId":"channel-1","content":"older","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"A","senderType":"user","messageType":"chat"}]}"""
             store.accept(SharedThreadIntent.LoadOlder)
             assertTerminalFor("older_page", nextIssuedFetchSeq("older_page").first, "accepted")
 
