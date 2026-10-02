@@ -201,6 +201,36 @@ run_pre_hook() {
   esac
 }
 
+# task #58 observability: thread-newer evidence collector, shared by the
+# normal post-hook and the EXIT trap so a SIGTERM/timeout mid-instrumentation
+# still archives raw logs and diagnostics before cleanup.
+collect_thread_newer_evidence() {
+  # Unfiltered raw logcat is the primary file; the SlockKuikly-scoped
+  # dump is a convenience view. Filter spec must stay two args
+  # ('SlockKuikly:*' '*:S') — a single combined arg is not a valid
+  # filterspec and silently yields an empty file.
+  adb logcat -d -v threadtime > thread-newer-auto-pagination-logcat.txt 2>/dev/null || true
+  adb logcat -d -v threadtime 'SlockKuikly:*' '*:S' > thread-newer-auto-pagination-logcat-slockkuikly.txt 2>/dev/null || true
+  # Pull every launch's diagnostics file unfiltered (no "latest" guess —
+  # the app is not pm-cleared between tests, so older launches linger).
+  # Nonce/launch correlation happens when the archive is reviewed.
+  adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
+    > thread-newer-auto-pagination-diagnostics-after.txt 2>/dev/null || true
+  : > thread-newer-auto-pagination-diagnostics.jsonl
+  while IFS= read -r launch_dir; do
+    [ -n "$launch_dir" ] || continue
+    printf '===== files/raft_diagnostics_logs/%s/raft-diagnostics.jsonl =====\n' "$launch_dir" \
+      >> thread-newer-auto-pagination-diagnostics.jsonl
+    adb exec-out run-as build.raft.app.connectedtest cat \
+      "files/raft_diagnostics_logs/$launch_dir/raft-diagnostics.jsonl" \
+      >> thread-newer-auto-pagination-diagnostics.jsonl 2>/dev/null || true
+  done < thread-newer-auto-pagination-diagnostics-after.txt
+}
+
+# Test currently inside run-instrumentation; the EXIT trap harvests its
+# evidence when the run never reaches run_post_hook (SIGTERM, timeout kill).
+CURRENT_TEST_IN_FLIGHT=""
+
 # Post-test diagnostics collectors (always run, even on failure)
 run_post_hook() {
   local id="$1"
@@ -241,26 +271,7 @@ run_post_hook() {
       adb logcat -d -v threadtime > child-page-visibility-logcat.txt 2>/dev/null || true
       ;;
     thread-newer-auto-pagination)
-      # Unfiltered raw logcat is the primary file; the SlockKuikly-scoped
-      # dump is a convenience view. Filter spec must stay two args
-      # ('SlockKuikly:*' '*:S') — a single combined arg is not a valid
-      # filterspec and silently yields an empty file.
-      adb logcat -d -v threadtime > thread-newer-auto-pagination-logcat.txt 2>/dev/null || true
-      adb logcat -d -v threadtime 'SlockKuikly:*' '*:S' > thread-newer-auto-pagination-logcat-slockkuikly.txt 2>/dev/null || true
-      # Pull every launch's diagnostics file unfiltered (no "latest" guess —
-      # the app is not pm-cleared between tests, so older launches linger).
-      # Nonce/launch correlation happens when the archive is reviewed.
-      adb exec-out run-as build.raft.app.connectedtest ls files/raft_diagnostics_logs \
-        > thread-newer-auto-pagination-diagnostics-after.txt 2>/dev/null || true
-      : > thread-newer-auto-pagination-diagnostics.jsonl
-      while IFS= read -r launch_dir; do
-        [ -n "$launch_dir" ] || continue
-        printf '===== files/raft_diagnostics_logs/%s/raft-diagnostics.jsonl =====\n' "$launch_dir" \
-          >> thread-newer-auto-pagination-diagnostics.jsonl
-        adb exec-out run-as build.raft.app.connectedtest cat \
-          "files/raft_diagnostics_logs/$launch_dir/raft-diagnostics.jsonl" \
-          >> thread-newer-auto-pagination-diagnostics.jsonl 2>/dev/null || true
-      done < thread-newer-auto-pagination-diagnostics-after.txt
+      collect_thread_newer_evidence
       ;;
     *)
       ;;
@@ -388,6 +399,11 @@ generate_summary() {
 
 cleanup() {
   local exit_code=$?
+  # A signal/timeout that kills instrumentation mid-flight never reaches
+  # run_post_hook; harvest that test's evidence here, before summary+exit.
+  if [[ "$CURRENT_TEST_IN_FLIGHT" == "thread-newer-auto-pagination" ]]; then
+    collect_thread_newer_evidence
+  fi
   generate_summary
   exit "$exit_code"
 }
@@ -503,11 +519,13 @@ main() {
     local start_time end_time duration
     start_time=$(date +%s)
 
+    CURRENT_TEST_IN_FLIGHT="$id"
     local run_rc=0
     "$HERE/run-instrumentation-with-retry.sh" \
       "${TEST_OUTPUT[$id]}" \
       "${TEST_RETRIES[$id]}" \
       -- adb shell am instrument -w -r -e class "${TEST_CLASS[$id]}" "${TEST_RUNNER[$id]}" || run_rc=$?
+    CURRENT_TEST_IN_FLIGHT=""
 
     # Always collect post-execution diagnostics
     run_post_hook "$id"

@@ -373,6 +373,48 @@ done
 grep -Fq "mock-diagnostics-record" "$TEST_DIR_TN/thread-newer-auto-pagination-diagnostics.jsonl" || fail "failed run diagnostics jsonl empty"
 pass "thread-newer failure collection scenario verified"
 
+# 6c. Test scenario: thread-newer SIGTERM mid-instrumentation still archives evidence
+# (LiBai review: EXIT cleanup must collect the in-flight test's raw logcat and
+# diagnostics when the run is killed before run_post_hook returns)
+TEST_DIR_TERM="$TMP_DIR/test_thread_newer_term"
+mkdir -p "$TEST_DIR_TERM"
+
+# A retry shim that signals its own process group, emulating a runner-level
+# SIGTERM while instrumentation is in flight.
+cat > "$TEST_DIR_TERM/term-retry.sh" <<'FAKE_TERM'
+#!/usr/bin/env bash
+set -euo pipefail
+output_file="$1"
+echo "INSTRUMENTATION_STATUS: running" > "$output_file"
+kill -TERM $$ 2>/dev/null || true
+sleep 5
+exit 1
+FAKE_TERM
+chmod +x "$TEST_DIR_TERM/term-retry.sh"
+
+(
+  cd "$TEST_DIR_TERM"
+  export PATH="$MOCK_BIN:$PATH"
+  export MOCK_STATE_DIR="$TEST_DIR_TERM/mock_state"
+  export SKIP_EMULATOR_PREP=true
+  export SKIP_APK_INSTALL=true
+  export THREAD_NEWER_PAGINATION_GATE_REQUIRED=true
+
+  mkdir -p "$TEST_DIR_TERM/scripts_ci"
+  cp "$SUITE_RUNNER" "$TEST_DIR_TERM/scripts_ci/run-first-character-emulator-suite.sh"
+  cp "$TEST_DIR_TERM/term-retry.sh" "$TEST_DIR_TERM/scripts_ci/run-instrumentation-with-retry.sh"
+  cp "$MOCK_BIN/prepare_android_emulator_ime.sh" "$TEST_DIR_TERM/scripts_ci/"
+  chmod +x "$TEST_DIR_TERM/scripts_ci/"*
+
+  "$TEST_DIR_TERM/scripts_ci/run-first-character-emulator-suite.sh" "thread-newer-auto-pagination" > suite_out.txt 2>&1
+) || true
+
+test -f "$TEST_DIR_TERM/thread-newer-auto-pagination-logcat.txt" || fail "SIGTERM path missing raw logcat"
+test -f "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" || fail "SIGTERM path missing diagnostics jsonl"
+grep -Fq "mock-diagnostics-record" "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" || fail "SIGTERM path diagnostics jsonl empty"
+test -f "$TEST_DIR_TERM/first-character-baseline-suite-summary.txt" || fail "SIGTERM path missing summary"
+pass "thread-newer SIGTERM evidence scenario verified"
+
 # 7. Test scenario: Premature abort / trap safety
 TEST_DIR_TRAP="$TMP_DIR/test_trap"
 mkdir -p "$TEST_DIR_TRAP"
