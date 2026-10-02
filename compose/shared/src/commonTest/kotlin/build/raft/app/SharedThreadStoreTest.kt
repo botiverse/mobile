@@ -19348,6 +19348,32 @@ class SharedThreadStoreTest {
                 "refresh_canonical terminal must carry the issuing storeSeq; " +
                     "issued=$fetchFields terminal=$terminalFields",
             )
+            // Boundary association: the canonical fetch's own
+            // storeSeq+fetchSeq+routeToken reaches the network boundary as
+            // requestTrace on channelMessages — the same join shape the tail
+            // fallback chain proved via getThreadRequestTraces.
+            val expectedTrace =
+                "refresh_canonical_s${fetchFields["storeSeq"]}_fs=$fetchSeq" +
+                    "_rt=${fetchFields["routeToken"]}"
+            assertTrue(
+                api.channelMessagesRequestTraces.contains(expectedTrace),
+                "channelMessages must carry the canonical requestTrace=$expectedTrace; " +
+                    "traces=${api.channelMessagesRequestTraces}",
+            )
+            // The paired loading op must itself be a recorded local op — its
+            // opSeq is the receipt identity (op namespace, fetchSeq=-1).
+            val loadingOp = parseDiagFields(paired.single())
+            assertEquals(
+                fetchFields["routeToken"],
+                loadingOp["routeToken"],
+                "loading op must share the refresh generation routeToken; " +
+                    "op=$loadingOp fetch=$fetchFields",
+            )
+            assertEquals(
+                fetchFields["storeSeq"],
+                loadingOp["storeSeq"],
+                "loading op must share the issuing storeSeq; op=$loadingOp fetch=$fetchFields",
+            )
         }
         } finally {
             scope.cancel()
