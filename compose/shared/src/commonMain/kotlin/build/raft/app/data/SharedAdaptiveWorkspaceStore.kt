@@ -26,6 +26,9 @@ internal data class SharedAdaptiveWorkspaceSession(
      */
     val lastWindowFactHostId: String? = null,
     val lastWindowFactCapturedAtMillis: Long = 0L,
+    /** task #36: reply thread shown in its own column beside the selected channel/DM. */
+    val sideThread: AdaptiveSideThread? = null,
+    val sideThreadGenerationCursor: Long = 0L,
 )
 
 /** One adoption request the shell accepted and is waiting to confirm before acking. */
@@ -70,9 +73,14 @@ internal class SharedAdaptiveWorkspaceStore {
         synchronized(lock) {
             transform(_state.value).let { next ->
                 val history = next.detailHistory
-                val normalized = if (history != null && history.owner != next.workspace?.selection) {
+                val withHistory = if (history != null && history.owner != next.workspace?.selection) {
                     next.copy(detailHistory = null)
                 } else next
+                // task #36: a side thread belongs to the selection it opened beside.
+                val side = withHistory.sideThread
+                val normalized = if (side != null && side.owner != withHistory.workspace?.selection) {
+                    withHistory.copy(sideThread = null)
+                } else withHistory
                 normalized.also { _state.value = it }
             }
         }
