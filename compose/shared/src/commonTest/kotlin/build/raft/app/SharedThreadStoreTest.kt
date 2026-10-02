@@ -18984,10 +18984,22 @@ class SharedThreadStoreTest {
             // the same number; the kind/tag prefix disambiguates. Assert the
             // fetchSeq namespace is distinct from the operationSeq namespace
             // so a numeric equality can never alias across kinds.
-            val opIssued = issueLogs.filter { it.startsWith("thread_op_issued") }
-            assertTrue(
-                opIssued.none { it.contains("kind=newer_page") },
-                "fetchSeq namespace must not reuse the newer_page kind in op namespace; ops=$opIssued",
+            // fetch vs op namespaces: a fetchSeq and an opSeq may share the same
+            // number; the namespace prefix on the ISSUE line disambiguates.
+            // newer_page_loading is a legitimate op kind — assert the issue
+            // lines' namespaces are disjoint by exact kind, not substring.
+            val fetchKinds =
+                issueLogs.filter { it.startsWith("thread_fetch_issued") }
+                    .mapNotNull { Regex("kind=([a-z_]+)").find(it)?.groupValues?.get(1) }
+                    .toSet()
+            val opKinds =
+                issueLogs.filter { it.startsWith("thread_op_issued") }
+                    .mapNotNull { Regex("kind=([a-z_]+)").find(it)?.groupValues?.get(1) }
+                    .toSet()
+            assertEquals(
+                emptySet<String>(),
+                fetchKinds intersect opKinds,
+                "fetch and op issue namespaces must not share a kind; fetch=$fetchKinds ops=$opKinds",
             )
             issueScope.cancel()
 
