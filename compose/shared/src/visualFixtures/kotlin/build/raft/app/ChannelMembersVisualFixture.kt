@@ -40,19 +40,22 @@ private fun ChannelMembersParityContent(variant: String) {
     val previousLocale = remember { StringDesc.localeType }
     StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
     DisposableEffect(Unit) { onDispose { StringDesc.localeType = previousLocale } }
-    val members = remember { listOf(
+    var members by remember { mutableStateOf(listOf(
         KuiklyThreadMemberItem("human-alex", "Alex", handle = "alex", effectiveChannelRole = "owner"),
         KuiklyThreadMemberItem("human-maya", "Maya", handle = "maya", description = "Product Designer"),
         KuiklyThreadMemberItem("1", "Grace", handle = "grace", kind = "agent", effectiveChannelRole = "admin"),
         KuiklyThreadMemberItem("2", "Josh", handle = "josh", kind = "agent"),
         KuiklyThreadMemberItem("3", "Agent", handle = "agent", kind = "agent", sourceServerId = "peer", sourceServerLabel = "Peer Server", canRemove = false),
-    ) }
-    val candidates = remember { listOf(KuiklyThreadMemberItem("candidate", "Quill", handle = "quill", kind = "agent")) }
+    )) }
+    val candidates = remember { listOf(KuiklyThreadMemberItem("candidate", "Quill", handle = "quill", kind = "agent")) +
+        if (variant == "interaction") listOf(KuiklyThreadMemberItem("human-taylor", "Taylor", handle = "taylor")) else emptyList() }
+    var submitStatus by remember { mutableStateOf("idle") }
+    var submitAttempts by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf(TextFieldValue(if (variant == "search") "Grace" else "")) }
     var agentsExpanded by remember { mutableStateOf(variant != "collapsed") }
     var humansExpanded by remember { mutableStateOf(true) }
     var externalExpanded by remember { mutableStateOf(true) }
-    var addVisible by remember { mutableStateOf(variant == "add") }
+    var addVisible by remember { mutableStateOf(variant == "add" || variant == "interaction") }
     val resolver: SlockAgentStatusResolver = remember { { id -> flowOf(
         slockAgentStatusIndicatorState(
             status = if (id == "2") AgentStatus.Offline else AgentStatus.Online,
@@ -67,10 +70,21 @@ private fun ChannelMembersParityContent(variant: String) {
         humansExpanded = humansExpanded, externalExpanded = externalExpanded,
         onAgentsExpandedChange = { agentsExpanded = it }, onHumansExpandedChange = { humansExpanded = it },
         onExternalExpandedChange = { externalExpanded = it }, addDialogVisible = addVisible,
-        onAddVisibleChange = { addVisible = it }, addMemberStatus = "idle", addMemberErrorCode = null,
+        onAddVisibleChange = { addVisible = it }, addMemberStatus = submitStatus, addMemberErrorCode = "member_add_failed",
         removalGate = ThreadMemberRemovalGateState(), membersFailed = false, membersLoading = false,
         refreshing = false, canAddMembers = true, canCreateAgents = true, agentStatusResolver = resolver,
         memberAvatarResolver = EmptySlockMemberAvatarResolver, onBack = {}, onRefresh = {},
-        onOpenMember = {}, onRemoveMember = {}, onSubmit = {},
+        onOpenMember = {}, onRemoveMember = {}, onSubmit = { selected ->
+            if (variant == "interaction") {
+                submitAttempts += 1
+                println("MEMBER_ADD_QA attempt=$submitAttempts selected=" + selected.map { "${it.kind}:${it.id}" }.sorted().joinToString(","))
+                if (submitAttempts == 1) submitStatus = "failed"
+                else {
+                    members = members + selected
+                    submitStatus = "idle"
+                    addVisible = false
+                }
+            }
+        },
     )
 }
