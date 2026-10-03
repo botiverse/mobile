@@ -30747,35 +30747,47 @@ internal fun ThreadForwardNoteDialog(
         title = stringResource(MR.strings.thread_forward_add_note),
         onDismiss = onDismiss,
         dismissEnabled = !sending,
+        keyboardAvoidanceEnabled = true,
         minWidth = 320.dp,
         maxWidth = 430.dp
     ) {
-        Text(
-            text = stringResource(MR.strings.thread_forward_destination),
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray
-        )
-        Text(
-            text = selectedTargetLabel,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        SlockBrutalTextField(
-            label = stringResource(MR.strings.thread_state_note),
-            value = note,
-            placeholder =
-                if (messageCount == 1) {
-                    stringResource(MR.strings.thread_forward_placeholder_one)
-                } else {
-                    stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
-                },
-            maxLines = 3,
-            fieldMinHeight = 76.dp,
-            onValueChange = onNoteChange,
-            password = false
-        )
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Text(
+                    text = stringResource(MR.strings.thread_forward_destination),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            item {
+                Text(
+                    text = selectedTargetLabel,
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.thread_state_note),
+                    value = note,
+                    placeholder =
+                        if (messageCount == 1) {
+                            stringResource(MR.strings.thread_forward_placeholder_one)
+                        } else {
+                            stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
+                        },
+                    maxLines = 3,
+                    fieldMinHeight = 76.dp,
+                    onValueChange = onNoteChange,
+                    password = false
+                )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
@@ -31917,127 +31929,151 @@ internal fun ThreadSettingsModal(
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     SlockUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
         if (activeDanger == null) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SlockBrutalTextField(
-                    label = stringResource(MR.strings.thread_settings_name),
-                    value = name,
-                    placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
-                    onValueChange = { name = it },
-                    required = true,
-                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
-                )
-                SlockBrutalTextField(
-                    label = stringResource(MR.strings.thread_settings_description),
-                    value = description,
-                    placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
-                    onValueChange = { description = it },
-                    optional = true,
-                    fieldMinHeight = 66.dp,
-                    maxLines = 2,
-                    password = false
-                )
-                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
-                    Text(
-                        text = stringResource(MR.strings.channel_create_error_name_format),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    SlockBrutalTextField(
+                        label = stringResource(MR.strings.thread_settings_name),
+                        value = name,
+                        placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
+                        onValueChange = { name = it },
+                        required = true,
+                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
                     )
+                }
+                item {
+                    SlockBrutalTextField(
+                        label = stringResource(MR.strings.thread_settings_description),
+                        value = description,
+                        placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
+                        onValueChange = { description = it },
+                        optional = true,
+                        fieldMinHeight = 66.dp,
+                        maxLines = 2,
+                        password = false
+                    )
+                }
+                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
+                    item {
+                        Text(
+                            text = stringResource(MR.strings.channel_create_error_name_format),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.AccentRed
+                        )
+                    }
                 }
                 if (updateStatus == ChannelProfileUpdateStatus.Failed) {
-                    Text(
-                        text =
-                            if (updateErrorCode == "channel_name_invalid") {
-                                stringResource(MR.strings.channel_create_error_name_format)
-                            } else {
-                                stringResource(MR.strings.thread_settings_update_failed)
-                            },
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
-                    )
+                    item {
+                        Text(
+                            text =
+                                if (updateErrorCode == "channel_name_invalid") {
+                                    stringResource(MR.strings.channel_create_error_name_format)
+                                } else {
+                                    stringResource(MR.strings.thread_settings_update_failed)
+                                },
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.AccentRed
+                        )
+                    }
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    // React's Edit Channel form buttons carry no leading icons
-                    // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                    SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
-                    SlockModalActionButton(
-                        label =
-                            if (profileSaving) {
-                                stringResource(MR.strings.thread_settings_saving)
-                            } else {
-                                stringResource(MR.strings.thread_action_save_changes)
-                            },
-                        color = SlockColor.AccentPink,
-                        icon = SlockLucideIconName.Loader.takeIf { profileSaving },
-                        enabled = profileValid && profileChanged && !profileSaving,
-                        onClick = {
-                            onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
-                        }
-                    )
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Spacer(modifier = Modifier.weight(1f))
+                        // React's Edit Channel form buttons carry no leading icons
+                        // (btn-brutal text-only Cancel / Save Changes) — task #348.
+                        SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
+                        SlockModalActionButton(
+                            label =
+                                if (profileSaving) {
+                                    stringResource(MR.strings.thread_settings_saving)
+                                } else {
+                                    stringResource(MR.strings.thread_action_save_changes)
+                                },
+                            color = SlockColor.AccentPink,
+                            icon = SlockLucideIconName.Loader.takeIf { profileSaving },
+                            enabled = profileValid && profileChanged && !profileSaving,
+                            onClick = {
+                                onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
+                            }
+                        )
+                    }
                 }
                 if (
                     (activityMuteState != null && onToggleActivityMute != null) ||
                         (conversationPinState != null && onTogglePin != null) ||
                         dangerActions.isNotEmpty()
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
-                            SlockModalFullWidthActionButton(
-                                label =
-                                    stringResource(
-                                        if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
-                                    ),
-                                icon = if (muteState.muted) SlockLucideIconName.Bell else SlockLucideIconName.BellOff,
-                                color = if (muteState.muted) SlockColor.AccentOrange else SlockColor.SurfaceWhite,
-                                onClick = { onToggleActivityMute?.invoke() }
-                            )
-                        }
-                        conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                            SlockModalFullWidthActionButton(
-                                label =
-                                    stringResource(
-                                        if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
-                                    ),
-                                icon = if (pinState.pinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin,
-                                color = if (pinState.pinned) SlockColor.AccentPink else SlockColor.SurfaceWhite,
-                                onClick = { onTogglePin?.invoke() }
-                            )
-                        }
-                        ThreadSettingsChannelActionButtons(
-                            actions =
-                                dangerActions.map { (_, action) ->
-                                    KuiklyThreadSettingsAction(id = action.id)
-                                },
-                            onOpenAction = { actionId ->
-                                dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+                    }
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
+                                SlockModalFullWidthActionButton(
+                                    label =
+                                        stringResource(
+                                            if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
+                                        ),
+                                    icon = if (muteState.muted) SlockLucideIconName.Bell else SlockLucideIconName.BellOff,
+                                    color = if (muteState.muted) SlockColor.AccentOrange else SlockColor.SurfaceWhite,
+                                    onClick = { onToggleActivityMute?.invoke() }
+                                )
                             }
-                        )
+                            conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
+                                SlockModalFullWidthActionButton(
+                                    label =
+                                        stringResource(
+                                            if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
+                                        ),
+                                    icon = if (pinState.pinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin,
+                                    color = if (pinState.pinned) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+                                    onClick = { onTogglePin?.invoke() }
+                                )
+                            }
+                            ThreadSettingsChannelActionButtons(
+                                actions =
+                                    dangerActions.map { (_, action) ->
+                                        KuiklyThreadSettingsAction(id = action.id)
+                                    },
+                                onOpenAction = { actionId ->
+                                    dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
+                                }
+                            )
+                        }
                     }
                 }
             }
         } else {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                when (activeDanger) {
-                    ThreadSettingsDangerAction.Visibility -> {
-                        Text(
-                            text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                        )
-                        Text(
-                            text = stringResource(MR.strings.thread_settings_visibility_detail),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextMutedGray
-                        )
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    when (activeDanger) {
+                        ThreadSettingsDangerAction.Visibility -> {
+                            Text(
+                                text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
+                                style = SlockType.Body,
+                                color = SlockColor.TextBlack
+                            )
+                            Text(
+                                text = stringResource(MR.strings.thread_settings_visibility_detail),
+                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.TextMutedGray
+                            )
+                        }
+                        ThreadSettingsDangerAction.Archive,
+                        ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
                     }
-                    ThreadSettingsDangerAction.Archive,
-                    ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val isSingleConfirm =
                         threadSettingsDangerConfirmationMode(activeDanger.id) ==
                             ThreadSettingsDangerConfirmationMode.SingleConfirm
@@ -32062,7 +32098,6 @@ internal fun ThreadSettingsModal(
             }
         }
     }
-}
 
 @Composable
 private fun ThreadChannelActionWarning(
@@ -32292,102 +32327,113 @@ private fun ThreadTaskDetailDialog(
         onDismiss = onDismiss,
         contentSpacing = SlockSpacing.Sm
     ) {
-        // Task title now lives in the body (header is identifier-only).
-        Text(
-            text = task.tasksMeaningfulDisplayTitle(),
-            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
-            // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
-            // label outside the pill, each pair as one wrap unit so labels stay
-            // vertically centered with their chip.
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            item {
+                // Task title now lives in the body (header is identifier-only).
                 Text(
-                    text = statusLabel,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
-                )
-                SlockAnchoredMetaChip(
-                    label = task.status.localizedLabel(),
-                    iconName = null,
-                    color = task.status.sharedTaskStatusChipMeta().color,
-                    onClick = { anchor -> statusMenuAnchor = anchor },
-                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
-                    modifier = Modifier.padding(start = 6.dp),
-                    trailingIconName = SlockLucideIconName.Pencil,
-                    minHeight = 24.dp,
-                    horizontalPadding = 8.dp,
-                    labelFontSize = 12.sp,
-                    labelLineHeight = 16.sp,
-                    borderWidth = SlockStroke.Default,
-                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                    text = task.tasksMeaningfulDisplayTitle(),
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = assigneeLabel,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
-                )
-                SlockAnchoredMetaChip(
-                    label = task.assignee?.displayName?.let { "@$it" }
-                        ?: unassignedLabel,
-                    iconName = null,
-                    color = SlockColor.SurfaceWhite,
-                    onClick = { _ -> assigneeMenuOpen = true },
-                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .widthIn(max = 160.dp),
-                    trailingIconName = SlockLucideIconName.Pencil,
-                    minHeight = 24.dp,
-                    horizontalPadding = 8.dp,
-                    labelFontSize = 12.sp,
-                    labelLineHeight = 16.sp,
-                    borderWidth = SlockStroke.Default,
-                    anchorPlacement = SlockAnchorPlacement.BottomEnd
-                )
-            }
-            task.creator?.let { creator ->
-                // Same 24dp chip height as the status/assignee rows above so all
-                // three wrap units center-align on a shared FlowRow line.
-                Row(
-                    modifier = Modifier.height(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
+                    // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
+                    // label outside the pill, each pair as one wrap unit so labels stay
+                    // vertically centered with their chip.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = statusLabel,
+                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray
+                        )
+                        SlockAnchoredMetaChip(
+                            label = task.status.localizedLabel(),
+                            iconName = null,
+                            color = task.status.sharedTaskStatusChipMeta().color,
+                            onClick = { anchor -> statusMenuAnchor = anchor },
+                            anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
+                            modifier = Modifier.padding(start = 6.dp),
+                            trailingIconName = SlockLucideIconName.Pencil,
+                            minHeight = 24.dp,
+                            horizontalPadding = 8.dp,
+                            labelFontSize = 12.sp,
+                            labelLineHeight = 16.sp,
+                            borderWidth = SlockStroke.Default,
+                            anchorPlacement = SlockAnchorPlacement.BottomEnd
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = assigneeLabel,
+                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray
+                        )
+                        SlockAnchoredMetaChip(
+                            label = task.assignee?.displayName?.let { "@$it" }
+                                ?: unassignedLabel,
+                            iconName = null,
+                            color = SlockColor.SurfaceWhite,
+                            onClick = { _ -> assigneeMenuOpen = true },
+                            anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .widthIn(max = 160.dp),
+                            trailingIconName = SlockLucideIconName.Pencil,
+                            minHeight = 24.dp,
+                            horizontalPadding = 8.dp,
+                            labelFontSize = 12.sp,
+                            labelLineHeight = 16.sp,
+                            borderWidth = SlockStroke.Default,
+                            anchorPlacement = SlockAnchorPlacement.BottomEnd
+                        )
+                    }
+                    task.creator?.let { creator ->
+                        // Same 24dp chip height as the status/assignee rows above so all
+                        // three wrap units center-align on a shared FlowRow line.
+                        Row(
+                            modifier = Modifier.height(24.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = creatorLabel,
+                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                                color = SlockColor.TextMutedGray
+                            )
+                            Text(
+                                text = creator.displayName,
+                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                                    .withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+                item {
                     Text(
-                        text = creatorLabel,
+                        text = description,
                         style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                    Text(
-                        text = creator.displayName,
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                            .withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 6.dp)
+                        color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-        }
-        task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
-            Text(
-                text = description,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.65f),
-                maxLines = 6,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
     statusMenuAnchor?.let { anchor ->

@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -74,11 +75,16 @@ internal fun AddComputerDialog(
         contentSpacing = 12.dp,
         keyboardAvoidanceEnabled = true
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            when (state.step) {
-                AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
-                AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
-                AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent)
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                when (state.step) {
+                    AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
+                    AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
+                    AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent)
+                }
             }
         }
     }

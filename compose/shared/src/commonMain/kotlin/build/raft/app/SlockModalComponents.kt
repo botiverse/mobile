@@ -28,6 +28,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -231,13 +232,14 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     currentScrollPosition: () -> SlockUnifiedDialogListScrollPosition,
     scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
     isScrollInProgress: () -> Boolean,
-    isRequestCurrent: () -> Boolean
+    isRequestCurrent: () -> Boolean,
+    isTargetActive: () -> Boolean = { true }
 ) {
-    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
+    if (keyboardHeight <= 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
 
     val focused = focusedBounds() ?: return
     val viewport = viewportBounds() ?: return
@@ -248,7 +250,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
             viewportTop = viewport.top,
             viewportBottom = viewport.bottom
         )
-    if (delta == 0f || !isRequestCurrent() || isScrollInProgress()) return
+    if (delta == 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
 
     // Root bounds and LazyList offsets are pixels. Round away from zero so a fractional edge
     // overlap cannot leave the editor one sub-pixel outside the reduced viewport.
@@ -261,8 +263,30 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     val current = currentScrollPosition()
     val targetOffset = (current.scrollOffset + pixelDelta).coerceAtLeast(0)
     if (targetOffset == current.scrollOffset) return
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     scrollToItem(current.index, targetOffset)
+}
+
+/**
+ * Scrolls the dialog's list directly to a specific target item when that section is focused
+ * and requires full visibility above the keyboard (e.g. member search field and its results).
+ */
+internal suspend fun slockUnifiedDialogScrollToTargetItem(
+    keyboardHeight: Float,
+    targetItemIndex: Int,
+    targetItemScrollOffset: Int = 0,
+    awaitRelayoutFrame: suspend () -> Unit,
+    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
+    isScrollInProgress: () -> Boolean,
+    isRequestCurrent: () -> Boolean,
+    isTargetActive: () -> Boolean = { true }
+) {
+    if (keyboardHeight <= 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
+    awaitRelayoutFrame()
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
+    awaitRelayoutFrame()
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
+    scrollToItem(targetItemIndex, targetItemScrollOffset)
 }
 
 @Composable
@@ -350,7 +374,7 @@ internal fun SlockUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
@@ -449,7 +473,7 @@ private fun SlockUnifiedDialogSurface(
     topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     if (handleBack) {
         SlockBackHandler(enabled = dismissEnabled, label = "unified_dialog", onBack = onDismiss)
@@ -565,9 +589,10 @@ private fun SlockUnifiedDialogSurface(
                         if (keyboardAvoidanceEnabled) {
                             keyboardHeightDp = params.height.coerceAtLeast(0f)
                         }
-                    },
-                    content = content
-                )
+                    }
+                ) {
+                    this@Column.content()
+                }
             }
         }
     }
@@ -718,9 +743,16 @@ internal fun SlockModalSquareActionButton(
 @Composable
 internal fun SlockModalListShell(
     height: Dp,
+    modifier: Modifier = Modifier,
+    listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
-    SlockBrutalListShell(height = height, content = content)
+    SlockBrutalListShell(
+        height = height,
+        modifier = modifier,
+        listModifier = listModifier,
+        content = content
+    )
 }
 
 @Composable
