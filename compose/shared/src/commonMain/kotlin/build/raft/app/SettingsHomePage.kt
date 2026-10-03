@@ -9368,7 +9368,10 @@ private fun SettingsMobileContent(
                 )
             }
         }
-        item(key = "SettingsMobileBottomSpacer") { Spacer(Modifier.height(bottomContentPadding)) }
+        // No key here: while the snapshot loads this spacer is the only item, and a keyed first
+        // item makes the list follow it to the bottom once the cards arrive (the page then
+        // opened mid-list and would not scroll back up, 10001024/10001025).
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
