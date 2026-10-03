@@ -1428,10 +1428,10 @@
     <string name="translation_state_show_original">Show original</string>
     <string name="translation_state_show_translation">Show translation</string>
     <string name="translation_state_prefer_original">Prefer original</string>
-    <string name="pagination_prev_bilingual">上一页 / Prev</string>
-    <string name="pagination_next_bilingual">下一页 / Next</string>
-    <string name="announcement_action_got_it_bilingual">知道了 / Got it</string>
-    <string name="announcement_action_skip_bilingual">跳过 / Skip</string>
+    <string name="pagination_prev">Prev</string>
+    <string name="pagination_next">Next</string>
+    <string name="announcement_action_got_it">Got it</string>
+    <string name="announcement_action_skip">Skip</string>
     <string name="tasks_label_new_tasks">New tasks</string>
     <string name="tasks_create_multiple_hint">Add one or more task titles. Empty rows are ignored.</string>
     <string name="home_action_view">View</string>
