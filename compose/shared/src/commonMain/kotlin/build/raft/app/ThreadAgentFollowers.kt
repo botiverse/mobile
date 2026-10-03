@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.model.AgentStatus
 import build.raft.app.base.Utils
 import build.raft.app.data.RealThreadAgentFollowersRepository
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -296,30 +297,33 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
             } else {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 12.dp)) {
                     items(agents, key = { it.id }) { agent ->
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FollowerAvatar(agent, compact = false)
-                            val server = agent.serverName?.takeIf { it.isNotBlank() } ?: agent.serverSlug?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_followers_peer_server)
-                            val peerExplanation = stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
-                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(agent.label, style = SlockType.Caption, color = theme.ink, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (!agent.isCurrentServer) {
-                                    Box(Modifier.background(theme.surfaceMuted).padding(horizontal = 4.dp, vertical = 2.dp)) {
-                                        Text(server, style = SlockType.Caption, color = theme.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
+                        val server = agent.serverName?.takeIf { it.isNotBlank() }
+                            ?: agent.serverSlug?.takeIf { it.isNotBlank() }
+                            ?: stringResource(MR.strings.thread_followers_peer_server)
+                        val peerExplanation = stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
+                        val canManage = state.roster?.canManage == true
+                        val canRemove = agent.canRemove && agent.isCurrentServer
+                        val indicator = followerStatusIndicator(agent.status)
+                        // Sharing member-row presentation must not replace follower-specific permissions.
+                        SlockModalCompactMemberRow(
+                            title = agent.label,
+                            subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
+                            avatarWireValue = agent.avatarUrl,
+                            avatarLabel = agent.label,
+                            statusColor = indicator?.color,
+                            statusPulsing = indicator?.pulsing == true,
+                            cacheServerId = agent.serverId,
+                            sourceBadgeLabel = server.takeUnless { agent.isCurrentServer },
+                            clickEnabled = false,
+                            trailingIcon = SlockLucideIconName.X.takeIf { canManage },
+                            trailingMuted = !canRemove,
+                            onTrailingClick = if (canManage) ({
+                                if (!state.mutating && (state.undo == null || !canRemove)) {
+                                    if (canRemove) dispatch(ThreadAgentFollowersIntent.Remove(agent.id))
+                                    else peerHint = peerExplanation
                                 }
-                            }
-                            if (state.roster?.canManage == true) {
-                                val canRemove = agent.canRemove && agent.isCurrentServer
-                                val removeLabel = if (canRemove) stringResource(MR.strings.common_remove) else peerExplanation
-                                Box(Modifier.size(28.dp).semantics { contentDescription = removeLabel }
-                                    .clickable(enabled = !state.mutating && (state.undo == null || !canRemove)) {
-                                        if (canRemove) dispatch(ThreadAgentFollowersIntent.Remove(agent.id))
-                                        else peerHint = peerExplanation
-                                    }, contentAlignment = Alignment.Center) {
-                                    SlockLucideIcon(SlockLucideIconName.X, Modifier.size(14.dp).alpha(if (canRemove) 1f else 0.45f))
-                                }
-                            }
-                        }
+                            }) else null,
+                        )
                     }
                 }
                 peerHint?.let { hint ->
@@ -338,3 +342,9 @@ private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
     SlockAvatar(avatarWireValue = agent.avatarUrl, label = agent.label,
         avatarSize = if (compact) 20.dp else 28.dp, cacheServerId = agent.serverId)
 }
+
+/** The follower endpoint carries display status, not external-agent execution mode. */
+internal fun followerStatusIndicator(wireStatus: String): SlockAgentStatusIndicatorState? =
+    AgentStatus.fromWireValue(wireStatus)?.let {
+        slockAgentStatusIndicatorState(it, it.presence, external = false)
+    }

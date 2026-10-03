@@ -1,5 +1,17 @@
 package build.raft.app
 
+import build.raft.app.data.openWithinWideDetail
+import build.raft.app.data.visibleSideThread
+import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.AdaptiveParentFocusOutcome
+import build.raft.app.data.AdaptiveParentFocusRequest
+import build.raft.app.data.parentFocusOutcomeAfterWait
+import build.raft.app.data.acceptsParentFocus
+import build.raft.app.data.sideThreadParentFocus
+import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
+import build.raft.app.data.AdaptiveThreadOpenRoute
+import build.raft.app.data.routeThreadOpen
+
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
@@ -23,6 +35,7 @@ import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
+import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -223,6 +236,8 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -1701,6 +1716,9 @@ internal fun threadHeaderDisplayTitle(
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
 
+/** task #36: longest wait for the keyboard to close before the main detail focuses a parent. */
+private const val ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS = 1_500L
+
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
     /**
@@ -1755,6 +1773,12 @@ internal data class KuiklyThreadScreenPayload(
      * slice; the frame is a first-frame stand-in, never an authority for paging or reactions.
      */
     val durableLastKnown: Boolean = false,
+    /**
+     * True while the last main timeline load (not a page of older/newer messages) failed transiently —
+     * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery
+     * never mistakes a paging failure or a permission answer for it (LiBai #2782).
+     */
+    val mainLoadFailed: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
@@ -3050,7 +3074,8 @@ internal data class KuiklyThreadMemberItem(
     val kind: String = "human",
     val sourceServerId: String? = null,
     val sourceServerLabel: String? = null,
-    val canRemove: Boolean = true
+    val canRemove: Boolean = true,
+    val effectiveChannelRole: String? = null
 )
 
 @Serializable
@@ -4106,7 +4131,29 @@ private fun ThreadPageScreen(
                 initialServerId = threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId
             )
         val openPage = {
-            pager.openSlockPage(
+            val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+            val source = adaptiveCloseRequest
+            val session = workspaceStore.snapshot()
+            val pane = session.workspace
+            val desktopModeEnabled =
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+            // task #36: an adaptive page is validated before any route, so a retired main/side
+            // page opens nothing even after desktop mode turns off, the pane goes compact or the
+            // server changes.
+            val route = session.routeThreadOpen(source, desktopModeEnabled, targetStoreScope.initialServerId)
+            if (route == AdaptiveThreadOpenRoute.Ignored) {
+                bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+            } else if (route == AdaptiveThreadOpenRoute.WithinDetail && source != null && pane != null) {
+                // A reply under the shown channel opens in the side column when it fits;
+                // otherwise the in-pane replace; a source retired meanwhile changes nothing.
+                val next = workspaceStore.update { current ->
+                    current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
+                }
+                if (next.launchPayload != launchPayload && next.visibleSideThread()?.payload != launchPayload) {
+                    bridge.toast(unableToOpenThreadLabel)
+                    bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+                }
+            } else pager.openSlockPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData(),
                 storeScopeOverride = targetStoreScope,
@@ -4406,10 +4453,12 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(serverMembersStore, liveOwner, routeOwner, route.serverId, route.channelId) {
         if (liveOwner == routeOwner) refreshMembers()
     }
-    val members = remember(channelMembersSlice.members, route.serverId) {
+    val members = remember(channelMembersSlice.members, channelMembersSlice.canRemoveMembers, route.serverId) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+            .map { it.toKuiklyThreadMemberItem(route.serverId).let { row ->
+                row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
+            } }
     }
     val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
     val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
@@ -4426,6 +4475,26 @@ private fun ThreadMembersPageScreen() {
             serverId = route.serverId.value,
             diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") },
         )
+    }
+    var rosterQuery by remember(route) { mutableStateOf(TextFieldValue()) }
+    var humansExpanded by remember(route) { mutableStateOf(true) }
+    var agentsExpanded by remember(route) { mutableStateOf(true) }
+    var externalExpanded by remember(route) { mutableStateOf(true) }
+    val filteredMembers = filterThreadAddMemberCandidates(rosterQuery.text, members)
+    val filteredExternal = channelMembersSlice.externalMembers.filter { member ->
+        val query = rosterQuery.text.trim().removePrefix("@").lowercase()
+        query.isBlank() || member.displayName.lowercase().contains(query) ||
+            member.handles.any { it.lowercase().contains(query) }
+    }
+    var createAgentName by remember(routeOwner) { mutableStateOf<String?>(null) }
+    var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
+    LaunchedEffect(liveOwner, routeOwner) {
+        canCreateAgents = false
+        if (liveOwner == routeOwner) {
+            val session = sharedStores.authStore(storeScope).readSession()
+            canCreateAgents = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
+                ?.toServerSummary()?.permissions?.canManageSettings == true
+        } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
@@ -4490,6 +4559,7 @@ private fun ThreadMembersPageScreen() {
     }
 
     fun requestRemoveMember(member: KuiklyThreadMemberItem) {
+        if (authorityRejected || !channelMembersSlice.canRemoveMembers || !member.canRemove) return
         val confirmation =
             threadMemberRemovalConfirmation(
                 member = member,
@@ -4571,163 +4641,73 @@ private fun ThreadMembersPageScreen() {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
-                title = stringResource(MR.strings.thread_members_title, members.size),
-                iconName = SlockLucideIconName.Users,
-                backgroundColor = SlockColor.SurfaceWhite,
-                refreshing =
-                    channelMembersSlice.status == SharedServerMembersLoadStatus.InFlight &&
-                        members.isNotEmpty(),
-                leadingContent = {
-                    SlockTopPageHeaderAction(
-                        icon = SlockLucideIconName.ArrowLeft,
-                        onClick = { router.closePage() }
-                    )
-                },
-                trailingContent =
-                    if (canAddMembers) {
-                        {
-                            SlockTopPageHeaderAction(
-                                icon = SlockLucideIconName.UserPlus,
-                                onClick = { addDialogVisible = true }
+        ThreadMembersPageContent(
+            members = members, filteredMembers = filteredMembers, filteredExternal = filteredExternal,
+            externalMemberCount = channelMembersSlice.externalMembers.size, candidates = candidates,
+            rosterQuery = rosterQuery, onQueryChange = { rosterQuery = it },
+            agentsExpanded = agentsExpanded, humansExpanded = humansExpanded, externalExpanded = externalExpanded,
+            onAgentsExpandedChange = { agentsExpanded = it }, onHumansExpandedChange = { humansExpanded = it },
+            onExternalExpandedChange = { externalExpanded = it },
+            addDialogVisible = addDialogVisible, onAddVisibleChange = { addDialogVisible = it },
+            addMemberStatus = addMemberStatus, addMemberErrorCode = addMemberErrorCode, removalGate = removalGate,
+            membersFailed = membersFailed, membersLoading = membersLoading,
+            refreshing = channelMembersSlice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
+            canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver, memberAvatarResolver = memberAvatarResolver,
+            onBack = { router.closePage() }, onRefresh = ::refreshMembers,
+            onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
+            canCreateAgents = canCreateAgents,
+            onCreateAgent = { if (canCreateAgents && liveOwner == routeOwner) createAgentName = it },
+            onSubmit = { selectedMembers ->
+                val profiles = selectedMembers.mapNotNull { it.toMemberProfile() }
+                if (profiles.isEmpty() || profiles.size != selectedMembers.size) return@ThreadMembersPageContent
+                if (addMemberStatus == "adding") return@ThreadMembersPageContent
+                addMemberStatus = "adding"
+                addMemberErrorCode = null
+                memberScope.launch {
+                    when (
+                        val result =
+                            serverMembersStore.addChannelMembersBatch(
+                                owner = routeOwner,
+                                request =
+                                    build.raft.app.data.AddChannelMembersBatchRequest(
+                                        channelId = route.channelId,
+                                        userIds = profiles.filter { it.kind != MemberKind.Agent }.map { it.id },
+                                        agentIds = profiles.filter { it.kind == MemberKind.Agent }.map { it.id }
+                                    ),
+                                priority = DataRequestPriority.Foreground
                             )
+                    ) {
+                        is DataResult.Content -> {
+                            addMemberStatus = "idle"
+                            addMemberErrorCode = null
+                            addDialogVisible = false
                         }
-                    } else {
-                        null
-                    }
-            )
-            if (removalGate.failure != null) {
-                Text(
-                    text =
-                        if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
-                            stringResource(MR.strings.thread_members_remove_no_permission)
-                        } else {
-                            stringResource(MR.strings.thread_members_remove_failed)
-                        },
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
-                )
-            }
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (membersFailed) {
-                    item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                        ) {
-                            ThreadModalEmptyState(
-                                title = stringResource(MR.strings.common_error),
-                                detail = stringResource(MR.strings.thread_members_refresh_detail),
-                            )
-                            SlockBrutalActionButton(
-                                label = stringResource(MR.strings.common_retry),
-                                onClick = ::refreshMembers,
-                                minWidth = 0.dp,
-                            )
+                        is DataResult.NoPermission -> {
+                            addMemberStatus = "no_permission"
+                            addMemberErrorCode = result.blocker.code
                         }
-                    }
-                } else if (membersLoading) {
-                    item {
-                        ThreadModalEmptyState(
-                            title = stringResource(MR.strings.thread_state_loading),
-                            detail = "",
-                        )
-                    }
-                } else if (members.isEmpty()) {
-                    item {
-                        ThreadModalEmptyState(
-                            title = stringResource(MR.strings.thread_state_no_members),
-                            detail = stringResource(MR.strings.thread_members_refresh_detail)
-                        )
-                    }
-                } else {
-                    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
-                    val humans = members.filterNot { it.kind.equals("agent", ignoreCase = true) }
-                    if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
-                        items(agents.size, key = { agents[it].memberKey }) { index ->
-                            ThreadMembersPagerRow(
-                                member = agents[index],
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
-                                onOpen = ::openMember,
-                                onRemove = ::requestRemoveMember
-                            )
+                        is DataResult.Error -> {
+                            addMemberStatus = "failed"
+                            addMemberErrorCode = result.error.code
                         }
-                    }
-                    if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
-                        items(humans.size, key = { humans[it].memberKey }) { index ->
-                            ThreadMembersPagerRow(
-                                member = humans[index],
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
-                                onOpen = ::openMember,
-                                onRemove = ::requestRemoveMember
-                            )
+                        is DataResult.Empty -> {
+                            addMemberStatus = "failed"
+                            addMemberErrorCode = result.reason.name
                         }
                     }
                 }
             }
+        )
+        SlockBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
+            if (addMemberStatus != "adding") addDialogVisible = false
         }
-        if (addDialogVisible) {
-            ThreadAddMemberModal(
-                members = members,
-                candidates = candidates,
-                canAddMembers = canAddMembers,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                addMemberStatus = addMemberStatus,
-                addMemberErrorCode = addMemberErrorCode,
-                onDismiss = { addDialogVisible = false },
-                onSubmit = { member ->
-                    val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
-                    if (addMemberStatus == "adding") return@ThreadAddMemberModal
-                    addMemberStatus = "adding"
-                    addMemberErrorCode = null
-                    memberScope.launch {
-                        when (
-                            val result =
-                                serverMembersStore.addChannelMember(
-                                    owner = routeOwner,
-                                    request =
-                                        AddChannelMemberRequest(
-                                            channelId = route.channelId,
-                                            memberId = profile.id,
-                                            kind = profile.kind
-                                        ),
-                                    priority = DataRequestPriority.Foreground
-                                )
-                        ) {
-                            is DataResult.Content -> {
-                                addMemberStatus = "idle"
-                                addMemberErrorCode = null
-                                addDialogVisible = false
-                            }
-                            is DataResult.NoPermission -> {
-                                addMemberStatus = "no_permission"
-                                addMemberErrorCode = result.blocker.code
-                            }
-                            is DataResult.Error -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.error.code
-                            }
-                            is DataResult.Empty -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.reason.name
-                            }
-                        }
-                    }
-                }
+        createAgentName?.let { initialName ->
+            ChannelMembersCreateAgentDialog(
+                owner = routeOwner, channelId = route.channelId, initialName = initialName,
+                authority = authorityGateway, computersStore = sharedStores.computersStore(storeScope),
+                formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
+                onDismiss = { createAgentName = null; refreshMembers() },
+                onJoined = { createAgentName = null; addDialogVisible = false; refreshMembers() },
             )
         }
         removalGate.pending?.let { confirmation ->
@@ -4758,6 +4738,207 @@ private fun ThreadMembersPageScreen() {
 
 
 
+
+/** The production roster renderer; visual fixtures supply typed state without route payloads. */
+@Composable
+internal fun ThreadMembersPageContent(
+    members: List<KuiklyThreadMemberItem>,
+    filteredMembers: List<KuiklyThreadMemberItem>,
+    filteredExternal: List<build.raft.app.model.ChannelExternalMemberProfile>,
+    externalMemberCount: Int,
+    candidates: List<KuiklyThreadMemberItem>,
+    rosterQuery: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
+    agentsExpanded: Boolean,
+    humansExpanded: Boolean,
+    externalExpanded: Boolean,
+    onAgentsExpandedChange: (Boolean) -> Unit,
+    onHumansExpandedChange: (Boolean) -> Unit,
+    onExternalExpandedChange: (Boolean) -> Unit,
+    addDialogVisible: Boolean,
+    onAddVisibleChange: (Boolean) -> Unit,
+    addMemberStatus: String,
+    addMemberErrorCode: String?,
+    removalGate: ThreadMemberRemovalGateState,
+    membersFailed: Boolean,
+    membersLoading: Boolean,
+    refreshing: Boolean,
+    canAddMembers: Boolean,
+    agentStatusResolver: SlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenMember: (KuiklyThreadMemberItem) -> Unit,
+    onRemoveMember: (KuiklyThreadMemberItem) -> Unit,
+    onSubmit: (List<KuiklyThreadMemberItem>) -> Unit,
+    canCreateAgents: Boolean = false,
+    onCreateAgent: (String) -> Unit = {},
+) {
+    val rosterListState = rememberLazyListState()
+    Column(modifier = Modifier.fillMaxSize()) {
+        SlockTopPageHeader(
+            title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
+            titleContent = {
+                Text(stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
+                    style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = SlockColor.TextBlack)
+                if (!addDialogVisible) SlockMemberCountBadge(members.size + externalMemberCount)
+                Spacer(Modifier.weight(1f))
+            },
+            iconName = SlockLucideIconName.Users,
+            backgroundColor = SlockColor.BrandYellow,
+            refreshing = refreshing,
+            leadingContent = {
+                SlockTopPageHeaderAction(
+                    icon = SlockLucideIconName.ArrowLeft,
+                    onClick = {
+                        if (addDialogVisible) {
+                            if (addMemberStatus != "adding") onAddVisibleChange(false)
+                        } else onBack()
+                    }
+                )
+            },
+        )
+        if (addDialogVisible && canAddMembers) {
+            ThreadAddMemberModal(
+                inline = true, members = members, candidates = candidates,
+                canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver, addMemberStatus = addMemberStatus,
+                addMemberErrorCode = addMemberErrorCode,
+                onDismiss = { onAddVisibleChange(false) },
+                onSubmit = { onSubmit(listOf(it)) }, onSubmitBatch = onSubmit,
+                canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
+            )
+        } else {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            SlockBrutalSearchField(
+                value = rosterQuery,
+                placeholder = stringResource(MR.strings.thread_members_search_placeholder),
+                leadingIcon = SlockLucideIconName.Search,
+                onValueChange = onQueryChange,
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+        if (removalGate.failure != null) {
+            Text(
+                text =
+                    if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
+                        stringResource(MR.strings.thread_members_remove_no_permission)
+                    } else {
+                        stringResource(MR.strings.thread_members_remove_failed)
+                    },
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+            )
+        }
+        LazyColumn(
+            state = rosterListState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            if (membersFailed) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                    ) {
+                        ThreadModalEmptyState(
+                            title = stringResource(MR.strings.common_error),
+                            detail = stringResource(MR.strings.thread_members_refresh_detail),
+                        )
+                        SlockBrutalActionButton(
+                            label = stringResource(MR.strings.common_retry),
+                            onClick = onRefresh,
+                            minWidth = 0.dp,
+                        )
+                    }
+                }
+            } else if (membersLoading) {
+                item {
+                    ThreadModalEmptyState(
+                        title = stringResource(MR.strings.thread_state_loading),
+                        detail = "",
+                    )
+                }
+            } else if (filteredMembers.isEmpty() && filteredExternal.isEmpty()) {
+                item {
+                    ThreadModalEmptyState(
+                        title = stringResource(MR.strings.thread_state_no_members),
+                        detail = stringResource(MR.strings.thread_members_refresh_detail)
+                    )
+                }
+            } else {
+                val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
+                val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                if (humans.isNotEmpty()) {
+                    item { SlockCollapsibleSectionHeader(
+                        label = stringResource(MR.strings.thread_members_humans), count = humans.size,
+                        expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
+                        uppercaseLabel = false, countPrefix = " · ",
+                    ) }
+                    if (humansExpanded) items(humans.size, key = { humans[it].memberKey }) { index ->
+                        ThreadMembersPagerRow(
+                            member = humans[index],
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
+                            onOpen = onOpenMember,
+                            onRemove = onRemoveMember
+                        )
+                    }
+                }
+                if (agents.isNotEmpty()) {
+                    item { SlockCollapsibleSectionHeader(
+                        label = stringResource(MR.strings.thread_members_agents), count = agents.size,
+                        expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
+                        uppercaseLabel = false, countPrefix = " · ",
+                    ) }
+                    if (agentsExpanded) items(agents.size, key = { agents[it].memberKey }) { index ->
+                        ThreadMembersPagerRow(
+                            member = agents[index],
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
+                            onOpen = onOpenMember,
+                            onRemove = onRemoveMember
+                        )
+                    }
+                }
+                if (filteredExternal.isNotEmpty()) {
+                    item { SlockCollapsibleSectionHeader(
+                        label = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
+                        expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
+                    ) }
+                    if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
+                        val member = filteredExternal[index]
+                        SlockModalCompactMemberRow(
+                            title = member.displayName,
+                            subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
+                            avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
+                            statusColor = null, sourceBadgeLabel = member.provider, clickEnabled = false,
+                        )
+                    }
+                }
+            }
+        }
+        if (canAddMembers) {
+            Box(Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.thread_action_add_member),
+                    modifier = Modifier.fillMaxWidth(),
+                    minHeight = 32.dp,
+                    leadingIcon = if (addDialogVisible) SlockLucideIconName.X else SlockLucideIconName.Plus,
+                    onClick = { onAddVisibleChange(!addDialogVisible) },
+                    enabled = addMemberStatus != "adding",
+                )
+            }
+        }
+        }
+    }
+}
 
 @Composable
 internal fun ThreadHeaderVisualScreen() {
@@ -5705,6 +5886,56 @@ private fun SharedThreadRouteContentContent(
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
+    // task #36: the side thread's "open parent channel" keeps the column and hands focus to the
+    // main detail: the side page drops its own input focus (keyboard down) and asks the main page,
+    // by its key/generation, to scroll to and highlight the parent message. The composer is never
+    // focused, so no keyboard pops up; retired pages ignore the request.
+    val adaptiveFocusManager = LocalFocusManager.current
+    val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
+    val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
+    DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
+        val page = adaptiveCloseRequest
+        val subscription =
+            page?.let {
+                eventBus.observe(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                    crossProcess = true,
+                ) { eventData ->
+                    val request = eventData?.toAdaptiveParentFocusRequestOrNull() ?: return@observe
+                    if (!adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request)) return@observe
+                    pendingAdaptiveParentFocus = request
+                }
+            }
+        onDispose { subscription?.close() }
+    }
+    // The focus anchor drops (does not defer) a request while the keyboard is open (task #990),
+    // and the side page's keyboard is the window's, so wait for it to close before focusing.
+    LaunchedEffect(pendingAdaptiveParentFocus) {
+        val request = pendingAdaptiveParentFocus ?: return@LaunchedEffect
+        val closed =
+            withTimeoutOrNull(ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS) {
+                snapshotFlow { adaptivePageKeyboardInsetDp }.first { it <= 0f }
+            } != null
+        pendingAdaptiveParentFocus = null
+        // Re-validate after the wait: a channel switch, fold or new selection meanwhile retires
+        // the target, and a keyboard still open would only have the anchor drop it — both are
+        // reported as not focused instead of dispatching.
+        val outcome =
+            adaptiveFocusWorkspaceStore.snapshot().parentFocusOutcomeAfterWait(adaptiveCloseRequest, request, closed)
+        bridge.log(
+            "adaptive_side_thread_parent_focus result=${outcome.logValue} generation=${request.target.generation}"
+        )
+        if (outcome == AdaptiveParentFocusOutcome.Applied) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.FocusMessage(
+                    messageId = request.messageId,
+                    switchToTab = KuiklyThreadTab.Chat.wireValue,
+                )
+            )
+        }
+    }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
@@ -5827,6 +6058,19 @@ private fun SharedThreadRouteContentContent(
         currentSession = producerContext?.session
         replyCacheProvenanceOwner = producerContext?.provenance
         currentServerSlug = producerContext?.session?.currentServerSlug()
+        // task #1153: the captured session snapshot can precede server-roster
+        // population, leaving the slug permanently null and silently disabling
+        // quoted permalink cards for the whole thread session. Re-read the
+        // (freshly captured) session for a bounded window until it resolves.
+        if (currentServerSlug == null) {
+            currentServerSlug =
+                resolveThreadServerSlugWithRetry {
+                    dataSource
+                        .captureReplyCacheProducerContext()
+                        ?.session
+                        ?.currentServerSlug()
+                }
+        }
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
@@ -6160,6 +6404,79 @@ private fun SharedThreadRouteContentContent(
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSession by rememberUpdatedState(currentSession)
+    // An offline stand-in (durable last-known frame whose refresh failed) is only replaced by a network
+    // answer; nothing re-asked after the network came back, so it stayed until the channel was re-entered
+    // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place. A signal
+    // that lands while a refresh is still running is remembered (LiBai #2782): that refresh was issued
+    // offline and may fail back to the stand-in, so the retry fires once it settles.
+    val offlineStandInRecovery = remember(threadViewModel) { OfflineStandInRecoveryGate() }
+    // (the gate and attempt counter are per view model, so a new conversation starts clean)
+    fun refreshOfflineStandIn(reason: String, current: KuiklyThreadScreenPayload) {
+        bridge.log(
+            "thread_offline_standin_refresh reason=$reason " +
+                "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
+        )
+        threadViewModel.dispatch(SharedThreadIntent.Refresh)
+    }
+    // Two recovery signals share one gate: the realtime transport reconnecting (the server is reachable
+    // again — the one that matters; the system can report "online" while the server is not, and a
+    // per-app block never changes the system state, HuaTuo alpha 74) and the host's authoritative
+    // online signal as a supplement.
+    DisposableEffect(threadViewModel, sharedStores.eventBus, realtimeEvents) {
+        fun onRecovered(reason: String) {
+            val current = threadViewModel.state.value.payload
+            val refresh = offlineStandInRecovery.onNetworkRecovered(current)
+            bridge.log(
+                "thread_offline_recovery_signal reason=$reason action=${offlineStandInRecoveryAction(current)} " +
+                    "refresh=$refresh status=${current.status} durable=${current.durableLastKnown} " +
+                    "mainLoadFailed=${current.mainLoadFailed} error=${current.errorCode ?: "none"} " +
+                    "refreshing=${current.backgroundRefreshing}"
+            )
+            if (refresh) refreshOfflineStandIn(reason, current)
+        }
+        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
+        val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
+        val realtimeSubscription =
+            realtimeEvents.addListener { eventData ->
+                if (isRealtimeTransportConnectedEvent(eventData, latestCurrentSession?.currentServerId)) {
+                    onRecovered("realtime_connected")
+                }
+            }
+        onDispose {
+            hostNetworkEvents.removeListener(networkSubscription)
+            realtimeEvents.removeListener(realtimeSubscription)
+        }
+    }
+    LaunchedEffect(
+        offlineStandInRecovery,
+        payload.durableLastKnown,
+        payload.backgroundRefreshing,
+        payload.status,
+        payload.errorCode
+    ) {
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecovery.onPayloadSettled(current)) refreshOfflineStandIn("network_recovered_deferred", current)
+    }
+    // Signals are not enough on their own: Android never publishes the realtime reconnect to pages, and a
+    // per-app block never changes the system network state (HuaTuo alpha 78 logs). While the visible page
+    // shows a failed load, it also re-asks on a backoff; a successful answer stops it.
+    var offlineRecoveryRetryAttempt by remember(threadViewModel) { mutableStateOf(0) }
+    val offlineRecoveryAction = offlineStandInRecoveryAction(payload)
+    // Keyed on the view model and the attempt too: a switch to another failed conversation, or a failure
+    // that returns within one frame, must restart the timer (LiBai #2782).
+    LaunchedEffect(threadViewModel, offlineRecoveryAction, active, offlineRecoveryRetryAttempt) {
+        if (offlineRecoveryAction == OfflineStandInRecoveryAction.None) {
+            offlineRecoveryRetryAttempt = 0
+            return@LaunchedEffect
+        }
+        if (offlineRecoveryAction != OfflineStandInRecoveryAction.Refresh || !active) return@LaunchedEffect
+        delay(offlineRecoveryRetryDelayMs(offlineRecoveryRetryAttempt))
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecoveryAction(current) == OfflineStandInRecoveryAction.Refresh) {
+            offlineRecoveryRetryAttempt += 1
+            refreshOfflineStandIn("retry_backoff_$offlineRecoveryRetryAttempt", current)
+        }
+    }
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
         ThreadVisibleResumeGate()
     }
@@ -10283,6 +10600,7 @@ private fun SharedThreadRouteContentContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -10789,7 +11107,21 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == "openParentMessage" -> {
-                    if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
+                    val sideParentFocus =
+                        adaptiveCloseRequest?.let { source ->
+                            adaptiveFocusWorkspaceStore.snapshot().sideThreadParentFocus(source)
+                        }
+                    if (sideParentFocus != null) {
+                        adaptiveFocusManager.clearFocus(force = true)
+                        adaptiveKeyboardController?.hide()
+                        bridge.log("adaptive_side_thread_parent_focus result=requested generation=${sideParentFocus.target.generation}")
+                        eventBus.post(
+                            eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                            eventData = sideParentFocus.toJson(),
+                            crossProcess = true,
+                            source = "adaptive_side_thread_parent",
+                        )
+                    } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
                             "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
                                 "threadId=${renderedThread.sourceThreadId.orEmpty()} " +
@@ -13700,6 +14032,7 @@ private class ThreadPageContentCallbacks(
     val onClearChannelProfileUpdateStatus: () -> Unit,
     val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
     val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerKeyboardInsetChanged: (Float) -> Unit,
     val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
 )
@@ -13796,6 +14129,7 @@ fun ThreadPageContent(
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
     onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
+    onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -13900,6 +14234,7 @@ fun ThreadPageContent(
                 onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
                 onForwardMessagesDelivered = onForwardMessagesDelivered,
                 onOpenForwardDestination = onOpenForwardDestination,
+                onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
                 onComposerSendRequest = onComposerSendRequest,
                 onComposerEvent = onComposerEvent,
             ),
@@ -14000,6 +14335,7 @@ private fun ThreadPageContentContent(
     val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
     val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
     val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onComposerKeyboardInsetChanged = callbacks.onComposerKeyboardInsetChanged
     val onThreadEvent = data.onThreadEvent
     val onComposerSendRequest = callbacks.onComposerSendRequest
     val onComposerEvent = callbacks.onComposerEvent
@@ -15110,6 +15446,7 @@ private fun ThreadPageContentContent(
                                 onKeyboardHeightChange = { nextInset ->
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
+                                        onComposerKeyboardInsetChanged(nextInset)
                                     }
                                 },
                                 adaptiveNativeEditingStateReader =
@@ -21250,6 +21587,58 @@ internal fun threadOlderMessagesStatusSpec(
  *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
  *   both go away together with the content replacement.
  */
+/**
+ * The realtime transport for this page's server (re)connected — that server is reachable again. An
+ * event for another server, or with no server, is not this page's recovery (LiBai #2782).
+ */
+internal fun isRealtimeTransportConnectedEvent(eventData: JSONObject, currentServerId: String?): Boolean {
+    if (eventData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionPresenceTransportConnected) {
+        return false
+    }
+    val serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim() == serverId
+}
+
+/** Retry spacing for a visible page stuck on a failed load: 10 s, 20 s, 40 s, then every 60 s. */
+internal fun offlineRecoveryRetryDelayMs(attempt: Int): Long =
+    (10_000L shl attempt.coerceIn(0, 3)).coerceAtMost(60_000L)
+
+internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
+
+/**
+ * What a recovered network does to the thread on screen. Anything the last load left behind as a failure
+ * is re-asked: the offline stand-in, a memory copy kept after a failed refresh (HuaTuo alpha 78: warm
+ * re-entry shows that, not the stand-in), or the error page. A load still running is remembered, since it
+ * may yet fail; a permission answer is final and is not retried.
+ */
+internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction {
+    if (payload.status == "no_permission") return OfflineStandInRecoveryAction.None
+    if (payload.backgroundRefreshing || payload.status == "loading") return OfflineStandInRecoveryAction.Defer
+    val failed = payload.durableLastKnown || payload.mainLoadFailed
+    return if (failed) OfflineStandInRecoveryAction.Refresh else OfflineStandInRecoveryAction.None
+}
+
+/**
+ * Per-page memory of a network recovery (LiBai #2782): the host de-duplicates repeated online signals,
+ * so one that lands while a refresh is running must be kept until that refresh settles. Each call
+ * answers whether a refresh should be dispatched now.
+ */
+internal class OfflineStandInRecoveryGate {
+    private var pending = false
+
+    fun onNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean = decide(payload)
+
+    /** Called whenever the stand-in / refresh state changes; acts only on a remembered recovery. */
+    fun onPayloadSettled(payload: KuiklyThreadScreenPayload): Boolean = pending && decide(payload)
+
+    private fun decide(payload: KuiklyThreadScreenPayload): Boolean =
+        when (offlineStandInRecoveryAction(payload)) {
+            OfflineStandInRecoveryAction.Refresh -> { pending = false; true }
+            OfflineStandInRecoveryAction.Defer -> { pending = true; false }
+            OfflineStandInRecoveryAction.None -> { pending = false; false }
+        }
+}
+
 internal data class ThreadOfflineLastKnownChrome(
     val insetActive: Boolean,
     val tipVisible: Boolean
@@ -23416,7 +23805,21 @@ private fun ThreadMessageCardContent(
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug) ?: return@LaunchedEffect
+        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug)
+        if (target == null) {
+            // task #1153: quoted permalink cards used to fail silently. This
+            // event only proves extraction returned null — it does not
+            // distinguish "no quoted permalink" from external links, code /
+            // Markdown links, or slug mismatch. serverSlug=null is a useful
+            // signal, but a non-null slug does not prove a slug mismatch.
+            if (message.body.contains("http")) {
+                diagnosticsLogger(
+                    "thread_quoted_permalink_skip messageId=${message.id} " +
+                        "serverSlug=${currentServerSlug ?: "null"}"
+                )
+            }
+            return@LaunchedEffect
+        }
         quotedPermalinkTarget = target
         quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         quotedPermalinkState.value =
@@ -30800,20 +31203,27 @@ private fun ThreadMembersPagerRow(
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
-            liveActivityLabel = status?.label,
+            liveActivityLabel = status?.localizedMemberStatusLabel(),
             humanRoleLabel =
                 if (member.kind.equals("agent", ignoreCase = true)) {
                     ""
                 } else {
-                    member.localizedModalRoleLabel()
+                    member.description
                 }
         )
     val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
         ?: member.modalAvatarWireValue()
     SlockModalCompactMemberRow(
         title = member.displayName,
+        channelPageStyle = true,
+        avatarSize = 28.dp,
         subtitle = subtitle,
         sourceBadgeLabel = member.sourceServerLabel,
+        roleBadgeLabel = when (member.effectiveChannelRole) {
+            "owner", "admin" -> stringResource(MR.strings.thread_members_channel_admin)
+            "guest" -> stringResource(MR.strings.channel_member_role_guest)
+            else -> null
+        },
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
         cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
@@ -30821,7 +31231,7 @@ private fun ThreadMembersPagerRow(
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
         enabled = !removing,
-        trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
+        trailingIcon = SlockLucideIconName.UserMinus.takeIf { member.canRemove && !removing },
         trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
         onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
         onClick = { onOpen(member) }
@@ -30829,6 +31239,7 @@ private fun ThreadMembersPagerRow(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun ThreadAddMemberModal(
     members: List<KuiklyThreadMemberItem>,
     candidates: List<KuiklyThreadMemberItem>,
@@ -30839,8 +31250,12 @@ private fun ThreadAddMemberModal(
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
     showSelectedCheckmark: Boolean = true,
+    inline: Boolean = false,
     onDismiss: () -> Unit,
-    onSubmit: (KuiklyThreadMemberItem) -> Unit
+    onSubmit: (KuiklyThreadMemberItem) -> Unit,
+    onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null,
+    canCreateAgents: Boolean = false,
+    onCreateAgent: (String) -> Unit = {},
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     // Caller-local TextFieldValue is the sole editor owner for the search box;
@@ -30850,9 +31265,12 @@ private fun ThreadAddMemberModal(
     var selectedKey by remember(candidates, initialSelectedId) {
         mutableStateOf(candidates.firstOrNull { it.id == initialSelectedId }?.memberKey)
     }
+    var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
     var localError by remember { mutableStateOf(false) }
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
+    val selectedCandidates = candidates.filter { it.memberKey in selectedKeys && it.memberKey !in currentKeys }
     val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
+    val createName = query.text.trim().removePrefix("@").takeIf { filteredCandidates.isEmpty() }.orEmpty()
     val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
@@ -30869,16 +31287,8 @@ private fun ThreadAddMemberModal(
                         ?: genericErrorLabel).uppercase()
             else -> null
         }
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.thread_action_add_member),
-        onDismiss = onDismiss,
-        minWidth = 356.dp,
-        maxWidth = 356.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val content: @Composable () -> Unit = {
+        Column(modifier = if (inline) Modifier.fillMaxSize() else Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!errorText.isNullOrBlank()) {
                 Text(
                     text = errorText,
@@ -30899,12 +31309,21 @@ private fun ThreadAddMemberModal(
                 onValueChange = {
                     if (!blocked) {
                         query = it
-                        selectedKey = null
+                        if (!inline) selectedKey = null
                         localError = false
                     }
                 }
             )
-            SlockModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp) {
+            val candidateRows: com.tencent.kuikly.compose.foundation.lazy.LazyListScope.() -> Unit = {
+                if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        selectedCandidates.forEach { member ->
+                            SlockToolbarChip(label = member.displayName, uppercase = false, active = true,
+                                trailingIconName = SlockLucideIconName.X, enabled = !adding,
+                                onClick = { selectedKeys = selectedKeys - member.memberKey })
+                        }
+                    }
+                }
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -30923,45 +31342,6 @@ private fun ThreadAddMemberModal(
                         )
                     }
                 } else {
-                    if (agentCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
-                        items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
-                            val member = agentCandidates[index]
-                            val alreadyJoined = member.memberKey in currentKeys
-                            val interaction =
-                                threadAddMemberRowInteraction(
-                                    memberKey = member.memberKey,
-                                    selectedKey = selectedKey,
-                                    blocked = blocked,
-                                    adding = adding,
-                                    alreadyJoined = alreadyJoined
-                                )
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            SlockModalCompactMemberRow(
-                                title = member.displayName,
-                                subtitle = threadAddMemberCandidateSubtitle(member.description),
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
-                                cacheServerId = member.sourceServerId,
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                selected = interaction.selected,
-                                enabled = interaction.enabled,
-                                clickEnabled = interaction.clickEnabled,
-                                avatarSize = 26.dp,
-                                trailingIcon = if (showSelectedCheckmark && member.memberKey == selectedKey) SlockLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
-                                onClick = {
-                                    selectedKey = member.memberKey
-                                    localError = false
-                                    onSubmit(member)
-                                }
-                            )
-                        }
-                    }
                     if (humanCandidates.isNotEmpty()) {
                         item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
@@ -30970,7 +31350,7 @@ private fun ThreadAddMemberModal(
                             val interaction =
                                 threadAddMemberRowInteraction(
                                     memberKey = member.memberKey,
-                                    selectedKey = selectedKey,
+                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
                                     blocked = blocked,
                                     adding = adding,
                                     alreadyJoined = alreadyJoined
@@ -30988,22 +31368,104 @@ private fun ThreadAddMemberModal(
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = interaction.selected,
+                                selectionChecked = if (inline) interaction.selected else null,
                                 enabled = interaction.enabled,
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (showSelectedCheckmark && member.memberKey == selectedKey) SlockLucideIconName.Check else null,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
-                                    selectedKey = member.memberKey
+                                    if (inline) {
+                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
+                                    } else {
+                                        selectedKey = member.memberKey
+                                        onSubmit(member)
+                                    }
                                     localError = false
-                                    onSubmit(member)
                                 }
                             )
                         }
                     }
+                    if (agentCandidates.isNotEmpty()) {
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
+                        items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
+                            val member = agentCandidates[index]
+                            val alreadyJoined = member.memberKey in currentKeys
+                            val interaction =
+                                threadAddMemberRowInteraction(
+                                    memberKey = member.memberKey,
+                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
+                                    blocked = blocked,
+                                    adding = adding,
+                                    alreadyJoined = alreadyJoined
+                                )
+                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                                ?: member.modalAvatarWireValue()
+                            SlockModalCompactMemberRow(
+                                title = member.displayName,
+                                subtitle = threadAddMemberCandidateSubtitle(member.description),
+                                avatarWireValue = avatarWireValue,
+                                avatarLabel = member.modalAvatarLabel(),
+                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                cacheServerId = member.sourceServerId,
+                                statusColor = status?.color,
+                                statusPulsing = status?.pulsing == true,
+                                selected = interaction.selected,
+                                selectionChecked = if (inline) interaction.selected else null,
+                                enabled = interaction.enabled,
+                                clickEnabled = interaction.clickEnabled,
+                                avatarSize = 26.dp,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
+                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
+                                onClick = {
+                                    if (inline) {
+                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
+                                    } else {
+                                        selectedKey = member.memberKey
+                                        onSubmit(member)
+                                    }
+                                    localError = false
+                                }
+                            )
+                        }
+                    }
+
                 }
             }
+            if (inline) {
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
+                SlockBrutalActionButton(
+                    label = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
+                        else stringResource(MR.strings.thread_members_create_named_agent, createName),
+                    modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
+                    enabled = !adding && canCreateAgents,
+                    onClick = { onCreateAgent(createName) },
+                )
+                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = SlockType.Caption)
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
+                    modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
+                    backgroundColor = SlockColor.BrandYellow,
+                    enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
+                    onClick = { onSubmitBatch?.invoke(selectedCandidates) },
+                )
+            } else {
+                SlockModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,
+                    content = candidateRows)
+            }
         }
+    }
+    if (inline) {
+        Box(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            content()
+        }
+    } else {
+        SlockUnifiedDialog(
+            title = stringResource(MR.strings.thread_action_add_member), onDismiss = onDismiss,
+            minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
+            titleFontSize = 18, titleLineHeight = 22,
+        ) { content() }
     }
 }
 
@@ -31112,7 +31574,8 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
         kind = kind.name.lowercase(),
         sourceServerId = serverId?.value,
         sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId)
+        canRemove = isLocalToServer(localServerId),
+        effectiveChannelRole = effectiveChannelRole
     )
 
 private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
@@ -31128,6 +31591,7 @@ private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): Str
 
 private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
     avatarUrl?.takeIf { it.isNotBlank() }
+        ?: "pixel:robot".takeIf { kind.equals("agent", ignoreCase = true) }
 
 private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }

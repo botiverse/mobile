@@ -695,6 +695,10 @@ internal fun SlockNavigationRailTabBar(
                 }
             }
         }
+        // The rail's right-edge divider runs the full window height, through the status bar.
+        // task #482 had started it below the top inset, which left the status-bar part of
+        // this column transparent and showed a thin white line between the rail and the
+        // list; artin (2026-10-03) chose the full-height line instead.
         Box(
             modifier = Modifier
                 .width(SlockStroke.Default)

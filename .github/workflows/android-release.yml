@@ -53,6 +53,11 @@ on:
         required: false
         type: string
         default: "current"
+      upload_android_artifacts:
+        description: "Upload immutable AAB and APK to Hands without activation"
+        required: false
+        type: boolean
+        default: false
       release_mode:
         required: false
         type: string
@@ -174,6 +179,11 @@ on:
           - current
           - legacy
           - modern
+      upload_android_artifacts:
+        description: "Upload immutable AAB and APK to Hands without activation"
+        required: false
+        type: boolean
+        default: false
       release_mode:
         description: "Draft only. Review notes and smoke before the separate explicit Hands publish step."
         required: true
@@ -297,6 +307,7 @@ jobs:
       verified_v2: ${{ steps.verify.outputs.verified_v2 }}
       verified_v3: ${{ steps.verify.outputs.verified_v3 }}
       verified_v31: ${{ steps.verify.outputs.verified_v31 }}
+      hands_artifact_build_id: ${{ steps.hands-artifacts.outputs.build_id }}
     steps:
       - name: Checkout workflow base
         uses: actions/checkout@v5
@@ -312,6 +323,7 @@ jobs:
             .github/actions/gradle-failure-diagnostics \
             .github/gradle-cache-epoch \
             .github/gradle-cache-quarantine \
+            scripts/upload_android_hands_artifacts.sh \
             scripts/sign_android_apk_with_rotation.sh \
             scripts/verify_android_apk_with_rotation.sh \
             scripts/verify_android_dex_packaging.py \
@@ -393,6 +405,7 @@ jobs:
           GRADLE_ARGS=(
             :shared:generateSqlDelightInterface
             :androidApp:assemble${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
+            :androidApp:bundle${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
             :androidApp:copyHandsNativeSymbols
             "-PversionX=${{ needs.resolve.outputs.version_major }}"
             "-PversionY=${{ needs.resolve.outputs.version_minor }}"
@@ -574,9 +587,43 @@ jobs:
           echo "min_sdk=${MIN_SDK}" >> "$GITHUB_OUTPUT"
           echo "target_sdk=${TARGET_SDK}" >> "$GITHUB_OUTPUT"
           echo "signer_cert_sha256_json=${SIGNERS_JSON}" >> "$GITHUB_OUTPUT"
+          echo "upload_key_cert_sha256=$(printf '%s' "${SIGNERS_JSON}" | jq -er '.[-1]')" >> "$GITHUB_OUTPUT"
           echo "verified_v2=${V2}" >> "$GITHUB_OUTPUT"
           echo "verified_v3=${V3}" >> "$GITHUB_OUTPUT"
           echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
+
+      - name: Locate AAB
+        if: ${{ inputs.upload_android_artifacts }}
+        id: locate-aab
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_DIR="compose/androidApp/build/outputs/bundle/${{ needs.resolve.outputs.android_variant }}"
+          AAB="$(find "$AAB_DIR" -maxdepth 1 -type f -name '*.aab' | sort | head -n 1)"
+          [ -n "$AAB" ] || { echo "No AAB found under $AAB_DIR" >&2; exit 1; }
+          echo "aab_path=$AAB" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable AAB + APK to Hands
+        if: ${{ inputs.upload_android_artifacts }}
+        id: hands-artifacts
+        env:
+          HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
+          HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
+          HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_COMMIT_SHA: ${{ steps.source.outputs.source_sha }}
+          CI_RUN_ID: ${{ github.run_id }}
+          PACKAGE_NAME: ${{ steps.verify.outputs.package_id }}
+          VERSION_NAME: ${{ steps.resolve.outputs.version_name }}
+          VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
+          UPLOAD_KEY_CERT_SHA256: ${{ steps.verify.outputs.upload_key_cert_sha256 }}
+          AAB_PATH: ${{ steps.locate-aab.outputs.aab_path }}
+          APK_PATH: ${{ steps.sign.outputs.apk_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/upload_android_hands_artifacts.sh | tee hands-artifacts-upload.log
+          awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
 
       - name: Upload APK as workflow artifact
         id: upload-apk

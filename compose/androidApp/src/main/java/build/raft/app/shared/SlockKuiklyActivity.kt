@@ -1437,7 +1437,19 @@ open class SlockKuiklyActivity :
                 succeeded = isSucceed,
                 completedAtMillis = SystemClock.elapsedRealtime()
             )
-        if (isSucceed) return
+        if (isSucceed) {
+            // task #482: insets dispatched between onAttach (pageData copy) and
+            // the shared layer's first observer registration would be lost and
+            // dedupe-suppressed on the next equal dispatch. Force one replay at
+            // page load completion so the mounted pager converges.
+            if (Build.VERSION.SDK_INT >= 30) {
+                window?.decorView?.rootWindowInsets?.let { insets ->
+                    lastPublishedInsetsKey = null
+                    publishWindowInsets(insets)
+                }
+            }
+            return
+        }
         SlockAppLog.e(
             "SlockKuiklyHost",
             "page_load_failed reason=${errorReason?.name ?: "unknown"} mode=${executeMode.mode}"
@@ -2441,14 +2453,87 @@ open class SlockKuiklyActivity :
     internal fun currentPageDataSnapshotForTest(): JSONObject =
             JSONObject(pageSpec?.pageData?.text.orEmpty())
 
+    // task #482: safe-area snapshots are scoped per host window so a second
+    // Activity or display can never pollute this window's inset state. The id
+    // travels in pageData so embedded child pagers inherit their owner's
+    // snapshot (children keep the same window).
+    private val hostWindowId: String by lazy {
+        "win:${System.identityHashCode(this)}"
+    }
+
     private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(): SlockKuiklyPageData =
+            withAndroidRuntimeWindowInsets(
+                    statusBarHeightPx = androidStatusBarHeightPx(),
+                    navigationBarHeightPx = androidNavigationBarHeightPx(),
+                    statusBarHidden = !androidStatusBarVisible(),
+            )
+
+    // Explicit-values overload used by the live inset publisher so the stored
+    // spec always carries the authoritative numbers from the dispatch that just
+    // happened — decorView.rootWindowInsets can lag behind the callback.
+    private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(
+            statusBarHeightPx: Int,
+            navigationBarHeightPx: Int,
+            statusBarHidden: Boolean,
+    ): SlockKuiklyPageData =
             SlockKuiklyPageData.fromJson(
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                         put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
-                        put(KEY_STATUS_BAR_HIDDEN, !androidStatusBarVisible())
+                        put(KEY_HOST_WINDOW_ID, hostWindowId)
+                        val statusBarVisible = !statusBarHidden
+                        put(KEY_STATUS_BAR_HIDDEN, statusBarHidden)
+                        // task #482: the renderer's reported top inset can lag or arrive in
+                        // the wrong unit on large-screen/desktop-mode hosts (it resolved to
+                        // ~22dp on a 48px status bar), which left the nav rail divider and
+                        // page headers drawing under the system bar. Feed the real
+                        // WindowInsets pixel value through the same "statusBarHeight"
+                        // channel the shared resolver already merges with the native
+                        // report (the live per-window snapshot, once present, is
+                        // authoritative and may be smaller or zero).
+                        if (statusBarVisible && statusBarHeightPx > 0) {
+                            put("statusBarHeight", statusBarHeightPx.toString())
+                            put("safeAreaTop", statusBarHeightPx.toString())
+                        }
+                        // Same source for the bottom edge: gesture-nav taskbars are not
+                        // always included in the renderer's reported bottom inset, which
+                        // left the DM composer under the system bar on large screens.
+                        // Write zero explicitly too: a taskbar that hides or shrinks must
+                        // clear the reserved padding, not keep a stale positive value.
+                        if (navigationBarHeightPx > 0) {
+                            put("navigationBarHeight", navigationBarHeightPx.toString())
+                            put("safeAreaBottom", navigationBarHeightPx.toString())
+                        } else {
+                            remove("navigationBarHeight")
+                            remove("safeAreaBottom")
+                        }
                     }
             )
+
+    private fun androidStatusBarHeightPx(): Int {
+        val decorView = window?.decorView ?: return 0
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets ?: return 0
+            return insets.getInsets(WindowInsets.Type.statusBars()).top
+        }
+        @Suppress("DEPRECATION")
+        return decorView.rootWindowInsets?.systemWindowInsetTop ?: 0
+    }
+
+    // Navigation bar and the gesture-mode taskbar can be reported under different
+    // inset types; take the max so either presentation clears the composer.
+    private fun androidNavigationBarHeightPx(): Int {
+        val decorView = window?.decorView ?: return 0
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets ?: return 0
+            val navigation = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            val gestures =
+                    insets.getInsets(WindowInsets.Type.systemGestures()).bottom
+            return maxOf(navigation, gestures)
+        }
+        @Suppress("DEPRECATION")
+        return decorView.rootWindowInsets?.systemWindowInsetBottom ?: 0
+    }
 
     private fun androidHostExcludesNavigationBar(): Boolean =
             androidHostExcludesNavigationBarForMode(androidNavigationMode())
@@ -2548,8 +2633,51 @@ open class SlockKuiklyActivity :
         val content = findViewById<View>(android.R.id.content) ?: return
         content.setOnApplyWindowInsetsListener { view, insets ->
             view.requestLayout()
+            // task #482: pageData is a one-shot snapshot taken before the first
+            // inset dispatch, so it can carry zero/stale bar heights. Publish
+            // every real dispatch to the shared layer, which merges it with the
+            // renderer-reported value (max wins) and re-pads affected surfaces.
+            publishWindowInsets(insets)
             insets
         }
+    }
+
+    private var lastPublishedInsetsKey: String? = null
+
+    private fun publishWindowInsets(insets: WindowInsets) {
+        val top = insets.getInsets(WindowInsets.Type.statusBars()).top
+        val bottom =
+                maxOf(
+                        insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
+                        insets.getInsets(WindowInsets.Type.systemGestures()).bottom,
+                )
+        val hidden = !insets.isVisible(WindowInsets.Type.statusBars())
+        val key = "$top:$bottom:$hidden"
+        if (key == lastPublishedInsetsKey) return
+        lastPublishedInsetsKey = key
+        // Keep the stored pageData spec in sync with the latest authoritative
+        // values so pages/children attached later already carry this snapshot —
+        // a pager event alone would be missed by observers registered after it
+        // fired (and equal future events would be deduped away).
+        pageSpec = pageSpec?.let { spec ->
+            spec.copy(
+                    pageData =
+                            spec.pageData.withAndroidRuntimeWindowInsets(
+                                    statusBarHeightPx = top,
+                                    navigationBarHeightPx = bottom,
+                                    statusBarHidden = hidden,
+                            )
+            )
+        }
+        kuiklyRenderViewDelegator.sendEvent(
+                EVENT_WINDOW_INSETS_CHANGED,
+                mapOf(
+                        "statusBarHeightPx" to top.toString(),
+                        "navigationBarHeightPx" to bottom.toString(),
+                        "statusBarHidden" to hidden,
+                        KEY_HOST_WINDOW_ID to hostWindowId,
+                ),
+        )
     }
 
     private fun applyLightSystemBarsAppearance(window: Window) {
@@ -2729,6 +2857,11 @@ open class SlockKuiklyActivity :
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
         private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
+        private const val KEY_HOST_WINDOW_ID = "slockWindowId"
+        // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom"
+        // are written as string px values by withAndroidRuntimeWindowInsets(); they map
+        // to JSONObject params.safeAreaPx keys in shared/SlockSafeArea.kt.
+        private const val EVENT_WINDOW_INSETS_CHANGED = "slockWindowInsetsChanged"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2

@@ -1,5 +1,25 @@
 package build.raft.app
 
+import build.raft.app.data.backFromDetail
+import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.backClosesSideThreadFirst
+import build.raft.app.data.foldSideThreadIntoDetail
+import build.raft.app.data.sideThreadColumnAvailable
+import build.raft.app.data.visibleSideThread
+import build.raft.app.data.AdaptiveSideThread
+import build.raft.app.data.SLOCK_SIDE_THREAD_COLUMN_DP
+import build.raft.app.data.SLOCK_LIST_PANE_DIVIDER_DP
+import build.raft.app.data.slockListPaneDraggedWidthDp
+import build.raft.app.data.slockListPanePreferredWidthDp
+import build.raft.app.data.slockListPaneStoredWidth
+import build.raft.app.data.slockListPaneWidthDp
+import build.raft.app.data.SLOCK_SIDE_THREAD_DIVIDER_DP
+import build.raft.app.data.closeDetailCompletely
+import build.raft.app.data.withOpenedDetail
+import build.raft.app.data.SharedAdaptiveWorkspaceSession
+import build.raft.app.data.detailListSelectionId
+import build.raft.app.data.hasVisibleDetailBackHistory
+
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
@@ -463,6 +483,8 @@ import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -1218,13 +1240,28 @@ internal fun appShellSharedDetailSurfaceVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
     railInlineSecondaryDestination: String?,
+    tasksDetailOverlayOpen: Boolean = false,
 ): Boolean =
     pageVisible &&
         (
             (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null) ||
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                // task #33: the Slack-nav DMs tab hosts the same list + detail split.
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                // task #34: the Tasks board hosts the detail in a bounded overlay while a task
+                // opened from the board is showing.
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
                 railInlineSecondaryDestination != null
         )
+
+/**
+ * task #33: the DMs tab only shows a DM (or a reply thread inside a DM) in its detail pane. A
+ * channel selected on Home stays Home's; next to the DMs list it renders the empty placeholder
+ * instead of a channel composer.
+ */
+internal fun appShellDmsTabShowsDetail(surfaceKind: String?, parentSurfaceKind: String?): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+        (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage)
 
 /**
  * task #13 two-step Back contract: while a rail surface (Activity tab or an inline secondary
@@ -1235,12 +1272,48 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectedTab: String,
     railInlineSecondaryDestination: String?,
     selectionPresent: Boolean,
+    tasksDetailOverlayOpen: Boolean = false,
 ): Boolean =
     selectionPresent &&
         (
             railInlineSecondaryDestination != null ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
         )
+
+/**
+ * task #34: on a wide desktop-mode screen a task opened from the Tasks board shows its thread in
+ * a bounded overlay above the board, so the board (filters, column scroll, selection) stays put.
+ * [overlayActive] is set by a board open and kept while the user navigates inside the detail
+ * (thread → parent channel advances the selection generation); it is cleared when the overlay
+ * closes, the selection ends, the user leaves the Tasks tab, or the wide layout goes away — so a
+ * conversation selected elsewhere (Home, Activity, Search) never pops up over the board.
+ */
+internal fun appShellTasksDetailOverlayOpen(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    selectionPresent: Boolean,
+    overlayActive: Boolean,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        dualPane &&
+        retainedAppShellSelectedTab(selectedTab) == "tasks" &&
+        selectionPresent &&
+        overlayActive
+
+/** task #34: the overlay ownership ends once any of these no longer holds. */
+internal fun appShellTasksDetailOverlayStaysActive(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    selectionPresent: Boolean,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        dualPane &&
+        retainedAppShellSelectedTab(selectedTab) == "tasks" &&
+        selectionPresent
 
 /**
  * task #13 destination preservation: once the wide rail (or an inline rail destination like
@@ -1831,10 +1904,14 @@ private fun localizedSharedHomeErrorDisplay(
     )
 
 @Composable
-private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
+private fun localizedSharedHomeSearchErrorDisplay(
+    code: String,
+    action: SharedHomeSearchSavedIntent? = SharedHomeSearchSavedIntent.RefreshSearch
+): SlockHomeInlineError =
     SlockHomeInlineError(
         title =
             when {
+                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_unavailable)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout)
                 code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
@@ -1843,6 +1920,7 @@ private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInline
             },
         detail =
             when {
+                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad_detail)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_permission_detail)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout_detail)
                 code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.search_error_offline_detail)
@@ -1850,7 +1928,11 @@ private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInline
                 else -> code.userFacingErrorCodeMessage(localizedErrorPresentationStrings())
             },
         code = code.ifBlank { "unknown_error" },
-        actionLabel = stringResource(MR.strings.common_retry)
+        actionLabel = when (action) {
+            is SharedHomeSearchSavedIntent.SetSearchSort -> stringResource(MR.strings.search_error_sort_recent)
+            null -> ""
+            else -> stringResource(MR.strings.common_retry)
+        }
     )
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
@@ -2096,6 +2178,8 @@ private fun SlockAppShellReadyContent(
     val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()
     val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
     val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
+    // task #34: a task opened from the Tasks board owns the bounded detail overlay.
+    var tasksDetailOverlayActive by remember { mutableStateOf(false) }
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -3221,6 +3305,55 @@ private fun SlockAppShellReadyContent(
             realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(previousOwner))
         }
     }
+    // task #36: when the window (or desktop mode) can no longer hold the side column, fold the
+    // side thread into the main detail with the channel in Back history.
+    // task #37: the user's list column width (saved per device) and whether its divider is being
+    // dragged. A drag that squeezes the detail below the column threshold folds the side thread
+    // only when the finger lifts, so dragging across the threshold and back loses nothing.
+    val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+    var adaptiveListPanePreferredDp by remember {
+        mutableStateOf(slockListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
+    }
+    var adaptiveListPaneResizing by remember { mutableStateOf(false) }
+    // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
+    // (The handle also reports the end when it goes inactive or leaves composition.)
+    val listPaneResizeDefersFold =
+        adaptiveListPaneResizing && desktopModeOnLargeScreen &&
+            adaptivePane.layout == SlockAdaptivePaneLayout.DualPane
+    val sideThreadNeedsFold =
+        !listPaneResizeDefersFold &&
+            adaptiveWorkspaceSession.visibleSideThread() != null &&
+            !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
+    LaunchedEffect(sideThreadNeedsFold) {
+        if (!sideThreadNeedsFold) return@LaunchedEffect
+        adaptiveWorkspaceStore.update { current ->
+            if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
+                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp}")
+                current.foldSideThreadIntoDetail()
+            } else current
+        }
+    }
+    val tasksDetailOverlayKeepsOwnership =
+        appShellTasksDetailOverlayStaysActive(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            selectedTab = selectedTab,
+            selectionPresent = adaptiveWorkspaceState?.selection != null,
+        )
+    LaunchedEffect(tasksDetailOverlayKeepsOwnership) {
+        if (!tasksDetailOverlayKeepsOwnership && tasksDetailOverlayActive) {
+            bridge.log("tasks_detail_overlay_release reason=surface_or_selection_changed")
+            tasksDetailOverlayActive = false
+        }
+    }
+    val tasksDetailOverlayOpen =
+        appShellTasksDetailOverlayOpen(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            selectedTab = selectedTab,
+            selectionPresent = adaptiveWorkspaceState?.selection != null,
+            overlayActive = tasksDetailOverlayActive,
+        )
     LaunchedEffect(
         desktopModeOnLargeScreen,
         storeScope.shellInstanceId,
@@ -3231,6 +3364,7 @@ private fun SlockAppShellReadyContent(
         selectedHomeDestination,
         authoritativeHomeStartAllowed,
         railInlineSecondaryDestination,
+        tasksDetailOverlayOpen,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
@@ -3273,6 +3407,7 @@ private fun SlockAppShellReadyContent(
                 selectedTab = selectedTab,
                 selectedHomeDestination = selectedHomeDestination,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
+                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
             )
         // Capture the dropped pending opens BEFORE the update so the reject/nack path
         // can still see them (they are cleared inside the update for the authority change).
@@ -3565,28 +3700,14 @@ private fun SlockAppShellReadyContent(
                 val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
-                val current = adaptiveWorkspaceStore.snapshot().workspace ?: return@observe
-                val next =
-                    reduceSlockAdaptiveWorkspace(
-                        current,
-                        SlockAdaptiveWorkspaceIntent.CloseDetail(
-                            identityKey = request.identityKey,
-                            generation = request.generation,
-                        ),
-                    )
-                if (current.selection != null && next.selection == null) {
+                val before = adaptiveWorkspaceStore.snapshot()
+                val after =
+                    // task #36: a side-column page's close only closes the column.
+                    adaptiveWorkspaceStore.update { current -> current.closeFromDetailPage(request) }
+                if (before.workspace?.selection != after.workspace?.selection) {
                     releaseAdaptiveHandoffLease(request.generation)
-                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                }
-                adaptiveWorkspaceStore.update { session ->
-                    session.copy(
-                        workspace = next,
-                        launchPayload =
-                            if (current.selection != null && next.selection == null) {
-                                null
-                            } else {
-                                session.launchPayload
-                            },
+                    homeShellStore.dispatch(
+                        SharedHomeShellIntent.SetSelectedConversation(after.detailListSelectionId())
                     )
                 }
             }
@@ -3704,6 +3825,11 @@ private fun SlockAppShellReadyContent(
                     )
             )
         }
+    // The native shell can dispatch Back directly to popMainRoute, bypassing
+    // a child Kuikly page's BackHandler. Keep the same selection in both hosts.
+    val membersDetailSelection = remember(navigationStoreScope, readySession?.user?.id, readyServerId) {
+        mutableStateOf<KuiklyMemberDetailPayload?>(null)
+    }
     val latestReadySession by rememberUpdatedState(readySession)
     val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
@@ -4302,6 +4428,37 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    /**
+     * Opens [launchPayload] in the shared workspace detail when the wide dual-pane workspace can
+     * show it. Returns the new selection, or null when the caller must fall back to a native push.
+     *
+     * task #33: reduces on the store's CURRENT session inside the atomic update. Seeding from the
+     * compose snapshot here was a lost update: a first tap right after switching to the DMs tab
+     * could write back parentVisible=false (pre-switch), leaving the new detail inactive while the
+     * previous conversation (e.g. Home's #all) stayed on screen.
+     */
+    fun openLaunchPayloadInAdaptiveDetail(launchPayload: WireThreadLaunchPayload): SlockAdaptiveDetailSelection? {
+        val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
+        if (!desktopModeOnLargeScreen || adaptiveIdentity == null) return null
+        var before: SharedAdaptiveWorkspaceSession? = null
+        val after =
+            adaptiveWorkspaceStore.update { current ->
+                before = current
+                current.withOpenedDetail(adaptiveIdentity, launchPayload)
+            }
+        val opened =
+            after.workspace?.selection?.takeIf { after !== before && it.identity == adaptiveIdentity }
+                ?: return null
+        if (opened != before?.workspace?.selection || before?.launchPayload == null) {
+            installAdaptiveHandoffLease(opened, launchPayload)
+        }
+        // Dual-pane detail does not push a native controller, so it must neither become
+        // a Forward entry nor leave an older native-push branch reachable.
+        conversationForwardHistory.clear()
+        bridge.setConversationForwardGestureEnabled(false)
+        return opened
+    }
+
     fun openHomeConversation(
         conversation: ThreadLaunchConversationIdentity,
         source: String,
@@ -4349,35 +4506,8 @@ private fun SlockAppShellReadyContent(
                 "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
-        val adaptiveState = adaptiveWorkspaceState
         val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
-        if (
-            desktopModeOnLargeScreen &&
-            adaptiveState?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
-            adaptiveIdentity != null
-        ) {
-            val next =
-                reduceSlockAdaptiveWorkspace(
-                    adaptiveState,
-                    SlockAdaptiveWorkspaceIntent.OpenDetail(adaptiveIdentity),
-                )
-            if (next.selection?.identity == adaptiveIdentity) {
-                if (next.selection != adaptiveState.selection || adaptiveDetailLaunchPayload == null) {
-                    installAdaptiveHandoffLease(next.selection, launchPayload)
-                }
-                adaptiveWorkspaceStore.update { current ->
-                    current.copy(
-                        workspace = next,
-                        launchPayload = launchPayload,
-                    )
-                }
-                // Dual-pane detail does not push a native controller, so it must neither become
-                // a Forward entry nor leave an older native-push branch reachable.
-                conversationForwardHistory.clear()
-                bridge.setConversationForwardGestureEnabled(false)
-                return
-            }
-        }
+        if (openLaunchPayloadInAdaptiveDetail(launchPayload) != null) return
         // task #45: while desktop mode is OFF the standalone push still owns the screen,
         // but a parked workspace (same server) must track the user's current selection —
         // otherwise the next ON tick would resurrect a stale pre-OFF detail.
@@ -4703,18 +4833,23 @@ private fun SlockAppShellReadyContent(
         )
         if (current == null) return
         val selection = current.selection ?: return
-        val next =
-            reduceSlockAdaptiveWorkspace(
-                current,
-                SlockAdaptiveWorkspaceIntent.DismissDetail,
-            )
+        val request = SlockAdaptiveDetailCloseRequest(current.shellInstanceId, selection.identity.key, selection.generation)
+        val next = adaptiveWorkspaceStore.update { it.backFromDetail(request) }
         releaseAdaptiveHandoffLease(selection.generation)
-        adaptiveWorkspaceStore.update { session ->
-            session.copy(
-                workspace = next,
-                launchPayload = null,
-            )
-        }
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(next.detailListSelectionId()))
+    }
+
+    /**
+     * task #34: the task overlay's close button / scrim closes the whole detail, including any
+     * thread → channel navigation made inside it (Back still unwinds one level at a time).
+     */
+    fun closeTasksDetailOverlay() {
+        val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection
+        bridge.log("tasks_detail_overlay_close selection=${selection?.identity?.key.orEmpty()}")
+        tasksDetailOverlayActive = false
+        if (selection == null) return
+        adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
+        releaseAdaptiveHandoffLease(selection.generation)
         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
     }
 
@@ -4729,12 +4864,37 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
+        if (selectedTab == "members" && membersDetailSelection.value != null) {
+            membersDetailSelection.value = null
+            return true
+        }
+        // task #36: an open side thread closes first; the main detail stays.
+        if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
+            adaptiveWorkspaceStore.update { it.copy(sideThread = null) }
+            return true
+        }
+        if (desktopModeOnLargeScreen && adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
+            dismissAdaptiveDetailSelection()
+            return true
+        }
         if (
             desktopModeOnLargeScreen &&
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
-                selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
+                selectionPresent =
+                    adaptiveWorkspaceStore.snapshot().let { session ->
+                        session.workspace?.selection != null &&
+                            // The DMs tab does not show (so must not dismiss) a channel selection.
+                            (
+                                retainedAppShellSelectedTab(selectedTab) != SlockSlackNavTabs.Dms ||
+                                    appShellDmsTabShowsDetail(
+                                        surfaceKind = session.launchPayload?.surfaceKind,
+                                        parentSurfaceKind = session.launchPayload?.parentSurfaceKind,
+                                    )
+                            )
+                    },
+                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -5912,14 +6072,10 @@ private fun SlockAppShellReadyContent(
                                             )
                                         )
                                     }
-                                    val activityIndex = indexOfFirst { it.key == SlockSlackNavTabs.Activity }
-                                    if (activityIndex >= 0) {
-                                        add(activityIndex + 1, railSearchItem)
-                                    } else {
-                                        add(railSearchItem)
-                                    }
+                                    add(railSearchItem)
                                 }
-                                .toList()
+                                // task #49: same order as the web LeftRail.
+                                .orderedLikeWebRail { it.key }
                         SlockNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
@@ -6032,54 +6188,44 @@ private fun SlockAppShellReadyContent(
                             }
                         )
                     }
-                    val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
-                        SharedTasksScreen(
-                            state = tasksState,
-                            onIntent = { intent ->
-                                prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
-                                tasksViewModel.dispatch(intent)
-                            },
-                            scrollToTopRequest = tabScrollToTopRequests.tasks,
-                            bottomContentPadding = appShellBottomContentInset,
-                            draftProjection = draftProjection,
-                            initialListPosition = tasksListPosition,
-                            onListPositionSnapshot = {
-                                prewarmAdmissionGate.invalidate("tasks_scroll")
-                                tasksListPosition = it
-                            },
-                            identityOptions = tasksServerMembersEntry.members,
-                            timeContext = threadTimeContext,
-                            onOpenTask = { task ->
-                                prewarmAdmissionGate.invalidate("tasks_open_task")
-                                pager.openStandaloneTaskThreadPage(
-                                    task = task,
-                                    serverId = readyServerId.orEmpty(),
-                                    conversationDirectory = appShellConversationDirectory,
-                                    timeContext = threadTimeContext,
-                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                    compactConsecutiveMessages = compactConsecutiveMessages,
-                                                            storeScope = navigationStoreScope
-                                )
+                    // task #34: the shared workspace detail child, hosted by the list + detail split
+                    // (Home, Activity, DMs, Search) and by the Tasks board overlay.
+                    // task #36: the main detail plus, when it fits, the reply-thread side column.
+                    // [allowSideColumn] is false on hosts that cannot show one (the task overlay);
+                    // the active host reports its measured width for the column decision.
+                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
+                        val density = LocalDensity.current
+                        val sideThread: AdaptiveSideThread? =
+                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted }
+                        val showSideColumn =
+                            sideThread != null &&
+                                (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
+                                    listPaneResizeDefersFold)
+                        LaunchedEffect(active, allowSideColumn) {
+                            if (active && !allowSideColumn) {
+                                adaptiveWorkspaceStore.update {
+                                    if (it.detailPaneWidthDp == null) it else it.copy(detailPaneWidthDp = null)
+                                }
                             }
-                        )
-                    }
-                    // task #13: shared list-detail host — the Activity tab renders the same
-                    // split (360dp list + workspace detail) the Home tab uses, driven by the
-                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
-                    // slot across wide/compact transitions so the native child controller,
-                    // draft and scroll state are retained rather than remounted by branch
-                    // movement; task #22 lifts only the detail slot above the floating dock.
-                    val adaptiveSplitListDetail:
-                        @Composable
-                        (
-                            enabled: Boolean,
-                            active: Boolean,
-                            listPane: @Composable (Boolean) -> Unit,
-                        ) -> Unit = { enabled, active, listPane ->
+                        }
+                        Row(
+                            modifier =
+                                paneModifier
+                                    .fillMaxSize()
+                                    .onSizeChanged { size ->
+                                        if (!active || !allowSideColumn) return@onSizeChanged
+                                        val widthDp = with(density) { size.width.toDp().value }
+                                        adaptiveWorkspaceStore.update {
+                                            if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
+                                        }
+                                    }
+                        ) {
+                        val modifier = Modifier.weight(1f).fillMaxHeight()
                         val workspace = adaptiveWorkspaceState
-                        val selection = workspace?.selection
-                        val detailPayload = adaptiveDetailLaunchPayload
+                        // task #33: a surface may decline the shared selection (the DMs tab shows only
+                        // DMs); a declined selection renders the empty placeholder, never its composer.
+                        val selection = workspace?.selection?.takeIf { detailAccepted }
+                        val detailPayload = adaptiveDetailLaunchPayload?.takeIf { detailAccepted }
                         val childActive =
                             active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
                         val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
@@ -6100,7 +6246,6 @@ private fun SlockAppShellReadyContent(
                                         .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
                                 }
                             }
-                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
                             if (detailPageData == null) {
                                 Box(
                                     modifier = modifier.fillMaxSize(),
@@ -6126,14 +6271,132 @@ private fun SlockAppShellReadyContent(
                                     },
                                 )
                             }
+                        if (showSideColumn && sideThread != null && workspace != null) {
+                            val sidePageData =
+                                remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
+                                    threadLaunchPageData(sideThread.payload)
+                                        .withSlockShellStoreScope(navigationStoreScope)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
+                                }
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .width(SLOCK_SIDE_THREAD_DIVIDER_DP.dp)
+                                        .fillMaxHeight()
+                                        .background(Color.Black),
+                            )
+                            SlockKuiklyChildPage(
+                                pageName = THREAD_PAGE,
+                                pageData = sidePageData,
+                                modifier = Modifier.width(SLOCK_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight(),
+                                active = childActive,
+                            )
+                        }
+                        }
+                    }
+                    val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                        SharedTasksScreen(
+                            state = tasksState,
+                            onIntent = { intent ->
+                                prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
+                                tasksViewModel.dispatch(intent)
+                            },
+                            scrollToTopRequest = tabScrollToTopRequests.tasks,
+                            bottomContentPadding = appShellBottomContentInset,
+                            draftProjection = draftProjection,
+                            initialListPosition = tasksListPosition,
+                            onListPositionSnapshot = {
+                                prewarmAdmissionGate.invalidate("tasks_scroll")
+                                tasksListPosition = it
+                            },
+                            identityOptions = tasksServerMembersEntry.members,
+                            timeContext = threadTimeContext,
+                            onOpenTask = { task ->
+                                prewarmAdmissionGate.invalidate("tasks_open_task")
+                                // task #34: wide desktop mode keeps the board and opens the task's
+                                // thread in a bounded overlay; otherwise the full-page push stays.
+                                val overlaySelection =
+                                    buildStandaloneTaskThreadLaunchPayload(
+                                        task = task,
+                                        serverId = readyServerId.orEmpty(),
+                                        conversationDirectory = appShellConversationDirectory,
+                                        timeContext = threadTimeContext,
+                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                        compactConsecutiveMessages = compactConsecutiveMessages,
+                                    )?.let(::openLaunchPayloadInAdaptiveDetail)
+                                if (overlaySelection != null) {
+                                    tasksDetailOverlayActive = true
+                                    bridge.log(
+                                        "tasks_detail_overlay_open task=${task.id} " +
+                                            "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
+                                    )
+                                    return@SharedTasksScreen
+                                }
+                                pager.openStandaloneTaskThreadPage(
+                                    task = task,
+                                    serverId = readyServerId.orEmpty(),
+                                    conversationDirectory = appShellConversationDirectory,
+                                    timeContext = threadTimeContext,
+                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                    compactConsecutiveMessages = compactConsecutiveMessages,
+                                                            storeScope = navigationStoreScope
+                                )
+                            }
+                        )
+                        if (tasksDetailOverlayOpen) {
+                            SlockTasksDetailOverlay(
+                                onDismiss = ::closeTasksDetailOverlay,
+                                bottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                            ) { modifier ->
+                                adaptiveDetailPane(modifier, active, true, false)
+                            }
+                        }
+                        }
+                    }
+                    // task #13: shared list-detail host — the Activity tab renders the same
+                    // split (360dp list + workspace detail) the Home tab uses, driven by the
+                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
+                    // slot across wide/compact transitions so the native child controller,
+                    // draft and scroll state are retained rather than remounted by branch
+                    // movement; task #22 lifts only the detail slot above the floating dock.
+                    val adaptiveSplitListDetail:
+                        @Composable
+                        (
+                            enabled: Boolean,
+                            active: Boolean,
+                            listPane: @Composable (Boolean) -> Unit,
+                            detailAccepted: Boolean,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted ->
+                        val workspace = adaptiveWorkspaceState
+                        val selection = workspace?.selection?.takeIf { detailAccepted }
+                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
+                            adaptiveDetailPane(modifier, active, detailAccepted, true)
                         }
                         if (enabled) {
                             val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+                            // task #37: the list width is the user's, clamped to this row so the
+                            // detail keeps its minimum; the divider has a wider drag handle on top.
+                            val density = LocalDensity.current
+                            var rowWidthDp by remember { mutableStateOf<Float?>(null) }
+                            val listWidthDp = slockListPaneWidthDp(adaptiveListPanePreferredDp, rowWidthDp)
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .onSizeChanged { size ->
+                                            val widthDp = with(density) { size.width.toDp().value }
+                                            if (rowWidthDp != widthDp) rowWidthDp = widthDp
+                                        }
+                            ) {
                             Row(modifier = Modifier.fillMaxSize()) {
                                 Box(
                                     modifier =
                                         Modifier
-                                            .width(if (dualPane) 360.dp else 0.dp)
+                                            .width(if (dualPane) listWidthDp.dp else 0.dp)
                                             .fillMaxHeight(),
                                 ) {
                                     if (dualPane) listPane(active)
@@ -6141,7 +6404,7 @@ private fun SlockAppShellReadyContent(
                                 Spacer(
                                     modifier =
                                         Modifier
-                                            .width(if (dualPane) 1.dp else 0.dp)
+                                            .width(if (dualPane) SLOCK_LIST_PANE_DIVIDER_DP.dp else 0.dp)
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
@@ -6166,6 +6429,28 @@ private fun SlockAppShellReadyContent(
                                         listPane(active)
                                     }
                                 }
+                            }
+                            if (dualPane) {
+                                SlockListPaneResizeHandle(
+                                    active = active,
+                                    listWidthDp = listWidthDp,
+                                    onDragStart = {
+                                        adaptiveListPaneResizing = true
+                                        bridge.log("adaptive_list_pane_resize start width=$listWidthDp row=$rowWidthDp")
+                                    },
+                                    onDrag = { startWidthDp, deltaDp ->
+                                        adaptiveListPanePreferredDp =
+                                            slockListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
+                                    },
+                                    onDragEnd = { reason ->
+                                        adaptiveListPaneResizing = false
+                                        listPanePreferenceStore.saveAdaptiveListPaneWidth(
+                                            slockListPaneStoredWidth(adaptiveListPanePreferredDp)
+                                        )
+                                        bridge.log("adaptive_list_pane_resize end=$reason width=$adaptiveListPanePreferredDp row=$rowWidthDp")
+                                    },
+                                )
+                            }
                             }
                         } else {
                             listPane(active)
@@ -6256,8 +6541,9 @@ private fun SlockAppShellReadyContent(
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
-                                    resolveSlockHomeSelectedConversationId(
-                                        adaptiveWorkspaceEnabled = desktopModeOnLargeScreen,
+                                    if (desktopModeOnLargeScreen) adaptiveWorkspaceSession.detailListSelectionId()
+                                    else resolveSlockHomeSelectedConversationId(
+                                        adaptiveWorkspaceEnabled = false,
                                         adaptiveSelection = selection,
                                         shellSelectedConversationId = selectedHomeConversationId,
                                         homeSelectedConversationId = homeState.selectedConversationId,
@@ -6325,6 +6611,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             active,
                             homeListPane,
+                            true,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -6371,12 +6658,26 @@ private fun SlockAppShellReadyContent(
                             }
                         val liveDmsTimeContext =
                             hostThreadTimeContextProvider.current?.withTimeFormat(sessionTimeFormat) ?: threadTimeContext
+                        // task #33: on DualPane the DMs list stays at left and the opened DM renders
+                        // in the shared workspace detail slot, like the Home and Activity tabs.
+                        // Before this, OpenDetail updated a detail no surface on this tab showed.
+                        val dmsListPane: @Composable (Boolean) -> Unit = { listActive ->
                         SharedDmsScreen(
-                            active = active,
+                            active = listActive,
                             directMessages = projectedDirectMessages,
                             onOpenConversation = { identity ->
                                 openHomeConversation(identity, "dms")
                             },
+                            // Only highlight while the detail is actually visible beside the list:
+                            // with desktop mode OFF or a single pane, a parked selection has no
+                            // visible detail and must not mark a row.
+                            selectedThreadId =
+                                adaptiveWorkspaceState
+                                    ?.takeIf {
+                                        desktopModeOnLargeScreen &&
+                                            it.pane.layout == SlockAdaptivePaneLayout.DualPane
+                                    }
+                                    ?.selection?.identity?.threadId,
                             showHeader = true,
                             scrollToTopRequest = tabScrollToTopRequests.dms,
                             bottomContentPadding = appShellBottomContentInset,
@@ -6388,6 +6689,16 @@ private fun SlockAppShellReadyContent(
                             onRefresh = {
                                 homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                             }
+                        )
+                        }
+                        adaptiveSplitListDetail(
+                            desktopModeOnLargeScreen,
+                            active,
+                            dmsListPane,
+                            appShellDmsTabShowsDetail(
+                                surfaceKind = adaptiveDetailLaunchPayload?.surfaceKind,
+                                parentSurfaceKind = adaptiveDetailLaunchPayload?.parentSurfaceKind,
+                            ),
                         )
                     }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
@@ -6426,6 +6737,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             active,
                             activityListPane,
+                            true,
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -6459,6 +6771,8 @@ private fun SlockAppShellReadyContent(
                                 membersListState = it
                             },
                             paneLayout = shellScope.adaptivePane.layout,
+                            desktopMembersEnabled = desktopModeOnLargeScreen,
+                            detailSelection = membersDetailSelection,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -6637,6 +6951,7 @@ private fun SlockAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             pageVisible,
                             searchListPane,
+                            true,
                         )
                     } else {
                     AppShellTabs(
@@ -17407,6 +17722,8 @@ private fun SharedMembersScreen(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    desktopMembersEnabled: Boolean = false,
+    detailSelection: androidx.compose.runtime.MutableState<KuiklyMemberDetailPayload?>,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -17416,6 +17733,9 @@ private fun SharedMembersScreen(
     val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
     val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    var selectedDetail by detailSelection
+    val showMemberSplit = desktopMembersEnabled && paneLayout == SlockAdaptivePaneLayout.DualPane
+    SlockBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
@@ -17724,108 +18044,139 @@ private fun SharedMembersScreen(
                     build.raft.app.data.slockSharedPreferenceStore()
                 )
             }
-            MembersRouteContent(
-                payload = renderMembersPayload,
-                refreshing = refreshing,
-                paneLayout = paneLayout,
-                onAddHuman = {
-                    onForegroundActivity("add_human")
-                    loadInviteJoinLink()
-                },
-                agentStatusResolver = agentStatusResolver,
-                onOpenMemberDetail = { member ->
-                    onForegroundActivity("open_member")
-                    routeScope.launch {
-                        val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                        val accessMode = identity.memberDetailAccessMode(serverId)
-                        val launchPayload =
-                            if (
-                                member.kind == MemberKind.Agent &&
-                                    accessMode.allowsPrivateAgentSurfaces &&
-                                    (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                            ) {
-                                loadAgentPanelTabOrderForSharedMembers()
-                                    ?.also { order ->
-                                        agentPanelTabOrderStore.applyLoaded(
-                                            serverId = serverId,
-                                            order = order,
-                                            source = "shared_members_detail_open_preload",
-                                            logger = slockLogger("SlockAgentPanelTabOrder")
-                                        )
+            MembersAdaptiveWorkspace(
+                split = showMemberSplit,
+                selected = selectedDetail != null,
+                listPane = {
+                    MembersRouteContent(
+                        selectedIdentity = selectedDetail?.identity,
+                        selectedLocalServerId = ServerId(serverId),
+                        payload = renderMembersPayload,
+                        refreshing = refreshing,
+                        paneLayout = paneLayout,
+                        onAddHuman = {
+                            onForegroundActivity("add_human")
+                            loadInviteJoinLink()
+                        },
+                        agentStatusResolver = agentStatusResolver,
+                        onOpenMemberDetail = { member ->
+                            onForegroundActivity("open_member")
+                            if (showMemberSplit) {
+                                // Resolve local fallback now, never from a later selected server.
+                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
+                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toKuiklyMemberDetailPayload()
+                            } else routeScope.launch {
+                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                                val accessMode = identity.memberDetailAccessMode(serverId)
+                                val launchPayload =
+                                    if (
+                                        member.kind == MemberKind.Agent &&
+                                            accessMode.allowsPrivateAgentSurfaces &&
+                                            (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                                    ) {
+                                        loadAgentPanelTabOrderForSharedMembers()
+                                            ?.also { order ->
+                                                agentPanelTabOrderStore.applyLoaded(
+                                                    serverId = serverId,
+                                                    order = order,
+                                                    source = "shared_members_detail_open_preload",
+                                                    logger = slockLogger("SlockAgentPanelTabOrder")
+                                                )
+                                            }
+                                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                                            ?: membersPayload
+                                    } else {
+                                        membersPayload
                                     }
-                                    ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                                    ?: membersPayload
-                            } else {
-                                membersPayload
-                            }
-                        val pageData =
-                            launchPayload.toMemberDetailPageData(
-                                identity
-                            )
-                        if (pageData == null) {
-                            bridge.toast(openProfileFailedMessage)
-                            bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
-                        } else {
-                            val seedMember =
-                                member.copy(
-                                    serverId =
-                                        member.serverId
-                                            ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                                )
-                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                            pager.openSlockPage(
-                                pageName = MEMBER_DETAIL_PAGE,
-                                pageData = pageData,
-                                storeScopeOverride = storeScope,
-                                onMissingScope = {
+                                val pageData =
+                                    launchPayload.toMemberDetailPageData(
+                                        identity
+                                    )
+                                if (pageData == null) {
                                     bridge.toast(openProfileFailedMessage)
-                                    bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                    bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                                } else {
+                                    val seedMember =
+                                        member.copy(
+                                            serverId =
+                                                member.serverId
+                                                    ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                                        )
+                                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                                    pager.openSlockPage(
+                                        pageName = MEMBER_DETAIL_PAGE,
+                                        pageData = pageData,
+                                        storeScopeOverride = storeScope,
+                                        onMissingScope = {
+                                            bridge.toast(openProfileFailedMessage)
+                                            bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                        }
+                                    )
                                 }
+                            }
+                        },
+                        canCreateAgents = membersPayload.canCreateAgents,
+                        createAgent = MembersCreateAgentInputs(
+                            createAgentSubmit = createAgentSubmit,
+                            createAgentMachines = computersSlice.machines,
+                            createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+                            createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+                            createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
+                            createAgentLoadMachines = loadMachines,
+                            createAgentRetryMachines = retryMachines,
+                            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+                            createAgentLoadRuntimeModels = loadRuntimeModels,
+                            createAgentFormStore = createAgentFormStore,
+                            createAgentServerId = serverId
+                        ),
+                        inviteHuman = MembersInviteHumanInputs(
+                            inviteHumanSubmit = inviteHumanSubmit,
+                            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+                            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+                            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+                            inviteHumanJoinLinkCopy = { url ->
+                                onForegroundActivity("copy_invite_link")
+                                bridge.copyToPasteboard(url)
+                                inviteJoinLinkCopied = true
+                            },
+                            inviteHumanLoadJoinLink = {
+                                onForegroundActivity("load_invite_link")
+                                loadInviteJoinLink()
+                            }
+                        ),
+                        bottomContentPadding = bottomContentPadding,
+                        scrollToTopRequest = scrollToTopRequest,
+                        initialListState = initialListState,
+                        onListStateSnapshot = onListStateSnapshot,
+                        // Task #409: persist per-machine collapse under the session user id.
+                        currentUserId = current.currentUserId,
+                        agentGroupCollapseStore = membersAgentGroupCollapseStore,
+                        onRefresh = {
+                            onForegroundActivity("refresh")
+                            onRetry()
+                        }
+                    )
+                },
+                detailPane = {
+                    val detail = selectedDetail
+                    if (detail == null) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(stringResource(MR.strings.members_select_detail), color = SlockColor.TextMutedGray)
+                        }
+                    } else if (active) {
+                        // Dispose all detail-local effects on identity changes. Canonical
+                        // store selectors still enforce server/member/access ownership.
+                        key(storeScope, session?.user?.id, currentServerId, detail.identity) {
+                            MemberDetailPageContent(
+                                pageVisibleTick = 0,
+                                embeddedPayload = detail,
+                                storeScopeOverride = storeScope,
+                                onClose = { selectedDetail = null },
                             )
                         }
                     }
                 },
-                canCreateAgents = membersPayload.canCreateAgents,
-                createAgent = MembersCreateAgentInputs(
-                    createAgentSubmit = createAgentSubmit,
-                    createAgentMachines = computersSlice.machines,
-                    createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-                    createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-                    createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                    createAgentLoadMachines = loadMachines,
-                    createAgentRetryMachines = retryMachines,
-                    createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-                    createAgentLoadRuntimeModels = loadRuntimeModels,
-                    createAgentFormStore = createAgentFormStore,
-                    createAgentServerId = serverId
-                ),
-                inviteHuman = MembersInviteHumanInputs(
-                    inviteHumanSubmit = inviteHumanSubmit,
-                    inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-                    inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-                    inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                    inviteHumanJoinLinkCopy = { url ->
-                        onForegroundActivity("copy_invite_link")
-                        bridge.copyToPasteboard(url)
-                        inviteJoinLinkCopied = true
-                    },
-                    inviteHumanLoadJoinLink = {
-                        onForegroundActivity("load_invite_link")
-                        loadInviteJoinLink()
-                    }
-                ),
-                bottomContentPadding = bottomContentPadding,
-                scrollToTopRequest = scrollToTopRequest,
-                initialListState = initialListState,
-                onListStateSnapshot = onListStateSnapshot,
-                // Task #409: persist per-machine collapse under the session user id.
-                currentUserId = current.currentUserId,
-                agentGroupCollapseStore = membersAgentGroupCollapseStore,
-                onRefresh = {
-                    onForegroundActivity("refresh")
-                    onRetry()
-                }
             )
             // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
         }
@@ -19244,14 +19595,17 @@ internal fun SharedHomeSearchPanel(
                             (state.errorCode != null && !hasSearchRows) ||
                             (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
                     ) {
+                        val errorCode = state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
+                        val recoveryAction = sharedHomeSearchErrorAction(errorCode, state.sort)
                         HomeInlineErrorCard(
-                            error = localizedSharedHomeSearchErrorDisplay(
-                                state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
-                            ),
+                            error = localizedSharedHomeSearchErrorDisplay(errorCode, recoveryAction),
                             modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
+                            showAction = recoveryAction != null,
                             onAction = {
-                                onIntent(SharedHomeSearchSavedIntent.RefreshSearch)
-                                onRefreshComputers()
+                                recoveryAction?.let(onIntent)
+                                if (recoveryAction == SharedHomeSearchSavedIntent.RefreshSearch) {
+                                    onRefreshComputers()
+                                }
                             }
                         )
                     } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {

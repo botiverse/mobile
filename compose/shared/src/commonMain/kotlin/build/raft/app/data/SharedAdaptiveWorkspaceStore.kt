@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 internal data class SharedAdaptiveWorkspaceSession(
     val workspace: SlockAdaptiveWorkspaceState? = null,
     val launchPayload: WireThreadLaunchPayload? = null,
+    val detailHistory: AdaptiveDetailHistory? = null,
     val handoffRoomLeaseOwner: RealtimeRoomLeaseOwner? = null,
     /**
      * Outstanding standalone→pane adoption requests awaiting the destination's ready report.
@@ -25,6 +26,13 @@ internal data class SharedAdaptiveWorkspaceSession(
      */
     val lastWindowFactHostId: String? = null,
     val lastWindowFactCapturedAtMillis: Long = 0L,
+    /** task #36: reply thread shown in its own column beside the selected channel/DM. */
+    val sideThread: AdaptiveSideThread? = null,
+    /**
+     * task #36: measured width (dp) of the detail pane on the host currently showing it, after the
+     * rail, list, dividers and insets. Null while unmeasured or on a host without a side column.
+     */
+    val detailPaneWidthDp: Float? = null,
 )
 
 /** One adoption request the shell accepted and is waiting to confirm before acking. */
@@ -67,7 +75,18 @@ internal class SharedAdaptiveWorkspaceStore {
         transform: (SharedAdaptiveWorkspaceSession) -> SharedAdaptiveWorkspaceSession,
     ): SharedAdaptiveWorkspaceSession =
         synchronized(lock) {
-            transform(_state.value).also { _state.value = it }
+            transform(_state.value).let { next ->
+                val history = next.detailHistory
+                val withHistory = if (history != null && history.owner != next.workspace?.selection) {
+                    next.copy(detailHistory = null)
+                } else next
+                // task #36: a side thread belongs to the selection it opened beside.
+                val side = withHistory.sideThread
+                val normalized = if (side != null && side.owner != withHistory.workspace?.selection) {
+                    withHistory.copy(sideThread = null)
+                } else withHistory
+                normalized.also { _state.value = it }
+            }
         }
 
     fun clear() {

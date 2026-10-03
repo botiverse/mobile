@@ -3256,7 +3256,7 @@ class SharedServerMembersStoreTest {
                 ChannelMemberSnapshot(
                     channelId = channelId,
                     members = channelMembersByChannel[channelId.value].orEmpty(),
-                    canAddMembers = channelMembersCanAdd
+                    canAddMembers = channelMembersCanAdd, canRemoveMembers = true
                 )
             )
         }

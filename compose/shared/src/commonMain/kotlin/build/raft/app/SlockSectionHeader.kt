@@ -393,6 +393,8 @@ internal fun SlockCollapsibleSectionHeader(
     modifier: Modifier = Modifier,
     showCollapsedUnreadDot: Boolean = false,
     minHeight: Dp = 30.dp,
+    uppercaseLabel: Boolean = true,
+    countPrefix: String = "",
     sortContentDescription: String? = null,
     onSortClick: ((SlockPopoverAnchor) -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
@@ -412,12 +414,12 @@ internal fun SlockCollapsibleSectionHeader(
             rotationAnimationDurationSeconds = SlockCollapsibleSectionTokens.AnimationDurationSeconds
         )
         Text(
-            label.uppercase(),
+            if (uppercaseLabel) label.uppercase() else label,
             style = SlockType.SectionLabel,
             color = SlockColor.TextBlack
         )
         Text(
-            count.toString(),
+            countPrefix + count,
             style = SlockCollapsibleSectionCountTextStyle,
             color = SlockCollapsibleSectionCountColor
         )
@@ -511,5 +513,15 @@ internal fun SlockHeaderIconAction(
                 }
             }
         }
+    }
+}
+
+/** Count treatment shared by member-page headers. */
+@Composable
+internal fun SlockMemberCountBadge(count: Int) {
+    Box(Modifier.background(Color(0xFFE7E5E4)).border(1.dp, SlockColor.BorderBlack)
+        .padding(horizontal = 6.dp, vertical = 2.dp), contentAlignment = Alignment.Center) {
+        Text(count.toString(), style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp),
+            color = SlockColor.TextBlack)
     }
 }

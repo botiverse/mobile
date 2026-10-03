@@ -198,6 +198,11 @@ sealed interface HomeConversationRow {
         get() = null
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
+    /**
+     * Server-resolved channel-level capabilities (see [ConversationSummary.channelCapabilities]).
+     * `null` on DMs and on payloads that pre-date the field.
+     */
+    val channelCapabilities: ChannelCapabilities?
 
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -247,7 +252,8 @@ data class HomeChannelRow(
     override val bridgeProvider: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    override val permissions: ConversationPermissions = ConversationPermissions()
+    override val permissions: ConversationPermissions = ConversationPermissions(),
+    override val channelCapabilities: ChannelCapabilities? = null
 ) : HomeConversationRow
 
 @Serializable
@@ -289,7 +295,8 @@ data class HomeDirectMessageRow(
     override val jointOverLimitGraceEndsAt: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    override val permissions: ConversationPermissions = ConversationPermissions()
+    override val permissions: ConversationPermissions = ConversationPermissions(),
+    override val channelCapabilities: ChannelCapabilities? = null
 ) : HomeConversationRow
 
 fun HomeConversationRow.toConversationSummary(): ConversationSummary =
@@ -330,7 +337,8 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
@@ -371,7 +379,8 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
@@ -403,7 +412,8 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         archived = archived,
         memberCount = memberCount,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 @Serializable
@@ -914,7 +924,11 @@ data class AgentActivityEntry(
 data class ChannelMemberSnapshot(
     val channelId: ChannelId,
     val members: List<MemberProfile>,
-    val canAddMembers: Boolean = true
+    val canAddMembers: Boolean = false,
+    val canRemoveMembers: Boolean = false,
+    /** Slack-bridge (or other provider) participants — display-only roster rows
+     *  (web `channelExternalMembers`). Never selectable/removable. */
+    val externalMembers: List<ChannelExternalMemberProfile> = emptyList()
 )
 
 data class AgentSnapshot(

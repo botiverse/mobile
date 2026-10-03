@@ -3191,11 +3191,12 @@ private class MemberDetailRouteProvider(
 @Composable
 private fun rememberMemberDetailRouteProvider(
     pager: Pager,
-    bridge: BridgeModule
+    bridge: BridgeModule,
+    storeScopeOverride: SlockShellStoreScope? = null
 ): MemberDetailRouteProvider {
     val reportIssueFailedMessage = stringResource(MR.strings.member_error_report_issue)
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+    val storeScope = storeScopeOverride ?: remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
@@ -3332,7 +3333,12 @@ private fun rememberMemberDetailRouteProvider(
 }
 
 @Composable
-private fun MemberDetailPageContent(pageVisibleTick: Int) {
+internal fun MemberDetailPageContent(
+    pageVisibleTick: Int,
+    embeddedPayload: KuiklyMemberDetailPayload? = null,
+    storeScopeOverride: SlockShellStoreScope? = null,
+    onClose: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
@@ -3347,11 +3353,11 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     val directMessageOpenError = stringResource(MR.strings.member_error_open_direct_message)
     val directMessageOpenErrorTemplate = membersStringTemplate(MR.strings.member_error_open_direct_message_detail)
     val directMessagePermissionError = stringResource(MR.strings.member_error_open_direct_message_permission)
-    val payload = remember(pager.pageData.params.toString()) {
+    val payload = embeddedPayload ?: remember(pager.pageData.params.toString()) {
         pager.pageData.params.toKuiklyMemberDetailPayload()
     }
     val visualSeed = remember(payload) { payload.toMemberDetailVisualSeedOrNull() }
-    if (visualSeed != null) {
+    if (embeddedPayload == null && visualSeed != null) {
         MemberDetailVisualSeedContent(
             payload = payload,
             seed = visualSeed,
@@ -3359,7 +3365,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         )
         return
     }
-    val provider = rememberMemberDetailRouteProvider(pager, bridge)
+    val provider = rememberMemberDetailRouteProvider(pager, bridge, storeScopeOverride)
+    val closeDetail = onClose ?: { provider.bridge.closePage() }
     val routeScope = rememberCoroutineScope()
     val memberIdentity = payload.identity
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
@@ -3645,12 +3652,12 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
 
     when (val current = routeState) {
         MemberDetailRouteState.Loading ->
-            MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
+            MemberDetailLoadingPageShell(onBack = { closeDetail() })
         is MemberDetailRouteState.Error ->
             MemberDetailErrorPageShell(
                 title = stringResource(MR.strings.member_error_load_member),
                 detail = current.error.userFacingMessage(errorStrings),
-                onBack = { provider.bridge.closePage() },
+                onBack = { closeDetail() },
                 onRetry = { localAgentDetailRefreshKey += 1 }
             )
         is MemberDetailRouteState.Agent -> {
@@ -3836,7 +3843,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                 if (result is DataResult.Content && result.data.success) {
                                     localAgentDetailRefreshKey += 1
                                     if (action == MembersAgentLifecycleAction.Delete) {
-                                        provider.bridge.closePage()
+                                        closeDetail()
                                     }
                                 }
                                 return result
@@ -3898,7 +3905,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     },
                     machineStatusRow = machineStatusRow,
                     actions = MembersDetailActions(
-                        onBack = { provider.bridge.closePage() },
+                        onBack = { closeDetail() },
                         onOpenDirectMessage = {
                             routeScope.launch {
                                 provider.openDirectMessage(member).openMembersDirectMessageResult(
@@ -4068,7 +4075,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 canManageAgent = { _, _ -> false },
                 machineStatusRow = machineStatusRow,
                 actions = MembersDetailActions(
-                    onBack = { provider.bridge.closePage() },
+                    onBack = { closeDetail() },
                     onOpenDirectMessage = {
                         routeScope.launch {
                             provider.openDirectMessage(current.member).openMembersDirectMessageResult(
@@ -4642,10 +4649,14 @@ internal fun MembersRouteContent(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    selectedIdentity: MemberDetailIdentity? = null,
+    selectedLocalServerId: ServerId? = null,
     onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
         payload = payload,
+        selectedIdentity = selectedIdentity,
+        selectedLocalServerId = selectedLocalServerId,
         refreshing = refreshing,
         onBack = onBack,
         onRefresh = onRefresh,
@@ -4669,6 +4680,8 @@ internal fun MembersRouteContent(
 @Composable
 internal fun MembersListContent(
     payload: KuiklyMembersPayload,
+    selectedIdentity: MemberDetailIdentity? = null,
+    selectedLocalServerId: ServerId? = null,
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null,
     onAddHuman: () -> Unit,
@@ -4945,6 +4958,7 @@ internal fun MembersListContent(
                             val member = group.members[index]
                             MembersListRow(
                                 member = member,
+                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
@@ -4982,6 +4996,7 @@ internal fun MembersListContent(
                         val member = humans[index]
                         MembersListRow(
                             member = member,
+                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
@@ -13228,6 +13243,7 @@ internal fun membersListMachineLabel(label: String): String = label.lowercase()
 @Composable
 private fun MembersListRow(
     member: MemberProfile,
+    selected: Boolean = false,
     modifier: Modifier = Modifier,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -13243,6 +13259,7 @@ private fun MembersListRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = MembersListRowMinHeight)
+            .background(if (selected) LocalSlockTheme.current.surfaceMuted else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,

@@ -298,7 +298,7 @@ internal fun SlockAdaptiveWorkspaceState.acceptsDetailCallback(
         current.identity.key == identityKey && current.generation == generation
     } == true
 
-private fun Long.nextAdaptiveGeneration(): Long =
+internal fun Long.nextAdaptiveGeneration(): Long =
     also { check(it < Long.MAX_VALUE) { "Adaptive workspace generation exhausted" } } + 1L
 
 private fun SlockAdaptivePaneState.withConservativeAdaptiveLayout(): SlockAdaptivePaneState =

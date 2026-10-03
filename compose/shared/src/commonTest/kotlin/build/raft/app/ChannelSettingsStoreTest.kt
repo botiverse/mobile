@@ -525,7 +525,7 @@ class ChannelSettingsStoreTest {
 
         val loaded = assertIs<DataResult.Content<ChannelSettingsSnapshot>>(dataSource.load()).data
         assertEquals("canonical", loaded.channel.name)
-        assertEquals(listOf("channels/channel-1", "servers/server-1/sidebar-order", "channels/channel-1/members"), network.paths)
+        assertEquals(listOf("channels/channel-1", "servers/server-1/sidebar-order", "channels/channel-1/members", "channels/channel-1"), network.paths)
         assertTrue(network.paths.none { it == "home" || it.endsWith("/home") })
 
         network.paths.clear()
