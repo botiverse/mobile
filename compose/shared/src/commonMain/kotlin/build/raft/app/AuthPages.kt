@@ -1871,7 +1871,7 @@ internal fun AuthLegalNotice(
             ) {
                 append(terms)
             }
-            append(connector)
+            append(authLegalConnectorText(connector))
             withLink(
                 LinkAnnotation.Clickable(
                     tag = "auth-privacy",
@@ -1960,7 +1960,7 @@ internal fun authTermsAgreementText(
                 linkInteractionListener = LinkInteractionListener { onOpenTerms() },
             )) { append(terms) }
         }
-        append(connector)
+        append(authLegalConnectorText(connector))
         append(acknowledgement)
         if (onOpenPrivacy == null) {
             withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
@@ -1973,6 +1973,10 @@ internal fun authTermsAgreementText(
         }
         append(suffix)
     }
+
+// Resource boundary spaces survive platform resource generation, but must not bind
+// the last policy word to the following connector and sentence at layout time.
+internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
 private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
 private val AuthLegalNoticeTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)

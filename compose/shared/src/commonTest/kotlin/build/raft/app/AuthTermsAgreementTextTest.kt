@@ -42,4 +42,22 @@ class AuthTermsAgreementTextTest {
         assertEquals(1, termsOpened)
         assertEquals(1, privacyOpened)
     }
+    @Test
+    fun resourceConnectorKeepsSpacingButAllowsWordBreaks() {
+        assertEquals(" and ", authLegalConnectorText("\u00A0and\u00A0"))
+        assertEquals("并", authLegalConnectorText("并"))
+        assertEquals("に同意し、", authLegalConnectorText("に同意し、"))
+        val text = authTermsAgreementText(
+            prefix = "I agree to the\u00A0",
+            terms = "Terms of Service",
+            connector = "\u00A0and\u00A0",
+            acknowledgement = "acknowledge the\u00A0",
+            privacy = "Privacy Policy",
+            suffix = ".",
+        )
+        assertEquals(
+            "I agree to the\u00A0Terms of Service and acknowledge the\u00A0Privacy Policy.",
+            text.text,
+        )
+    }
 }
