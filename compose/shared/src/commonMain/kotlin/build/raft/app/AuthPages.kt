@@ -1896,6 +1896,8 @@ internal fun AuthLegalNotice(
 internal fun AuthTermsAgreement(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    onOpenTerms: (() -> Unit)? = null,
+    onOpenPrivacy: (() -> Unit)? = null,
 ) {
     val agreementText =
         authTermsAgreementText(
@@ -1905,13 +1907,20 @@ internal fun AuthTermsAgreement(
             acknowledgement = stringResource(MR.strings.auth_terms_agreement_acknowledgement),
             privacy = stringResource(MR.strings.auth_link_privacy_policy),
             suffix = stringResource(MR.strings.auth_terms_agreement_suffix),
+            onOpenTerms = onOpenTerms,
+            onOpenPrivacy = onOpenPrivacy,
         )
+    val hasPolicyLinks = onOpenTerms != null || onOpenPrivacy != null
+    val toggleConsent = { onCheckedChange(!checked) }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+        modifier = Modifier.fillMaxWidth().then(
+            if (hasPolicyLinks) Modifier else Modifier.clickable(onClick = toggleConsent)
+        ),
         verticalAlignment = Alignment.Top
     ) {
         Box(
             modifier = Modifier
+                .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
                 .padding(top = 2.dp)
                 .size(18.dp)
                 .background(SlockColor.SurfaceWhite)
@@ -1937,13 +1946,31 @@ internal fun authTermsAgreementText(
     acknowledgement: String,
     privacy: String,
     suffix: String,
+    onOpenTerms: (() -> Unit)? = null,
+    onOpenPrivacy: (() -> Unit)? = null,
 ): AnnotatedString =
     buildAnnotatedString {
         append(prefix)
-        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(terms) }
+        if (onOpenTerms == null) {
+            withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(terms) }
+        } else {
+            withLink(LinkAnnotation.Clickable(
+                tag = "auth-terms",
+                styles = TextLinkStyles(style = AuthTermsLinkStyle.toSpanStyle()),
+                linkInteractionListener = LinkInteractionListener { onOpenTerms() },
+            )) { append(terms) }
+        }
         append(connector)
         append(acknowledgement)
-        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
+        if (onOpenPrivacy == null) {
+            withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
+        } else {
+            withLink(LinkAnnotation.Clickable(
+                tag = "auth-privacy",
+                styles = TextLinkStyles(style = AuthTermsLinkStyle.toSpanStyle()),
+                linkInteractionListener = LinkInteractionListener { onOpenPrivacy() },
+            )) { append(privacy) }
+        }
         append(suffix)
     }
 

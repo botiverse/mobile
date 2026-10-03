@@ -19,4 +19,27 @@ class AuthTermsAgreementTextTest {
         assertEquals("我同意服务条款并确认隐私政策。", text.text)
         assertEquals(listOf("服务条款", "隐私政策"), text.spanStyles.map { text.text.substring(it.start, it.end) })
     }
+    @Test
+    fun policyLinksOpenTheirOwnDocument() {
+        var termsOpened = 0
+        var privacyOpened = 0
+        val text = authTermsAgreementText(
+            prefix = "I agree to ",
+            terms = "Terms",
+            connector = " and ",
+            acknowledgement = "acknowledge ",
+            privacy = "Privacy",
+            suffix = ".",
+            onOpenTerms = { termsOpened++ },
+            onOpenPrivacy = { privacyOpened++ },
+        )
+        val links = text.getLinkAnnotations(0, text.length)
+        assertEquals(listOf("Terms", "Privacy"), links.map { text.text.substring(it.start, it.end) })
+        links[0].item.linkInteractionListener?.onClick(links[0].item)
+        assertEquals(1, termsOpened)
+        assertEquals(0, privacyOpened)
+        links[1].item.linkInteractionListener?.onClick(links[1].item)
+        assertEquals(1, termsOpened)
+        assertEquals(1, privacyOpened)
+    }
 }

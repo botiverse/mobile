@@ -68,8 +68,6 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
             AuthTermsAgreement(
                 checked = consentAccepted,
                 onCheckedChange = { consentAccepted = it },
-            )
-            AuthLegalNotice(
                 onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
                 onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
             )
