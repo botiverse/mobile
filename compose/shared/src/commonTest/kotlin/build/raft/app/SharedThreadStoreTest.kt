@@ -13452,7 +13452,10 @@ class SharedThreadStoreTest {
                 messages = listOf(contentPayload("cached body").messages.single().copy(isSaved = true))
             )
         dataSource.cachePayloadForTest(accepted)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        // Production runs the store on viewModelScope (one thread); its state reducers are plain
+        // read-modify-writes, so a multi-threaded scope lets a concurrent auxiliary commit overwrite
+        // the Saved-authority commit and the projection never clears (CI flake on #2784).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
