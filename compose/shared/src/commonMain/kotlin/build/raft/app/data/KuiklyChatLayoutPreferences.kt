@@ -193,7 +193,7 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),
         conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
         foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),
-        activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false),
+        activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED),
         activitySenderAvatarsEnabled = optBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false),
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
