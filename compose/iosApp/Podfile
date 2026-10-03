@@ -33,11 +33,12 @@ target 'iosApp' do
   pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.0'
 
-  # Native avatar-cache tests compile the same shared provider contract and
-  # SDWebImage decoders as the app target. Keep the unit target on the exact
-  # app pod graph so the test is a production-signature compile, not a mock.
+  # Hosted tests resolve production symbols through TEST_HOST. Inherit the
+  # same pod search paths for compile-time signatures, but do not link the
+  # static Shared framework a second time into the test bundle: that creates
+  # duplicate Kotlin runtime/classes and can crash before XCTest starts.
   target 'iosAppTests' do
-    inherit! :complete
+    inherit! :search_paths
   end
 
   # task #423: the moko/TMM kmmresource plugin packs the `MR` resource bundle
