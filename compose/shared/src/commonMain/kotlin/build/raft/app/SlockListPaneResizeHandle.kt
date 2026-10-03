@@ -4,10 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import build.raft.app.data.SlockListPaneDragSession
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
@@ -44,15 +43,11 @@ internal fun SlockListPaneResizeHandle(
     val currentOnDragStart by rememberUpdatedState(onDragStart)
     val currentOnDrag by rememberUpdatedState(onDrag)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    var dragging by remember { mutableStateOf(false) }
-    val endDrag = {
-        if (dragging) {
-            dragging = false
-            currentOnDragEnd()
-        }
-    }
-    LaunchedEffect(active) { if (!active) endDrag() }
-    DisposableEffect(Unit) { onDispose { endDrag() } }
+    val session = remember { SlockListPaneDragSession(onEnd = { currentOnDragEnd() }) }
+    LaunchedEffect(active) { if (!active) session.end() }
+    // A density change restarts the gesture below; the drag in flight ends here first, so the
+    // next drag converts with the new density.
+    DisposableEffect(density) { onDispose { session.end() } }
     Box(
         modifier =
             Modifier
@@ -60,24 +55,20 @@ internal fun SlockListPaneResizeHandle(
                 .width(SlockListPaneResizeHandleWidthDp.dp)
                 .fillMaxHeight()
                 .slockNativeDispatchCapture()
-                .pointerInput(Unit) {
-                    var startWidthDp = 0f
-                    var deltaPx = 0f
+                .pointerInput(density) {
                     detectHorizontalDragGestures(
                         onDragStart = {
-                            startWidthDp = currentWidthDp
-                            deltaPx = 0f
-                            dragging = true
+                            session.start(currentWidthDp)
                             currentOnDragStart()
                         },
-                        onDragEnd = { endDrag() },
-                        onDragCancel = { endDrag() },
+                        onDragEnd = { session.end() },
+                        onDragCancel = { session.end() },
                     ) { change, dragAmount ->
                         change.consume()
-                        // Ended by a tab switch or similar while the finger is still down.
-                        if (!dragging) return@detectHorizontalDragGestures
-                        deltaPx += dragAmount
-                        currentOnDrag(startWidthDp, with(density) { deltaPx.toDp().value })
+                        // Null once the drag was ended (tab switch etc.) with the finger still down.
+                        val (startWidthDp, deltaDp) = session.move(dragAmount, density.density)
+                            ?: return@detectHorizontalDragGestures
+                        currentOnDrag(startWidthDp, deltaDp)
                     }
                 }
     )

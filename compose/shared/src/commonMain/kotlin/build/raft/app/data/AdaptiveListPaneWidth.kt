@@ -46,3 +46,37 @@ internal fun slockListPaneDraggedWidthDp(startWidthDp: Float, dragDeltaDp: Float
 /** What a finished drag saves: whole dp, so the stored value is stable across densities. */
 internal fun slockListPaneStoredWidth(widthDp: Float): String =
     widthDp.coerceIn(SLOCK_LIST_PANE_MIN_DP, SLOCK_LIST_PANE_MAX_DP).toInt().toString()
+
+/**
+ * One list-divider drag. [end] reports the end exactly once per started drag however it is
+ * reached (lift, gesture cancel, host inactive, handle disposed, density change); movement after
+ * the end is ignored. Movement is accumulated in dp at the density of each event.
+ */
+internal class SlockListPaneDragSession(private val onEnd: () -> Unit) {
+    var active: Boolean = false
+        private set
+    private var startWidthDp = 0f
+    private var deltaDp = 0f
+
+    fun start(renderedWidthDp: Float) {
+        if (active) end()
+        active = true
+        startWidthDp = renderedWidthDp
+        deltaDp = 0f
+    }
+
+    /** The drag's (start width, total delta) after this movement, or null when no drag is active. */
+    fun move(dragAmountPx: Float, density: Float): Pair<Float, Float>? {
+        if (!active || density <= 0f) return null
+        deltaDp += dragAmountPx / density
+        return startWidthDp to deltaDp
+    }
+
+    /** Ends the active drag; true only for the call that actually ended it. */
+    fun end(): Boolean {
+        if (!active) return false
+        active = false
+        onEnd()
+        return true
+    }
+}
