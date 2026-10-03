@@ -18635,10 +18635,18 @@ private fun SharedCreateChannelDialog(
     fun scrollToMemberPicker() {
         val requestGeneration = createChannelScrollCoordinator.begin()
         val job = createChannelScrollScope.launch {
-            repeat(2) { withFrameNanos { } }
-            if (!createChannelScrollCoordinator.isCurrent(requestGeneration)) return@launch
-            if (createChannelListState.isScrollInProgress) return@launch
-            createChannelListState.scrollToItem(3, 0)
+            slockUnifiedDialogScrollToTargetItem(
+                keyboardHeight = 1f,
+                targetItemIndex = 3,
+                targetItemScrollOffset = 0,
+                awaitRelayoutFrame = { withFrameNanos { } },
+                scrollToItem = { index, scrollOffset ->
+                    createChannelListState.scrollToItem(index, scrollOffset)
+                },
+                isScrollInProgress = { createChannelListState.isScrollInProgress },
+                isRequestCurrent = { createChannelScrollCoordinator.isCurrent(requestGeneration) },
+                isTargetActive = { memberSearchFocused }
+            )
         }
         createChannelScrollCoordinator.attach(job)
     }
@@ -18691,7 +18699,8 @@ private fun SharedCreateChannelDialog(
                         isScrollInProgress = { createChannelListState.isScrollInProgress },
                         isRequestCurrent = {
                             createChannelScrollCoordinator.isCurrent(requestGeneration)
-                        }
+                        },
+                        isTargetActive = { memberSearchFocused }
                     )
                 } else {
                     slockUnifiedDialogKeepFocusedEditorVisible(
@@ -18711,7 +18720,8 @@ private fun SharedCreateChannelDialog(
                         isScrollInProgress = { createChannelListState.isScrollInProgress },
                         isRequestCurrent = {
                             createChannelScrollCoordinator.isCurrent(requestGeneration)
-                        }
+                        },
+                        isTargetActive = { !memberSearchFocused }
                     )
                 }
             }
@@ -18740,7 +18750,13 @@ private fun SharedCreateChannelDialog(
                     enabled = !submitting,
                     hint = stringResource(MR.strings.channel_create_hint_name_format),
                     error = nameError,
-                    autoFocus = false
+                    autoFocus = false,
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) {
+                            memberSearchFocused = false
+                            createChannelScrollCoordinator.invalidate()
+                        }
+                    }
                 )
             }
             item {
@@ -18752,7 +18768,13 @@ private fun SharedCreateChannelDialog(
                     placeholder = stringResource(MR.strings.channel_create_placeholder_description),
                     enabled = !submitting,
                     maxLines = 2,
-                    autoFocus = false
+                    autoFocus = false,
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) {
+                            memberSearchFocused = false
+                            createChannelScrollCoordinator.invalidate()
+                        }
+                    }
                 )
             }
             item {
@@ -18789,6 +18811,7 @@ private fun SharedCreateChannelDialog(
                     },
                     onBlur = {
                         memberSearchFocused = false
+                        createChannelScrollCoordinator.invalidate()
                     }
                 )
             }

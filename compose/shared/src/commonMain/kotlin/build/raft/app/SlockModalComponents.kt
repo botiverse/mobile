@@ -232,13 +232,14 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     currentScrollPosition: () -> SlockUnifiedDialogListScrollPosition,
     scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
     isScrollInProgress: () -> Boolean,
-    isRequestCurrent: () -> Boolean
+    isRequestCurrent: () -> Boolean,
+    isTargetActive: () -> Boolean = { true }
 ) {
-    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
+    if (keyboardHeight <= 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
 
     val focused = focusedBounds() ?: return
     val viewport = viewportBounds() ?: return
@@ -249,7 +250,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
             viewportTop = viewport.top,
             viewportBottom = viewport.bottom
         )
-    if (delta == 0f || !isRequestCurrent() || isScrollInProgress()) return
+    if (delta == 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
 
     // Root bounds and LazyList offsets are pixels. Round away from zero so a fractional edge
     // overlap cannot leave the editor one sub-pixel outside the reduced viewport.
@@ -262,7 +263,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     val current = currentScrollPosition()
     val targetOffset = (current.scrollOffset + pixelDelta).coerceAtLeast(0)
     if (targetOffset == current.scrollOffset) return
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     scrollToItem(current.index, targetOffset)
 }
 
@@ -277,13 +278,14 @@ internal suspend fun slockUnifiedDialogScrollToTargetItem(
     awaitRelayoutFrame: suspend () -> Unit,
     scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
     isScrollInProgress: () -> Boolean,
-    isRequestCurrent: () -> Boolean
+    isRequestCurrent: () -> Boolean,
+    isTargetActive: () -> Boolean = { true }
 ) {
-    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
+    if (keyboardHeight <= 0f || !isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     awaitRelayoutFrame()
-    if (!isRequestCurrent() || isScrollInProgress()) return
+    if (!isRequestCurrent() || !isTargetActive() || isScrollInProgress()) return
     scrollToItem(targetItemIndex, targetItemScrollOffset)
 }
 

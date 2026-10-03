@@ -250,6 +250,62 @@ class SlockModalComponentsTest {
     }
 
     @Test
+    fun focusedEditorVisibilityYieldsWhenTargetDeactivatesDuringRelayout() = runBlocking {
+        var frameCount = 0
+        var targetActive = true
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogKeepFocusedEditorVisible(
+            keyboardHeight = 312f,
+            awaitRelayoutFrame = {
+                frameCount += 1
+                if (frameCount == 1) {
+                    targetActive = false
+                }
+            },
+            focusedBounds = { Rect(0f, 420f, 100f, 548f) },
+            viewportBounds = { Rect(0f, 100f, 100f, 500f) },
+            currentScrollPosition = {
+                SlockUnifiedDialogListScrollPosition(index = 2, scrollOffset = 24)
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true },
+            isTargetActive = { targetActive }
+        )
+
+        assertEquals(1, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun focusedEditorVisibilityBypassesWhenTargetIsNotActive() = runBlocking {
+        var frameCount = 0
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogKeepFocusedEditorVisible(
+            keyboardHeight = 312f,
+            awaitRelayoutFrame = { frameCount += 1 },
+            focusedBounds = { Rect(0f, 420f, 100f, 548f) },
+            viewportBounds = { Rect(0f, 100f, 100f, 500f) },
+            currentScrollPosition = {
+                SlockUnifiedDialogListScrollPosition(index = 2, scrollOffset = 24)
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true },
+            isTargetActive = { false }
+        )
+
+        assertEquals(0, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
     fun focusedEditorScrollCoordinatorInvalidatesSupersededAndDisposedRequests() {
         val coordinator = SlockFocusedEditorScrollRequestCoordinator()
         val firstRequest = coordinator.begin()
@@ -359,6 +415,84 @@ class SlockModalComponentsTest {
         )
 
         assertEquals(2, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun targetItemScrollYieldsWhenFocusChangesBetweenRelayoutFrames() = runBlocking {
+        var frameCount = 0
+        var targetActive = true
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = {
+                frameCount += 1
+                if (frameCount == 1) {
+                    targetActive = false
+                }
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true },
+            isTargetActive = { targetActive }
+        )
+
+        assertEquals(1, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun targetItemScrollAbortsWhenCoordinatorInvalidatedBetweenFrames() = runBlocking {
+        val coordinator = SlockFocusedEditorScrollRequestCoordinator()
+        val generation = coordinator.begin()
+        var frameCount = 0
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = {
+                frameCount += 1
+                if (frameCount == 1) {
+                    coordinator.invalidate()
+                }
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { coordinator.isCurrent(generation) }
+        )
+
+        assertEquals(1, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun targetItemScrollBypassesImmediatelyWhenTargetIsNotActive() = runBlocking {
+        var frameCount = 0
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = { frameCount += 1 },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true },
+            isTargetActive = { false }
+        )
+
+        assertEquals(0, frameCount)
         assertEquals(emptyList(), targets)
     }
 }
