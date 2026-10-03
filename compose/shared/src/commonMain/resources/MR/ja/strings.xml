@@ -1421,10 +1421,10 @@
     <string name="translation_state_show_original">原文を表示</string>
     <string name="translation_state_show_translation">翻訳を表示</string>
     <string name="translation_state_prefer_original">原文を優先</string>
-    <string name="pagination_prev_bilingual">前のページ / Prev</string>
-    <string name="pagination_next_bilingual">次のページ / Next</string>
-    <string name="announcement_action_got_it_bilingual">わかりました / Got it</string>
-    <string name="announcement_action_skip_bilingual">スキップ / Skip</string>
+    <string name="pagination_prev">前のページ</string>
+    <string name="pagination_next">次のページ</string>
+    <string name="announcement_action_got_it">わかりました</string>
+    <string name="announcement_action_skip">スキップ</string>
     <string name="tasks_label_new_tasks">新しいタスク</string>
     <string name="tasks_create_multiple_hint">1 件以上のタスクタイトルを追加してください。空の行は無視されます。</string>
     <string name="home_action_view">表示</string>
