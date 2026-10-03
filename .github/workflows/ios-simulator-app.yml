@@ -59,6 +59,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      # task165: run37109891120 exhausted the default 4 GiB heap while
+      # linking the fixture-enabled arm64 framework. Mirror the archive lane's
+      # runner-only override; leave historical product configuration untouched.
+      - name: Size Gradle heap for fixture-enabled QA framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          qa_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$qa_gradle_home"
+          printf '%s\n' \
+            'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' \
+            'org.gradle.workers.max=1' >> "$qa_gradle_home/gradle.properties"
+
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
