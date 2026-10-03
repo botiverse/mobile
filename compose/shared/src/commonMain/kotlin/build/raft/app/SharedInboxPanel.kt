@@ -9,6 +9,7 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTone
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
@@ -135,7 +136,7 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    activityTaskStatusBadgesEnabled: Boolean = false,
+    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
     // Kuikly pageDidAppear on app foreground, so they opt into refreshing on
@@ -602,7 +603,7 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    activityTaskStatusBadgesEnabled: Boolean = false,
+    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,
@@ -643,7 +644,7 @@ internal fun SharedHomeActivityPanel(
     pullRefreshing: Boolean = false,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    activityTaskStatusBadgesEnabled: Boolean = false,
+    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,

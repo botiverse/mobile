@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
 import build.raft.app.data.backClosesSideThreadFirst
@@ -2898,7 +2899,7 @@ private fun SlockAppShellReadyContent(
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
-    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
+    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
     var homeServerAvatarEnabled by remember { mutableStateOf(false) }

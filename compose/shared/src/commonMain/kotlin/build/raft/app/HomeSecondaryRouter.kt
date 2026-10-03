@@ -12,6 +12,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
+import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -169,7 +170,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
-    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
+    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()

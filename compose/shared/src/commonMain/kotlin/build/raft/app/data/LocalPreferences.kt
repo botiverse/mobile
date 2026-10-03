@@ -150,6 +150,9 @@ enum class MyMessageAlignmentPreference(val storageKey: String) {
 
 const val DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN = true
 
+/** Task status badges on Activity rows (Settings > Mobile); on unless the user turned it off (1.13.0, artin). */
+const val DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED = true
+
 enum class TranslationModePreference(val storageKey: String) {
     Automatic("automatic"),
     Manual("manual"),
@@ -232,7 +235,7 @@ data class ChatLayoutPreferenceSnapshot(
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
-    val activityTaskStatusBadgesEnabled: Boolean = false,
+    val activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     val activitySenderAvatarsEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
@@ -416,7 +419,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readActivityTaskStatusBadgesEnabledSync(): Boolean =
-        store.getBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false)
+        store.getBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED)
 
     override suspend fun readActivityTaskStatusBadgesEnabled(): Boolean =
         readActivityTaskStatusBadgesEnabledSync()
