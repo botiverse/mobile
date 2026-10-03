@@ -1,7 +1,16 @@
 package build.raft.app
 
-import build.raft.app.data.navigateDetail
-import build.raft.app.data.shouldOpenWithinAdaptiveDetail
+import build.raft.app.data.openWithinWideDetail
+import build.raft.app.data.visibleSideThread
+import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.AdaptiveParentFocusOutcome
+import build.raft.app.data.AdaptiveParentFocusRequest
+import build.raft.app.data.parentFocusOutcomeAfterWait
+import build.raft.app.data.acceptsParentFocus
+import build.raft.app.data.sideThreadParentFocus
+import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
+import build.raft.app.data.AdaptiveThreadOpenRoute
+import build.raft.app.data.routeThreadOpen
 
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
@@ -227,6 +236,8 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -1704,6 +1715,9 @@ internal fun threadHeaderDisplayTitle(
     surfaceKind: String = KuiklyThreadSurfaceKind.Channel
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
+
+/** task #36: longest wait for the keyboard to close before the main detail focuses a parent. */
+private const val ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS = 1_500L
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
@@ -4119,18 +4133,23 @@ private fun ThreadPageScreen(
         val openPage = {
             val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
             val source = adaptiveCloseRequest
-            val pane = workspaceStore.snapshot().workspace
-            if (shouldOpenWithinAdaptiveDetail(
-                    source = source,
-                    workspace = pane,
-                    desktopModeEnabled = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync(),
-                    targetServerId = targetStoreScope.initialServerId,
-                ) && source != null && pane != null
-            ) {
+            val session = workspaceStore.snapshot()
+            val pane = session.workspace
+            val desktopModeEnabled =
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+            // task #36: an adaptive page is validated before any route, so a retired main/side
+            // page opens nothing even after desktop mode turns off, the pane goes compact or the
+            // server changes.
+            val route = session.routeThreadOpen(source, desktopModeEnabled, targetStoreScope.initialServerId)
+            if (route == AdaptiveThreadOpenRoute.Ignored) {
+                bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+            } else if (route == AdaptiveThreadOpenRoute.WithinDetail && source != null && pane != null) {
+                // A reply under the shown channel opens in the side column when it fits;
+                // otherwise the in-pane replace; a source retired meanwhile changes nothing.
                 val next = workspaceStore.update { current ->
-                    current.navigateDetail(source, launchPayload, pane.serverId)
+                    current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
                 }
-                if (next.launchPayload != launchPayload) {
+                if (next.launchPayload != launchPayload && next.visibleSideThread()?.payload != launchPayload) {
                     bridge.toast(unableToOpenThreadLabel)
                     bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
                 }
@@ -5867,6 +5886,56 @@ private fun SharedThreadRouteContentContent(
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
+    // task #36: the side thread's "open parent channel" keeps the column and hands focus to the
+    // main detail: the side page drops its own input focus (keyboard down) and asks the main page,
+    // by its key/generation, to scroll to and highlight the parent message. The composer is never
+    // focused, so no keyboard pops up; retired pages ignore the request.
+    val adaptiveFocusManager = LocalFocusManager.current
+    val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
+    val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
+    DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
+        val page = adaptiveCloseRequest
+        val subscription =
+            page?.let {
+                eventBus.observe(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                    crossProcess = true,
+                ) { eventData ->
+                    val request = eventData?.toAdaptiveParentFocusRequestOrNull() ?: return@observe
+                    if (!adaptiveFocusWorkspaceStore.snapshot().acceptsParentFocus(page, request)) return@observe
+                    pendingAdaptiveParentFocus = request
+                }
+            }
+        onDispose { subscription?.close() }
+    }
+    // The focus anchor drops (does not defer) a request while the keyboard is open (task #990),
+    // and the side page's keyboard is the window's, so wait for it to close before focusing.
+    LaunchedEffect(pendingAdaptiveParentFocus) {
+        val request = pendingAdaptiveParentFocus ?: return@LaunchedEffect
+        val closed =
+            withTimeoutOrNull(ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS) {
+                snapshotFlow { adaptivePageKeyboardInsetDp }.first { it <= 0f }
+            } != null
+        pendingAdaptiveParentFocus = null
+        // Re-validate after the wait: a channel switch, fold or new selection meanwhile retires
+        // the target, and a keyboard still open would only have the anchor drop it — both are
+        // reported as not focused instead of dispatching.
+        val outcome =
+            adaptiveFocusWorkspaceStore.snapshot().parentFocusOutcomeAfterWait(adaptiveCloseRequest, request, closed)
+        bridge.log(
+            "adaptive_side_thread_parent_focus result=${outcome.logValue} generation=${request.target.generation}"
+        )
+        if (outcome == AdaptiveParentFocusOutcome.Applied) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.FocusMessage(
+                    messageId = request.messageId,
+                    switchToTab = KuiklyThreadTab.Chat.wireValue,
+                )
+            )
+        }
+    }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
@@ -10531,6 +10600,7 @@ private fun SharedThreadRouteContentContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -11037,7 +11107,21 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == "openParentMessage" -> {
-                    if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
+                    val sideParentFocus =
+                        adaptiveCloseRequest?.let { source ->
+                            adaptiveFocusWorkspaceStore.snapshot().sideThreadParentFocus(source)
+                        }
+                    if (sideParentFocus != null) {
+                        adaptiveFocusManager.clearFocus(force = true)
+                        adaptiveKeyboardController?.hide()
+                        bridge.log("adaptive_side_thread_parent_focus result=requested generation=${sideParentFocus.target.generation}")
+                        eventBus.post(
+                            eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                            eventData = sideParentFocus.toJson(),
+                            crossProcess = true,
+                            source = "adaptive_side_thread_parent",
+                        )
+                    } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
                             "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
                                 "threadId=${renderedThread.sourceThreadId.orEmpty()} " +
@@ -13948,6 +14032,7 @@ private class ThreadPageContentCallbacks(
     val onClearChannelProfileUpdateStatus: () -> Unit,
     val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
     val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerKeyboardInsetChanged: (Float) -> Unit,
     val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
 )
@@ -14044,6 +14129,7 @@ fun ThreadPageContent(
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
     onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
+    onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -14148,6 +14234,7 @@ fun ThreadPageContent(
                 onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
                 onForwardMessagesDelivered = onForwardMessagesDelivered,
                 onOpenForwardDestination = onOpenForwardDestination,
+                onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
                 onComposerSendRequest = onComposerSendRequest,
                 onComposerEvent = onComposerEvent,
             ),
@@ -14248,6 +14335,7 @@ private fun ThreadPageContentContent(
     val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
     val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
     val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onComposerKeyboardInsetChanged = callbacks.onComposerKeyboardInsetChanged
     val onThreadEvent = data.onThreadEvent
     val onComposerSendRequest = callbacks.onComposerSendRequest
     val onComposerEvent = callbacks.onComposerEvent
@@ -15358,6 +15446,7 @@ private fun ThreadPageContentContent(
                                 onKeyboardHeightChange = { nextInset ->
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
+                                        onComposerKeyboardInsetChanged(nextInset)
                                     }
                                 },
                                 adaptiveNativeEditingStateReader =

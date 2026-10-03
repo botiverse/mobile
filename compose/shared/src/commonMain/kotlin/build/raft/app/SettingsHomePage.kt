@@ -1,6 +1,14 @@
 package build.raft.app
 
 import build.raft.app.data.backFromDetail
+import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.backClosesSideThreadFirst
+import build.raft.app.data.foldSideThreadIntoDetail
+import build.raft.app.data.sideThreadColumnAvailable
+import build.raft.app.data.visibleSideThread
+import build.raft.app.data.AdaptiveSideThread
+import build.raft.app.data.SLOCK_SIDE_THREAD_COLUMN_DP
+import build.raft.app.data.SLOCK_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
@@ -470,6 +478,8 @@ import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -3290,6 +3300,20 @@ private fun SlockAppShellReadyContent(
             realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(previousOwner))
         }
     }
+    // task #36: when the window (or desktop mode) can no longer hold the side column, fold the
+    // side thread into the main detail with the channel in Back history.
+    val sideThreadNeedsFold =
+        adaptiveWorkspaceSession.visibleSideThread() != null &&
+            !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
+    LaunchedEffect(sideThreadNeedsFold) {
+        if (!sideThreadNeedsFold) return@LaunchedEffect
+        adaptiveWorkspaceStore.update { current ->
+            if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
+                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp}")
+                current.foldSideThreadIntoDetail()
+            } else current
+        }
+    }
     val tasksDetailOverlayKeepsOwnership =
         appShellTasksDetailOverlayStaysActive(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
@@ -3658,7 +3682,9 @@ private fun SlockAppShellReadyContent(
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
                 val before = adaptiveWorkspaceStore.snapshot()
-                val after = adaptiveWorkspaceStore.update { it.backFromDetail(request) }
+                val after =
+                    // task #36: a side-column page's close only closes the column.
+                    adaptiveWorkspaceStore.update { current -> current.closeFromDetailPage(request) }
                 if (before.workspace?.selection != after.workspace?.selection) {
                     releaseAdaptiveHandoffLease(request.generation)
                     homeShellStore.dispatch(
@@ -4821,6 +4847,11 @@ private fun SlockAppShellReadyContent(
         }
         if (selectedTab == "members" && membersDetailSelection.value != null) {
             membersDetailSelection.value = null
+            return true
+        }
+        // task #36: an open side thread closes first; the main detail stays.
+        if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
+            adaptiveWorkspaceStore.update { it.copy(sideThread = null) }
             return true
         }
         if (desktopModeOnLargeScreen && adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
@@ -6144,7 +6175,36 @@ private fun SlockAppShellReadyContent(
                     }
                     // task #34: the shared workspace detail child, hosted by the list + detail split
                     // (Home, Activity, DMs, Search) and by the Tasks board overlay.
-                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean) -> Unit = { modifier, active, detailAccepted ->
+                    // task #36: the main detail plus, when it fits, the reply-thread side column.
+                    // [allowSideColumn] is false on hosts that cannot show one (the task overlay);
+                    // the active host reports its measured width for the column decision.
+                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
+                        val density = LocalDensity.current
+                        val sideThread: AdaptiveSideThread? =
+                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted }
+                        val showSideColumn =
+                            sideThread != null &&
+                                adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
+                        LaunchedEffect(active, allowSideColumn) {
+                            if (active && !allowSideColumn) {
+                                adaptiveWorkspaceStore.update {
+                                    if (it.detailPaneWidthDp == null) it else it.copy(detailPaneWidthDp = null)
+                                }
+                            }
+                        }
+                        Row(
+                            modifier =
+                                paneModifier
+                                    .fillMaxSize()
+                                    .onSizeChanged { size ->
+                                        if (!active || !allowSideColumn) return@onSizeChanged
+                                        val widthDp = with(density) { size.width.toDp().value }
+                                        adaptiveWorkspaceStore.update {
+                                            if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
+                                        }
+                                    }
+                        ) {
+                        val modifier = Modifier.weight(1f).fillMaxHeight()
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -6195,6 +6255,30 @@ private fun SlockAppShellReadyContent(
                                     },
                                 )
                             }
+                        if (showSideColumn && sideThread != null && workspace != null) {
+                            val sidePageData =
+                                remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
+                                    threadLaunchPageData(sideThread.payload)
+                                        .withSlockShellStoreScope(navigationStoreScope)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
+                                }
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .width(SLOCK_SIDE_THREAD_DIVIDER_DP.dp)
+                                        .fillMaxHeight()
+                                        .background(Color.Black),
+                            )
+                            SlockKuiklyChildPage(
+                                pageName = THREAD_PAGE,
+                                pageData = sidePageData,
+                                modifier = Modifier.width(SLOCK_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight(),
+                                active = childActive,
+                            )
+                        }
+                        }
                     }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
@@ -6252,7 +6336,7 @@ private fun SlockAppShellReadyContent(
                                 onDismiss = ::closeTasksDetailOverlay,
                                 bottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                             ) { modifier ->
-                                adaptiveDetailPane(modifier, active, true)
+                                adaptiveDetailPane(modifier, active, true, false)
                             }
                         }
                         }
@@ -6274,7 +6358,7 @@ private fun SlockAppShellReadyContent(
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection?.takeIf { detailAccepted }
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
-                            adaptiveDetailPane(modifier, active, detailAccepted)
+                            adaptiveDetailPane(modifier, active, detailAccepted, true)
                         }
                         if (enabled) {
                             val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
