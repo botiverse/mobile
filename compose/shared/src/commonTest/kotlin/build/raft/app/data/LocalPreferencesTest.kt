@@ -135,7 +135,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
-        assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
+        assertEquals(true, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(false, snapshot.activitySenderAvatarsEnabled)
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)

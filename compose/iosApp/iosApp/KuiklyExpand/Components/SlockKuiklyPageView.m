@@ -172,6 +172,11 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 }
 
 - (void)removeFromSuperview {
+    // A host removal invalidates both appearance sources. A data/page reset
+    // also detaches the child, so keep this reset at the actual host-removal
+    // boundary rather than in detachChild().
+    self.viewDidAppear = NO;
+    self.pageDidAppear = NO;
     [self detachChild];
     [super removeFromSuperview];
 }
@@ -185,6 +190,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 }
 
 - (void)onPageLoadComplete:(BOOL)isSucceed error:(NSError *)error mode:(KuiklyContextMode)mode {
+    NSLog(@"[SlockPager] firstDraw page=%@ success=%d active=%d viewAppeared=%d pageDidAppear=%d child=%d childVisible=%d", self.pageName, isSucceed, self.childActive, self.viewDidAppear, self.pageDidAppear, self.childView != nil, self.childVisible);
     if (isSucceed) {
         if (self.loadSuccessCallback) {
             self.loadSuccessCallback(@{});
@@ -265,6 +271,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
                                                         frameworkName:SlockKuiklyPageViewFrameworkName];
     childView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.childView = childView;
+    NSLog(@"[SlockPager] attach page=%@ active=%d viewAppeared=%d pageDidAppear=%d bounds=%@", self.pageName, self.childActive, self.viewDidAppear, self.pageDidAppear, NSStringFromCGRect(self.bounds));
     [self.contentContainerView addSubview:childView];
     [self bringGlassHighlightToFront];
     [self applyGlassStyle];
@@ -281,6 +288,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         [childView viewDidDisappear];
         self.childVisible = NO;
     }
+    NSLog(@"[SlockPager] detach page=%@ active=%d viewAppeared=%d pageDidAppear=%d childVisible=%d", self.pageName, self.childActive, self.viewDidAppear, self.pageDidAppear, self.childVisible);
     [childView removeFromSuperview];
     self.childView = nil;
 }
@@ -376,6 +384,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     NSDictionary *eventData = [self dictionaryFromJsonText:params];
     NSString *event = [self stringFromValue:eventData[@"event"]];
     NSDictionary *data = [eventData[@"data"] isKindOfClass:NSDictionary.class] ? eventData[@"data"] : @{};
+    NSLog(@"[SlockPager] event=%@ page=%@ active=%d viewAppeared=%d pageDidAppear=%d child=%d childVisible=%d", event, self.pageName, self.childActive, self.viewDidAppear, self.pageDidAppear, self.childView != nil, self.childVisible);
     if ([event isEqualToString:@"didAppear"]) {
         self.viewDidAppear = YES;
         [self syncChildVisibility];
@@ -409,6 +418,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     // mounted tab paints a later one (Settings) over Home while the tab bar still
     // says Home.
     BOOL shouldKeepSnapshotContent = shouldBeRendered;
+    NSLog(@"[SlockPager] sync page=%@ rendered=%d snapshotContent=%d lifecycle=%d active=%d viewAppeared=%d pageDidAppear=%d child=%d childVisible=%d", self.pageName, shouldBeRendered, shouldKeepSnapshotContent, shouldBeLifecycleVisible, self.childActive, self.viewDidAppear, self.pageDidAppear, self.childView != nil, self.childVisible);
     self.contentContainerView.hidden = !shouldKeepSnapshotContent;
     self.userInteractionEnabled = shouldBeRendered;
     self.childView.hidden = !shouldKeepSnapshotContent;
