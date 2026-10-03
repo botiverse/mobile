@@ -6072,14 +6072,10 @@ private fun SlockAppShellReadyContent(
                                             )
                                         )
                                     }
-                                    val activityIndex = indexOfFirst { it.key == SlockSlackNavTabs.Activity }
-                                    if (activityIndex >= 0) {
-                                        add(activityIndex + 1, railSearchItem)
-                                    } else {
-                                        add(railSearchItem)
-                                    }
+                                    add(railSearchItem)
                                 }
-                                .toList()
+                                // task #49: same order as the web LeftRail.
+                                .orderedLikeWebRail { it.key }
                         SlockNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
