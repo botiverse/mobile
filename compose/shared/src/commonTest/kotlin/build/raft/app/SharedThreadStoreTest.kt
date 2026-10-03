@@ -9276,6 +9276,49 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun summarySnapshotDoesNotOverwriteNewerRealtimeFact() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult = replySummaries(replyCount = 15),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        repository.threadReplySummariesStarted?.await()
+        // A realtime reply-count fact lands while the summaries request is in
+        // flight; its newer observedAt must survive the older server snapshot.
+        dataSource.recordReplyCountRealtimeFact(
+            threadId = "channel-1",
+            parentMessageId = "m1",
+            fact =
+                SharedThreadReplyCountFact(
+                    threadChannelId = "thread-m1",
+                    replyCount = 17,
+                    observedAt = TimeSource.Monotonic.markNow(),
+                ),
+        )
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        yield()
+        delay(1L)
+        assertEquals(17, store.state.value.payload.messages.single().replyCount)
+        scope.cancel()
+    }
+
+    @Test
     fun replyThreadStartPromotesQueuedActivityPrewarmToForeground() = runBlocking {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val payloadStore =

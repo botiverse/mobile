@@ -1,6 +1,8 @@
 #import "KuiklyRenderComponentExpandHandler.h"
 #import <SDWebImage/UIImageView+WebCache.h>
 #import "iosApp-Swift.h"
+#import "HRBridgeModule.h"
+#import <CommonCrypto/CommonDigest.h>
 
 @implementation KuiklyRenderComponentExpandHandler
 
@@ -14,21 +16,70 @@
  * @param url 设置的图片url，如果url为nil，则是取消图片设置，需要view.image = nil
  * @return 是否处理该图片设置，返回值为YES，则交给该代理实现，否则sdk内部自己处理
  */
+// A process-salted digest correlates retries without recording URLs, queries, or cache keys.
+static NSString *SlockImageSourceHash(NSString *source) {
+    static NSString *salt;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ salt = NSUUID.UUID.UUIDString; });
+    NSData *data = [[salt stringByAppendingString:source] dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    return [NSString stringWithFormat:@"%02x%02x%02x%02x%02x%02x",
+            digest[0], digest[1], digest[2], digest[3], digest[4], digest[5]];
+}
+
 - (BOOL)hr_setImageWithUrl:(NSString *)url forImageView:(UIImageView *)imageView {
-    if ([[SlockIosAvatarCacheHost shared] isManagedRenderModel:url]) {
+    return [self hr_setImageWithUrl:url forImageView:imageView complete:nil];
+}
+
+- (BOOL)hr_setImageWithUrl:(NSString *)url
+            forImageView:(UIImageView *)imageView
+                complete:(ImageCompletionBlock)completeBlock {
+    if (url.length == 0) {
         [imageView sd_cancelCurrentImageLoad];
-        imageView.image = [[SlockIosAvatarCacheHost shared] imageForRenderModel:url];
+        imageView.image = nil;
+        return YES;
+    }
+    BOOL managed = [[SlockIosAvatarCacheHost shared] isManagedRenderModel:url];
+    NSString *kind = managed ? @"managed" :
+        ([url hasPrefix:@"https://"] || [url hasPrefix:@"http://"] ? @"remote" : @"local");
+    NSString *sourceHash = SlockImageSourceHash(url);
+    NSString *request = NSUUID.UUID.UUIDString;
+    NSTimeInterval started = NSProcessInfo.processInfo.systemUptime;
+    SlockIosDiagnosticsRecord(@"info", @"SlockImage", [NSString stringWithFormat:
+        @"ios_image_load_start request=%@ sourceHash=%@ kind=%@", request, sourceHash, kind]);
+    ImageCompletionBlock finish = ^(UIImage *image, NSError *error, NSURL *imageURL) {
+        NSString *errorKind = error == nil ? @"none" :
+            ([error.domain isEqualToString:NSURLErrorDomain] ? @"transport" :
+             ([error.domain isEqualToString:@"SlockImage"] ? @"source_unavailable" : @"loader"));
+        SlockIosDiagnosticsRecord(image ? @"info" : @"warn", @"SlockImage", [NSString stringWithFormat:
+            @"ios_image_load_finish request=%@ sourceHash=%@ kind=%@ result=%@ errorKind=%@ errorCode=%ld width=%.0f height=%.0f durationMs=%.0f",
+            request, sourceHash, kind, image ? @"success" : @"failure", errorKind, (long)error.code,
+            image.size.width * image.scale, image.size.height * image.scale,
+            (NSProcessInfo.processInfo.systemUptime - started) * 1000]);
+        if (completeBlock) completeBlock(image, error, imageURL);
+    };
+    if (managed) {
+        [imageView sd_cancelCurrentImageLoad];
+        UIImage *image = [[SlockIosAvatarCacheHost shared] imageForRenderModel:url];
+        imageView.image = image;
+        NSError *error = image ? nil : [NSError errorWithDomain:@"SlockImage" code:1 userInfo:nil];
+        finish(image, error, [NSURL URLWithString:url]);
         return YES;
     }
     UIImage *bundledAssetImage = [self slock_bundledImageForAssetURLString:url];
     if (bundledAssetImage != nil) {
         [imageView sd_cancelCurrentImageLoad];
         imageView.image = bundledAssetImage;
+        finish(bundledAssetImage, nil, [NSURL URLWithString:url]);
         return YES;
     }
-
     NSURL *resolvedURL = [self slock_resolvedImageURLForURLString:url];
-    [imageView sd_setImageWithURL:resolvedURL];
+    [imageView sd_setImageWithURL:resolvedURL placeholderImage:nil options:0
+        completed:^(UIImage *image, NSError *error, SDImageCacheType cacheType, NSURL *imageURL) {
+            // KRImageView compares against the original source, which may be an assets:// alias.
+            finish(image, error, [NSURL URLWithString:url]);
+        }];
     return YES;
 }
 

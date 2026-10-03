@@ -1927,6 +1927,29 @@ internal class SharedThreadDataSource(
             block()
         }
 
+    /**
+     * Re-applies the recorded reply-count fact ledger to a projected payload,
+     * guarded by the expected reply-cache provenance. Returns `null` when the
+     * provenance rotated (caller must drop), otherwise the ledger-projected
+     * payload. Used by commit paths whose projections can overwrite a newer
+     * realtime fact with a stale summary-snapshot value.
+     */
+    internal fun applyReplyCountFacts(
+        threadId: String,
+        expected: ReplyCacheProvenance,
+        payload: KuiklyThreadScreenPayload,
+    ): KuiklyThreadScreenPayload? =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expected) return@synchronized null
+            payloadCache.applyReplyCountFacts(
+                serverId = expected.serverId,
+                threadId = threadId,
+                environmentId = expected.environmentId,
+                principalId = expected.principalId,
+                payload = payload,
+            )
+        }
+
     internal fun <T> withCurrentReplyCacheProvenanceForLocalSend(
         expected: ReplyCacheProvenance,
         block: (ReplyCacheProvenance) -> T
@@ -3583,7 +3606,21 @@ internal class SharedThreadDataSource(
                 if (!isCurrentReplyCacheProvenance(context.provenance)) {
                     staleReplyCacheProvenanceResult()
                 } else {
-                    DataResult.Content(basePayload.withReplySummaries(result.data))
+                    // `withReplySummaries` unconditionally overwrites each
+                    // message's replyCount with the canonical snapshot. Realtime
+                    // reply-count facts recorded after the request was issued
+                    // (newer observedAt) must still win, so re-apply the fact
+                    // ledger before publishing the payload.
+                    val projected = basePayload.withReplySummaries(result.data)
+                    DataResult.Content(
+                        payloadCache.applyReplyCountFacts(
+                            serverId = context.provenance.serverId,
+                            threadId = resolvedThreadId,
+                            environmentId = context.provenance.environmentId,
+                            principalId = context.provenance.principalId,
+                            payload = projected
+                        )
+                    )
                 }
             }
             is DataResult.Empty -> result
@@ -7698,7 +7735,21 @@ internal class SharedThreadStore(
                 applyingPayload.withSecondaryTimelineProjectionFrom(
                     patch = commitPatch,
                     previous = latest,
-                )
+                ).let { projected ->
+                    // The secondary projection merges live/baseline/patch and
+                    // can overwrite a newer realtime reply-count fact with the
+                    // summary snapshot's stale value. Re-apply the fact ledger
+                    // (same pass as the fetch path at :3587) before committing;
+                    // a null result means the provenance rotated, so the caller
+                    // keeps the unprojected payload and the commit drops stale.
+                    routePayload.cacheThreadId()?.let { threadId ->
+                        dataSource.applyReplyCountFacts(
+                            threadId = threadId,
+                            expected = expectedProvenance,
+                            payload = projected,
+                        )
+                    } ?: projected
+                }
             }
             if (emitted) committedPayload = _state.value.payload
             return true

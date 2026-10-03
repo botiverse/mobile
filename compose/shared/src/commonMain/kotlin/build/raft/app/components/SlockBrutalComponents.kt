@@ -56,6 +56,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.material3.Button
+import com.tencent.kuikly.compose.material3.ButtonDefaults
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -394,9 +395,22 @@ internal fun SlockBrutalActionSheetRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // The bare material3 Button paints the theme's default filled container
+    // (purple in this build) over the sheet's surface and disables text via the
+    // default content color. Give the row explicit register-aware colors so the
+    // parent's selected/unselected surface shows through and ink stays readable.
+    val theme = LocalSlockTheme.current
     Button(
         onClick = onClick,
         shape = RectangleShape,
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = theme.ink,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = theme.inkMuted
+            ),
+        elevation = null,
         modifier =
             modifier
                 .fillMaxWidth()
@@ -422,16 +436,16 @@ internal fun SlockBrutalActionSheetRow(
                 Text(
                     text = model.title,
                     style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
+                    color = theme.ink,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (model.subtitle.isNotBlank()) {
                     Text(
                         text = model.subtitle,
                         style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
+                        color = theme.inkMuted,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -464,7 +478,8 @@ internal fun SlockBrutalTextField(
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
-    containerTapRequestsFocus: Boolean = false
+    containerTapRequestsFocus: Boolean = false,
+    onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
     SlockFormField(
@@ -488,7 +503,8 @@ internal fun SlockBrutalTextField(
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
-            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
+            onFocusChanged = onFocusChanged
         )
     }
 }
@@ -519,7 +535,8 @@ internal fun SlockBrutalTextField(
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
-    password: Boolean = false
+    password: Boolean = false,
+    onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
     SlockFormField(
@@ -550,7 +567,8 @@ internal fun SlockBrutalTextField(
                     KeyboardOptions(keyboardType = KeyboardType.Password)
                 } else {
                     KeyboardOptions.Default
-                }
+                },
+            onFocusChanged = onFocusChanged
         )
     }
 }
@@ -1025,7 +1043,9 @@ internal fun SlockBrutalSearchField(
     leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
     showClearWhenNotEmpty: Boolean = false,
     onClear: () -> Unit = { onValueChange("") },
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+    onFocus: () -> Unit = {},
+    onBlur: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
     val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
@@ -1063,8 +1083,14 @@ internal fun SlockBrutalSearchField(
                 placeholder = placeholder,
                 placeholderColor = SlockColor.TextMutedGray,
                 autoFocus = false,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocus()
+                },
+                onBlur = {
+                    focused = false
+                    onBlur()
+                },
                 maxLines = 1,
                 textStyle = textStyle,
                 modifier = Modifier.weight(1f)
@@ -1093,7 +1119,9 @@ internal fun SlockBrutalSearchField(
     leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
     showClearWhenNotEmpty: Boolean = false,
     onClear: () -> Unit = { onValueChange(TextFieldValue("")) },
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+    onFocus: () -> Unit = {},
+    onBlur: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
     val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
@@ -1131,8 +1159,14 @@ internal fun SlockBrutalSearchField(
                 placeholder = placeholder,
                 placeholderColor = SlockColor.TextMutedGray,
                 autoFocus = false,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocus()
+                },
+                onBlur = {
+                    focused = false
+                    onBlur()
+                },
                 maxLines = 1,
                 textStyle = textStyle,
                 modifier = Modifier.weight(1f)
@@ -1686,6 +1720,7 @@ internal fun SlockBrutalListShell(
     height: Dp,
     modifier: Modifier = Modifier,
     shadowOffset: Dp = SlockShadow.Brutal,
+    listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
     // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on
@@ -1715,7 +1750,8 @@ internal fun SlockBrutalListShell(
                     .fillMaxWidth()
                     .height(height)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .then(listModifier),
             verticalArrangement = Arrangement.spacedBy(0.dp),
             content = content
         )

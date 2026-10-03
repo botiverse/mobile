@@ -6591,162 +6591,173 @@ private fun MembersAgentIssueReportDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_report_issue_title).uppercase(),
         dismissEnabled = !busy,
+        keyboardAvoidanceEnabled = true,
         maxWidth = 420.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
         titleLineHeight = 22,
         onDismiss = onDismiss
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
-                Text(
-                    text = agentName,
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack
-                )
-            }
-            SlockBrutalTextField(
-                label = stringResource(MR.strings.member_report_issue_description_label),
-                value = description,
-                placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
-                onValueChange = { description = it },
-                optional = true,
-                enabled = !busy,
-                maxLines = 4,
-                fieldMinHeight = 88.dp,
-                password = false
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
-                MembersAgentIssueReportOption(
-                    label = stringResource(MR.strings.member_report_issue_recent_messages),
-                    checked = includeRecentMessages,
-                    enabled = !busy,
-                    onCheckedChange = { includeRecentMessages = it }
-                )
-                MembersAgentIssueReportOption(
-                    label = stringResource(MR.strings.member_report_issue_live_activity),
-                    checked = includeLiveActivity,
-                    enabled = !busy,
-                    onCheckedChange = { includeLiveActivity = it }
-                )
-                MembersAgentIssueReportOption(
-                    label = stringResource(MR.strings.member_report_issue_activity_history),
-                    checked = includeActivityHistory,
-                    enabled = !busy,
-                    onCheckedChange = { includeActivityHistory = it }
-                )
-                MembersAgentIssueReportOption(
-                    label = stringResource(MR.strings.member_report_issue_runtime_transcript),
-                    checked = includeRuntimeTranscript,
-                    enabled = runtimeTranscriptAvailable && !busy,
-                    onCheckedChange = { includeRuntimeTranscript = it }
-                )
-                if (!runtimeTranscriptAvailable) {
-                    Text(
-                        text = stringResource(MR.strings.member_report_issue_runtime_transcript_unavailable),
-                        modifier = Modifier.padding(start = 26.dp),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-            }
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                        .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.Top
+            item {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.TriangleAlert,
-                        modifier = Modifier.size(18.dp),
-                        color = SlockColor.TextBlackArgb
-                    )
+                    SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
                     Text(
-                        text = stringResource(MR.strings.member_report_issue_disclosure),
-                        modifier = Modifier.weight(1f),
-                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        text = agentName,
+                        style = SlockType.ButtonBold,
                         color = SlockColor.TextBlack
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { consented = !consented },
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SlockCheckbox(
-                        checked = consented,
-                        onCheckedChange = { consented = it },
+            }
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.member_report_issue_description_label),
+                    value = description,
+                    placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
+                    onValueChange = { description = it },
+                    optional = true,
+                    enabled = !busy,
+                    maxLines = 4,
+                    fieldMinHeight = 88.dp,
+                    password = false
+                )
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
+                    MembersAgentIssueReportOption(
+                        label = stringResource(MR.strings.member_report_issue_recent_messages),
+                        checked = includeRecentMessages,
                         enabled = !busy,
-                        size = 16.dp
+                        onCheckedChange = { includeRecentMessages = it }
                     )
-                    Text(
-                        text = stringResource(MR.strings.member_report_issue_consent),
-                        modifier = Modifier.weight(1f),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack
+                    MembersAgentIssueReportOption(
+                        label = stringResource(MR.strings.member_report_issue_live_activity),
+                        checked = includeLiveActivity,
+                        enabled = !busy,
+                        onCheckedChange = { includeLiveActivity = it }
                     )
+                    MembersAgentIssueReportOption(
+                        label = stringResource(MR.strings.member_report_issue_activity_history),
+                        checked = includeActivityHistory,
+                        enabled = !busy,
+                        onCheckedChange = { includeActivityHistory = it }
+                    )
+                    MembersAgentIssueReportOption(
+                        label = stringResource(MR.strings.member_report_issue_runtime_transcript),
+                        checked = includeRuntimeTranscript,
+                        enabled = runtimeTranscriptAvailable && !busy,
+                        onCheckedChange = { includeRuntimeTranscript = it }
+                    )
+                    if (!runtimeTranscriptAvailable) {
+                        Text(
+                            text = stringResource(MR.strings.member_report_issue_runtime_transcript_unavailable),
+                            modifier = Modifier.padding(start = 26.dp),
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                }
+            }
+            item {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
+                            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.TriangleAlert,
+                            modifier = Modifier.size(18.dp),
+                            color = SlockColor.TextBlackArgb
+                        )
+                        Text(
+                            text = stringResource(MR.strings.member_report_issue_disclosure),
+                            modifier = Modifier.weight(1f),
+                            style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                            color = SlockColor.TextBlack
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { consented = !consented },
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SlockCheckbox(
+                            checked = consented,
+                            onCheckedChange = { consented = it },
+                            enabled = !busy,
+                            size = 16.dp
+                        )
+                        Text(
+                            text = stringResource(MR.strings.member_report_issue_consent),
+                            modifier = Modifier.weight(1f),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextBlack
+                        )
+                    }
                 }
             }
             errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
-                Text(
-                    text = stringResource(MR.strings.member_report_issue_failed, message),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.AccentRed
-                )
+                item {
+                    Text(
+                        text = stringResource(MR.strings.member_report_issue_failed, message),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.AccentRed
+                    )
+                }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
-                    enabled = !busy,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    onClick = onDismiss
-                )
-                SlockBrutalActionButton(
-                    label =
-                        if (busy) {
-                            stringResource(MR.strings.member_report_issue_submitting)
-                        } else {
-                            stringResource(MR.strings.member_report_issue_submit)
-                        },
-                    leadingIcon = if (busy) SlockLucideIconName.Loader else SlockLucideIconName.Bug,
-                    enabled = consented && !busy,
-                    backgroundColor = SlockColor.AccentOrange,
-                    onClick = {
-                        onSubmit(
-                            description.text,
-                            includeRecentMessages,
-                            includeLiveActivity,
-                            includeActivityHistory,
-                            includeRuntimeTranscript
-                        )
-                    }
-                )
-            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.common_cancel),
+                enabled = !busy,
+                backgroundColor = SlockColor.SurfaceWhite,
+                onClick = onDismiss
+            )
+            SlockBrutalActionButton(
+                label =
+                    if (busy) {
+                        stringResource(MR.strings.member_report_issue_submitting)
+                    } else {
+                        stringResource(MR.strings.member_report_issue_submit)
+                    },
+                leadingIcon = if (busy) SlockLucideIconName.Loader else SlockLucideIconName.Bug,
+                enabled = consented && !busy,
+                backgroundColor = SlockColor.AccentOrange,
+                onClick = {
+                    onSubmit(
+                        description.text,
+                        includeRecentMessages,
+                        includeLiveActivity,
+                        includeActivityHistory,
+                        includeRuntimeTranscript
+                    )
+                }
+            )
         }
     }
 }
@@ -6937,37 +6948,50 @@ private fun MembersRestartResetDialog(
         titleMaxLines = 2,
         contentSpacing = SlockSpacing.Md
     ) {
-        errorMessage?.takeIf { it.isNotBlank() }?.let {
-            MembersRestartResetNotice(
-                text = stringResource(MR.strings.member_error_reset_agent, it),
-                color = SlockColor.AccentOrange
-            )
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            MembersRestartResetActionCard(
-                action = MembersAgentLifecycleAction.Restart,
-                selected = selectedAction == MembersAgentLifecycleAction.Restart,
-                enabled = !busy,
-                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.Restart) }
-            )
-            MembersRestartResetActionCard(
-                action = MembersAgentLifecycleAction.ResetSession,
-                selected = selectedAction == MembersAgentLifecycleAction.ResetSession,
-                enabled = !busy,
-                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetSession) }
-            )
-            MembersRestartResetActionCard(
-                action = MembersAgentLifecycleAction.ResetFull,
-                selected = selectedAction == MembersAgentLifecycleAction.ResetFull,
-                enabled = !busy,
-                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetFull) }
-            )
-        }
-        if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
-            MembersRestartResetNotice(
-                text = stringResource(MR.strings.member_dialog_full_reset_warning),
-                color = SlockColor.AccentOrange
-            )
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            errorMessage?.takeIf { it.isNotBlank() }?.let {
+                item {
+                    MembersRestartResetNotice(
+                        text = stringResource(MR.strings.member_error_reset_agent, it),
+                        color = SlockColor.AccentOrange
+                    )
+                }
+            }
+            item {
+                MembersRestartResetActionCard(
+                    action = MembersAgentLifecycleAction.Restart,
+                    selected = selectedAction == MembersAgentLifecycleAction.Restart,
+                    enabled = !busy,
+                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.Restart) }
+                )
+            }
+            item {
+                MembersRestartResetActionCard(
+                    action = MembersAgentLifecycleAction.ResetSession,
+                    selected = selectedAction == MembersAgentLifecycleAction.ResetSession,
+                    enabled = !busy,
+                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetSession) }
+                )
+            }
+            item {
+                MembersRestartResetActionCard(
+                    action = MembersAgentLifecycleAction.ResetFull,
+                    selected = selectedAction == MembersAgentLifecycleAction.ResetFull,
+                    enabled = !busy,
+                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetFull) }
+                )
+            }
+            if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
+                item {
+                    MembersRestartResetNotice(
+                        text = stringResource(MR.strings.member_dialog_full_reset_warning),
+                        color = SlockColor.AccentOrange
+                    )
+                }
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -10556,19 +10580,15 @@ private fun MembersAgentRuntimeConfigDialog(
         ) {
         // Kuikly's row/column measure policy hands the remaining height to unweighted
         // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
-        // viewport and leave the trailing Save/Cancel row at zero height. Pin the body to
-        // `fillMaxHeight()` and give the scroll area `weight(1f)` so the action row is
-        // measured first and keeps a deterministic height. Mirrors SharedCreateAgentDialog.
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        // viewport and leave the trailing Save/Cancel row at zero height.
+        // We use LazyColumn(weight(1f, fill = false)) so the dialog shrink-wraps when
+        // small and scrolls while preserving bottom actions when content or keyboard grows.
+        LazyColumn(
+            state = runtimeConfigListState,
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
+                .onGloballyPositioned { runtimeConfigViewport = it.boundsInRoot() },
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            LazyColumn(
-                state = runtimeConfigListState,
-                modifier = Modifier.fillMaxWidth().weight(1f)
-                    .onGloballyPositioned { runtimeConfigViewport = it.boundsInRoot() },
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
                 item {
                     if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
                         BuiltInRuntimeSection(
@@ -10902,7 +10922,6 @@ private fun MembersAgentRuntimeConfigDialog(
                     }
                 )
             }
-        }
         }
     }
 

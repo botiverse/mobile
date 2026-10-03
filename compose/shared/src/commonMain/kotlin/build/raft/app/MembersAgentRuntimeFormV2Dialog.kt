@@ -81,14 +81,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
                 item(key = "runtime-form-v2") {
                     if (form == null) {
                         Text(
@@ -173,4 +169,3 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             }
         }
     }
-}

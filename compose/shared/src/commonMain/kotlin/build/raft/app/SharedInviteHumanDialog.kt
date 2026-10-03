@@ -15,6 +15,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.material3.Text
@@ -76,88 +77,99 @@ internal fun SharedInviteHumanDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.agent_invite_title),
         dismissEnabled = !submitting,
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             errorMessage?.takeIf { it.isNotBlank() }?.let { err ->
-                Text(
-                    text = err,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
-                        .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_join_link), required = false)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val linkText = when {
-                        joinLinkLoading -> stringResource(MR.strings.agent_invite_state_join_link_loading)
-                        copyableJoinLink == null -> stringResource(MR.strings.agent_invite_state_join_link_unavailable)
-                        else -> copyableJoinLink
-                    }
-                    SlockBrutalReadOnlyValueField(
-                        value = linkText,
-                        modifier = Modifier
-                            .weight(1f),
-                        fieldMinHeight = 42.dp,
-                        horizontalPadding = 8.dp,
-                        verticalPadding = 8.dp,
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        borderColor = SlockColor.BorderBlack,
-                        textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-                        textColor = SlockColor.TextBlack
-                    )
-                    SlockBrutalIconButton(
-                        iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
-                        enabled = !joinLinkLoading && copyableJoinLink != null,
-                        backgroundColor = SlockColor.SurfaceWhite,
-                        size = 42.dp,
-                        iconSize = 16.dp,
-                        onClick = { copyableJoinLink?.let(onCopyJoinLink) }
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.Link2,
-                        modifier = Modifier.size(12.dp),
-                        color = SlockColor.TextMutedGrayArgb
-                    )
+                item {
                     Text(
-                        text = stringResource(MR.strings.agent_invite_hint_join_link),
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
+                        text = err,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
+                            .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.AccentRed),
+                        color = SlockColor.AccentRed
                     )
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_emails), required = false)
-                SlockBrutalInputField(
-                    value = email1,
-                    onValueChange = { email1 = it },
-                    placeholder = stringResource(MR.strings.agent_invite_placeholder_email),
-                    enabled = !submitting
-                )
-                SlockBrutalInputField(
-                    value = email2,
-                    onValueChange = { email2 = it },
-                    placeholder = stringResource(MR.strings.agent_invite_label_optional),
-                    enabled = !submitting
-                )
-                SlockBrutalInputField(
-                    value = email3,
-                    onValueChange = { email3 = it },
-                    placeholder = stringResource(MR.strings.agent_invite_label_optional),
-                    enabled = !submitting
-                )
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_join_link), required = false)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val linkText = when {
+                            joinLinkLoading -> stringResource(MR.strings.agent_invite_state_join_link_loading)
+                            copyableJoinLink == null -> stringResource(MR.strings.agent_invite_state_join_link_unavailable)
+                            else -> copyableJoinLink
+                        }
+                        SlockBrutalReadOnlyValueField(
+                            value = linkText,
+                            modifier = Modifier
+                                .weight(1f),
+                            fieldMinHeight = 42.dp,
+                            horizontalPadding = 8.dp,
+                            verticalPadding = 8.dp,
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            borderColor = SlockColor.BorderBlack,
+                            textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
+                            textColor = SlockColor.TextBlack
+                        )
+                        SlockBrutalIconButton(
+                            iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
+                            enabled = !joinLinkLoading && copyableJoinLink != null,
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            size = 42.dp,
+                            iconSize = 16.dp,
+                            onClick = { copyableJoinLink?.let(onCopyJoinLink) }
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.Link2,
+                            modifier = Modifier.size(12.dp),
+                            color = SlockColor.TextMutedGrayArgb
+                        )
+                        Text(
+                            text = stringResource(MR.strings.agent_invite_hint_join_link),
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                }
             }
-            Row(
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_emails), required = false)
+                    SlockBrutalInputField(
+                        value = email1,
+                        onValueChange = { email1 = it },
+                        placeholder = stringResource(MR.strings.agent_invite_placeholder_email),
+                        enabled = !submitting
+                    )
+                    SlockBrutalInputField(
+                        value = email2,
+                        onValueChange = { email2 = it },
+                        placeholder = stringResource(MR.strings.agent_invite_label_optional),
+                        enabled = !submitting
+                    )
+                    SlockBrutalInputField(
+                        value = email3,
+                        onValueChange = { email3 = it },
+                        placeholder = stringResource(MR.strings.agent_invite_label_optional),
+                        enabled = !submitting
+                    )
+                }
+            }
+        }
+        Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -189,7 +201,6 @@ internal fun SharedInviteHumanDialog(
             }
         }
     }
-}
 
 private const val DefaultInviteHumanWebUrl = "https://app.raft.build"
 

@@ -30,7 +30,6 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
 import build.raft.app.components.SlockAnchoredToolbarChip
-import build.raft.app.components.SlockBrutalPanelShell
 import build.raft.app.components.SlockBrutalReadOnlyField
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalSectionLabel
@@ -465,6 +464,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.coroutines.withKuiklyIdleContext
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.foundation.background
@@ -495,6 +495,9 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.extension.NestedScrollMode
+import com.tencent.kuikly.compose.extension.bouncesEnable
+import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -517,6 +520,8 @@ import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.geometry.Rect
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
@@ -549,6 +554,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.views.DivView
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
@@ -10740,30 +10746,50 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
 ) {
     val action = if (app.installed) CONNECTED_APPS_ACTION_UNINSTALL else CONNECTED_APPS_ACTION_INSTALL
     val busy = actionState.connectedAppsBusyFor(action, app.id)
+    val connectedAppError = actionState.connectedAppsErrorFor(action, app.id)
     SlockUnifiedDialog(
         title = app.name,
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 456.dp
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            SettingsConnectedAppLogoBox(
-                name = app.name,
-                logoUrl = app.logoUrl,
-                seed = app.clientId,
-                size = 56.dp
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
-                SettingsFormDetailText(if (app.installed) stringResource(MR.strings.settings_connected_apps_marketplace_installed_detail) else stringResource(MR.strings.settings_connected_apps_marketplace_available_detail))
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsConnectedAppLogoBox(
+                        name = app.name,
+                        logoUrl = app.logoUrl,
+                        seed = app.clientId,
+                        size = 56.dp
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
+                        SettingsFormDetailText(if (app.installed) stringResource(MR.strings.settings_connected_apps_marketplace_installed_detail) else stringResource(MR.strings.settings_connected_apps_marketplace_available_detail))
+                    }
+                }
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), app.developer)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_category), app.category.settingsConnectedAppCategoryLabel(stringResource(MR.strings.settings_connected_apps_category_other)))
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_callback), app.callbackDomain)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
+            }
+            if (connectedAppError != null) {
+                item { SettingsFormErrorText(connectedAppError) }
             }
         }
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), app.developer)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_category), app.category.settingsConnectedAppCategoryLabel(stringResource(MR.strings.settings_connected_apps_category_other)))
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_callback), app.callbackDomain)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
-        actionState.connectedAppsErrorFor(action, app.id)?.let { SettingsFormErrorText(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 SlockBrutalActionButton(
@@ -18962,6 +18988,36 @@ private fun SharedCreateChannelDialog(
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
+    val createChannelListState = rememberLazyListState()
+    val createChannelScrollScope = rememberCoroutineScope()
+    var createChannelViewport by remember { mutableStateOf<Rect?>(null) }
+    val createChannelScrollCoordinator = remember {
+        SlockFocusedEditorScrollRequestCoordinator()
+    }
+    DisposableEffect(createChannelScrollCoordinator) {
+        onDispose { createChannelScrollCoordinator.invalidate() }
+    }
+    var memberSearchFocused by remember { mutableStateOf(false) }
+
+    fun scrollToMemberPicker() {
+        val requestGeneration = createChannelScrollCoordinator.begin()
+        val job = createChannelScrollScope.launch {
+            slockUnifiedDialogScrollToTargetItem(
+                keyboardHeight = 1f,
+                targetItemIndex = 3,
+                targetItemScrollOffset = 0,
+                awaitRelayoutFrame = { withFrameNanos { } },
+                scrollToItem = { index, scrollOffset ->
+                    createChannelListState.scrollToItem(index, scrollOffset)
+                },
+                isScrollInProgress = { createChannelListState.isScrollInProgress },
+                isRequestCurrent = { createChannelScrollCoordinator.isCurrent(requestGeneration) },
+                isTargetActive = { memberSearchFocused }
+            )
+        }
+        createChannelScrollCoordinator.attach(job)
+    }
+
     val trimmedName = name.trim()
     val nameError =
         if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
@@ -18987,67 +19043,161 @@ private fun SharedCreateChannelDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        SlockBrutalTextField(
-            label = stringResource(MR.strings.channel_create_label_name),
-            required = true,
-            value = name,
-            onValueChange = { name = it },
-            placeholder = stringResource(MR.strings.channel_create_placeholder_name),
-            enabled = !submitting,
-            hint = stringResource(MR.strings.channel_create_hint_name_format),
-            error = nameError,
-            autoFocus = true
-        )
-        SlockBrutalTextField(
-            label = stringResource(MR.strings.channel_create_label_description),
-            optional = true,
-            value = description,
-            onValueChange = { description = it },
-            placeholder = stringResource(MR.strings.channel_create_placeholder_description),
-            enabled = !submitting,
-            maxLines = 2,
-            autoFocus = false
-        )
-        SharedCreateChannelVisibilityControl(
-            selected = visibility,
-            enabled = !submitting,
-            onSelected = { visibility = it }
-        )
-        SharedCreateChannelMemberPicker(
-            loading = membersLoading,
-            hasMembers = selectableMembers.isNotEmpty(),
-            query = memberSearch,
-            onQueryChange = { memberSearch = it },
-            filteredAgentMembers = filteredAgentMembers,
-            filteredHumanMembers = filteredHumanMembers,
-            hasFilteredMembers = hasFilteredMembers,
-            selectedKeys = selectedMemberKeys,
-            enabled = !submitting,
-            agentStatusResolver = agentStatusResolver,
-            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-            onToggle = { key ->
-                selectedMemberKeys =
-                    if (key in selectedMemberKeys) {
-                        selectedMemberKeys - key
-                    } else {
-                        selectedMemberKeys + key
-                    }
-            }
-        )
-        if (!errorMessage.isNullOrBlank()) {
-            val localizedError =
-                if (errorMessage == "channel_name_invalid") {
-                    stringResource(MR.strings.channel_create_error_name_format)
+        val focusedEditorBounds = rememberSlockFocusedInputBoundsResolver()
+        val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+
+        fun keepFocusedCreateChannelEditorVisible(params: KeyboardParams) {
+            dialogKeyboardHeightChange(params)
+            val requestGeneration = createChannelScrollCoordinator.begin()
+            if (params.height <= 0f) return
+            val job = createChannelScrollScope.launch {
+                if (memberSearchFocused) {
+                    slockUnifiedDialogScrollToTargetItem(
+                        keyboardHeight = params.height,
+                        targetItemIndex = 3,
+                        targetItemScrollOffset = 0,
+                        awaitRelayoutFrame = { withFrameNanos { } },
+                        scrollToItem = { index, scrollOffset ->
+                            createChannelListState.scrollToItem(index, scrollOffset)
+                        },
+                        isScrollInProgress = { createChannelListState.isScrollInProgress },
+                        isRequestCurrent = {
+                            createChannelScrollCoordinator.isCurrent(requestGeneration)
+                        },
+                        isTargetActive = { memberSearchFocused }
+                    )
                 } else {
-                    errorMessage
+                    slockUnifiedDialogKeepFocusedEditorVisible(
+                        keyboardHeight = params.height,
+                        awaitRelayoutFrame = { withFrameNanos { } },
+                        focusedBounds = focusedEditorBounds,
+                        viewportBounds = { createChannelViewport },
+                        currentScrollPosition = {
+                            SlockUnifiedDialogListScrollPosition(
+                                index = createChannelListState.firstVisibleItemIndex,
+                                scrollOffset = createChannelListState.firstVisibleItemScrollOffset
+                            )
+                        },
+                        scrollToItem = { index, scrollOffset ->
+                            createChannelListState.scrollToItem(index, scrollOffset)
+                        },
+                        isScrollInProgress = { createChannelListState.isScrollInProgress },
+                        isRequestCurrent = {
+                            createChannelScrollCoordinator.isCurrent(requestGeneration)
+                        },
+                        isTargetActive = { !memberSearchFocused }
+                    )
                 }
-            Text(
-                text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
-                style = SlockType.Caption,
-                color = SlockColor.AccentRed
-            )
+            }
+            createChannelScrollCoordinator.attach(job)
+        }
+
+        CompositionLocalProvider(
+            LocalSlockDialogKeyboardHeightChange provides ::keepFocusedCreateChannelEditorVisible
+        ) {
+            LazyColumn(
+                state = createChannelListState,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.channel_create_label_name),
+                    required = true,
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_name),
+                    enabled = !submitting,
+                    hint = stringResource(MR.strings.channel_create_hint_name_format),
+                    error = nameError,
+                    autoFocus = false,
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) {
+                            memberSearchFocused = false
+                            createChannelScrollCoordinator.invalidate()
+                        }
+                    }
+                )
+            }
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.channel_create_label_description),
+                    optional = true,
+                    value = description,
+                    onValueChange = { description = it },
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_description),
+                    enabled = !submitting,
+                    maxLines = 2,
+                    autoFocus = false,
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) {
+                            memberSearchFocused = false
+                            createChannelScrollCoordinator.invalidate()
+                        }
+                    }
+                )
+            }
+            item {
+                SharedCreateChannelVisibilityControl(
+                    selected = visibility,
+                    enabled = !submitting,
+                    onSelected = { visibility = it }
+                )
+            }
+            item {
+                SharedCreateChannelMemberPicker(
+                    loading = membersLoading,
+                    hasMembers = selectableMembers.isNotEmpty(),
+                    query = memberSearch,
+                    onQueryChange = { memberSearch = it },
+                    filteredAgentMembers = filteredAgentMembers,
+                    filteredHumanMembers = filteredHumanMembers,
+                    hasFilteredMembers = hasFilteredMembers,
+                    selectedKeys = selectedMemberKeys,
+                    enabled = !submitting,
+                    agentStatusResolver = agentStatusResolver,
+                    fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                    onToggle = { key ->
+                        selectedMemberKeys =
+                            if (key in selectedMemberKeys) {
+                                selectedMemberKeys - key
+                            } else {
+                                selectedMemberKeys + key
+                            }
+                    },
+                    onFocus = {
+                        memberSearchFocused = true
+                        scrollToMemberPicker()
+                    },
+                    onBlur = {
+                        memberSearchFocused = false
+                        createChannelScrollCoordinator.invalidate()
+                    }
+                )
+            }
+            if (!errorMessage.isNullOrBlank()) {
+                item {
+                    val localizedError =
+                        if (errorMessage == "channel_name_invalid") {
+                            stringResource(MR.strings.channel_create_error_name_format)
+                        } else {
+                            errorMessage
+                        }
+                    Text(
+                        text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed
+                    )
+                }
+            }
+        }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -19146,7 +19296,9 @@ private fun SharedCreateChannelMemberPicker(
     enabled: Boolean,
     agentStatusResolver: SlockAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean,
-    onToggle: (String) -> Unit
+    onToggle: (String) -> Unit,
+    onFocus: () -> Unit = {},
+    onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
@@ -19168,62 +19320,69 @@ private fun SharedCreateChannelMemberPicker(
                     value = query,
                     enabled = enabled,
                     placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
-                    onValueChange = onQueryChange
+                    onValueChange = onQueryChange,
+                    onFocus = onFocus,
+                    onBlur = onBlur
                 )
-                SlockBrutalPanelShell(
-                    modifier =
+                SlockModalListShell(
+                    height = 192.dp,
+                    modifier = Modifier.retainInputFocusForInteractions(),
+                    listModifier =
                         Modifier
-                            .fillMaxWidth()
-                            .height(192.dp)
+                            .bouncesEnable(false)
+                            .nestedScroll(
+                                scrollUp = NestedScrollMode.PARENT_FIRST,
+                                scrollDown = NestedScrollMode.SELF_FIRST
+                            )
                 ) {
                     if (!hasFilteredMembers) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 18.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray
-                            )
+                        item(key = "empty-search-state") {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 18.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
+                                    style = SlockType.Caption,
+                                    color = SlockColor.TextMutedGray
+                                )
+                            }
                         }
                     } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                            if (filteredAgentMembers.isNotEmpty()) {
-                                item(key = "agents-header") {
-                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
-                                }
-                                filteredAgentMembers.forEach { member ->
-                                    item(key = member.memberSelectionKey) {
-                                        SharedCreateChannelMemberRow(
-                                            member = member,
-                                            selected = member.memberSelectionKey in selectedKeys,
-                                            enabled = enabled,
-                                            agentStatusResolver = agentStatusResolver,
-                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                            onClick = { onToggle(member.memberSelectionKey) }
-                                        )
-                                    }
+                        if (filteredAgentMembers.isNotEmpty()) {
+                            item(key = "agents-header") {
+                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
+                            }
+                            filteredAgentMembers.forEach { member ->
+                                item(key = member.memberSelectionKey) {
+                                    SharedCreateChannelMemberRow(
+                                        member = member,
+                                        selected = member.memberSelectionKey in selectedKeys,
+                                        enabled = enabled,
+                                        agentStatusResolver = agentStatusResolver,
+                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                                        onClick = { onToggle(member.memberSelectionKey) }
+                                    )
                                 }
                             }
-                            if (filteredHumanMembers.isNotEmpty()) {
-                                item(key = "humans-header") {
-                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
-                                }
-                                filteredHumanMembers.forEach { member ->
-                                    item(key = member.memberSelectionKey) {
-                                        SharedCreateChannelMemberRow(
-                                            member = member,
-                                            selected = member.memberSelectionKey in selectedKeys,
-                                            enabled = enabled,
-                                            agentStatusResolver = agentStatusResolver,
-                                            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                            onClick = { onToggle(member.memberSelectionKey) }
-                                        )
-                                    }
+                        }
+                        if (filteredHumanMembers.isNotEmpty()) {
+                            item(key = "humans-header") {
+                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
+                            }
+                            filteredHumanMembers.forEach { member ->
+                                item(key = member.memberSelectionKey) {
+                                    SharedCreateChannelMemberRow(
+                                        member = member,
+                                        selected = member.memberSelectionKey in selectedKeys,
+                                        enabled = enabled,
+                                        agentStatusResolver = agentStatusResolver,
+                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                                        onClick = { onToggle(member.memberSelectionKey) }
+                                    )
                                 }
                             }
                         }

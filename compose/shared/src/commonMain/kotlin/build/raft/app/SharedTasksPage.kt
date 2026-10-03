@@ -1819,34 +1819,46 @@ private fun TasksStatusDialog(
         dismissEnabled = !updating,
         contentSpacing = SlockSpacing.Sm
     ) {
-        Text(
-            text = task.tasksMeaningfulDisplayTitle(),
-            style = SlockType.ButtonBold,
-            color = SlockColor.TextBlack,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
-            style = SlockType.Caption,
-            color = SlockColor.TextBlack.copy(alpha = 0.65f)
-        )
-        TaskStatus.values().forEach { status ->
-            val selected = status == task.status
-            SlockModalFullWidthActionButton(
-                label = status.localizedLabel(),
-                icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
-                color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-                enabled = !updating && !selected,
-                onClick = { onSelect(status) }
-            )
-        }
-        errorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            Text(
-                text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
-                style = SlockType.Caption,
-                color = SlockColor.AccentRed
-            )
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            item {
+                Text(
+                    text = task.tasksMeaningfulDisplayTitle(),
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            item {
+                Text(
+                    text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
+                )
+            }
+            items(TaskStatus.values().size) { idx ->
+                val status = TaskStatus.values()[idx]
+                val selected = status == task.status
+                SlockModalFullWidthActionButton(
+                    label = status.localizedLabel(),
+                    icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
+                    color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                    enabled = !updating && !selected,
+                    onClick = { onSelect(status) }
+                )
+            }
+            errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+                item {
+                    Text(
+                        text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed
+                    )
+                }
+            }
         }
     }
 }
@@ -1860,50 +1872,48 @@ private fun TasksCreateDialog(
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
     val anyNonBlank = titles.any { it.isNotBlank() }
-    Modal(onWillDismiss = { if (!loading) onDismiss() }) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.tasks_label_new_tasks),
+        onDismiss = onDismiss,
+        dismissEnabled = !loading,
+        keyboardAvoidanceEnabled = true,
+        minWidth = 280.dp,
+        maxWidth = 360.dp,
+        contentPadding = SlockSpacing.Md,
+        contentSpacing = SlockSpacing.Sm
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockModalDismissBarrier(
-                overlayAlpha = 0.4f,
-                onDismiss = { if (!loading) onDismiss() }
-            )
-            Column(
-                modifier = Modifier
-                    .padding(SlockSpacing.Md)
-                    .widthIn(min = 280.dp, max = 360.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .slockFloatingContentClickTarget()
-                    .padding(SlockSpacing.Md),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                Text(text = stringResource(MR.strings.tasks_label_new_tasks), style = SlockType.PageTitle, color = SlockColor.TextBlack)
+            item {
                 Text(
                     text = stringResource(MR.strings.tasks_create_multiple_hint),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
-                titles.forEachIndexed { index, value ->
-                    TextField(
-                        value = value,
-                        onValueChange = { next ->
-                            titles = titles.toMutableList().also { it[index] = next }
-                        },
-                        placeholder = stringResource(MR.strings.tasks_label_title),
-                        placeholderColor = SlockColor.TextMutedGray,
-                        enabled = !loading,
-                        autoFocus = index == 0,
-                        maxLines = 2,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 36.dp)
-                            .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
-                    )
-                }
+            }
+            items(titles.size) { index ->
+                val value = titles[index]
+                TextField(
+                    value = value,
+                    onValueChange = { next ->
+                        titles = titles.toMutableList().also { it[index] = next }
+                    },
+                    placeholder = stringResource(MR.strings.tasks_label_title),
+                    placeholderColor = SlockColor.TextMutedGray,
+                    enabled = !loading,
+                    autoFocus = index == 0,
+                    maxLines = 2,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 36.dp)
+                        .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
+                )
+            }
+            item {
                 SlockToolbarChip(
                     label = stringResource(MR.strings.tasks_action_add_another),
                     iconName = SlockLucideIconName.Plus,
@@ -1911,7 +1921,9 @@ private fun TasksCreateDialog(
                     enabled = !loading,
                     onClick = { titles = titles + "" }
                 )
-                errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            }
+            errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+                item {
                     Text(
                         text = code,
                         style = SlockType.Caption,
@@ -1920,28 +1932,28 @@ private fun TasksCreateDialog(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    SlockToolbarChip(
-                        label = stringResource(MR.strings.common_cancel),
-                        iconName = null,
-                        active = false,
-                        enabled = !loading,
-                        onClick = onDismiss
-                    )
-                    SlockToolbarChip(
-                        label = if (loading) "Creating\u2026" else "Create",
-                        iconName = SlockLucideIconName.Check,
-                        active = true,
-                        enabled = anyNonBlank && !loading,
-                        onClick = { onSubmit(titles) }
-                    )
-                }
             }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.weight(1f))
+            SlockToolbarChip(
+                label = stringResource(MR.strings.common_cancel),
+                iconName = null,
+                active = false,
+                enabled = !loading,
+                onClick = onDismiss
+            )
+            SlockToolbarChip(
+                label = if (loading) "Creating\u2026" else "Create",
+                iconName = SlockLucideIconName.Check,
+                active = true,
+                enabled = anyNonBlank && !loading,
+                onClick = { onSubmit(titles) }
+            )
         }
     }
 }
