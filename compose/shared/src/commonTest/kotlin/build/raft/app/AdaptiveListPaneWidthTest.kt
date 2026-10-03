@@ -63,16 +63,16 @@ class AdaptiveListPaneWidthTest {
         val session = SlockListPaneDragSession(onEnd = { reasons += it })
         // Nothing to end before a drag starts.
         assertFalse(session.end("lift"))
-        assertNull(session.move(10f, 2f))
+        assertNull(session.moveTo(10f, 2f))
         session.start(360f)
-        assertEquals(360f to 20f, session.move(40f, 2f))
+        assertEquals(360f to 20f, session.moveTo(40f, 2f))
         // Host goes inactive (tab switch), then the gesture's own cancel and lift arrive late.
         assertTrue(session.end("inactive"))
         assertFalse(session.end("cancel"))
         assertFalse(session.end("lift"))
         assertEquals(listOf("inactive"), reasons)
         // Movement after the end (finger still down) changes nothing.
-        assertNull(session.move(40f, 2f))
+        assertNull(session.moveTo(80f, 2f))
         assertFalse(session.active)
     }
 
@@ -80,22 +80,26 @@ class AdaptiveListPaneWidthTest {
         val reasons = mutableListOf<String>()
         val session = SlockListPaneDragSession(onEnd = { reasons += it })
         session.start(360f)
-        session.move(100f, 2f)
+        session.moveTo(100f, 2f)
         // A second start without an end (e.g. a missed lift) ends the first one exactly once.
         session.start(400f)
         assertEquals(listOf("restart"), reasons)
-        assertEquals(400f to 5f, session.move(10f, 2f))
+        assertEquals(400f to 5f, session.moveTo(10f, 2f))
         assertTrue(session.end("lift"))
         assertEquals(listOf("restart", "lift"), reasons)
     }
 
-    @Test fun movementConvertsAtEachEventsDensity() {
+    @Test fun theDeltaIsTheTotalFromTheDragOriginNotASumOfSteps() {
         val session = SlockListPaneDragSession(onEnd = { _ -> })
         session.start(360f)
-        session.move(30f, 1.5f)
-        // Density changed mid-drag: later movement converts with the new density.
-        assertEquals(360f to 30f, session.move(20f, 2f))
+        // The finger is 300px past the origin, then back to 200px: the delta follows the finger,
+        // whatever the handle did in between (it moves and widens mid-drag).
+        assertEquals(360f to 150f, session.moveTo(300f, 2f))
+        assertEquals(360f to 100f, session.moveTo(200f, 2f))
+        // Past the list limit the finger keeps going; the drag stays alive and keeps reporting.
+        assertEquals(360f to 400f, session.moveTo(800f, 2f))
+        assertTrue(session.active)
         // A non-positive density is ignored rather than dividing by zero.
-        assertNull(session.move(20f, 0f))
+        assertNull(session.moveTo(20f, 0f))
     }
 }

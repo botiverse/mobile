@@ -50,7 +50,7 @@ internal fun slockListPaneStoredWidth(widthDp: Float): String =
 /**
  * One list-divider drag. [end] reports the end exactly once per started drag however it is
  * reached (lift, gesture cancel, host inactive, handle disposed, density change); movement after
- * the end is ignored. Movement is accumulated in dp at the density of each event.
+ * the end is ignored.
  */
 internal class SlockListPaneDragSession(private val onEnd: (reason: String) -> Unit) {
     var active: Boolean = false
@@ -65,10 +65,14 @@ internal class SlockListPaneDragSession(private val onEnd: (reason: String) -> U
         deltaDp = 0f
     }
 
-    /** The drag's (start width, total delta) after this movement, or null when no drag is active. */
-    fun move(dragAmountPx: Float, density: Float): Pair<Float, Float>? {
+    /**
+     * The drag's (start width, total delta) for a finger now [totalDeltaPx] from where the drag
+     * started (window coordinates), or null when no drag is active. Using the total from a fixed
+     * origin keeps the delta exact even though the handle itself moves and resizes mid-drag.
+     */
+    fun moveTo(totalDeltaPx: Float, density: Float): Pair<Float, Float>? {
         if (!active || density <= 0f) return null
-        deltaDp += dragAmountPx / density
+        deltaDp = totalDeltaPx / density
         return startWidthDp to deltaDp
     }
 
