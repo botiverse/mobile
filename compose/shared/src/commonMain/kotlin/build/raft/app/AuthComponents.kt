@@ -146,6 +146,7 @@ internal fun AuthScaffold(
     onDiagnosticsShortcut: (() -> Unit)? = null,
     contentTopPadding: Dp = 40.dp,
     contentScrollable: Boolean = false,
+    scrollContentVerticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(12.dp),
     topBarHorizontalPadding: Dp = 16.dp,
     topBarBrandImagePadding: Dp = 0.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
@@ -259,7 +260,7 @@ internal fun AuthScaffold(
                                                     authKeyboardInsetExcludesBottomSafeArea
                                             )
                                 ),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = scrollContentVerticalArrangement,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             item {
@@ -367,11 +368,11 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun AuthCenterMark(modifier: Modifier = Modifier) {
+internal fun AuthCenterMark(modifier: Modifier = Modifier, size: Dp = 36.dp) {
     SlockCachedImage(
         source = SlockIconAssetSource,
         contentDescription = null,
-        modifier = modifier.size(36.dp),
+        modifier = modifier.size(size),
         contentScale = ContentScale.Fit
     )
 }

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const rules = [
-  ['entry/src/main/ets/entryability/EntryAbility.ets', /new SlockOhosMobileOAuthIngress\(completeSlockOhosMobileOAuthCallback\)/, 'production ingress owns the real callback consumer'],
+  ['entry/src/main/ets/entryability/EntryAbility.ets', /new SlockOhosMobileOAuthIngress\(\(uri\) => completeSlockOhosAppLoginCallback\(uri\) \|\| completeSlockOhosMobileOAuthCallback\(uri\)\)/, 'production ingress owns the real callback consumer'],
   ['entry/src/main/ets/entryability/EntryAbility.ets', /mobileOAuthIngress\.captureColdStart\(want\.uri\)/, 'cold Want is queued'],
   ['entry/src/main/ets/entryability/EntryAbility.ets', /mobileOAuthIngress\.captureWarmStart\(want\.uri\)/, 'warm Want is delivered'],
   ['entry/src/main/ets/entryability/EntryAbility.ets', /mobileOAuthIngress\.markPageContentLoaded\(\)/, 'page-ready fence is released'],

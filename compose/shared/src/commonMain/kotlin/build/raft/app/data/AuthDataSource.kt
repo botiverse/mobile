@@ -324,21 +324,37 @@ class SharedAuthDataSource(
                     return failure
                 }
             }
+        return establishLoginSession(login)
+    }
+
+    suspend fun startAppLogin(returnUri: String, codeChallenge: String): SharedAuthResult<AuthAppLoginStartResponse> =
+        when (val response = api.startAppLogin(returnUri, codeChallenge)) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+
+    suspend fun completeAppLogin(code: String, codeVerifier: String, isCurrent: () -> Boolean = { true }): SharedAuthResult<StoredAuthSession> =
+        when (val response = api.completeAppLogin(code, codeVerifier)) {
+            is AuthApiResult.Success -> if (isCurrent()) establishLoginSession(response.data, isCurrent) else SharedAuthResult.Unauthenticated
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+
+    private suspend fun establishLoginSession(login: AuthLoginResponse, isCurrent: () -> Boolean = { true }): SharedAuthResult<StoredAuthSession> {
         val servers =
             when (val response = api.servers("Bearer ${login.accessToken}")) {
                 is AuthApiResult.Success -> {
-                    diagnosticsLogger("auth_login_servers_result provider=mobile_oauth result=success serversCount=${response.data.size}")
+                    diagnosticsLogger("auth_login_servers_result provider=browser_login result=success serversCount=${response.data.size}")
                     response.data
                 }
                 is AuthApiResult.Failure -> {
                     val failure = response.toSharedAuthFailure()
-                    diagnosticsLogger("auth_login_servers_result provider=mobile_oauth result=failure code=${failure.code} fallback=empty")
+                    diagnosticsLogger("auth_login_servers_result provider=browser_login result=failure code=${failure.code} fallback=empty")
                     emptyList()
                 }
             }
         val orderedServers =
             servers.orderedByServerOrder(
-                loadServerOrderOrNull("Bearer ${login.accessToken}", source = "mobile_oauth_login")
+                loadServerOrderOrNull("Bearer ${login.accessToken}", source = "browser_login")
             )
         val session =
             StoredAuthSession(
@@ -348,18 +364,20 @@ class SharedAuthDataSource(
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
-        diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation {
-            replaceAuthenticatedSessionAndRetireChangedAccount(session, "mobile_oauth_login")
+        diagnosticsLogger("auth_session_persist_start provider=browser_login userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
+        if (!isCurrent()) return SharedAuthResult.Unauthenticated
+        val committed = runCatchingPreservingCancellation {
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "browser_login", isCurrent)
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
-                    "auth_session_persist_result provider=mobile_oauth result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
+                    "auth_session_persist_result provider=browser_login result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
                 )
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
-        diagnosticsLogger("auth_session_persist_result provider=mobile_oauth result=success stage=session_persist")
-        diagnosticsLogger("auth_login_result provider=mobile_oauth result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
+        if (!committed) return SharedAuthResult.Unauthenticated
+        diagnosticsLogger("auth_session_persist_result provider=browser_login result=success stage=session_persist")
+        diagnosticsLogger("auth_login_result provider=browser_login result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
     }
 
@@ -1530,15 +1548,17 @@ class SharedAuthDataSource(
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
         session: StoredAuthSession,
-        source: String
-    ) {
+        source: String,
+        isCurrent: () -> Boolean = { true },
+    ): Boolean {
         val previous = sessionStore.readSession()
         val capture =
             previous
                 ?.takeIf { it.user.id.trim() != session.user.id.trim() }
                 ?.let(::captureAvatarOwnerRetirement)
-        sessionStore.replaceAuthenticatedSession(session)
+        if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
+        return true
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =
@@ -1765,6 +1785,8 @@ private fun String.authBodyDiagnostics(): String {
  * root JSON array. Legacy token aliases are intentionally rejected by tests.
  */
 interface SlockAuthApi {
+    suspend fun startAppLogin(returnUri: String, codeChallenge: String): AuthApiResult<AuthAppLoginStartResponse> = AuthApiResult.Failure(code = 501)
+    suspend fun completeAppLogin(code: String, codeVerifier: String): AuthApiResult<AuthLoginResponse> = AuthApiResult.Failure(code = 501)
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
     suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>>
@@ -1872,6 +1894,16 @@ class SlockAuthApiClient(
                     .filter { it.isNotBlank() }
                     .toSet()
             }
+
+    override suspend fun startAppLogin(returnUri: String, codeChallenge: String): AuthApiResult<AuthAppLoginStartResponse> =
+        transport.startAppLogin(authJson.encodeToString(AuthAppLoginStartBody(returnUri, codeChallenge)))
+            .mapAuthBody("auth_app_login_start_contract_mismatch", AuthAppLoginStartResponse.serializer(), diagnosticsLogger) {
+                it
+            }
+
+    override suspend fun completeAppLogin(code: String, codeVerifier: String): AuthApiResult<AuthLoginResponse> =
+        transport.completeAppLogin(authJson.encodeToString(AuthAppLoginCompleteBody(code, codeVerifier)))
+            .mapAuthBody("auth_app_login_complete_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
 
     override suspend fun startMobileOAuth(
         provider: String,
@@ -2740,3 +2772,10 @@ private fun List<StoredAuthServer>.orderedByServerOrder(serverOrder: List<String
     if (ordered.isEmpty()) return this
     return ordered + filterNot { it.id in seen }
 }
+
+@Serializable
+data class AuthAppLoginStartResponse(val requestId: String, val loginUrl: String, val expiresAt: String)
+@Serializable
+private data class AuthAppLoginStartBody(val returnUri: String, val codeChallenge: String)
+@Serializable
+private data class AuthAppLoginCompleteBody(val code: String, val codeVerifier: String)

@@ -91,6 +91,18 @@ internal class BridgeSettingsPlatformCapabilities(
         }
     }
 
+    suspend fun startWebLogin(): DataResult<Unit> {
+        val prep = settingsCapability(JSONObject().put("action", "appLoginPrepare"))
+        val generation = prep?.optString("generation").orEmpty()
+        val url = SlockAppLogin.start(generation, prep?.optString("codeVerifier").orEmpty(),
+            prep?.optString("codeChallenge").orEmpty(), prep?.optString("returnUri").orEmpty())
+            ?: return DataResult.Error(ScreenError("web_login_prepare_failed", retryable = true))
+        val result = settingsCapability(JSONObject().put("action", "appLoginOpen").put("authorizationUrl", url))
+        if (result?.optString("status") == "started") return DataResult.Content(Unit)
+        SlockAppLogin.cancel(generation)
+        return DataResult.Error(ScreenError("web_login_browser_failed", retryable = true))
+    }
+
     private suspend fun startSharedBrowserMobileOAuthLink(
         providerId: String,
         preparation: JSONObject?,

@@ -1011,6 +1011,12 @@ class SharedSlockAuthTransport internal constructor(
         return request(path = "auth/providers?platform=$normalizedPlatform", method = "GET")
     }
 
+    override suspend fun startAppLogin(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/app-login/start", method = "POST", bodyText = bodyText)
+
+    override suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/app-login/complete", method = "POST", bodyText = bodyText)
+
     override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
         request(path = "auth/mobile/oauth/start", method = "POST", authorization = authorization, bodyText = bodyText)
 

@@ -99,6 +99,13 @@ interface SlockAuthSessionStore {
     /** Intentional full replace — login/register only; the only verb that sets tokens from scratch. */
     suspend fun replaceAuthenticatedSession(session: StoredAuthSession) = saveSession(session)
 
+    /** Login admission rechecked after acquiring the concrete store's write lock. */
+    suspend fun replaceAuthenticatedSessionIfCurrent(session: StoredAuthSession, isCurrent: () -> Boolean): Boolean {
+        if (!isCurrent()) return false
+        replaceAuthenticatedSession(session)
+        return true
+    }
+
     /**
      * Intentional full replace while preserving the latest same-account process selection.
      * Shell-scoped login/register flows use this so a concurrently committed process-level
@@ -700,8 +707,13 @@ class InMemorySlockAuthSessionStore(
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
+        replaceAuthenticatedSessionIfCurrent(session) { true }
+    }
+
+    override suspend fun replaceAuthenticatedSessionIfCurrent(session: StoredAuthSession, isCurrent: () -> Boolean): Boolean {
         val changed =
             mutex.withLock {
+                if (!isCurrent()) return false
                 val previous = this.session?.authSessionClearFingerprint()
                 this.session = session
                 previous != session.authSessionClearFingerprint()
@@ -709,6 +721,7 @@ class InMemorySlockAuthSessionStore(
         if (changed) {
             changes.emit(session.authSessionClearFingerprint())
         }
+        return true
     }
 
     override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {
@@ -977,10 +990,15 @@ class KeyValueAuthSessionStore(
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
+        replaceAuthenticatedSessionIfCurrent(session) { true }
+    }
+
+    override suspend fun replaceAuthenticatedSessionIfCurrent(session: StoredAuthSession, isCurrent: () -> Boolean): Boolean {
         val fingerprint = session.authSessionClearFingerprint()
         var generation = 0L
         val changed =
             mutex.withLock {
+                if (!isCurrent()) return false
                 val previous = readSessionRecordLocked()?.authSessionClearFingerprint()
                 writeSessionRecordLocked(session)
                 generation = nextGenerationLocked()
@@ -992,6 +1010,7 @@ class KeyValueAuthSessionStore(
             changes.emit(fingerprint)
         }
         diagnosticsLogger("auth_session_replace result=success changed=$changed servers=${session.servers.size}")
+        return true
     }
 
     override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {

@@ -610,6 +610,7 @@ jobs:
         shell: bash
         run: |
           scripts/validate_ohos_hap_resources.sh "${{ steps.validate.outputs.hap_path }}"
+          node --test compose/ohosApp/scripts/verify_mobile_oauth_hap.test.mjs
           node compose/ohosApp/scripts/verify_mobile_oauth_hap.mjs \
             "${{ steps.validate.outputs.hap_path }}" \
             raft

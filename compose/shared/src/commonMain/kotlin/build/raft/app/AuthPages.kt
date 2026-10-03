@@ -118,8 +118,8 @@ private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
 private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
 private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
 private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
-private const val AUTH_TERMS_URL = "https://raft.build/terms"
-private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
+internal const val AUTH_TERMS_URL = "https://raft.build/terms"
+internal const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
 private val MobileHiddenSocialAuthProviders = emptySet<AuthProvider>()
 
@@ -255,6 +255,10 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
+    if (authRuntimeCapabilities.webLoginOnly) {
+        WebLoginScreen(pager, bridge, authDataSource)
+        return
+    }
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -1845,7 +1849,7 @@ private fun AuthLegalAcceptanceContent(
 }
 
 @Composable
-private fun AuthLegalNotice(
+internal fun AuthLegalNotice(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit
 ) {
@@ -1867,7 +1871,7 @@ private fun AuthLegalNotice(
             ) {
                 append(terms)
             }
-            append(connector)
+            append(authLegalConnectorText(connector))
             withLink(
                 LinkAnnotation.Clickable(
                     tag = "auth-privacy",
@@ -1889,7 +1893,12 @@ private fun AuthLegalNotice(
 }
 
 @Composable
-private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+internal fun AuthTermsAgreement(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onOpenTerms: (() -> Unit)? = null,
+    onOpenPrivacy: (() -> Unit)? = null,
+) {
     val agreementText =
         authTermsAgreementText(
             prefix = stringResource(MR.strings.auth_terms_agreement_prefix),
@@ -1898,13 +1907,20 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
             acknowledgement = stringResource(MR.strings.auth_terms_agreement_acknowledgement),
             privacy = stringResource(MR.strings.auth_link_privacy_policy),
             suffix = stringResource(MR.strings.auth_terms_agreement_suffix),
+            onOpenTerms = onOpenTerms,
+            onOpenPrivacy = onOpenPrivacy,
         )
+    val hasPolicyLinks = onOpenTerms != null || onOpenPrivacy != null
+    val toggleConsent = { onCheckedChange(!checked) }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+        modifier = Modifier.fillMaxWidth().then(
+            if (hasPolicyLinks) Modifier else Modifier.clickable(onClick = toggleConsent)
+        ),
         verticalAlignment = Alignment.Top
     ) {
         Box(
             modifier = Modifier
+                .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
                 .padding(top = 2.dp)
                 .size(18.dp)
                 .background(SlockColor.SurfaceWhite)
@@ -1930,15 +1946,37 @@ internal fun authTermsAgreementText(
     acknowledgement: String,
     privacy: String,
     suffix: String,
+    onOpenTerms: (() -> Unit)? = null,
+    onOpenPrivacy: (() -> Unit)? = null,
 ): AnnotatedString =
     buildAnnotatedString {
         append(prefix)
-        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(terms) }
-        append(connector)
+        if (onOpenTerms == null) {
+            withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(terms) }
+        } else {
+            withLink(LinkAnnotation.Clickable(
+                tag = "auth-terms",
+                styles = TextLinkStyles(style = AuthTermsLinkStyle.toSpanStyle()),
+                linkInteractionListener = LinkInteractionListener { onOpenTerms() },
+            )) { append(terms) }
+        }
+        append(authLegalConnectorText(connector))
         append(acknowledgement)
-        withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
+        if (onOpenPrivacy == null) {
+            withStyle(AuthTermsLinkStyle.toSpanStyle()) { append(privacy) }
+        } else {
+            withLink(LinkAnnotation.Clickable(
+                tag = "auth-privacy",
+                styles = TextLinkStyles(style = AuthTermsLinkStyle.toSpanStyle()),
+                linkInteractionListener = LinkInteractionListener { onOpenPrivacy() },
+            )) { append(privacy) }
+        }
         append(suffix)
     }
+
+// Resource boundary spaces survive platform resource generation, but must not bind
+// the last policy word to the following connector and sentence at layout time.
+internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
 private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
 private val AuthLegalNoticeTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
@@ -1998,7 +2036,7 @@ private fun Pager.openAuthPage(pageName: String) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
 
-private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
+internal fun Pager.openPostAuthRoute(session: StoredAuthSession) {
     val destination = postAuthRouteDestination(session)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -2106,14 +2144,16 @@ internal fun JSONObject.authRouteMessage(): String? =
 
 internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
-): SharedAuthRuntimeCapabilities =
-    seedSocialProviders(
+): SharedAuthRuntimeCapabilities {
+    seedWebLoginOnly(if (pageData.has("slockWebLoginOnly")) pageData.optBoolean("slockWebLoginOnly", false) else null)
+    return seedSocialProviders(
         if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
             pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)
         } else {
             null
         }
     )
+}
 
 @Composable
 internal fun rememberAuthRuntimeCapabilities(
