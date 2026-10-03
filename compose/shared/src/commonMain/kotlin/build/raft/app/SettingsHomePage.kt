@@ -9253,10 +9253,8 @@ private fun SettingsMobileContent(
             is ScreenLoadState.Content -> state.data
             else -> null
         }
-    // Stable keys and a fixed item count: on Kuikly 2.28.0-raft.6 this list without keys and
-    // with a conditional item in the middle stopped scrolling at the 7th card, so the later
-    // cards never came on screen (1.13.0 Build 4). Every card is now always an item, keyed by
-    // its name; the forward-gesture card renders nothing when unavailable.
+    // Every card is keyed by its name: on Kuikly 2.28.0-raft.6 this list without keys stopped
+    // scrolling at the 7th card, so the later cards never came on screen (1.13.0 Build 4).
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -9311,8 +9309,11 @@ private fun SettingsMobileContent(
                     onNewMessageMenuChange = onNewMessageMenuChange
                 )
             }
-            item(key = "SettingsConversationForwardGestureCard") {
-                if (snapshot.conversationForwardGesture.available) {
+            // Availability is a fixed per-platform capability (iOS only), so this never shifts
+            // the other items at runtime; it is skipped rather than left as an empty item so
+            // Android and OHOS do not get a double gap from spacedBy.
+            if (snapshot.conversationForwardGesture.available) {
+                item(key = "SettingsConversationForwardGestureCard") {
                     SettingsConversationForwardGestureCard(
                         snapshot = snapshot,
                         actionState = actionState,
