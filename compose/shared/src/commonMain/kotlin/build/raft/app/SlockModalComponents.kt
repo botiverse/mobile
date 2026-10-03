@@ -266,6 +266,27 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     scrollToItem(current.index, targetOffset)
 }
 
+/**
+ * Scrolls the dialog's list directly to a specific target item when that section is focused
+ * and requires full visibility above the keyboard (e.g. member search field and its results).
+ */
+internal suspend fun slockUnifiedDialogScrollToTargetItem(
+    keyboardHeight: Float,
+    targetItemIndex: Int,
+    targetItemScrollOffset: Int = 0,
+    awaitRelayoutFrame: suspend () -> Unit,
+    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
+    isScrollInProgress: () -> Boolean,
+    isRequestCurrent: () -> Boolean
+) {
+    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
+    awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
+    awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
+    scrollToItem(targetItemIndex, targetItemScrollOffset)
+}
+
 @Composable
 internal fun rememberSlockUnifiedDialogHostState(): SlockUnifiedDialogHostState =
     remember { SlockUnifiedDialogHostState() }

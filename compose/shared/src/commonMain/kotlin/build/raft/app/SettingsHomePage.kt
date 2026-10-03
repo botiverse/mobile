@@ -448,6 +448,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.coroutines.withKuiklyIdleContext
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.foundation.background
@@ -501,6 +502,8 @@ import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.geometry.Rect
+import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
@@ -533,6 +536,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.views.DivView
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
@@ -18617,6 +18621,28 @@ private fun SharedCreateChannelDialog(
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
+    val createChannelListState = rememberLazyListState()
+    val createChannelScrollScope = rememberCoroutineScope()
+    var createChannelViewport by remember { mutableStateOf<Rect?>(null) }
+    val createChannelScrollCoordinator = remember {
+        SlockFocusedEditorScrollRequestCoordinator()
+    }
+    DisposableEffect(createChannelScrollCoordinator) {
+        onDispose { createChannelScrollCoordinator.invalidate() }
+    }
+    var memberSearchFocused by remember { mutableStateOf(false) }
+
+    fun scrollToMemberPicker() {
+        val requestGeneration = createChannelScrollCoordinator.begin()
+        val job = createChannelScrollScope.launch {
+            repeat(2) { withFrameNanos { } }
+            if (!createChannelScrollCoordinator.isCurrent(requestGeneration)) return@launch
+            if (createChannelListState.isScrollInProgress) return@launch
+            createChannelListState.scrollToItem(3, 0)
+        }
+        createChannelScrollCoordinator.attach(job)
+    }
+
     val trimmedName = name.trim()
     val nameError =
         if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
@@ -18645,10 +18671,65 @@ private fun SharedCreateChannelDialog(
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        val focusedEditorBounds = rememberSlockFocusedInputBoundsResolver()
+        val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+
+        fun keepFocusedCreateChannelEditorVisible(params: KeyboardParams) {
+            dialogKeyboardHeightChange(params)
+            val requestGeneration = createChannelScrollCoordinator.begin()
+            if (params.height <= 0f) return
+            val job = createChannelScrollScope.launch {
+                if (memberSearchFocused) {
+                    slockUnifiedDialogScrollToTargetItem(
+                        keyboardHeight = params.height,
+                        targetItemIndex = 3,
+                        targetItemScrollOffset = 0,
+                        awaitRelayoutFrame = { withFrameNanos { } },
+                        scrollToItem = { index, scrollOffset ->
+                            createChannelListState.scrollToItem(index, scrollOffset)
+                        },
+                        isScrollInProgress = { createChannelListState.isScrollInProgress },
+                        isRequestCurrent = {
+                            createChannelScrollCoordinator.isCurrent(requestGeneration)
+                        }
+                    )
+                } else {
+                    slockUnifiedDialogKeepFocusedEditorVisible(
+                        keyboardHeight = params.height,
+                        awaitRelayoutFrame = { withFrameNanos { } },
+                        focusedBounds = focusedEditorBounds,
+                        viewportBounds = { createChannelViewport },
+                        currentScrollPosition = {
+                            SlockUnifiedDialogListScrollPosition(
+                                index = createChannelListState.firstVisibleItemIndex,
+                                scrollOffset = createChannelListState.firstVisibleItemScrollOffset
+                            )
+                        },
+                        scrollToItem = { index, scrollOffset ->
+                            createChannelListState.scrollToItem(index, scrollOffset)
+                        },
+                        isScrollInProgress = { createChannelListState.isScrollInProgress },
+                        isRequestCurrent = {
+                            createChannelScrollCoordinator.isCurrent(requestGeneration)
+                        }
+                    )
+                }
+            }
+            createChannelScrollCoordinator.attach(job)
+        }
+
+        CompositionLocalProvider(
+            LocalSlockDialogKeyboardHeightChange provides ::keepFocusedCreateChannelEditorVisible
         ) {
+            LazyColumn(
+                state = createChannelListState,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             item {
                 SlockBrutalTextField(
                     label = stringResource(MR.strings.channel_create_label_name),
@@ -18701,6 +18782,13 @@ private fun SharedCreateChannelDialog(
                             } else {
                                 selectedMemberKeys + key
                             }
+                    },
+                    onFocus = {
+                        memberSearchFocused = true
+                        scrollToMemberPicker()
+                    },
+                    onBlur = {
+                        memberSearchFocused = false
                     }
                 )
             }
@@ -18719,6 +18807,7 @@ private fun SharedCreateChannelDialog(
                     )
                 }
             }
+        }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -18817,7 +18906,9 @@ private fun SharedCreateChannelMemberPicker(
     enabled: Boolean,
     agentStatusResolver: SlockAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean,
-    onToggle: (String) -> Unit
+    onToggle: (String) -> Unit,
+    onFocus: () -> Unit = {},
+    onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
@@ -18839,10 +18930,13 @@ private fun SharedCreateChannelMemberPicker(
                     value = query,
                     enabled = enabled,
                     placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
-                    onValueChange = onQueryChange
+                    onValueChange = onQueryChange,
+                    onFocus = onFocus,
+                    onBlur = onBlur
                 )
                 SlockModalListShell(
                     height = 192.dp,
+                    modifier = Modifier.retainInputFocusForInteractions(),
                     listModifier =
                         Modifier
                             .bouncesEnable(false)

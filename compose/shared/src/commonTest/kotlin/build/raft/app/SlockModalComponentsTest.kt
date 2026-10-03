@@ -262,4 +262,104 @@ class SlockModalComponentsTest {
         coordinator.invalidate()
         assertFalse(coordinator.isCurrent(secondRequest))
     }
+
+    @Test
+    fun targetItemScrollWaitsForRelayoutThenScrollsToItem() = runBlocking {
+        val events = mutableListOf<String>()
+        var target: SlockUnifiedDialogListScrollPosition? = null
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = {
+                events += "frame"
+            },
+            scrollToItem = { index, scrollOffset ->
+                events += "scroll"
+                target = SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true }
+        )
+
+        assertEquals(listOf("frame", "frame", "scroll"), events)
+        assertEquals(SlockUnifiedDialogListScrollPosition(index = 3, scrollOffset = 0), target)
+    }
+
+    @Test
+    fun targetItemScrollDoesNotScrollForClosedKeyboard() = runBlocking {
+        var frameCount = 0
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 0f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = { frameCount += 1 },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { true }
+        )
+
+        assertEquals(0, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun targetItemScrollYieldsWhenUserStartsScrollingDuringRelayout() = runBlocking {
+        var frameCount = 0
+        var userScrollInProgress = false
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = {
+                frameCount += 1
+                if (frameCount == 2) {
+                    userScrollInProgress = true
+                }
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { userScrollInProgress },
+            isRequestCurrent = { true }
+        )
+
+        assertEquals(2, frameCount)
+        assertEquals(emptyList(), targets)
+    }
+
+    @Test
+    fun targetItemScrollYieldsWhenANewerRequestReplacesIt() = runBlocking {
+        var frameCount = 0
+        var requestCurrent = true
+        val targets = mutableListOf<SlockUnifiedDialogListScrollPosition>()
+
+        slockUnifiedDialogScrollToTargetItem(
+            keyboardHeight = 312f,
+            targetItemIndex = 3,
+            targetItemScrollOffset = 0,
+            awaitRelayoutFrame = {
+                frameCount += 1
+                if (frameCount == 2) {
+                    requestCurrent = false
+                }
+            },
+            scrollToItem = { index, scrollOffset ->
+                targets += SlockUnifiedDialogListScrollPosition(index, scrollOffset)
+            },
+            isScrollInProgress = { false },
+            isRequestCurrent = { requestCurrent }
+        )
+
+        assertEquals(2, frameCount)
+        assertEquals(emptyList(), targets)
+    }
 }
+
