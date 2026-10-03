@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../../..');
-const release = '2.24.0-raft.8';
+const release = '2.28.0-raft.6';
 const version = `${release}-2.0.21-ohos`;
 const coordinate = `com.tencent.kuikly-open:core-render-ohos:${version}`;
 const expectedHarSpec = `file:../../build/kuikly/core-render-ohos-${version}.har`;

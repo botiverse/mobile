@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE = "2.24.0-raft.8"
+RELEASE = "2.28.0-raft.6"
 NORMAL = f"{RELEASE}-2.1.21"
 OHOS = f"{RELEASE}-2.0.21-ohos"
 
