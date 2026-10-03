@@ -9253,62 +9253,66 @@ private fun SettingsMobileContent(
             is ScreenLoadState.Content -> state.data
             else -> null
         }
+    // Stable keys and a fixed item count: on Kuikly 2.28.0-raft.6 this list without keys and
+    // with a conditional item in the middle stopped scrolling at the 7th card, so the later
+    // cards never came on screen (1.13.0 Build 4). Every card is now always an item, keyed by
+    // its name; the forward-gesture card renders nothing when unavailable.
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
-            item {
+            item(key = "SettingsMessageAlignmentCard") {
                 SettingsMessageAlignmentCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onAlignmentChange = onAlignmentChange
                 )
             }
-            item {
+            item(key = "SettingsLinkOpenModeCard") {
                 SettingsLinkOpenModeCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onLinkOpenModeChange = onLinkOpenModeChange
                 )
             }
-            item {
+            item(key = "SettingsCompactMessagesCard") {
                 SettingsCompactMessagesCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
                 )
             }
-            item {
+            item(key = "SettingsLongMessageCollapseCard") {
                 SettingsLongMessageCollapseCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onLongMessageCollapseChange = onLongMessageCollapseChange
                 )
             }
-            item {
+            item(key = "SettingsSingleTapOpensThreadCard") {
                 SettingsSingleTapOpensThreadCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
                 )
             }
-            item {
+            item(key = "SettingsThreadUnreadJumpCard") {
                 SettingsThreadUnreadJumpCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onThreadUnreadJumpChange = onThreadUnreadJumpChange
                 )
             }
-            item {
+            item(key = "SettingsNewMessageMenuCard") {
                 SettingsNewMessageMenuCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onNewMessageMenuChange = onNewMessageMenuChange
                 )
             }
-            if (snapshot.conversationForwardGesture.available) {
-                item {
+            item(key = "SettingsConversationForwardGestureCard") {
+                if (snapshot.conversationForwardGesture.available) {
                     SettingsConversationForwardGestureCard(
                         snapshot = snapshot,
                         actionState = actionState,
@@ -9316,14 +9320,14 @@ private fun SettingsMobileContent(
                     )
                 }
             }
-            item {
+            item(key = "SettingsActivityTaskStatusBadgesCard") {
                 SettingsActivityTaskStatusBadgesCard(
                     snapshot = snapshot,
                     actionState = actionState,
                     onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
                 )
             }
-            item {
+            item(key = "SettingsComposerSendKeyCard") {
                 SettingsComposerSendKeyCard(
                     snapshot = snapshot,
                     actionState = actionState,
@@ -9331,7 +9335,7 @@ private fun SettingsMobileContent(
                 )
             }
             if (slockPlatformSupportsMultiShellHost()) {
-                item {
+                item(key = "SettingsMultiShellHostCard") {
                     SettingsMultiShellHostCard(
                         snapshot = snapshot,
                         actionState = actionState,
@@ -9339,7 +9343,7 @@ private fun SettingsMobileContent(
                     )
                 }
             }
-            item {
+            item(key = "SettingsDesktopModeCard") {
                 SettingsDesktopModeCard(
                     snapshot = snapshot,
                     actionState = actionState,
@@ -9347,7 +9351,7 @@ private fun SettingsMobileContent(
                     diagnosticsLogger = diagnosticsLogger
                 )
             }
-            item {
+            item(key = "SettingsServerDrawerCard") {
                 SettingsServerDrawerCard(
                     snapshot = snapshot,
                     actionState = actionState,
@@ -9355,7 +9359,7 @@ private fun SettingsMobileContent(
                     diagnosticsLogger = diagnosticsLogger
                 )
             }
-            item {
+            item(key = "SettingsHomeServerAvatarCard") {
                 SettingsHomeServerAvatarCard(
                     snapshot = snapshot,
                     actionState = actionState,
@@ -9363,7 +9367,7 @@ private fun SettingsMobileContent(
                 )
             }
         }
-        item { Spacer(Modifier.height(bottomContentPadding)) }
+        item(key = "SettingsMobileBottomSpacer") { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
