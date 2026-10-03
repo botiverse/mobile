@@ -29,6 +29,7 @@ import build.raft.app.data.durablePartition
 import build.raft.app.data.RealtimeCanonicalFinalOwnerEntry
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedComputersStore
@@ -405,6 +406,14 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
             }
             val probeAgentStore = provider.agentDetailStore(sharedScope)
             val probeAgentId = MemberId("actual-host-agent-${run.nonce}")
+            // #308 / canonical-final fixture: ApplyAgentActivityUpdate is now
+            // gated on the currently-selected agent — the probe MUST bind the
+            // identity through the real SelectMember intent or every agent
+            // projection assertion below stays null-fenced.
+            probeAgentStore.dispatch(SharedAgentDetailIntent.SelectMember(memberId = probeAgentId))
+            waitUntil("probe agent selected") {
+                probeAgentStore.state.value.agentId == probeAgentId
+            }
             val initialAgentSeq = probeAgentStore.state.value.agentActivitySeq[probeAgentId]
             val initialBackgroundUnread = probeHomeStore.state.value.serverUnreadCounts[ActualHostServerB] ?: 0
 

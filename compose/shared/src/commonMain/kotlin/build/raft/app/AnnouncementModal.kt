@@ -63,7 +63,7 @@ internal fun SharedAnnouncementModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalActionButton(
-                    label = stringResource(MR.strings.pagination_prev_bilingual),
+                    label = stringResource(MR.strings.pagination_prev),
                     onClick = { if (pageIndex > 0) pageIndex -= 1 },
                     leadingIcon = SlockLucideIconName.ChevronLeft,
                     backgroundColor = SlockColor.SurfaceWhite,
@@ -75,7 +75,7 @@ internal fun SharedAnnouncementModal(
                     color = SlockColor.TextMutedGray
                 )
                 SlockBrutalActionButton(
-                    label = stringResource(MR.strings.pagination_next_bilingual),
+                    label = stringResource(MR.strings.pagination_next),
                     onClick = { if (pageIndex < pages.lastIndex) pageIndex += 1 },
                     leadingIcon = SlockLucideIconName.ChevronRight,
                     backgroundColor = SlockColor.SurfaceWhite,
@@ -84,7 +84,10 @@ internal fun SharedAnnouncementModal(
             }
         }
         SlockBrutalActionButton(
-            label = if (hasMultiplePages && pageIndex < pages.lastIndex) "跳过 / Skip" else "知道了 / Got it",
+            label = stringResource(
+                if (hasMultiplePages && pageIndex < pages.lastIndex) MR.strings.announcement_action_skip
+                else MR.strings.announcement_action_got_it
+            ),
             onClick = onDismiss,
             backgroundColor = SlockColor.BrandYellow,
             modifier = Modifier.fillMaxWidth()

@@ -10,6 +10,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -69,16 +72,20 @@ class SharedAuthLossFunnelTest {
     }
 
     @Test
-    fun diagnosticFingerprintCollisionDoesNotMergeDifferentCapturedAuthorities() = runBlocking {
+    fun diagnosticFingerprintCollisionDoesNotMergeDifferentCapturedAuthorities() = runBlocking<Unit> {
         val scope = CoroutineScope(SupervisorJob())
         val bothRestoresStarted = CompletableDeferred<Unit>()
         val releaseRestores = CompletableDeferred<Unit>()
+        val restoreCountMutex = Mutex()
         var restoreCount = 0
         val funnel =
             SharedAuthLossFunnel(
                 restoreSession = {
-                    restoreCount += 1
-                    if (restoreCount == 2) bothRestoresStarted.complete(Unit)
+                    // Both restores run concurrently on Dispatchers.Default.
+                    restoreCountMutex.withLock {
+                        restoreCount += 1
+                        if (restoreCount == 2) bothRestoresStarted.complete(Unit)
+                    }
                     releaseRestores.await()
                     SharedAuthResult.Success(storedSession())
                 },
@@ -110,12 +117,17 @@ class SharedAuthLossFunnelTest {
                 )
             )
 
-        bothRestoresStarted.await()
-        assertEquals(2, restoreCount)
-        releaseRestores.complete(Unit)
-        assertIs<AuthLossDecision.SessionPreserved>(first.await())
-        assertIs<AuthLossDecision.SessionPreserved>(second.await())
-        scope.cancel()
+        try {
+            withTimeout(10_000) {
+                bothRestoresStarted.await()
+                assertEquals(2, restoreCountMutex.withLock { restoreCount })
+                releaseRestores.complete(Unit)
+                assertIs<AuthLossDecision.SessionPreserved>(first.await())
+                assertIs<AuthLossDecision.SessionPreserved>(second.await())
+            }
+        } finally {
+            scope.cancel()
+        }
     }
 
     @Test

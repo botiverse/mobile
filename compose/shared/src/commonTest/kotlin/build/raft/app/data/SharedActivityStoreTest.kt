@@ -1613,6 +1613,9 @@ class SharedActivityStoreTest {
                 }
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
+        // LoadInitial is asynchronous. A realtime event that arrives before the row exists has nothing to
+        // patch and is left to the reconcile reload, which this fake inbox cannot answer with the message.
+        withTimeout(5_000L) { while (store.state.value.items.isEmpty()) delay(10L) }
         val owner = ReadReceiptOwner("production", "user-1", "server-1")
 
         val realtimeJob =

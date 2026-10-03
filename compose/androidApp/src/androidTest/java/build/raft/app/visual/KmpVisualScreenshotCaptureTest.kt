@@ -3597,6 +3597,61 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureChannelMembersParityRoster() {
+        captureKmpComponentCase(
+            caseId = "components.channel.members.parity.roster",
+            pageName = "compose_channel_members_parity_visual",
+            pageData = JSONObject().put("variant", "roster"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+        )
+    }
+
+    @Test
+    fun captureChannelMembersParitySearch() {
+        captureKmpComponentCase(
+            caseId = "components.channel.members.parity.search",
+            pageName = "compose_channel_members_parity_visual",
+            pageData = JSONObject().put("variant", "search"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+        )
+    }
+
+    @Test
+    fun captureChannelMembersParityCollapsed() {
+        captureKmpComponentCase(
+            caseId = "components.channel.members.parity.collapsed",
+            pageName = "compose_channel_members_parity_visual",
+            pageData = JSONObject().put("variant", "collapsed"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+        )
+    }
+
+    @Test
+    fun captureChannelMembersParityAdd() {
+        captureKmpComponentCase(
+            caseId = "components.channel.members.parity.add",
+            pageName = "compose_channel_members_parity_visual",
+            pageData = JSONObject().put("variant", "add"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+        )
+    }
+
+    @Test
+    fun captureThreadFollowersParity() {
+        captureKmpComponentCase(
+            caseId = "components.thread.followers.parity",
+            pageName = "compose_thread_followers_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+            beforeScreenshot = { tapDp(265f, 28f); Thread.sleep(500) },
+        )
+    }
+
+    @Test
     fun captureChannelAddMemberPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.members.add-panel",

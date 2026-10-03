@@ -330,4 +330,6 @@ for canonical_path in \
   [ -e "${canonical_path}" ] || fail "missing canonical Hands path: ${canonical_path}"
 done
 
+python3 scripts/test_upload_android_hands_artifacts.py
+
 echo "Android Hands release workflow contract: PASS"
