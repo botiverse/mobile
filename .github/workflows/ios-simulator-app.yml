@@ -13,7 +13,7 @@
 # Build steps mirror qa-acceptance-ios.yml's proven build phase (KSP hygiene,
 # dummy framework, pod install, build-for-testing) minus simulator boot and
 # the agent loop — build only, no tests, no signing.
-name: iOS Simulator app (on demand)
+name: iOS Simulator app (task164 raft.6.1 QA)
 
 on:
   workflow_dispatch:
@@ -39,6 +39,10 @@ jobs:
     name: Build installable Simulator app
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
+    # task164: historical product source at 72f635a; compile existing real-list
+    # fixtures for an isolated Simulator probe, not a production release.
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -153,6 +157,9 @@ jobs:
             "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
           {
             echo "source_commit=$GITHUB_SHA"
+            echo "product_source_base=72f635a058bd41e7dfd98e45ccb7c91816e64837"
+            echo "slock_visual_fixtures=$SLOCK_VISUAL_FIXTURES"
+            echo "purpose=task164 historical raft.6.1 thread-top QA only"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
