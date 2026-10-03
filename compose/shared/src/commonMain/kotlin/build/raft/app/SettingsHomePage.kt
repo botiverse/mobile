@@ -9253,125 +9253,128 @@ private fun SettingsMobileContent(
             is ScreenLoadState.Content -> state.data
             else -> null
         }
-    // Every card is keyed by its name: on Kuikly 2.28.0-raft.6 this list without keys stopped
-    // scrolling at the 7th card, so the later cards never came on screen (1.13.0 Build 4).
+    if (snapshot == null) {
+        // Loading: the same blank page as before, but no list yet. The list is created only once
+        // the cards exist, so its first item is the first card. Created earlier, its only item
+        // was the bottom spacer, and the keyed list then followed that spacer to the end when
+        // the cards arrived (opened mid-list, would not scroll back up, 10001024/10001025).
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite))
+        return
+    }
+    // Every item is keyed: on Kuikly 2.28.0-raft.6 this list stopped scrolling at the 7th card
+    // without keys (1.13.0 Build 4), and also with only the bottom spacer unkeyed (10001026).
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (snapshot != null) {
-            item(key = "SettingsMessageAlignmentCard") {
-                SettingsMessageAlignmentCard(
+        item(key = "SettingsMessageAlignmentCard") {
+            SettingsMessageAlignmentCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onAlignmentChange = onAlignmentChange
+            )
+        }
+        item(key = "SettingsLinkOpenModeCard") {
+            SettingsLinkOpenModeCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onLinkOpenModeChange = onLinkOpenModeChange
+            )
+        }
+        item(key = "SettingsCompactMessagesCard") {
+            SettingsCompactMessagesCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+            )
+        }
+        item(key = "SettingsLongMessageCollapseCard") {
+            SettingsLongMessageCollapseCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onLongMessageCollapseChange = onLongMessageCollapseChange
+            )
+        }
+        item(key = "SettingsSingleTapOpensThreadCard") {
+            SettingsSingleTapOpensThreadCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
+            )
+        }
+        item(key = "SettingsThreadUnreadJumpCard") {
+            SettingsThreadUnreadJumpCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onThreadUnreadJumpChange = onThreadUnreadJumpChange
+            )
+        }
+        item(key = "SettingsNewMessageMenuCard") {
+            SettingsNewMessageMenuCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onNewMessageMenuChange = onNewMessageMenuChange
+            )
+        }
+        // Availability is a fixed per-platform capability (iOS only), so this never shifts
+        // the other items at runtime; it is skipped rather than left as an empty item so
+        // Android and OHOS do not get a double gap from spacedBy.
+        if (snapshot.conversationForwardGesture.available) {
+            item(key = "SettingsConversationForwardGestureCard") {
+                SettingsConversationForwardGestureCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onAlignmentChange = onAlignmentChange
-                )
-            }
-            item(key = "SettingsLinkOpenModeCard") {
-                SettingsLinkOpenModeCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onLinkOpenModeChange = onLinkOpenModeChange
-                )
-            }
-            item(key = "SettingsCompactMessagesCard") {
-                SettingsCompactMessagesCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
-                )
-            }
-            item(key = "SettingsLongMessageCollapseCard") {
-                SettingsLongMessageCollapseCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onLongMessageCollapseChange = onLongMessageCollapseChange
-                )
-            }
-            item(key = "SettingsSingleTapOpensThreadCard") {
-                SettingsSingleTapOpensThreadCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
-                )
-            }
-            item(key = "SettingsThreadUnreadJumpCard") {
-                SettingsThreadUnreadJumpCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onThreadUnreadJumpChange = onThreadUnreadJumpChange
-                )
-            }
-            item(key = "SettingsNewMessageMenuCard") {
-                SettingsNewMessageMenuCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onNewMessageMenuChange = onNewMessageMenuChange
-                )
-            }
-            // Availability is a fixed per-platform capability (iOS only), so this never shifts
-            // the other items at runtime; it is skipped rather than left as an empty item so
-            // Android and OHOS do not get a double gap from spacedBy.
-            if (snapshot.conversationForwardGesture.available) {
-                item(key = "SettingsConversationForwardGestureCard") {
-                    SettingsConversationForwardGestureCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onConversationForwardGestureChange = onConversationForwardGestureChange
-                    )
-                }
-            }
-            item(key = "SettingsActivityTaskStatusBadgesCard") {
-                SettingsActivityTaskStatusBadgesCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
-                )
-            }
-            item(key = "SettingsComposerSendKeyCard") {
-                SettingsComposerSendKeyCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onComposerSendKeyChange = onComposerSendKeyChange
-                )
-            }
-            if (slockPlatformSupportsMultiShellHost()) {
-                item(key = "SettingsMultiShellHostCard") {
-                    SettingsMultiShellHostCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onMultiShellHostChange = onMultiShellHostChange
-                    )
-                }
-            }
-            item(key = "SettingsDesktopModeCard") {
-                SettingsDesktopModeCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
-                    diagnosticsLogger = diagnosticsLogger
-                )
-            }
-            item(key = "SettingsServerDrawerCard") {
-                SettingsServerDrawerCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onServerDrawerChange = onServerDrawerChange,
-                    diagnosticsLogger = diagnosticsLogger
-                )
-            }
-            item(key = "SettingsHomeServerAvatarCard") {
-                SettingsHomeServerAvatarCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onHomeServerAvatarChange = onHomeServerAvatarChange
+                    onConversationForwardGestureChange = onConversationForwardGestureChange
                 )
             }
         }
-        // No key here: while the snapshot loads this spacer is the only item, and a keyed first
-        // item makes the list follow it to the bottom once the cards arrive (the page then
-        // opened mid-list and would not scroll back up, 10001024/10001025).
-        item { Spacer(Modifier.height(bottomContentPadding)) }
+        item(key = "SettingsActivityTaskStatusBadgesCard") {
+            SettingsActivityTaskStatusBadgesCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
+            )
+        }
+        item(key = "SettingsComposerSendKeyCard") {
+            SettingsComposerSendKeyCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onComposerSendKeyChange = onComposerSendKeyChange
+            )
+        }
+        if (slockPlatformSupportsMultiShellHost()) {
+            item(key = "SettingsMultiShellHostCard") {
+                SettingsMultiShellHostCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onMultiShellHostChange = onMultiShellHostChange
+                )
+            }
+        }
+        item(key = "SettingsDesktopModeCard") {
+            SettingsDesktopModeCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
+                diagnosticsLogger = diagnosticsLogger
+            )
+        }
+        item(key = "SettingsServerDrawerCard") {
+            SettingsServerDrawerCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onServerDrawerChange = onServerDrawerChange,
+                diagnosticsLogger = diagnosticsLogger
+            )
+        }
+        item(key = "SettingsHomeServerAvatarCard") {
+            SettingsHomeServerAvatarCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onHomeServerAvatarChange = onHomeServerAvatarChange
+            )
+        }
+        item(key = "SettingsMobileBottomSpacer") { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
