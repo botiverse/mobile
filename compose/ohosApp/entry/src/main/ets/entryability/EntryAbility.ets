@@ -20,6 +20,7 @@ import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
+import { completeSlockOhosAppLoginCallback } from '../kuikly/SlockOhosAppLogin';
 import { completeSlockOhosMobileOAuthCallback } from '../kuikly/SlockOhosMobileOAuth';
 import { SlockOhosMobileOAuthIngress } from '../kuikly/SlockOhosMobileOAuthIngress';
 import {
@@ -127,7 +128,7 @@ export default class EntryAbility extends UIAbility {
   private foldStatusCallback?: Callback<display.FoldStatus>;
   private foldPosture: string = 'unknown';
   private readonly mobileOAuthIngress: SlockOhosMobileOAuthIngress =
-    new SlockOhosMobileOAuthIngress(completeSlockOhosMobileOAuthCallback);
+    new SlockOhosMobileOAuthIngress((uri) => completeSlockOhosAppLoginCallback(uri) || completeSlockOhosMobileOAuthCallback(uri));
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');

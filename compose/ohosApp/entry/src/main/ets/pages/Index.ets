@@ -151,6 +151,7 @@ struct Index {
     Object.keys(source).forEach((key: string) => {
       pageData[key] = source[key];
     });
+    pageData['slockWebLoginOnly'] = true;
     pageData['safeAreaTop'] = this.safeAreaTopPx;
     pageData['statusBarHeight'] = this.safeAreaTopPx;
     pageData['safeAreaBottom'] = this.safeAreaBottomPx;

@@ -56,15 +56,17 @@
               "ohos.want.action.viewData"
             ],
             "uris": [
+              { "scheme": "raft", "host": "login", "path": "callback" },
+              { "scheme": "raft-debug", "host": "login", "path": "callback" },
               {
                 "scheme": "raft",
                 "host": "oauth",
-                "path": "/callback"
+                "path": "callback"
               },
               {
                 "scheme": "raft-debug",
                 "host": "oauth",
-                "path": "/callback"
+                "path": "callback"
               }
             ]
           }

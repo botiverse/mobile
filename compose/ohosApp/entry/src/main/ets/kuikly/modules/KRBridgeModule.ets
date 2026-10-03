@@ -59,6 +59,7 @@ import {
   slockOhosPrivateAttachmentFileName,
 } from '../SlockOhosPrivateAttachmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
+import { prepareSlockOhosAppLogin } from '../SlockOhosAppLogin';
 import { prepareSlockOhosMobileOAuth } from '../SlockOhosMobileOAuth';
 
 interface OhosPickedThreadAttachment {
@@ -452,22 +453,51 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     promptAction.showToast({ message: content, duration: 2000 });
   }
 
+  private openUrlSequence: number = 0;
+  private openUrlLastUrl: string = '';
+  private openUrlLastStartedAt: number = -1500;
+
   private openUrl(params: KRAny) {
     if (params == null) {
       return;
     }
-    const payload = params as Record<string, string>;
-    const url = payload['url'];
-    if (url === undefined || url.length === 0) {
+    let payload: Record<string, Object>;
+    try {
+      payload = this.parseRecord(params);
+    } catch (_) {
+      SlockOhosDiagnostics.record("HRBridgeModule", "openUrl invalid JSON payload", Date.now(), "warn");
       return;
     }
+    if (payload == null) {
+      return;
+    }
+    const url = payload['url'];
+    if (typeof url !== 'string' || url.length === 0) {
+      return;
+    }
+    const requestId = ++this.openUrlSequence;
+    const now = Date.now();
+    // A double tap can enqueue a second launch before the browser takes focus.
+    // OHOS rejects that launch from the background with 201, which would otherwise
+    // push a second, in-app browser underneath the successfully opened browser.
+    if (url === this.openUrlLastUrl && now - this.openUrlLastStartedAt < 1500) {
+      SlockOhosDiagnostics.record('HRBridgeModule', `openUrl duplicate ignored request=${requestId}`, now, 'info');
+      return;
+    }
+    this.openUrlLastUrl = url;
+    this.openUrlLastStartedAt = now;
+    SlockOhosDiagnostics.record('HRBridgeModule', `openUrl start request=${requestId} url_len=${url.length}`, now, 'info');
+    const mimeType = payload['mimeType'];
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
       action: 'ohos.want.action.viewData',
       entities: ['entity.system.browsable'],
       uri: url,
-      type: payload['mimeType']
+      type: typeof mimeType === 'string' ? mimeType : undefined
+    }).then(() => {
+      SlockOhosDiagnostics.record('HRBridgeModule', `openUrl complete request=${requestId}`, Date.now(), 'info');
     }).catch((error: BusinessError) => {
+      if (this.openUrlLastStartedAt === now && this.openUrlLastUrl === url) this.openUrlLastUrl = '';
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
       SlockOhosDiagnostics.record(
         "HRBridgeModule",
@@ -1377,10 +1407,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const records = this.parseRecord(params);
       const action = records["action"] as string;
       switch (action) {
+        case "appLoginPrepare":
         case "mobileOAuthLink": {
           try {
             const provider = (records["providerId"] as string | undefined) ?? '';
-            const preparation = prepareSlockOhosMobileOAuth(provider, 'link');
+            const preparation = action === 'appLoginPrepare' ? prepareSlockOhosAppLogin() : prepareSlockOhosMobileOAuth(provider, 'link');
             callback({
               "status": "prepared",
               "generation": preparation.generation,
@@ -1393,6 +1424,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           }
           return;
         }
+        case "appLoginOpen":
         case "mobileOAuthOpen": {
           const authorizationUrl = ((records["authorizationUrl"] as string | undefined) ?? '').trim();
           if (!authorizationUrl.startsWith('https://')) {
@@ -1404,6 +1436,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
             await context.startAbility({
               action: 'ohos.want.action.viewData',
               uri: authorizationUrl,
+              entities: ['entity.system.browsable'],
             });
             callback({ "status": "started" });
           } catch (_error) {

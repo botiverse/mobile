@@ -36,6 +36,10 @@ export function prepareSlockOhosMobileOAuth(provider: string, mode: string): Slo
   if (mode.trim().toLowerCase() !== 'link') {
     throw new Error('Unsupported mobile OAuth mode');
   }
+  return prepareSlockOhosPkce(`${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`);
+}
+
+export function prepareSlockOhosPkce(returnUri: string): SlockOhosMobileOAuthPreparation {
   const random = cryptoFramework.createRandom();
   const verifier = slockOhosMobileOAuthBase64Url(random.generateRandomSync(32).data);
   const generation = slockOhosMobileOAuthBase64Url(random.generateRandomSync(16).data);
@@ -50,7 +54,7 @@ export function prepareSlockOhosMobileOAuth(provider: string, mode: string): Slo
     generation,
     codeVerifier: verifier,
     codeChallenge: challenge,
-    returnUri: `${SLOCK_OHOS_MOBILE_OAUTH_SCHEME}://oauth/callback`,
+    returnUri,
   };
 }
 
