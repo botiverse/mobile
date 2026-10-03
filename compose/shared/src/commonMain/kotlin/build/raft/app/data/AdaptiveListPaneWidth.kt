@@ -52,14 +52,14 @@ internal fun slockListPaneStoredWidth(widthDp: Float): String =
  * reached (lift, gesture cancel, host inactive, handle disposed, density change); movement after
  * the end is ignored. Movement is accumulated in dp at the density of each event.
  */
-internal class SlockListPaneDragSession(private val onEnd: () -> Unit) {
+internal class SlockListPaneDragSession(private val onEnd: (reason: String) -> Unit) {
     var active: Boolean = false
         private set
     private var startWidthDp = 0f
     private var deltaDp = 0f
 
     fun start(renderedWidthDp: Float) {
-        if (active) end()
+        if (active) end("restart")
         active = true
         startWidthDp = renderedWidthDp
         deltaDp = 0f
@@ -72,11 +72,14 @@ internal class SlockListPaneDragSession(private val onEnd: () -> Unit) {
         return startWidthDp to deltaDp
     }
 
-    /** Ends the active drag; true only for the call that actually ended it. */
-    fun end(): Boolean {
+    /**
+     * Ends the active drag; true only for the call that actually ended it. [reason] (lift, cancel,
+     * inactive, disposed, density, restart) is reported so device runs can tell the paths apart.
+     */
+    fun end(reason: String): Boolean {
         if (!active) return false
         active = false
-        onEnd()
+        onEnd(reason)
         return true
     }
 }

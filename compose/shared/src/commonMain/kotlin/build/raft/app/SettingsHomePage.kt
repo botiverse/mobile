@@ -6438,17 +6438,20 @@ private fun SlockAppShellReadyContent(
                                 SlockListPaneResizeHandle(
                                     active = active,
                                     listWidthDp = listWidthDp,
-                                    onDragStart = { adaptiveListPaneResizing = true },
+                                    onDragStart = {
+                                        adaptiveListPaneResizing = true
+                                        bridge.log("adaptive_list_pane_resize start width=$listWidthDp row=$rowWidthDp")
+                                    },
                                     onDrag = { startWidthDp, deltaDp ->
                                         adaptiveListPanePreferredDp =
                                             slockListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
                                     },
-                                    onDragEnd = {
+                                    onDragEnd = { reason ->
                                         adaptiveListPaneResizing = false
                                         listPanePreferenceStore.saveAdaptiveListPaneWidth(
                                             slockListPaneStoredWidth(adaptiveListPanePreferredDp)
                                         )
-                                        bridge.log("adaptive_list_pane_resize width=$adaptiveListPanePreferredDp row=$rowWidthDp")
+                                        bridge.log("adaptive_list_pane_resize end=$reason width=$adaptiveListPanePreferredDp row=$rowWidthDp")
                                     },
                                 )
                             }

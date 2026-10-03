@@ -59,38 +59,38 @@ class AdaptiveListPaneWidthTest {
     }
 
     @Test fun aDragEndsExactlyOnceWhicheverEndArrivesFirst() {
-        var ends = 0
-        val session = SlockListPaneDragSession(onEnd = { ends++ })
+        val reasons = mutableListOf<String>()
+        val session = SlockListPaneDragSession(onEnd = { reasons += it })
         // Nothing to end before a drag starts.
-        assertFalse(session.end())
+        assertFalse(session.end("lift"))
         assertNull(session.move(10f, 2f))
         session.start(360f)
         assertEquals(360f to 20f, session.move(40f, 2f))
         // Host goes inactive (tab switch), then the gesture's own cancel and lift arrive late.
-        assertTrue(session.end())
-        assertFalse(session.end())
-        assertFalse(session.end())
-        assertEquals(1, ends)
+        assertTrue(session.end("inactive"))
+        assertFalse(session.end("cancel"))
+        assertFalse(session.end("lift"))
+        assertEquals(listOf("inactive"), reasons)
         // Movement after the end (finger still down) changes nothing.
         assertNull(session.move(40f, 2f))
         assertFalse(session.active)
     }
 
     @Test fun aNewDragStartsCleanAndAnUnfinishedOneEndsFirst() {
-        var ends = 0
-        val session = SlockListPaneDragSession(onEnd = { ends++ })
+        val reasons = mutableListOf<String>()
+        val session = SlockListPaneDragSession(onEnd = { reasons += it })
         session.start(360f)
         session.move(100f, 2f)
         // A second start without an end (e.g. a missed lift) ends the first one exactly once.
         session.start(400f)
-        assertEquals(1, ends)
+        assertEquals(listOf("restart"), reasons)
         assertEquals(400f to 5f, session.move(10f, 2f))
-        assertTrue(session.end())
-        assertEquals(2, ends)
+        assertTrue(session.end("lift"))
+        assertEquals(listOf("restart", "lift"), reasons)
     }
 
     @Test fun movementConvertsAtEachEventsDensity() {
-        val session = SlockListPaneDragSession(onEnd = {})
+        val session = SlockListPaneDragSession(onEnd = { _ -> })
         session.start(360f)
         session.move(30f, 1.5f)
         // Density changed mid-drag: later movement converts with the new density.
