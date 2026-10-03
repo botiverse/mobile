@@ -23198,6 +23198,7 @@ private fun ThreadSystemMessageRow(
                 .background(SlockColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Top
     ) {
         SlockRelativeTimestampText(
@@ -23215,15 +23216,15 @@ private fun ThreadSystemMessageRow(
                     Modifier.widthIn(max = timestampLayout.maxWidthDp.dp).wrapContentWidth()
                 }
         )
-        Spacer(modifier = Modifier.width(SlockSpacing.Sm))
         Text(
             text = systemBody,
             style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
-            textAlign = TextAlign.Start,
+            textAlign = TextAlign.Center,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            // Let short timestamp/body groups stay centered; long bodies still use the remaining width.
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }
