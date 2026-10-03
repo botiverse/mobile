@@ -453,6 +453,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     promptAction.showToast({ message: content, duration: 2000 });
   }
 
+  private openUrlSequence: number = 0;
+  private openUrlLastUrl: string = '';
+  private openUrlLastStartedAt: number = -1500;
+
   private openUrl(params: KRAny) {
     if (params == null) {
       return;
@@ -471,6 +475,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (typeof url !== 'string' || url.length === 0) {
       return;
     }
+    const requestId = ++this.openUrlSequence;
+    const now = Date.now();
+    // A double tap can enqueue a second launch before the browser takes focus.
+    // OHOS rejects that launch from the background with 201, which would otherwise
+    // push a second, in-app browser underneath the successfully opened browser.
+    if (url === this.openUrlLastUrl && now - this.openUrlLastStartedAt < 1500) {
+      SlockOhosDiagnostics.record('HRBridgeModule', `openUrl duplicate ignored request=${requestId}`, now, 'info');
+      return;
+    }
+    this.openUrlLastUrl = url;
+    this.openUrlLastStartedAt = now;
+    SlockOhosDiagnostics.record('HRBridgeModule', `openUrl start request=${requestId} url_len=${url.length}`, now, 'info');
     const mimeType = payload['mimeType'];
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
@@ -478,7 +494,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       entities: ['entity.system.browsable'],
       uri: url,
       type: typeof mimeType === 'string' ? mimeType : undefined
+    }).then(() => {
+      SlockOhosDiagnostics.record('HRBridgeModule', `openUrl complete request=${requestId}`, Date.now(), 'info');
     }).catch((error: BusinessError) => {
+      if (this.openUrlLastStartedAt === now && this.openUrlLastUrl === url) this.openUrlLastUrl = '';
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
       SlockOhosDiagnostics.record(
         "HRBridgeModule",
