@@ -17,13 +17,15 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 
 /** Touch target of the list divider; the visible divider stays 1dp. */
 private const val SlockListPaneResizeHandleWidthDp = 16f
+
+/** Handle width while dragging; clamped by width() to the split row, i.e. the whole row. */
+private val SlockListPaneResizeHandleDragWidth = 10_000.dp
 
 /**
  * task #37: an invisible drag handle centred on the list/detail divider (placed over the split
@@ -68,15 +70,12 @@ internal fun SlockListPaneResizeHandle(
     var handleRootX by remember { mutableStateOf(0f) }
     Box(
         modifier =
-            (
-                if (dragging) {
-                    Modifier.fillMaxWidth()
-                } else {
-                    Modifier
-                        .offset(x = (listWidthDp - SlockListPaneResizeHandleWidthDp / 2f).dp)
-                        .width(SlockListPaneResizeHandleWidthDp.dp)
-                }
-            )
+            // Same modifier elements in both states (only their values change), so widening the
+            // handle updates the existing nodes and never recreates the gesture detector below.
+            Modifier
+                .offset(x = if (dragging) 0.dp else (listWidthDp - SlockListPaneResizeHandleWidthDp / 2f).dp)
+                // width() is clamped to the row's max width, so the drag state covers the row.
+                .width(if (dragging) SlockListPaneResizeHandleDragWidth else SlockListPaneResizeHandleWidthDp.dp)
                 .fillMaxHeight()
                 .onGloballyPositioned { handleRootX = it.positionInRoot().x }
                 .slockNativeDispatchCapture()
