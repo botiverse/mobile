@@ -13,7 +13,7 @@
 # Build steps mirror qa-acceptance-ios.yml's proven build phase (KSP hygiene,
 # dummy framework, pod install, build-for-testing) minus simulator boot and
 # the agent loop — build only, no tests, no signing.
-name: iOS Simulator app (on demand)
+name: iOS Simulator app (task166 main iPad)
 
 on:
   workflow_dispatch:
@@ -39,9 +39,20 @@ jobs:
     name: Build installable Simulator app
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
+    env:
+      RAFT_GIT_COMMIT: "7989cb2660075dcbd391035ddab5576512fb481c"
+      SLOCK_VISUAL_FIXTURES: "false"
     steps:
-      - name: Checkout
+      # Workflow branch supplies runner configuration only. Build the exact
+      # requested main source, including its original product/build files.
+      - name: Checkout pinned main source
         uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RAFT_GIT_COMMIT }}
+
+      - name: Verify source identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$RAFT_GIT_COMMIT"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -54,6 +65,16 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Size Gradle heap for the iPad trial build
+        shell: bash
+        run: |
+          set -euo pipefail
+          qa_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$qa_gradle_home"
+          printf '%s\n' \
+            'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' \
+            'org.gradle.workers.max=1' >> "$qa_gradle_home/gradle.properties"
 
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
@@ -150,9 +171,11 @@ jobs:
           staging="$RUNNER_TEMP/ios-simulator-app"
           bash scripts/qa/export_ios_simulator_app.sh \
             "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
-            "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
+            "$staging" "$RAFT_GIT_COMMIT" "$GITHUB_RUN_ID"
           {
-            echo "source_commit=$GITHUB_SHA"
+            echo "source_commit=$RAFT_GIT_COMMIT"
+            echo "workflow_commit=$GITHUB_SHA"
+            echo "purpose=task166 latest-main local iPad trial"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
