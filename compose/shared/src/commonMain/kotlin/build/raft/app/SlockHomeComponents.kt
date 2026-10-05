@@ -4897,7 +4897,7 @@ private fun HomeServerDrawerErrorRow(
 }
 
 @Composable
-private fun ServerSwitcherPanel(
+internal fun ServerSwitcherPanel(
     servers: List<SlockServerSwitcherItem>,
     currentServerId: String,
     pendingServerId: String?,
