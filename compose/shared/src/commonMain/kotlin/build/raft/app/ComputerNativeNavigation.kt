@@ -13,7 +13,7 @@ internal sealed interface ComputerNavigationAction {
  * returns to the computer rather than the embedded agent/DM. Repeated URL notifications during
  * the asynchronous history traversal cannot push duplicate native pages.
  */
-internal class ComputerNativeNavigation(private val webBaseUrl: String, private val serverSlug: String) {
+internal class ComputerNativeNavigation(private val webBaseUrl: String, private val serverSlug: String, private val log: (String) -> Unit = {}) {
     private var computerPath: String? = null
     private var pending: ComputerNativeTarget? = null
     private var computerUrl: String? = null
@@ -23,9 +23,9 @@ internal class ComputerNativeNavigation(private val webBaseUrl: String, private 
         computerUrl.takeIf { pending != null && ticket == expectedTicket }
 
     fun accept(url: String): ComputerNavigationAction? {
-        val path = trustedPath(url) ?: return null
+        val path = trustedPath(url) ?: return null.also { log("computer_native_reject reason=origin_or_path") }
         val prefix = "/s/$serverSlug/"
-        if (!path.startsWith(prefix)) return null
+        if (!path.startsWith(prefix)) return null.also { log("computer_native_reject reason=server_slug") }
         val parts = path.removePrefix(prefix).split('/')
         val isComputer = parts == listOf("computers") ||
             (parts.size == 2 && parts[0] == "computer" && validId(parts[1]))
@@ -37,7 +37,8 @@ internal class ComputerNativeNavigation(private val webBaseUrl: String, private 
             computerUrl = url
             return ready?.let(ComputerNavigationAction::Open)
         }
-        if (pending != null || computerPath == null) return null
+        if (pending != null) return null
+        if (computerPath == null) return null.also { log("computer_native_reject reason=no_computer_path") }
         if (parts.size != 2 || parts[0] !in setOf("agent", "dm") || !validId(parts[1])) return null
         pending = ComputerNativeTarget(parts[0], parts[1])
         ticket += 1
@@ -61,8 +62,8 @@ internal class ComputerNativeNavigation(private val webBaseUrl: String, private 
 
 /** Bootstrap route metadata is deliberately not an input: current selection owns navigation. */
 internal fun computerNavigationForSelection(
-    webBaseUrl: String?, serverSlug: String?, sessionServerId: String?, selectedServerId: String?,
+    webBaseUrl: String?, serverSlug: String?, sessionServerId: String?, selectedServerId: String?, log: (String) -> Unit = {},
 ): ComputerNativeNavigation? =
     if (!webBaseUrl.isNullOrBlank() && !serverSlug.isNullOrBlank() &&
         !sessionServerId.isNullOrBlank() && sessionServerId == selectedServerId
-    ) ComputerNativeNavigation(webBaseUrl, serverSlug) else null
+    ) ComputerNativeNavigation(webBaseUrl, serverSlug, log) else null

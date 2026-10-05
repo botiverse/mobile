@@ -434,8 +434,20 @@ private fun StandaloneSettingsWebViewBody(
     val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
     val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope, selectedServerId) {
         if (spec.surface == SettingsWebViewSurface.Computers) {
-            computerNavigationForSelection(webBaseUrl, serverSlug, serverId, selectedServerId)
+            computerNavigationForSelection(webBaseUrl, serverSlug, serverId, selectedServerId, bridge::log)
         } else null
+    }
+    LaunchedEffect(computerNavigation, selectedServerId, serverId, serverSlug) {
+        if (spec.surface == SettingsWebViewSurface.Computers) {
+            val reason = when {
+                serverId.isNullOrBlank() -> "no_session_server"
+                selectedServerId != serverId -> "selection_mismatch"
+                serverSlug.isNullOrBlank() -> "no_slug"
+                webBaseUrl.isNullOrBlank() -> "no_origin"
+                else -> "enabled"
+            }
+            bridge.log("computer_native_nav_state reason=$reason")
+        }
     }
     LaunchedEffect(spec.surface, spec) {
         // Computers opens two distinct pages (list vs machine detail) that share one
