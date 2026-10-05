@@ -18,6 +18,11 @@ name: iOS Simulator app (on demand)
 on:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: "Optional exact product commit to build with this workflow"
+        required: false
+        type: string
+        default: ""
       archs:
         description: "Simulator slices to build (xcodebuild ARCHS). Default arm64 — see the ARCHS note on the build step before widening."
         required: false
@@ -42,6 +47,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Record actual product source
+        shell: bash
+        env:
+          REQUESTED_SOURCE: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          actual=$(git rev-parse HEAD)
+          if [[ -n "$REQUESTED_SOURCE" ]]; then
+            [[ "$REQUESTED_SOURCE" =~ ^[0-9a-f]{40}$ ]] && [[ "$actual" == "$REQUESTED_SOURCE" ]]
+          fi
+          echo "RAFT_GIT_COMMIT=$actual" >> "$GITHUB_ENV"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -54,6 +73,22 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Raise Gradle/Kotlin heap for the iOS Simulator build (this runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # compose/gradle.properties caps the build JVM and Kotlin daemon at
+          # 4g, which OOMs Kotlin/Native ObjC-framework generation for the shared
+          # module during archive. Override it via $GRADLE_USER_HOME/gradle.properties
+          # (higher precedence than the project file), scoped to THIS macOS
+          # runner only — so Android CI (ubuntu) and local dev keep their 4g.
+          # Two release archives exhausted the former 8g heap in Kotlin/Native's
+          # devirtualization analysis. The runner has ~30GB RAM, so 12g still
+          # leaves room for Xcode/clang while keeping Gradle at one worker.
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$GUH"
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' >> "$GUH/gradle.properties"
 
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
@@ -150,9 +185,10 @@ jobs:
           staging="$RUNNER_TEMP/ios-simulator-app"
           bash scripts/qa/export_ios_simulator_app.sh \
             "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
-            "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
+            "$staging" "$RAFT_GIT_COMMIT" "$GITHUB_RUN_ID"
           {
-            echo "source_commit=$GITHUB_SHA"
+            echo "source_commit=$RAFT_GIT_COMMIT"
+            echo "workflow_commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
