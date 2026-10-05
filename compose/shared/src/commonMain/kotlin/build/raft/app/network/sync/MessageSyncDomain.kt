@@ -33,7 +33,7 @@ import kotlinx.atomicfu.locks.synchronized
  * live in the neutral `build.raft.app.canonical.message` package (#607); the fold behavior stays here.
  */
 const val MESSAGES_SYNC_DOMAIN: SyncDomainName = "messages"
-const val SYNC_CORE_MESSAGES_FLAG_KEY: String = "sync_core_messages_v0"
+const val SYNC_CORE_MESSAGES_FLAG_KEY: String = "sync_core_messages_v1"
 
 sealed interface MessageDomainEvent {
     val row: CanonicalMessageRow

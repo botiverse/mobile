@@ -20,7 +20,7 @@ internal data class PartitionDenied(
 )
 
 /**
- * The `sync_core_messages_v0` "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
+ * The `sync_core_messages_v1` "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
  *
  * This is a SHADOW-OF-RECORD: it folds each accepted message frame through the pure [SyncCore] messages
  * domain and durably persists the resulting per-channel fact window via the one-txn [FoldPersistenceAdapter].

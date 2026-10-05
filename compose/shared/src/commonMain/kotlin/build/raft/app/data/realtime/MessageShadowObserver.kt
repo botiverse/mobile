@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Flag-gated canonical projection gateway for each authoritative message projection produced by
- * [RealtimeEventMapper] (`sync_core_messages_v0`). The gateway is handed the raw socket payload and the
+ * [RealtimeEventMapper] (`sync_core_messages_v1`). The gateway is handed the raw socket payload and the
  * message the legacy path produced from it; it MUST NOT mutate state or affect the returned event.
  *
  * The observation outcome (parity/divergence diagnostics) is emitted via the implementation's own
