@@ -2145,6 +2145,9 @@ private fun SlockAppShellReadyContent(
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
+    // Rail server avatar tapped on another tab: open the switcher once Home is the active tab
+    // instead of in the same frame as the tab switch (see homeTabContent).
+    var railServerSwitcherOpenPending by remember { mutableStateOf(false) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
@@ -6116,13 +6119,22 @@ private fun SlockAppShellReadyContent(
                                                     .size(40.dp)
                                                     .clickable {
                                                         if (retainedAppShellSelectedTab(selectedTab) != "home") {
+                                                            // The switcher lives inside Home. Opened in the
+                                                            // same frame as the switch away from Members, it
+                                                            // did not show on the HarmonyOS large screen, so
+                                                            // homeTabContent opens it once Home is active.
+                                                            railServerSwitcherOpenPending = true
                                                             onAppShellTabSelected("home")
-                                                        }
-                                                        homeShellStore.dispatch(
-                                                            SharedHomeShellIntent.Home(
-                                                                SharedHomeIntent.ToggleServerSwitcher
+                                                            if (retainedAppShellSelectedTab(selectedTab) != "home") {
+                                                                railServerSwitcherOpenPending = false
+                                                            }
+                                                        } else {
+                                                            homeShellStore.dispatch(
+                                                                SharedHomeShellIntent.Home(
+                                                                    SharedHomeIntent.ToggleServerSwitcher
+                                                                )
                                                             )
-                                                        )
+                                                        }
                                                     },
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -6622,6 +6634,17 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        LaunchedEffect(active, railServerSwitcherOpenPending) {
+                            if (!active || !railServerSwitcherOpenPending) return@LaunchedEffect
+                            // Let Home draw one frame as the active tab before the popover opens.
+                            withFrameNanos { }
+                            railServerSwitcherOpenPending = false
+                            if (!homeShellStore.state.value.home.serverSwitcherExpanded) {
+                                homeShellStore.dispatch(
+                                    SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
+                                )
+                            }
+                        }
                         homeTabContentBase(
                             active,
                             // task #94: in Slack-nav mode the Home tab is channels-only; the DMs
