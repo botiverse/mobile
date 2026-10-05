@@ -6091,6 +6091,10 @@ private fun SlockAppShellReadyContent(
                         SlockNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
+                                // Any rail tap closes the rail switcher, including Search (an
+                                // inline destination that never goes through selectAppShellTab)
+                                // and a tap on the tab that is already selected.
+                                railServerSwitcherOpen = false
                                 if (key == AppShellRailSearchKey) {
                                     railInlineSecondaryDestination = AppShellRailSearchKey
                                     bridge.log("app_shell_rail_secondary_open destination=search")
@@ -6130,6 +6134,7 @@ private fun SlockAppShellReadyContent(
                                 },
                             bottomItems = railBottomItems,
                             onBottomItemSelect = { key ->
+                                railServerSwitcherOpen = false
                                 if (slackNavMode && key == SlockSlackNavTabs.More) {
                                     // The rail's settings gear must land on the real Settings
                                     // destination — bypass the More tap→menu interception the
