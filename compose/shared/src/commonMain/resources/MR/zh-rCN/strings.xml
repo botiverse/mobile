@@ -2159,4 +2159,5 @@
     <string name="thread_members_create_no_permission">没有创建 Agent 的权限。</string>
     <string name="thread_members_created_join_failed">Agent 已创建，但加入频道失败。请重试加入，不会重复创建。</string>
     <string name="thread_members_create_named_agent">创建 %1$s</string>
+    <string name="member_action_manage_apps">管理应用</string>
 </resources>

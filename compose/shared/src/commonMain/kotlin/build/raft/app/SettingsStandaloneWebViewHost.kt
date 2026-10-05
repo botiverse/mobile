@@ -152,6 +152,19 @@ private fun SettingsWebViewScreen() {
                 iconName = SlockLucideIconName.Monitor,
                 spec = computerSpec ?: settingsComputersWebViewSpec,
             )
+        SettingsWebViewSurface.AgentApps -> {
+            val target = settingsAgentAppsRouteIdentityFromPageData(pager.pageData.params)
+            if (target == null) {
+                SettingsWebViewInvalidRoute(pager)
+            } else {
+                StandaloneSettingsWebViewPage(
+                    pager = pager,
+                    title = stringResource(MR.strings.member_tab_apps),
+                    iconName = SlockLucideIconName.Link2,
+                    spec = remember(target) { settingsAgentAppsWebViewSpec(target) },
+                )
+            }
+        }
         SettingsWebViewSurface.Billing ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -213,6 +226,7 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
  */
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
+    val acceptsSession: (StoredAuthSession) -> Boolean = { true },
     val includeLocaleQuery: Boolean = false,
     val headerFollowsDocumentTitle: Boolean = false,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
@@ -432,6 +446,14 @@ private fun StandaloneSettingsWebViewBody(
             "settings_${spec.surface.diagnosticsName}_open" +
                 (targetTag?.let { " target=$it" } ?: "")
         )
+    }
+    if (authSnapshot.session?.let { !spec.acceptsSession(it) } == true) {
+        SettingsWebViewErrorContent(
+            actionLabel = stringResource(MR.strings.common_close),
+            actionIcon = SlockLucideIconName.X,
+            onAction = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        )
+        return
     }
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,

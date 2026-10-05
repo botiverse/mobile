@@ -3921,6 +3921,20 @@ internal fun MemberDetailPageContent(
                             }
                         },
                         onOpenComputer = onOpenComputer,
+                        onOpenAgentApps = current.currentUserId
+                            ?.takeIf { it.isNotBlank() && current.accessMode.allowsPrivateAgentSurfaces }
+                            ?.let { accountId ->
+                                {
+                                    pager.openSettingsAgentAppsPage(
+                                        provider.storeScope,
+                                        SettingsAgentAppsRouteIdentity(
+                                            accountId = accountId,
+                                            serverId = current.server.id.value,
+                                            agentId = member.id.value,
+                                        ),
+                                    )
+                                }
+                            },
                         onCopyMemberId = {
                             provider.copyMemberId(member, memberIdCopied)
                         },
@@ -5207,6 +5221,7 @@ private class MembersDetailActions(
     val onBack: () -> Unit,
     val onOpenDirectMessage: () -> Unit,
     val onOpenComputer: (() -> Unit)? = null,
+    val onOpenAgentApps: (() -> Unit)? = null,
     val onCopyMemberId: () -> Unit,
     val onRemoveMember: (() -> Unit)? = null,
     val onOpenUrl: (String) -> Unit,
@@ -5277,6 +5292,7 @@ private fun MembersDetailContent(
     val onReportAgentIssue = agentCallbacks.onReportAgentIssue
     val onBack = actions.onBack
     val onOpenDirectMessage = actions.onOpenDirectMessage
+    val onOpenAgentApps = actions.onOpenAgentApps
     val onOpenComputer = actions.onOpenComputer
     val onCopyMemberId = actions.onCopyMemberId
     val onRemoveMember = actions.onRemoveMember
@@ -5970,6 +5986,7 @@ private fun MembersDetailContent(
                                             detail = detail,
                                             timeContext = timeContext,
                                             onOpenUrl = onOpenUrl,
+                                            onOpenAgentApps = onOpenAgentApps,
                                             modifier = Modifier.padding(horizontal = MembersPageInset)
                                         )
                                         MembersAgentDetailTab.Activity -> Unit
@@ -12157,6 +12174,7 @@ private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
 @Composable
 private fun MembersAgentAppsTab(
     detail: AgentDetailSnapshot?,
+    onOpenAgentApps: (() -> Unit)? = null,
     timeContext: SlockTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -12168,6 +12186,15 @@ private fun MembersAgentAppsTab(
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
             color = SlockColor.TextMutedGray
         )
+        if (onOpenAgentApps != null) {
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.member_action_manage_apps),
+                leadingIcon = SlockLucideIconName.Link2,
+                enabled = true,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onOpenAgentApps,
+            )
+        }
         val appLogins = detail?.appLogins
         when (appLogins?.loadState) {
             AgentAppLoginLoadState.NoPermission ->

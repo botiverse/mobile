@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.onSubscription
 internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Onboarding("onboarding"),
     Computers("computers"),
+    AgentApps("agent-apps"),
     Billing("billing"),
     Marketplace("marketplace"),
     Administration("administration"),

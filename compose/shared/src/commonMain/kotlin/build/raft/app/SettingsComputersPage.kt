@@ -131,7 +131,7 @@ internal fun settingsComputerWebViewUrl(
     )
 }
 
-private fun String.settingsWebPathSegmentOrNull(): String? {
+internal fun String.settingsWebPathSegmentOrNull(): String? {
     val normalized = trim().takeIf { it.isNotBlank() } ?: return null
     if (normalized == "." || normalized == "..") return null
     if (normalized.any { it == '/' || it == '\\' || it.isWhitespace() || it.code < 0x20 || it.code == 0x7f }) {
