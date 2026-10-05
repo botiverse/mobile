@@ -10,6 +10,25 @@ import kotlin.test.assertTrue
 
 class SettingsStandaloneWebViewHostTest {
     @Test
+    fun detachedHistoryClosesPageAndOldDetachCannotClearNewOwner() {
+        val authority = SettingsWebViewNavigationAuthority()
+        val owner = authority.acquire()
+        var state = SlockWebViewNavigationState(canGoBack = true)
+        state = authority.release(owner)!!.state
+        var webBacks = 0
+        var closes = 0
+        // Both header and system Back call this same production decision.
+        repeat(2) {
+            performSettingsWebViewBack(state.canGoBack, { webBacks++ }, { closes++ })
+        }
+        assertEquals(0, webBacks)
+        assertEquals(2, closes)
+        val next = authority.acquire()
+        assertNull(authority.release(owner))
+        assertTrue(authority.accepts(next))
+    }
+
+    @Test
     fun everySettingsWebSurfaceUsesTheSinglePageRoute() {
         SettingsWebViewSurface.entries.forEach { surface ->
             val pageData =

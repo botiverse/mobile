@@ -226,7 +226,7 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
  */
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
-    val acceptsSession: (StoredAuthSession) -> Boolean = { true },
+    val resolveSession: (StoredAuthSession) -> StoredAuthSession? = { it },
     val includeLocaleQuery: Boolean = false,
     val headerFollowsDocumentTitle: Boolean = false,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
@@ -406,8 +406,10 @@ internal class SettingsWebViewNavigationAuthority {
 
     fun accepts(owner: Long): Boolean = owner == activeOwner
 
-    fun release(owner: Long) {
-        if (accepts(owner)) acquire()
+    fun release(owner: Long): SettingsWebViewNavigationUpdate? {
+        if (!accepts(owner)) return null
+        acquire()
+        return SettingsWebViewNavigationUpdate(owner, SlockWebViewNavigationState())
     }
 }
 
@@ -447,7 +449,8 @@ private fun StandaloneSettingsWebViewBody(
                 (targetTag?.let { " target=$it" } ?: "")
         )
     }
-    if (authSnapshot.session?.let { !spec.acceptsSession(it) } == true) {
+    val boundSession = authSnapshot.session?.let(spec.resolveSession)
+    if (authSnapshot.session != null && boundSession == null) {
         SettingsWebViewErrorContent(
             actionLabel = stringResource(MR.strings.common_close),
             actionIcon = SlockLucideIconName.X,
@@ -456,7 +459,7 @@ private fun StandaloneSettingsWebViewBody(
         return
     }
     StandaloneSettingsWebViewContent(
-        authSnapshot = authSnapshot,
+        authSnapshot = authSnapshot.copy(session = boundSession),
         webBaseUrl = webBaseUrl,
         spec = spec,
         controller = controller,
@@ -598,7 +601,9 @@ internal fun SettingsWebViewContent(
             key(generationKey, reloadKey, url) {
                 val navigationOwner = remember { navigationAuthority.acquire() }
                 DisposableEffect(navigationOwner) {
-                    onDispose { navigationAuthority.release(navigationOwner) }
+                    onDispose {
+                        navigationAuthority.release(navigationOwner)?.let(onNavigationStateChange)
+                    }
                 }
                 SlockWebView(
                     url = url,

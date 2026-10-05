@@ -36,12 +36,24 @@ class SettingsAgentAppsPageTest {
 
     @Test fun changedAccountOrMissingServerCannotOpenOldTarget() {
         val spec = settingsAgentAppsWebViewSpec(target)
-        assertTrue(spec.acceptsSession(session()))
+        assertEquals("server-b", spec.resolveSession(session())?.currentServerId)
         val other = session().copy(user = StoredAuthUser("user-b", "b@example.test"))
-        assertFalse(spec.acceptsSession(other))
+        assertNull(spec.resolveSession(other))
         assertNull(settingsAgentAppsWebViewUrl(null, other, target))
-        assertFalse(spec.acceptsSession(session().copy(servers = emptyList())))
+        assertNull(spec.resolveSession(session().copy(servers = emptyList())))
         assertNull(settingsAgentAppsWebViewUrl(null, null, target))
+    }
+
+    @Test fun pageBindingUsesTargetServerWithoutChangingNativeSelection() {
+        val native = session()
+        val bound = settingsAgentAppsBoundSession(native, target)!!
+        assertEquals("server-b", bound.currentServerId)
+        assertEquals("beta", bound.selectedServerSlug)
+        assertEquals("server-a", native.currentServerId)
+        assertEquals("test-access", bound.accessToken)
+        val rotated = settingsAgentAppsBoundSession(native.copy(accessToken = "new-token"), target)!!
+        assertEquals(bound.currentServerId, rotated.currentServerId)
+        assertEquals("new-token", rotated.accessToken)
     }
 
     @Test fun routeCarriesIdentityOnlyAndRejectsIncompleteOrUnsafeTargets() {

@@ -46,9 +46,19 @@ internal fun settingsAgentAppsWebViewUrl(
     return sharedSettingsHostShellWebUrl(webBaseUrl, "s/$slug/agent/$agentId", listOf("agentTab" to "integrations"))
 }
 
+internal fun settingsAgentAppsBoundSession(
+    session: StoredAuthSession,
+    target: SettingsAgentAppsRouteIdentity,
+): StoredAuthSession? {
+    if (settingsAgentAppsWebViewUrl(null, session, target) == null) return null
+    val server = session.servers.first { it.id == target.serverId }
+    // This is a page-local binding, never a mutation of the native selected server.
+    return session.copy(selectedServerId = server.id, selectedServerSlug = server.slug)
+}
+
 internal fun settingsAgentAppsWebViewSpec(target: SettingsAgentAppsRouteIdentity) =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.AgentApps,
-        acceptsSession = { settingsAgentAppsWebViewUrl(null, it, target) != null },
+        resolveSession = { settingsAgentAppsBoundSession(it, target) },
         buildWebUrl = { base, session, _ -> settingsAgentAppsWebViewUrl(base, session, target).orEmpty() },
     )
