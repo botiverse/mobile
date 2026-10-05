@@ -83,6 +83,9 @@ fun verifyOhosBridgeNativeContracts(outputDirectory: String) {
 
     val apiHeaderText = apiHeader.readText()
     val apiHeaderLineCount = apiHeader.useLines { lines -> lines.count() }
+    check("raftInstallKnoiAsyncLog" in apiHeaderText) {
+        "OHOS bridge header does not expose the pre-KNOI logger installer"
+    }
     check("raftInitKuikly" in apiHeaderText) {
         "OHOS bridge header does not expose raftInitKuikly"
     }
