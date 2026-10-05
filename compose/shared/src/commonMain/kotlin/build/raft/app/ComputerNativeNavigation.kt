@@ -4,7 +4,7 @@ package build.raft.app
 internal data class ComputerNativeTarget(val kind: String, val id: String)
 
 internal sealed interface ComputerNavigationAction {
-    data object RestoreComputer : ComputerNavigationAction
+    data class RestoreComputer(val ticket: Int) : ComputerNavigationAction
     data class Open(val target: ComputerNativeTarget) : ComputerNavigationAction
 }
 
@@ -16,6 +16,11 @@ internal sealed interface ComputerNavigationAction {
 internal class ComputerNativeNavigation(private val webBaseUrl: String, private val serverSlug: String) {
     private var computerPath: String? = null
     private var pending: ComputerNativeTarget? = null
+    private var computerUrl: String? = null
+    private var ticket = 0
+
+    fun fallbackUrl(expectedTicket: Int): String? =
+        computerUrl.takeIf { pending != null && ticket == expectedTicket }
 
     fun accept(url: String): ComputerNavigationAction? {
         val path = trustedPath(url) ?: return null
@@ -25,15 +30,18 @@ internal class ComputerNativeNavigation(private val webBaseUrl: String, private 
         val isComputer = parts == listOf("computers") ||
             (parts.size == 2 && parts[0] == "computer" && validId(parts[1]))
         if (isComputer) {
-            val ready = pending.takeIf { path == computerPath }
+            if (pending != null && path != computerPath) return null
+            val ready = pending
             pending = null
             computerPath = path
+            computerUrl = url
             return ready?.let(ComputerNavigationAction::Open)
         }
         if (pending != null || computerPath == null) return null
         if (parts.size != 2 || parts[0] !in setOf("agent", "dm") || !validId(parts[1])) return null
         pending = ComputerNativeTarget(parts[0], parts[1])
-        return ComputerNavigationAction.RestoreComputer
+        ticket += 1
+        return ComputerNavigationAction.RestoreComputer(ticket)
     }
 
     private fun trustedPath(url: String): String? {

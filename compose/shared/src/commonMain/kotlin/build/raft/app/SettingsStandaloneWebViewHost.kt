@@ -7,6 +7,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
@@ -420,6 +425,7 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
+    val navigationScope = rememberCoroutineScope()
     val session = authSnapshot.session
     val serverId = session?.currentServerId
     val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
@@ -451,7 +457,21 @@ private fun StandaloneSettingsWebViewBody(
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
             when (val action = computerNavigation?.accept(url)) {
-                ComputerNavigationAction.RestoreComputer -> controller.goBack()
+                is ComputerNavigationAction.RestoreComputer -> {
+                    controller.goBack()
+                    navigationScope.launch {
+                        delay(1000)
+                        // replaceState and missing history need an explicit return location.
+                        // Check session authority again after the asynchronous wait.
+                        if (authStore.readSession() == session) {
+                            computerNavigation?.fallbackUrl(action.ticket)?.let { returnUrl ->
+                                controller.evaluateJavaScript(
+                                    "window.location.replace(" + Json.encodeToString(returnUrl) + ");"
+                                )
+                            }
+                        }
+                    }
+                }
                 is ComputerNavigationAction.Open -> {
                     val target = action.target
                     val pageData = if (target.kind == "agent") {
@@ -459,7 +479,7 @@ private fun StandaloneSettingsWebViewBody(
                             MemberDetailIdentity(
                                 build.raft.app.model.MemberId(target.id),
                                 build.raft.app.model.MemberKind.Agent,
-                                build.raft.app.model.ServerId(serverId!!),
+                                serverId?.let { build.raft.app.model.ServerId(it) },
                             )
                         )
                     } else {
@@ -502,6 +522,7 @@ internal fun StandaloneSettingsWebViewContent(
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     accessTokenSyncLogger: (String) -> Unit = {},
 ) {
+    val navigationScope = rememberCoroutineScope()
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
     val webUrl =
@@ -530,6 +551,7 @@ internal fun StandaloneSettingsWebViewContent(
         generationKey = hostAuthBinding?.webViewGeneration,
         onLoadCommit = onLoadCommit,
         onUrlChange = onUrlChange,
+        filterStaleUrlCallbacks = spec.surface == SettingsWebViewSurface.Computers,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
         onDocumentReadyChange = { documentReady = it },
@@ -565,6 +587,7 @@ internal fun SettingsWebViewContent(
     onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
+    filterStaleUrlCallbacks: Boolean = false,
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
@@ -642,7 +665,7 @@ internal fun SettingsWebViewContent(
                         onLoadSuccess()
                     },
                     onUrlChange = { changedUrl ->
-                        if (navigationAuthority.accepts(navigationOwner)) onUrlChange(changedUrl)
+                        if (!filterStaleUrlCallbacks || navigationAuthority.accepts(navigationOwner)) onUrlChange(changedUrl)
                     },
                     onLoadFailure = { reason ->
                         contentVisible = false
