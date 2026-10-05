@@ -2165,6 +2165,9 @@ private fun SlockAppShellReadyContent(
     // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
     var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
     var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
+    // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
+    // page is showing, anchored next to the rail's server avatar.
+    var railServerSwitcherOpen by remember { mutableStateOf(false) }
     // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
@@ -3171,6 +3174,7 @@ private fun SlockAppShellReadyContent(
                 railInlineSecondaryDestination = null
                 slackNavMoreMenuVisible = false
             }
+            railServerSwitcherOpen = false
         }
     }
     val homePreviewServerId =
@@ -4008,6 +4012,7 @@ private fun SlockAppShellReadyContent(
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
+        railServerSwitcherOpen = false
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
         val direct = directChildSwitch && retainedTab in slackNavTabKeys
@@ -6114,16 +6119,9 @@ private fun SlockAppShellReadyContent(
                                             modifier =
                                                 Modifier
                                                     .size(40.dp)
-                                                    .clickable {
-                                                        if (retainedAppShellSelectedTab(selectedTab) != "home") {
-                                                            onAppShellTabSelected("home")
-                                                        }
-                                                        homeShellStore.dispatch(
-                                                            SharedHomeShellIntent.Home(
-                                                                SharedHomeIntent.ToggleServerSwitcher
-                                                            )
-                                                        )
-                                                    },
+                                                    // Opens the rail's own switcher in place; it no
+                                                    // longer jumps to Home to borrow Home's popover.
+                                                    .clickable { railServerSwitcherOpen = !railServerSwitcherOpen },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             ServerSwitcherAvatarTile(server)
@@ -6167,6 +6165,53 @@ private fun SlockAppShellReadyContent(
                     null
                 }
         ) {
+                    val railSwitcherContent = homeState.content as? SharedHomeContentState.Content
+                    if (navRailActive && railServerSwitcherOpen && railSwitcherContent != null) {
+                        SlockFloatingOverlayHost(
+                            onDismiss = { railServerSwitcherOpen = false },
+                            dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                        ) { _ ->
+                            ServerSwitcherPanel(
+                                servers =
+                                    sharedHomeSwitcherItems(
+                                        session = railSwitcherContent.session,
+                                        selectedServer = railSwitcherContent.snapshot.server,
+                                        serverUnreadCounts = homeState.serverUnreadCounts,
+                                        activityExpectedOwner = serverActivityExpectedOwner,
+                                        activityProjection = homeState.serverActivityUnread,
+                                    ),
+                                currentServerId = railSwitcherContent.snapshot.server.id.value,
+                                pendingServerId = homeState.serverSwitchState.pendingServerId,
+                                prefersChineseCommunity =
+                                    localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
+                                labels = SlockHomeShellLabels.localized(),
+                                onServerSelected = { serverId ->
+                                    railServerSwitcherOpen = false
+                                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                                    homeShellStore.dispatch(
+                                        SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId))
+                                    )
+                                },
+                                onServerOrderChange = { order ->
+                                    homeShellStore.dispatch(
+                                        SharedHomeShellIntent.Home(SharedHomeIntent.ReorderServers(order))
+                                    )
+                                },
+                                onCreateServerClick = {
+                                    railServerSwitcherOpen = false
+                                    pager.openAuthChooseServerPage(
+                                        storeScope = navigationStoreScope,
+                                        documentShell =
+                                            pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+                                    )
+                                },
+                                modifier =
+                                    Modifier
+                                        .padding(top = shellScope.topSafeArea + SlockSpacing.Sm, start = SlockSpacing.Sm)
+                                        .clickable(onClick = {})
+                            )
+                        }
+                    }
                     if (slackNavMode && slackNavMoreMenuVisible) {
                         SlockSlackNavMoreMenu(
                             selected =
