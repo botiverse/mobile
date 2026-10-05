@@ -420,6 +420,15 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
+    val session = authSnapshot.session
+    val serverId = session?.currentServerId
+    val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
+    val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope) {
+        if (spec.surface == SettingsWebViewSurface.Computers &&
+            !serverId.isNullOrBlank() && !serverSlug.isNullOrBlank() &&
+            storeScope.initialServerId == serverId && !webBaseUrl.isNullOrBlank()
+        ) ComputerNativeNavigation(webBaseUrl, serverSlug) else null
+    }
     LaunchedEffect(spec.surface, spec) {
         // Computers opens two distinct pages (list vs machine detail) that share one
         // surface name; tagging the target keeps the diagnostic unambiguous (#336).
@@ -441,6 +450,34 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
+            when (val action = computerNavigation?.accept(url)) {
+                ComputerNavigationAction.RestoreComputer -> controller.goBack()
+                is ComputerNavigationAction.Open -> {
+                    val target = action.target
+                    val pageData = if (target.kind == "agent") {
+                        KuiklyMembersPayload(instanceId = "computer-agent").toMemberDetailPageData(
+                            MemberDetailIdentity(
+                                build.raft.app.model.MemberId(target.id),
+                                build.raft.app.model.MemberKind.Agent,
+                                build.raft.app.model.ServerId(serverId!!),
+                            )
+                        )
+                    } else {
+                        WireThreadLaunchPayload(
+                            instanceId = "computer-dm-${target.id}",
+                            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                            streamChannelId = target.id,
+                        ).toThreadPageData()
+                    }
+                    if (pageData != null) pager.openSlockPage(
+                        pageName = if (target.kind == "agent") MEMBER_DETAIL_PAGE else THREAD_PAGE,
+                        pageData = pageData,
+                        storeScopeOverride = storeScope,
+                        onMissingScope = { bridge.log("computer_native_open_skip reason=missing_shell_scope") },
+                    )
+                }
+                null -> Unit
+            }
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
@@ -604,7 +641,9 @@ internal fun SettingsWebViewContent(
                         contentVisible = true
                         onLoadSuccess()
                     },
-                    onUrlChange = onUrlChange,
+                    onUrlChange = { changedUrl ->
+                        if (navigationAuthority.accepts(navigationOwner)) onUrlChange(changedUrl)
+                    },
                     onLoadFailure = { reason ->
                         contentVisible = false
                         loadError = reason
