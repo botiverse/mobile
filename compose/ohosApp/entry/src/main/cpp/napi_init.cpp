@@ -117,6 +117,13 @@ static void RegisterSlockLogAdapter() {
 
 }  // namespace
 
+static napi_value InstallKnoiAsyncLog(napi_env env, napi_callback_info info) {
+    const int installed = libshared_symbols()->kotlin.root.raftInstallKnoiAsyncLog();
+    napi_value result;
+    napi_create_int32(env, installed, &result);
+    return result;
+}
+
 static napi_value InitKuikly(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value argv[1] = {nullptr};
@@ -182,6 +189,7 @@ static napi_value UpdateProcessNetworkVisibility(napi_env env, napi_callback_inf
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
+        {"installKnoiAsyncLog", nullptr, InstallKnoiAsyncLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"initKuikly", nullptr, InitKuikly, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setImageHttp3Enabled", nullptr, SetImageHttp3Enabled, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"updateProcessNetworkVisibility", nullptr, UpdateProcessNetworkVisibility, nullptr, nullptr, nullptr, napi_default, nullptr}
