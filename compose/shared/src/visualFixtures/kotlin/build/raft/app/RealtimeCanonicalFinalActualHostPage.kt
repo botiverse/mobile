@@ -12,6 +12,7 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
@@ -1582,8 +1583,21 @@ private class ActualHostRun(
         synchronized(lock) {
             sequence += 1
             if (!terminal) phaseHashes += hash
+            // task #58 follow-up: trace evidence must not ride the lossy
+            // shared log queue — SlockPlatformLogQueue can drop an admission
+            // under admissionBusy, which previously produced a
+            // contiguous-sequence gap (seq 23 missing at run 37321478598).
+            // Write straight to the platform sink (Android: android.util.Log)
+            // inside the lock so the emitted line order always matches the
+            // assigned sequence numbers.
+            slockPlatformLog(
+                SlockLogLevel.Info,
+                ActualHostLogTag,
+                "$ActualHostTraceMarker payload=$payload sha256=$hash",
+                defaultNowMillis(),
+                SlockPlatformLogHint.None,
+            )
         }
-        slockLogInfo(ActualHostLogTag, "$ActualHostTraceMarker payload=$payload sha256=$hash")
     }
 
     private fun token(value: Any): String {
