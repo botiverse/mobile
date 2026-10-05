@@ -11,7 +11,7 @@ data class TaskDomainFields(
 )
 
 /**
- * The in-process gateway→accept carry (`sync_core_messages_v0`): one raw socket frame's canonical decode,
+ * The in-process gateway→accept carry (`sync_core_messages_v1`): one raw socket frame's canonical decode,
  * produced ONCE by the flag-gated projection gateway and threaded on the MessageNew/MessageUpdated event
  * to the shadow fold+persist lane so the same frame is never decoded twice. Pure data — @Transient on the
  * event, never serialized; a deserialized event carries null and the lane skips the frame (fail-open).

@@ -5,7 +5,7 @@ import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 
 /**
- * No-apply normalized reaction observation inside the existing `sync_core_messages_v0` shadow rollout. It
+ * No-apply normalized reaction observation inside the existing `sync_core_messages_v1` shadow rollout. It
  * reuses the canonical decode already attached to accepted realtime message events, before legacy sink
  * fan-out. The lane has no store, cursor, cache, overlay, or UI reference, so its only effect is bounded
  * diagnostics. There is deliberately no second feature flag or rollout track.
