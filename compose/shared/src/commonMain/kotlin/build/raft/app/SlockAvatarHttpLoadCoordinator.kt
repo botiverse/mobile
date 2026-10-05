@@ -133,6 +133,10 @@ internal class SlockAvatarHttpLoadCoordinator(
     fun retryDelayMillis(snapshot: SlockAvatarHttpLoadSnapshot): Long =
         snapshot.retryDelayMillis(nowMillis())
 
+    /** How long a non-owner waits before asking [tryAcquire] to adopt a silent owner's flight. */
+    val stuckOwnerRecheckDelayMillis: Long
+        get() = stuckOwnerTimeoutMillis + 1L
+
     fun retain(key: SlockAvatarHttpLoadKey) {
         synchronized(lock) {
             val entry = entryLocked(key)
@@ -355,6 +359,30 @@ internal class SlockAvatarHttpLoadCoordinator(
 }
 
 internal val slockAvatarHttpLoadCoordinator = SlockAvatarHttpLoadCoordinator()
+
+internal enum class SlockAvatarHttpAcquireAttempt { Now, AfterStuckOwnerTimeout, None }
+
+/**
+ * When an avatar row should ask the coordinator for a lease. A flight owned by another row is
+ * only adoptable once that owner has gone silent past the stuck-owner timeout, and nothing else
+ * changes this row's state while it stays silent, so the row has to come back after the timeout
+ * itself (HarmonyOS 1.13.0: every server avatar waited forever on a silent owner).
+ */
+internal fun slockAvatarHttpAcquireAttempt(
+    snapshot: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): SlockAvatarHttpAcquireAttempt =
+    when {
+        snapshot.cache == SlockAvatarHttpCacheState.Idle ||
+            snapshot.cache == SlockAvatarHttpCacheState.Cooldown ||
+            // A flight whose owner left the viewport while other observers remain is orphaned
+            // (InFlight with a null ownerToken); a surviving/new row adopts it right away.
+            (snapshot.cache == SlockAvatarHttpCacheState.InFlight && snapshot.ownerToken == null) ->
+            SlockAvatarHttpAcquireAttempt.Now
+        snapshot.cache == SlockAvatarHttpCacheState.InFlight && !ownsCurrentRequest ->
+            SlockAvatarHttpAcquireAttempt.AfterStuckOwnerTimeout
+        else -> SlockAvatarHttpAcquireAttempt.None
+    }
 
 internal fun SlockAvatarHttpLoadSnapshot.diagnosticsCacheState(localOwnerToken: Long?): String =
     when (cache) {

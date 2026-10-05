@@ -238,6 +238,54 @@ class SlockAvatarHttpLoadCoordinatorTest {
     }
 
     @Test
+    fun rowWaitingOnAnotherOwnerComesBackAfterTheStuckTimeout() {
+        val owned = SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.InFlight, ownerToken = 7L)
+        // HarmonyOS 1.13.0: the visible server avatar waited on a silent owner forever because
+        // only Idle/Cooldown/orphaned flights ever asked for a lease.
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.AfterStuckOwnerTimeout,
+            slockAvatarHttpAcquireAttempt(owned, ownsCurrentRequest = false)
+        )
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.None,
+            slockAvatarHttpAcquireAttempt(owned, ownsCurrentRequest = true)
+        )
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.Now,
+            slockAvatarHttpAcquireAttempt(owned.copy(ownerToken = null), ownsCurrentRequest = false)
+        )
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.Now,
+            slockAvatarHttpAcquireAttempt(SlockAvatarHttpLoadSnapshot(), ownsCurrentRequest = false)
+        )
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.Now,
+            slockAvatarHttpAcquireAttempt(
+                SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Cooldown),
+                ownsCurrentRequest = false
+            )
+        )
+        assertEquals(
+            SlockAvatarHttpAcquireAttempt.None,
+            slockAvatarHttpAcquireAttempt(
+                SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Ready),
+                ownsCurrentRequest = false
+            )
+        )
+    }
+
+    @Test
+    fun recheckDelayLandsPastTheStuckTimeout() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(stuckOwnerTimeoutMillis = 100L, nowMillis = { nowMillis })
+        val key = uploadedAvatarKey()
+        assertNotNull(coordinator.tryAcquire(key))
+        nowMillis += coordinator.stuckOwnerRecheckDelayMillis
+        assertNotNull(coordinator.tryAcquire(key), "one recheck delay later a silent owner is adoptable")
+    }
+
+    @Test
     fun stuckOwnerBecomesAdoptableAfterTimeout() {
         var nowMillis = 1_000L
         val coordinator =
