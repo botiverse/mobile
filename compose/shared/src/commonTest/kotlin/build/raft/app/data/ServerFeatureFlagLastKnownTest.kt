@@ -35,7 +35,7 @@ class ServerFeatureFlagLastKnownTest {
         HomeNetworkResponse(
             code = 200,
             bodyText =
-                """{"evaluations":[{"key":"sync_core_messages_v0","enabled":$enabled},""" +
+                """{"evaluations":[{"key":"sync_core_messages_v1","enabled":$enabled},""" +
                     """{"key":"read_receipts_v0","enabled":true}]}""",
         )
 
@@ -67,7 +67,7 @@ class ServerFeatureFlagLastKnownTest {
         assertTrue(coldStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         coldStart.prefetch(server) // evaluate fails offline: still the stored value
         assertTrue(coldStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
-        assertTrue(device.logs.any { it.startsWith("feature_flags last_known_used server=s1 key=sync_core_messages_v0 enabled=true") })
+        assertTrue(device.logs.any { it.startsWith("feature_flags last_known_used server=s1 key=sync_core_messages_v1 enabled=true") })
         // Raw / process-wide reads never see the stored value.
         assertFalse(coldStart.snapshotFor(server).resolved)
         assertFalse(coldStart.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
