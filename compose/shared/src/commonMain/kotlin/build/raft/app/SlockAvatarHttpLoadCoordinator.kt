@@ -216,15 +216,22 @@ internal class SlockAvatarHttpLoadCoordinator(
             lease
         }
 
+    /**
+     * [endpoint] is the endpoint whose URL the reporting painter rendered. Once an observer has
+     * moved the flight from CDN to API, a late result for the CDN URL must not settle the API
+     * attempt (LiBai, review of #2838). Production callers always pass it.
+     */
     fun reportPainterPhase(
         key: SlockAvatarHttpLoadKey,
         lease: SlockAvatarHttpLoadLease,
-        painter: SlockAvatarHttpPainterPhase
+        painter: SlockAvatarHttpPainterPhase,
+        endpoint: SlockAvatarHttpEndpoint? = null
     ) {
         synchronized(lock) {
             val entry = entries[key] ?: return@synchronized
             val current = entry.state.value
             if (!current.isOwnedBy(lease)) return@synchronized
+            if (endpoint != null && endpoint != current.endpoint) return@synchronized
             entry.ownerProgressMillis = nowMillis()
             when (painter) {
                 SlockAvatarHttpPainterPhase.Success -> settleSuccessLocked(entry, current)
@@ -305,7 +312,8 @@ internal class SlockAvatarHttpLoadCoordinator(
     /** A ready consumer that still errors invalidates that cache generation for every row. */
     fun reportReadyConsumerError(
         key: SlockAvatarHttpLoadKey,
-        generation: Long
+        generation: Long,
+        endpoint: SlockAvatarHttpEndpoint? = null
     ) {
         synchronized(lock) {
             val entry = entries[key] ?: return@synchronized
@@ -313,6 +321,9 @@ internal class SlockAvatarHttpLoadCoordinator(
             if (current.generation != generation || current.cache != SlockAvatarHttpCacheState.Ready) {
                 return@synchronized
             }
+            // A late error for the endpoint the generation already moved off does not invalidate
+            // the endpoint that succeeded.
+            if (endpoint != null && endpoint != current.endpoint) return@synchronized
             entry.consecutiveFailures += 1
             entry.state.value =
                 current.copy(

@@ -332,6 +332,46 @@ class SlockAvatarHttpLoadCoordinatorTest {
     }
 
     @Test
+    fun lateOwnerResultForTheOldEndpointIsIgnoredAfterObserverFallback() {
+        var nowMillis = 1_000L
+        val coordinator = SlockAvatarHttpLoadCoordinator(nowMillis = { nowMillis })
+        val key = uploadedAvatarKey()
+        val owner = assertNotNull(coordinator.tryAcquire(key))
+        val cdn = coordinator.stateFlow(key).value
+        // An observer's CDN load fails first and moves the flight to the API endpoint.
+        coordinator.reportObserverPhase(key, cdn.generation, SlockAvatarHttpEndpoint.Cdn, SlockAvatarHttpPainterPhase.Error)
+        val api = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpEndpoint.Api, api.endpoint)
+
+        // The owner's late CDN results must neither settle nor cool down the API attempt.
+        coordinator.reportPainterPhase(key, owner, SlockAvatarHttpPainterPhase.Success, SlockAvatarHttpEndpoint.Cdn)
+        assertEquals(api, coordinator.stateFlow(key).value)
+        coordinator.reportPainterPhase(key, owner, SlockAvatarHttpPainterPhase.Error, SlockAvatarHttpEndpoint.Cdn)
+        assertEquals(api, coordinator.stateFlow(key).value)
+
+        // A result for the API URL it now renders still settles it.
+        coordinator.reportPainterPhase(key, owner, SlockAvatarHttpPainterPhase.Success, SlockAvatarHttpEndpoint.Api)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+    }
+
+    @Test
+    fun lateOldEndpointErrorAfterReadyDoesNotInvalidateTheGeneration() {
+        val coordinator = SlockAvatarHttpLoadCoordinator()
+        val key = uploadedAvatarKey()
+        assertNotNull(coordinator.tryAcquire(key))
+        val cdn = coordinator.stateFlow(key).value
+        coordinator.reportObserverPhase(key, cdn.generation, SlockAvatarHttpEndpoint.Cdn, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportObserverPhase(key, cdn.generation, SlockAvatarHttpEndpoint.Api, SlockAvatarHttpPainterPhase.Success)
+        val ready = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpCacheState.Ready, ready.cache)
+
+        coordinator.reportReadyConsumerError(key, ready.generation, SlockAvatarHttpEndpoint.Cdn)
+        assertEquals(ready, coordinator.stateFlow(key).value, "an error for the abandoned CDN URL changes nothing")
+        coordinator.reportReadyConsumerError(key, ready.generation, SlockAvatarHttpEndpoint.Api)
+        assertEquals(SlockAvatarHttpCacheState.Cooldown, coordinator.stateFlow(key).value.cache)
+    }
+
+    @Test
     fun observerReportsAreFencedByGenerationAndEndpoint() {
         val coordinator = SlockAvatarHttpLoadCoordinator()
         val key = uploadedAvatarKey()

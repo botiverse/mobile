@@ -6670,6 +6670,9 @@ internal fun SlockAvatarHttpImage(
         if (!slockAvatarHttpShowsFallback(loadState)) placeholder()
         return
     }
+    // The endpoint whose URL this painter renders; every report carries it so a late result for a
+    // URL the flight has moved off is ignored.
+    val renderedEndpoint = loadState.endpoint
     val painter = rememberAsyncImagePainter(model = imageModel)
     val imageState by painter.state.collectAsState()
     if (imageState !is AsyncImagePainter.State.Success && !slockAvatarHttpShowsFallback(loadState)) {
@@ -6679,17 +6682,17 @@ internal fun SlockAvatarHttpImage(
         val phase = imageState.toSlockAvatarHttpPainterPhase()
         if (ownsCurrentRequest) {
             lease?.let { currentLease ->
-                slockAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase)
+                slockAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase, renderedEndpoint)
             }
         } else if (loadState.cache == SlockAvatarHttpCacheState.InFlight) {
             slockAvatarHttpLoadCoordinator.reportObserverPhase(
                 loadKey,
                 loadState.generation,
-                loadState.endpoint,
+                renderedEndpoint,
                 phase
             )
         } else if (phase == SlockAvatarHttpPainterPhase.Error) {
-            slockAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation)
+            slockAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation, renderedEndpoint)
         }
     }
     Image(
