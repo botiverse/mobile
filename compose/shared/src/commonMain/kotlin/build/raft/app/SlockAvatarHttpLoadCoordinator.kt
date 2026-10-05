@@ -227,39 +227,79 @@ internal class SlockAvatarHttpLoadCoordinator(
             if (!current.isOwnedBy(lease)) return@synchronized
             entry.ownerProgressMillis = nowMillis()
             when (painter) {
-                SlockAvatarHttpPainterPhase.Success -> {
-                    entry.consecutiveFailures = 0
-                    entry.state.value =
-                        current.copy(
-                            painter = painter,
-                            cache = SlockAvatarHttpCacheState.Ready,
-                            ownerToken = null,
-                            retryAtMillis = null
-                        )
-                }
-                SlockAvatarHttpPainterPhase.Error -> {
-                    val canFallback =
-                        current.endpoint == SlockAvatarHttpEndpoint.Cdn && key.apiFallbackSource != null
-                    entry.state.value =
-                        if (canFallback) {
-                            current.copy(
-                                endpoint = SlockAvatarHttpEndpoint.Api,
-                                painter = SlockAvatarHttpPainterPhase.Empty
-                            )
-                        } else {
-                            entry.consecutiveFailures += 1
-                            current.copy(
-                                painter = painter,
-                                cache = SlockAvatarHttpCacheState.Cooldown,
-                                ownerToken = null,
-                                retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
-                            )
-                        }
-                }
+                SlockAvatarHttpPainterPhase.Success -> settleSuccessLocked(entry, current)
+                SlockAvatarHttpPainterPhase.Error -> settleErrorLocked(key, entry, current)
                 else -> entry.state.value = current.copy(painter = painter)
             }
             touchLocked(entry)
         }
+    }
+
+    /**
+     * A row that renders the in-flight endpoint without holding the lease. Its result settles the
+     * flight exactly as the owner's would, so no row depends on another row being drawn: on
+     * Kuikly an image only starts loading when it is drawn, and an owner that is composed but never
+     * drawn (offscreen, hidden, a 1dp prewarm surface) used to leave every other row blank.
+     * Fenced by generation and endpoint; Empty/Loading from an observer change nothing.
+     */
+    fun reportObserverPhase(
+        key: SlockAvatarHttpLoadKey,
+        generation: Long,
+        endpoint: SlockAvatarHttpEndpoint,
+        painter: SlockAvatarHttpPainterPhase
+    ) {
+        synchronized(lock) {
+            val entry = entries[key] ?: return@synchronized
+            val current = entry.state.value
+            if (
+                current.cache != SlockAvatarHttpCacheState.InFlight ||
+                current.generation != generation ||
+                current.endpoint != endpoint
+            ) {
+                return@synchronized
+            }
+            when (painter) {
+                SlockAvatarHttpPainterPhase.Success -> settleSuccessLocked(entry, current)
+                SlockAvatarHttpPainterPhase.Error -> settleErrorLocked(key, entry, current)
+                else -> return@synchronized
+            }
+            touchLocked(entry)
+        }
+    }
+
+    private fun settleSuccessLocked(entry: Entry, current: SlockAvatarHttpLoadSnapshot) {
+        entry.consecutiveFailures = 0
+        entry.state.value =
+            current.copy(
+                painter = SlockAvatarHttpPainterPhase.Success,
+                cache = SlockAvatarHttpCacheState.Ready,
+                ownerToken = null,
+                retryAtMillis = null
+            )
+    }
+
+    private fun settleErrorLocked(
+        key: SlockAvatarHttpLoadKey,
+        entry: Entry,
+        current: SlockAvatarHttpLoadSnapshot
+    ) {
+        val canFallback =
+            current.endpoint == SlockAvatarHttpEndpoint.Cdn && key.apiFallbackSource != null
+        entry.state.value =
+            if (canFallback) {
+                current.copy(
+                    endpoint = SlockAvatarHttpEndpoint.Api,
+                    painter = SlockAvatarHttpPainterPhase.Empty
+                )
+            } else {
+                entry.consecutiveFailures += 1
+                current.copy(
+                    painter = SlockAvatarHttpPainterPhase.Error,
+                    cache = SlockAvatarHttpCacheState.Cooldown,
+                    ownerToken = null,
+                    retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
+                )
+            }
     }
 
     /** A ready consumer that still errors invalidates that cache generation for every row. */

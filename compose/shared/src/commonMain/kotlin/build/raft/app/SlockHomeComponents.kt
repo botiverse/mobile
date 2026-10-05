@@ -5250,7 +5250,8 @@ internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                     cacheSubject = SlockAvatarCacheSubject.Server(server.id),
                     cacheServerId = server.id,
                     serverDiagnosticsId = server.id,
-                    fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel) }
+                    fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel) },
+                    placeholder = { ServerAvatarFallbackLabel(presentation.fallbackLabel) }
                 )
             }
         }
@@ -6485,7 +6486,10 @@ internal fun SlockAvatarHttpImage(
     fallback: @Composable () -> Unit = {},
     serverDiagnosticsId: String? = null,
     // "visible" or "prewarm" in server avatar logs, so a stuck flight can be traced to its owner.
-    diagnosticsRole: String = "visible"
+    diagnosticsRole: String = "visible",
+    // Shown until the image has actually loaded, so a slow or withheld load shows a placeholder
+    // (the server tile passes its initial) instead of the bare tile background.
+    placeholder: @Composable () -> Unit = {}
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -6661,15 +6665,29 @@ internal fun SlockAvatarHttpImage(
             candidateImageModel = candidateImageModel,
             loadState = loadState,
             ownsCurrentRequest = ownsCurrentRequest
-        ) ?: return
+        )
+    if (imageModel == null) {
+        if (!slockAvatarHttpShowsFallback(loadState)) placeholder()
+        return
+    }
     val painter = rememberAsyncImagePainter(model = imageModel)
     val imageState by painter.state.collectAsState()
+    if (imageState !is AsyncImagePainter.State.Success && !slockAvatarHttpShowsFallback(loadState)) {
+        placeholder()
+    }
     LaunchedEffect(imageState, imageModel, loadState.generation, lease?.ownerToken) {
         val phase = imageState.toSlockAvatarHttpPainterPhase()
         if (ownsCurrentRequest) {
             lease?.let { currentLease ->
                 slockAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase)
             }
+        } else if (loadState.cache == SlockAvatarHttpCacheState.InFlight) {
+            slockAvatarHttpLoadCoordinator.reportObserverPhase(
+                loadKey,
+                loadState.generation,
+                loadState.endpoint,
+                phase
+            )
         } else if (phase == SlockAvatarHttpPainterPhase.Error) {
             slockAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation)
         }
@@ -6704,8 +6722,23 @@ internal fun slockAvatarHttpAdmittedImageModel(
     ownsCurrentRequest: Boolean
 ): String? {
     if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) return candidateImageModel
-    return candidateImageModel.takeIf { slockAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest) }
+    return candidateImageModel.takeIf { slockAvatarHttpRenderIsAdmitted(loadState, ownsCurrentRequest) }
 }
+
+/**
+ * Which rows may render the shared URL. Every row renders an in-flight or ready generation and
+ * reports its own result (see SlockAvatarHttpLoadCoordinator.reportObserverPhase); only Idle and
+ * Cooldown withhold it. Rendering used to be owner-only, which tied every row to the owner being
+ * drawn: a composed-but-undrawn owner left all other rows blank (HarmonyOS 1.13.0 black server
+ * avatars). The durable refresh below keeps the owner-only gate so it still downloads once.
+ */
+internal fun slockAvatarHttpRenderIsAdmitted(
+    loadState: SlockAvatarHttpLoadSnapshot,
+    ownsCurrentRequest: Boolean
+): Boolean =
+    ownsCurrentRequest ||
+        loadState.cache == SlockAvatarHttpCacheState.Ready ||
+        loadState.cache == SlockAvatarHttpCacheState.InFlight
 
 /**
  * Durable mounted bytes may bypass this gate for rendering only. Any refresh or ordinary URL load
