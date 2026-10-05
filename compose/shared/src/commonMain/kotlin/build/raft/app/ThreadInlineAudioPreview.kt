@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,10 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.Slider
+import com.tencent.kuikly.compose.material3.SliderDefaults
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
@@ -31,7 +36,6 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
 
 internal enum class ThreadInlineAudioPreviewStatus {
     Loading,
@@ -258,26 +262,31 @@ private fun ThreadInlineAudioSurface(
         }
         renderMode == ThreadInlineAudioRenderMode.Ready -> {
             val source = previewState?.url.orEmpty()
-            var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
-            var playState by remember(source) { mutableStateOf(PlayState.NONE) }
-            var currentTimeMs by remember(source) { mutableStateOf(0) }
-            var totalTimeMs by remember(source) { mutableStateOf(0) }
+            var playback by remember(source) { mutableStateOf(ThreadInlineAudioPlayback()) }
+            var scrubTimeMs by remember(source) { mutableStateOf<Float?>(null) }
+            val playState = playback.state
+            val currentTimeMs = scrubTimeMs?.toInt() ?: playback.currentTimeMs
+            val totalTimeMs = playback.totalTimeMs
             val isPlaying = playState == PlayState.PLAYING
             val canPlay = source.isNotBlank()
+            val playerGeneration = playback.generation
 
-            Box(modifier = Modifier.size(1.dp).alpha(0f)) {
-                SlockFilePreviewKuiklyVideo(
-                    source = source,
-                    playControl = playControl,
-                    seekRequest = null,
-                    onPlayStateChanged = { playState = it },
-                    onPlayTimeChanged = { current, total ->
-                        currentTimeMs = current
-                        totalTimeMs = total
-                    },
-                    onFirstFrame = {},
-                    modifier = Modifier.fillMaxSize()
-                )
+            key(source, playerGeneration) {
+                Box(modifier = Modifier.size(1.dp).alpha(0f)) {
+                    SlockFilePreviewKuiklyVideo(
+                        source = source,
+                        playControl = playback.control,
+                        seekRequest = playback.seekRequest,
+                        onPlayStateChanged = {
+                            playback = playback.withState(playerGeneration, it)
+                        },
+                        onPlayTimeChanged = { current, total ->
+                            playback = playback.withTime(playerGeneration, current, total)
+                        },
+                        onFirstFrame = {},
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
 
             if (playState == PlayState.ERROR) {
@@ -330,12 +339,7 @@ private fun ThreadInlineAudioSurface(
                         SlockBrutalIconButton(
                             iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
                             onClick = {
-                                playControl =
-                                    if (isPlaying) {
-                                        VideoPlayControl.PAUSE
-                                    } else {
-                                        VideoPlayControl.PLAY
-                                    }
+                                playback = playback.toggle()
                             },
                             enabled = canPlay,
                             size = 32.dp,
@@ -351,27 +355,25 @@ private fun ThreadInlineAudioSurface(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    val progressFraction =
-                        if (totalTimeMs > 0) {
-                            (currentTimeMs.toFloat() / totalTimeMs.toFloat()).coerceIn(0f, 1f)
-                        } else {
-                            0f
-                        }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .background(SlockColor.EmptyStateGray)
-                    ) {
-                        if (progressFraction > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progressFraction)
-                                    .height(4.dp)
-                                    .background(SlockColor.TextBlack)
-                            )
-                        }
-                    }
+                    val positionLabel = stringResource(MR.strings.thread_audio_playback_position)
+                    Slider(
+                        value = currentTimeMs.toFloat().coerceIn(0f, totalTimeMs.coerceAtLeast(1).toFloat()),
+                        onValueChange = { scrubTimeMs = it },
+                        onValueChangeFinished = {
+                            scrubTimeMs?.let { playback = playback.seekTo(it.toInt()) }
+                            scrubTimeMs = null
+                        },
+                        valueRange = 0f..totalTimeMs.coerceAtLeast(1).toFloat(),
+                        enabled = canPlay && totalTimeMs > 0,
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            contentDescription = positionLabel
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = SlockColor.TextBlack,
+                            activeTrackColor = SlockColor.TextBlack,
+                            inactiveTrackColor = SlockColor.EmptyStateGray
+                        )
+                    )
                 }
             }
         }
