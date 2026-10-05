@@ -5325,7 +5325,8 @@ private fun ServerSwitcherAvatarPrewarmSurface(
                     modifier = Modifier.fillMaxSize(),
                     cacheSubject = SlockAvatarCacheSubject.Server(server.id),
                     cacheServerId = server.id,
-                    serverDiagnosticsId = server.id
+                    serverDiagnosticsId = server.id,
+                    diagnosticsRole = "prewarm"
                 )
             }
         }
@@ -6482,7 +6483,9 @@ internal fun SlockAvatarHttpImage(
     cacheSubject: SlockAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     fallback: @Composable () -> Unit = {},
-    serverDiagnosticsId: String? = null
+    serverDiagnosticsId: String? = null,
+    // "visible" or "prewarm" in server avatar logs, so a stuck flight can be traced to its owner.
+    diagnosticsRole: String = "visible"
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -6591,15 +6594,28 @@ internal fun SlockAvatarHttpImage(
     LaunchedEffect(loadKey, loadState.cache, loadState.ownerToken, loadState.retryAtMillis, loadState.generation) {
         val retryDelayMillis = slockAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
         if (retryDelayMillis > 0L) delay(retryDelayMillis)
-        if (
-            loadState.cache == SlockAvatarHttpCacheState.Idle ||
-            loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
-            // A flight whose owner left the viewport while other observers remain is orphaned
-            // (InFlight with a null ownerToken). Reachable here so a surviving/new row can adopt
-            // the in-flight generation instead of never re-acquiring the lease.
-            (loadState.cache == SlockAvatarHttpCacheState.InFlight && loadState.ownerToken == null)
-        ) {
-            lease = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey)
+        when (slockAvatarHttpAcquireAttempt(loadState, ownsCurrentRequest)) {
+            SlockAvatarHttpAcquireAttempt.Now ->
+                lease = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey)
+            SlockAvatarHttpAcquireAttempt.AfterStuckOwnerTimeout -> {
+                // Another row owns the flight. If it goes silent, tryAcquire adopts it after the
+                // stuck-owner timeout; keep checking until then. Any progress that changes the
+                // keys (ready, failure, new owner) cancels this loop.
+                while (true) {
+                    delay(slockAvatarHttpLoadCoordinator.stuckOwnerRecheckDelayMillis)
+                    val adopted = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey) ?: continue
+                    if (serverDiagnosticsId != null) {
+                        slockLogInfo(
+                            "SlockServerAvatar",
+                            "server_avatar_stuck_owner_adopted serverHash=${serverDiagnosticsId.slockAvatarDiagnosticsHash()} " +
+                                "role=${diagnosticsRole} generation=${adopted.generation}"
+                        )
+                    }
+                    lease = adopted
+                    break
+                }
+            }
+            SlockAvatarHttpAcquireAttempt.None -> Unit
         }
     }
 
@@ -6632,6 +6648,7 @@ internal fun SlockAvatarHttpImage(
         slockLogInfo(
             "SlockServerAvatar",
             "server_avatar_painter serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                "role=$diagnosticsRole " +
                 "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
                 "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
                 "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
