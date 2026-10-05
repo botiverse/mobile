@@ -3,7 +3,7 @@ type: fixed
 area: stability
 platforms:
   - ohos
-pull_request: pending
+pull_request: 2841
 rollout: full
 ---
 
