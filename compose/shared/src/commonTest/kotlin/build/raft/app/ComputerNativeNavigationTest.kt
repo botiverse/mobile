@@ -2,9 +2,16 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class ComputerNativeNavigationTest {
+    @Test fun liveSelectionEnablesNavigationWithoutBootstrapMetadataAndFailsClosedAfterClearOrMismatch() {
+        assertNotNull(computerNavigationForSelection("https://raft.build", "raft", "current", "current"))
+        assertNull(computerNavigationForSelection("https://raft.build", "raft", "current", null))
+        assertNull(computerNavigationForSelection("https://raft.build", "raft", "old", "current"))
+    }
+
     private fun navigation() = ComputerNativeNavigation("https://raft.build", "raft")
 
     @Test fun restoresComputerBeforeOpeningAgentExactlyOnce() {

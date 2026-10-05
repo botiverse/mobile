@@ -58,3 +58,11 @@ internal class ComputerNativeNavigation(private val webBaseUrl: String, private 
     private fun validId(value: String): Boolean =
         value.isNotEmpty() && value.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 }
+
+/** Bootstrap route metadata is deliberately not an input: current selection owns navigation. */
+internal fun computerNavigationForSelection(
+    webBaseUrl: String?, serverSlug: String?, sessionServerId: String?, selectedServerId: String?,
+): ComputerNativeNavigation? =
+    if (!webBaseUrl.isNullOrBlank() && !serverSlug.isNullOrBlank() &&
+        !sessionServerId.isNullOrBlank() && sessionServerId == selectedServerId
+    ) ComputerNativeNavigation(webBaseUrl, serverSlug) else null

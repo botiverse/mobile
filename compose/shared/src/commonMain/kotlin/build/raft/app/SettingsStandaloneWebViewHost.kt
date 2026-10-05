@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -427,13 +428,14 @@ private fun StandaloneSettingsWebViewBody(
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     val navigationScope = rememberCoroutineScope()
     val session = authSnapshot.session
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
+    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
     val serverId = session?.currentServerId
     val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
-    val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope) {
-        if (spec.surface == SettingsWebViewSurface.Computers &&
-            !serverId.isNullOrBlank() && !serverSlug.isNullOrBlank() &&
-            storeScope.initialServerId == serverId && !webBaseUrl.isNullOrBlank()
-        ) ComputerNativeNavigation(webBaseUrl, serverSlug) else null
+    val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope, selectedServerId) {
+        if (spec.surface == SettingsWebViewSurface.Computers) {
+            computerNavigationForSelection(webBaseUrl, serverSlug, serverId, selectedServerId)
+        } else null
     }
     LaunchedEffect(spec.surface, spec) {
         // Computers opens two distinct pages (list vs machine detail) that share one
@@ -456,14 +458,15 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
-            when (val action = computerNavigation?.accept(url)) {
+            when (val action = computerNavigation?.takeIf { selectedServerStore.isSelected(serverId) }?.accept(url)) {
                 is ComputerNavigationAction.RestoreComputer -> {
+                    bridge.log("computer_native_restore ticket=${action.ticket}")
                     controller.goBack()
                     navigationScope.launch {
                         delay(1000)
                         // replaceState and missing history need an explicit return location.
                         // Check session authority again after the asynchronous wait.
-                        if (authStore.readSession() == session) {
+                        if (authStore.readSession() == session && selectedServerStore.isSelected(serverId)) {
                             computerNavigation?.fallbackUrl(action.ticket)?.let { returnUrl ->
                                 controller.evaluateJavaScript(
                                     "window.location.replace(" + Json.encodeToString(returnUrl) + ");"
@@ -474,6 +477,7 @@ private fun StandaloneSettingsWebViewBody(
                 }
                 is ComputerNavigationAction.Open -> {
                     val target = action.target
+                    bridge.log("computer_native_open kind=${target.kind}")
                     val pageData = if (target.kind == "agent") {
                         KuiklyMembersPayload(instanceId = "computer-agent").toMemberDetailPageData(
                             MemberDetailIdentity(
@@ -522,7 +526,6 @@ internal fun StandaloneSettingsWebViewContent(
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     accessTokenSyncLogger: (String) -> Unit = {},
 ) {
-    val navigationScope = rememberCoroutineScope()
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
     val webUrl =
