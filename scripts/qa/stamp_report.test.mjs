@@ -18,7 +18,7 @@ test("review agent fails closed on an invalid frozen timeout before any network 
     STAMP_TOKEN: "token-x",
     MINIMAX_API_KEY: "key-x",
     PI_PROVIDER: "minimax",
-    PI_MODEL: "MiniMax-M3",
+    PI_MODEL: "MiniMax-M3.1-Flash-Preview",
   };
   const spawnAgent = (overrides, name) =>
     execFileSync(process.execPath, [agentPath], {
@@ -457,7 +457,7 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   // Single-execution freeze: only the freeze job reads mutable repo vars;
   // reviewers and the verify gate consume the frozen outputs.
   assert.match(panel, /PANEL_PROVIDER: \$\{\{ vars\.PI_REVIEW_PROVIDER \|\| 'minimax' \}\}/);
-  assert.match(panel, /PANEL_MODEL: \$\{\{ vars\.PI_REVIEW_MODEL \|\| 'MiniMax-M3' \}\}/);
+  assert.match(panel, /PANEL_MODEL: \$\{\{ vars\.PI_REVIEW_MODEL \|\| 'MiniMax-M3.1-Flash-Preview' \}\}/);
   assert.match(panel, /PANEL_TIMEOUT_MS: \$\{\{ vars\.PI_REVIEW_TIMEOUT_MS \|\| '600000' \}\}/);
   assert.match(panel, /PI_PROVIDER: \$\{\{ needs\.freeze\.outputs\.provider \}\}/);
   assert.match(panel, /PI_MODEL: \$\{\{ needs\.freeze\.outputs\.model \}\}/);
@@ -489,7 +489,7 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   const diagnosis = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
   assert.match(diagnosis, /@earendil-works\/pi-ai@0\.81\.1/);
   assert.match(diagnosis, /PI_PROVIDER:.*minimax/);
-  assert.match(diagnosis, /PI_MODEL:.*MiniMax-M3/);
+  assert.match(diagnosis, /PI_MODEL:.*MiniMax-M3.1-Flash-Preview/);
   assert.match(diagnosis, /MINIMAX_API_KEY: \$\{\{ secrets\.PI_API_KEY \}\}/);
   assert.match(diagnosis, /QWEN_TOKEN_PLAN_CN_API_KEY/);
 });

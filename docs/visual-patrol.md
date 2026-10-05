@@ -53,7 +53,7 @@ separate switch. Per-run cap + skip logging prevent flooding even when live.
 
 The nightly AI analysis can over-report, so a filed issue is not yet trusted. Right after
 filing, the `verify` job re-judges each open, not-yet-`verified` drift issue with an
-**independent 3× MiniMax-M3 adversarial panel**: *is this a real cross-platform problem
+**independent 3× MiniMax-M3.1-Flash-Preview adversarial panel**: *is this a real cross-platform problem
 worth fixing, or a false positive / capture artifact / fixture-data / intentional
 difference?* Consensus decides:
 

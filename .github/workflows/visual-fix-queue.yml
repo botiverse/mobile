@@ -101,7 +101,7 @@ jobs:
           MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
           # Heterogeneous review panel: two M3 votes plus one Qwen vote so a
           # same-model blind spot cannot reach the 2/3 consensus alone.
-          PI_PANEL_MODELS: minimax/MiniMax-M3,minimax/MiniMax-M3,qwen-token-plan-cn/qwen3.8-max-preview
+          PI_PANEL_MODELS: minimax/MiniMax-M3.1-Flash-Preview,minimax/MiniMax-M3.1-Flash-Preview,qwen-token-plan-cn/qwen3.8-max-preview
           PI_API_KEY_QWEN_TOKEN_PLAN_CN: ${{ secrets.QWEN_TOKEN_PLAN_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
         run: |

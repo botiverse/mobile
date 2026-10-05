@@ -28,7 +28,7 @@ The nightly `Visual Testing` run publishes captures first, then a separate
 `ai-analysis` job (cancellable, generation-guarded) analyzes every changed
 pair and republishes under the same run id. Contracts:
 
-- Model: the `PI_API_KEY` / `PI_MODEL` gateway (currently MiniMax-M3). Input =
+- Model: the `PI_API_KEY` / `PI_MODEL` gateway (currently MiniMax-M3.1-Flash-Preview). Input =
   the pair's side-by-side PNG + case metadata + declared divergences; output =
   a JSON analysis per case-pair (`severity`, `summary[]`, `likelyCauses[]`,
   `suggestedFixes[]`, `suggestedOwner`) stored in the published site payload
@@ -254,3 +254,23 @@ registry-dodging.
 **Merge**: only after verification PASS + 3-column evidence embedded in the PR
 body + owner (artin) approval. Interactive batches may merge on his explicit
 nod; nightly batches stay open for morning review.
+
+### MiniMax preview compatibility
+
+The QA and patrol agents default to `MiniMax-M3.1-Flash-Preview`. The pinned
+pi-ai SDK catalogs (0.80.10 / 0.81.1) do not yet list this ID, so
+`scripts/qa/pi_model.mjs` supplies it using the same provider transport and
+conservative output limit as M3. The request always sends the preview ID; it
+does not fall back to an M3 invocation. Existing registered models and explicit
+provider/model overrides remain supported.
+
+[MiniMax's invocation contract](https://platform.minimax.io/docs/guides/text-generation)
+specifies the same Anthropic endpoint and mandatory thinking for the preview.
+The adapter preserves text/image input and avoids disabling thinking. The
+preview has no published per-token rate in the catalog: adapter cost fields
+are zero placeholders, **not a free-service claim**; token counts remain real.
+Account access requires M Plan/Code. A local SDK payload check proves request
+construction only, not account entitlement or a successful live model call.
+
+Repository variables `PI_MODEL` / `PI_REVIEW_MODEL` override workflow defaults;
+remove or update an old explicit M3 value when enabling the new default in CI.

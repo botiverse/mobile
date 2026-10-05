@@ -29,7 +29,7 @@ jobs:
         id: freeze
         env:
           PANEL_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
-          PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
+          PANEL_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3.1-Flash-Preview' }}
           PANEL_TIMEOUT_MS: ${{ vars.PI_REVIEW_TIMEOUT_MS || '600000' }}
         run: |
           # Frozen values become GITHUB_OUTPUT lines consumed as the single

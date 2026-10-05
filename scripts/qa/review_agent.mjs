@@ -4,6 +4,7 @@
 // verdict, reason, annotated screenshots, session transcript, and action log.
 // Each invocation has a fresh model context and posts exactly one panel vote.
 
+import { resolvePiModel } from "./pi_model.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -25,7 +26,7 @@ const keyOrder = providerName.startsWith("qwen")
   ? ["QWEN_TOKEN_PLAN_CN_API_KEY", "PI_API_KEY"]
   : ["MINIMAX_API_KEY", "PI_API_KEY"];
 const piKey = keyOrder.map((name) => process.env[name] || "").find(Boolean) || "";
-const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
+const modelName = String(process.env.PI_MODEL || "MiniMax-M3.1-Flash-Preview");
 // Panel run 30102844933: three opaque 600s waits, 0/3 votes. Keep the budget
 // but expose it as a dispatch-time knob so capacity incidents tune it without
 // a code change. The workflow freezes the value once per execution; anything
@@ -309,7 +310,7 @@ async function main() {
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
-  const model = models.getModel(providerName, modelName);
+  const model = resolvePiModel(models, providerName, modelName);
   let response;
   let text = "";
   let vote;
