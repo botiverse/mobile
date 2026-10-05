@@ -22,6 +22,7 @@
 //   node scripts/qa/acceptance_agent.mjs --goal "<acceptance goal>" [--out qa-evidence]
 //     [--max-turns 30] [--max-minutes 20] [--device <serial>]
 
+import { resolvePiModel } from "./pi_model.mjs";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -597,7 +598,8 @@ async function main() {
   const deadline = started + opts.maxMinutes * 60000;
 
   const models = await loadModels();
-  const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
+  const modelName = String(process.env.PI_MODEL || "MiniMax-M3.1-Flash-Preview");
+  const model = resolvePiModel(models, String(process.env.PI_PROVIDER || "minimax"), modelName);
   const size = screenSize();
   const actionLedger = new Map();
   const observationLedger = new Map();
@@ -944,7 +946,7 @@ async function main() {
 
   const result = {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
-    durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
+    durationMs: Date.now() - started, model: modelName, screen: size,
     execution_diagnosis: executionDiagnosis,
     // goal_completed here means the loop ended on its own terms, NOT that the goal
     // passed — read `verdict` for that. It only rules out budget/fuse truncation.
@@ -960,7 +962,7 @@ async function main() {
       annotatedFiles: annotated,
     },
   };
-  fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: "MiniMax-M3", perCall: usageDetail }, null, 2));
+  fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: modelName, perCall: usageDetail }, null, 2));
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
   stampCheckpoint(turns, "auto:verdict", `${verdict}: ${reason}`);
   await Promise.allSettled(stampPending);

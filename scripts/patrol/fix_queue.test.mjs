@@ -144,9 +144,9 @@ test("oversized files excerpt around the anchored definition, not the head", () 
 test("panel spec defaults to the primary model for every voter", () => {
   const spec = resolvePanelSpec(3, {});
   assert.deepEqual(spec.map((entry) => entry.label), [
-    "minimax/MiniMax-M3",
-    "minimax/MiniMax-M3",
-    "minimax/MiniMax-M3",
+    "minimax/MiniMax-M3.1-Flash-Preview",
+    "minimax/MiniMax-M3.1-Flash-Preview",
+    "minimax/MiniMax-M3.1-Flash-Preview",
   ]);
   assert.deepEqual(spec.map((entry) => entry.maxTokens), [2_048, 2_048, 2_048]);
   assert.deepEqual(spec.map((entry) => entry.reasoningEffort), [null, null, null]);
@@ -154,11 +154,11 @@ test("panel spec defaults to the primary model for every voter", () => {
 
 test("heterogeneous panel spec parses per-voter models and thinking-endpoint quirks", () => {
   const spec = resolvePanelSpec(3, {
-    PI_PANEL_MODELS: "minimax/MiniMax-M3, minimax/MiniMax-M3, qwen-token-plan-cn/qwen3.8-max-preview",
+    PI_PANEL_MODELS: "minimax/MiniMax-M3.1-Flash-Preview, minimax/MiniMax-M3.1-Flash-Preview, qwen-token-plan-cn/qwen3.8-max-preview",
   });
   assert.deepEqual(spec.map((entry) => entry.label), [
-    "minimax/MiniMax-M3",
-    "minimax/MiniMax-M3",
+    "minimax/MiniMax-M3.1-Flash-Preview",
+    "minimax/MiniMax-M3.1-Flash-Preview",
     "qwen-token-plan-cn/qwen3.8-max-preview",
   ]);
   // qwen token-plan mandates enable_thinking=true and reasoning shares the
@@ -170,7 +170,7 @@ test("heterogeneous panel spec parses per-voter models and thinking-endpoint qui
 });
 
 test("panel spec fails closed on wrong count or malformed entries", () => {
-  assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax/MiniMax-M3" }), /exactly 3 voters/);
+  assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax/MiniMax-M3.1-Flash-Preview" }), /exactly 3 voters/);
   assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax,minimax/M3,qwen/x" }), /provider\/model/);
   assert.throws(() => resolvePanelSpec(3, { PI_PANEL_MODELS: "minimax/,a/b,c/d" }), /provider\/model/);
 });
@@ -195,7 +195,7 @@ test("UNREFUTED handoff is explicit about targeted evidence, draft PR, and no au
     mobileSha: "mobile",
     slockSha: "slock",
     analysisGeneratedAt: "now",
-    model: "minimax/MiniMax-M3",
+    model: "minimax/MiniMax-M3.1-Flash-Preview",
     reservedTokens: 75_000,
   });
   assert.match(comment, /targeted `Visual Testing`/);
@@ -216,7 +216,7 @@ test("REFUTED comment preserves the precise flaw and forbids applying the patch"
     mobileSha: "mobile",
     slockSha: "slock",
     analysisGeneratedAt: "now",
-    model: "minimax/MiniMax-M3",
+    model: "minimax/MiniMax-M3.1-Flash-Preview",
     reservedTokens: 75_000,
   });
   assert.match(comment, /Do not apply/);

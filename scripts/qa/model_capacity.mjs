@@ -227,7 +227,7 @@ export function capacityClientFromEnv({ outDir, onEvent } = {}) {
   return new StampModelCapacityClient({
     stampUrl, stampToken, runCaseId, claimToken, ciJobRef,
     provider: process.env.PI_PROVIDER || "minimax",
-    model: process.env.PI_MODEL || "MiniMax-M3",
+    model: process.env.PI_MODEL || "MiniMax-M3.1-Flash-Preview",
     outDir: outDir || "qa-evidence", onEvent,
     queueTimeoutMs: Number(process.env.QA_MODEL_QUEUE_TIMEOUT_MS || "900000"),
     releaseAttempts: Number(process.env.QA_MODEL_RELEASE_ATTEMPTS || "3"),

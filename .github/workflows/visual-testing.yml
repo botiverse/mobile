@@ -992,7 +992,7 @@ jobs:
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
           # pi SDK credential (provider minimax, model $PI_MODEL, default
-          # MiniMax-M3). Absent -> skip with a notice, never fail the run.
+          # MiniMax-M3.1-Flash-Preview). Absent -> skip with a notice, never fail the run.
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           PI_MODEL: ${{ vars.PI_MODEL }}
           RUN_ID: ${{ needs.report.outputs.run_id }}

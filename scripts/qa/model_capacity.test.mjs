@@ -14,7 +14,7 @@ import {
 test("429/2062 is concurrency_or_rpm while explicit exhaustion stays distinct", () => {
   const limited = classifyModelError({
     status: 429,
-    message: "MiniMax-M3 Token Plan rate limit reached (2062)",
+    message: "MiniMax-M3.1-Flash-Preview Token Plan rate limit reached (2062)",
     headers: { "retry-after": "7", "x-request-id": "req-rate" },
   });
   assert.equal(limited.classification, "concurrency_or_rpm");
@@ -139,7 +139,7 @@ test("client records queued/active facts, waits, acquires, and releases", async 
   const client = new StampModelCapacityClient({
     stampUrl: "https://stamp.example", stampToken: "deploy-token", runCaseId: "rc-1",
     claimToken: "claim-token", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/1",
-    provider: "minimax", model: "MiniMax-M3", outDir,
+    provider: "minimax", model: "MiniMax-M3.1-Flash-Preview", outDir,
     fetchImpl: async (url, init) => { calls.push({ url, init }); return responses.shift(); },
     sleepImpl: async (ms) => { sleeps.push(ms); }, queueTimeoutMs: 60_000,
   });
@@ -165,7 +165,7 @@ test("queue timeout cancels its durable waiter", async () => {
   const client = new StampModelCapacityClient({
     stampUrl: "https://stamp.example", stampToken: "deploy-token", runCaseId: "rc-timeout",
     claimToken: "claim-token", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/2",
-    provider: "minimax", model: "MiniMax-M3", outDir, queueTimeoutMs: -1,
+    provider: "minimax", model: "MiniMax-M3.1-Flash-Preview", outDir, queueTimeoutMs: -1,
     fetchImpl: async (url) => {
       calls.push(url);
       return new Response(JSON.stringify({ ok: true, cancelled: true, active: 3, queued: 0, limit: 3 }), {
@@ -187,7 +187,7 @@ test("release retries response loss idempotently and confirms before returning",
   const client = new StampModelCapacityClient({
     stampUrl: "https://stamp.example", stampToken: "deploy-token", runCaseId: "rc-release",
     claimToken: "claim-token", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/3",
-    provider: "minimax", model: "MiniMax-M3", outDir,
+    provider: "minimax", model: "MiniMax-M3.1-Flash-Preview", outDir,
     fetchImpl: async () => {
       call++;
       if (call === 1) return new Response("{}", { status: 500, headers: { "content-type": "application/json" } });
@@ -215,7 +215,7 @@ test("independent diagnosis reuses shared capacity client without executor claim
   const client = new StampModelCapacityClient({
     stampUrl: "https://stamp.example", stampToken: "review-token", runCaseId: "rc-review",
     claimToken: "", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/4",
-    provider: "minimax", model: "MiniMax-M3", outDir,
+    provider: "minimax", model: "MiniMax-M3.1-Flash-Preview", outDir,
     capacityPath: "/api/diagnoses/rc-review/model-capacity",
     fetchImpl: async (url, init) => { calls.push({ url, init }); return responses.shift(); },
   });
@@ -230,7 +230,7 @@ test("workflow wires provider retry budget and uploads capacity evidence", () =>
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
   const reporter = fs.readFileSync(path.resolve("scripts/qa/stamp_report.sh"), "utf8");
   assert.match(workflow, /PI_PROVIDER: \$\{\{ vars\.PI_PROVIDER \|\| 'minimax' \}\}/);
-  assert.match(workflow, /PI_MODEL: \$\{\{ vars\.PI_MODEL \|\| 'MiniMax-M3' \}\}/);
+  assert.match(workflow, /PI_MODEL: \$\{\{ vars\.PI_MODEL \|\| 'MiniMax-M3.1-Flash-Preview' \}\}/);
   assert.match(workflow, /QA_MODEL_MAX_ATTEMPTS:/);
   assert.match(workflow, /QA_MODEL_RETRY_BUDGET_MS:/);
   assert.match(workflow, /QA_MODEL_RELEASE_ATTEMPTS:/);

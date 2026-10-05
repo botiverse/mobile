@@ -5,11 +5,12 @@
 // bounded batch of open+verified+unassigned issues, derives React truth, asks M3
 // for a minimal Android patch, and submits that patch to three fresh adversarial
 // reviewers. The review panel may be heterogeneous (PI_PANEL_MODELS, e.g.
-// 2x MiniMax-M3 + 1x qwen3.8-max-preview) so a same-model blind spot cannot
+// 2x MiniMax-M3.1-Flash-Preview + 1x qwen3.8-max-preview) so a same-model blind spot cannot
 // carry a 2/3 consensus alone. REFUTED issues receive the concrete flaw.
 // UNREFUTED issues receive an agent-ready handoff for targeted capture,
 // visual_verify, and a draft PR.
 
+import { resolvePiModel } from "../qa/pi_model.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -550,7 +551,7 @@ function reviewPrompt(candidate, truth, patchResult, voter) {
 export function resolvePanelSpec(voters, env = process.env) {
   const primary = {
     provider: String(env.PI_PROVIDER || "minimax"),
-    modelName: String(env.PI_MODEL || "MiniMax-M3"),
+    modelName: String(env.PI_MODEL || "MiniMax-M3.1-Flash-Preview"),
   };
   const raw = String(env.PI_PANEL_MODELS || "").trim();
   const entries = raw
@@ -708,13 +709,13 @@ async function main() {
   const selected = selectFixQueueIssues(issues, opts.caseCap, opts.tokenCap);
   const models = await loadModels();
   const provider = String(process.env.PI_PROVIDER || "minimax");
-  const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
-  const model = models.getModel(provider, modelName);
+  const modelName = String(process.env.PI_MODEL || "MiniMax-M3.1-Flash-Preview");
+  const model = resolvePiModel(models, provider, modelName);
   if (!model) throw new Error(`${provider}/${modelName} not found`);
   // Fail closed before claiming any issue: a panel voter with a missing model
   // or key must abort the run, not silently degrade to a smaller/same-model panel.
   const panel = resolvePanelSpec(opts.voters).map((entry) => {
-    const panelModel = models.getModel(entry.provider, entry.modelName);
+    const panelModel = resolvePiModel(models, entry.provider, entry.modelName);
     if (!panelModel) throw new Error(`panel model ${entry.label} not found`);
     const apiKey = panelApiKey(entry.provider);
     if (!apiKey) throw new Error(`no API key for panel provider ${entry.provider}; set PI_API_KEY_${entry.provider.toUpperCase().replace(/-/g, "_")}`);

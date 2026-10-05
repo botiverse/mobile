@@ -15,6 +15,7 @@
 //   node scripts/patrol/verify_issues.mjs [--repo botiverse/mobile] [--comparison react__android]
 //     [--voters 3] [--threshold 2] [--limit 60] [--live]
 
+import { resolvePiModel } from "../qa/pi_model.mjs";
 import { execFileSync } from "node:child_process";
 
 const argv = process.argv.slice(2);
@@ -114,7 +115,7 @@ async function main() {
   const byId = new Map(cases.map((c) => [c.id, c]));
   const issues = openDriftIssues();
   const models = await loadModels();
-  const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
+  const model = resolvePiModel(models, String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3.1-Flash-Preview"));
 
   const results = [];
   for (const iss of issues) {

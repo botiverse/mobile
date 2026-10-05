@@ -29,7 +29,7 @@ jobs:
           MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
           QWEN_TOKEN_PLAN_CN_API_KEY: ${{ secrets.QWEN_TOKEN_PLAN_CN_API_KEY }}
           PI_PROVIDER: ${{ vars.PI_REVIEW_PROVIDER || 'minimax' }}
-          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3' }}
+          PI_MODEL: ${{ vars.PI_REVIEW_MODEL || 'MiniMax-M3.1-Flash-Preview' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/agent-review/node_modules/@earendil-works/pi-ai/dist/providers/all.js
         run: |
           mkdir -p "$RUNNER_TEMP/agent-review"
