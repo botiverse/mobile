@@ -1625,7 +1625,7 @@ private fun SharedActivitySelectedRowSurface(
                 .background(SlockColor.SurfaceWhite)
                 .border(
                     SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else Color.Transparent
+                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
                 )
         )
     }
