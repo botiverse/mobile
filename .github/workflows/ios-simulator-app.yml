@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.source_sha || github.sha }}
+          ref: b0c357e4120846c81272fa2c6fca51f5d46b8ef4
 
       - name: Record actual product source
         shell: bash
@@ -131,16 +131,20 @@ jobs:
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
           archs="${ARCHS_INPUT:-arm64}"
           echo "ARCHS=$archs"
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
+            -configuration Release -destination "generic/platform=iOS Simulator" \
+            ARCHS="$archs" CODE_SIGNING_ALLOWED=NO -showBuildSettings \
+            > "$GITHUB_WORKSPACE/ios-release-build-settings.txt"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
-            -scheme iosAppUITests \
-            -configuration Debug \
+            -scheme iosApp \
+            -configuration Release \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build/DerivedData \
             ARCHS="$archs" \
             CODE_SIGNING_ALLOWED=NO \
-            build-for-testing > "$log" 2>&1
+            build > "$log" 2>&1
           status=$?
           tail -60 "$log"
           if [ "$status" -ne 0 ]; then
@@ -168,7 +172,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ios-simulator-app-build-log-${{ github.run_id }}
-          path: xcodebuild-ios.log
+          path: |
+            xcodebuild-ios.log
+            ios-release-build-settings.txt
           if-no-files-found: ignore
           retention-days: 7
 
@@ -184,9 +190,11 @@ jobs:
           set -euo pipefail
           staging="$RUNNER_TEMP/ios-simulator-app"
           bash scripts/qa/export_ios_simulator_app.sh \
-            "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
+            "compose/iosApp/build/DerivedData/Build/Products/Release-iphonesimulator" \
             "$staging" "$RAFT_GIT_COMMIT" "$GITHUB_RUN_ID"
           {
+            echo "configuration=Release"
+            echo "sdk=iphonesimulator"
             echo "source_commit=$RAFT_GIT_COMMIT"
             echo "workflow_commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF_NAME"
