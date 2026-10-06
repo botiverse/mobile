@@ -293,6 +293,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   private setupKnoi(): void {
+    Napi.installKnoiAsyncLog();
     initializeSlockOhosAppScopeMMKV(this.context);
     setup('libshared.so', BuildProfile.DEBUG);
     init();

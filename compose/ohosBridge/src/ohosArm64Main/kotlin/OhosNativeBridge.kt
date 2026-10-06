@@ -12,3 +12,6 @@ fun raftInitKuikly(): Int = initKuikly()
 /** Process-level lifecycle signal; page and UIAbility visibility must never call this directly. */
 fun raftUpdateProcessNetworkVisibility(foreground: Boolean): Int =
     updateSlockProcessNetworkVisibility(foreground)
+
+/** Install before the host enters any KNOI initialization. */
+fun raftInstallKnoiAsyncLog(): Int = build.raft.app.installSlockKnoiAsyncLog()
