@@ -738,7 +738,10 @@ private fun SlockNavigationRailTabItem(
                 modifier = Modifier
                     .matchParentSize()
                     .background(if (selected) SlockColor.SurfaceWhite else Color.Transparent)
-                    .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier),
+                    // Keep the border modifier on every state and change only its color. Dropping
+                    // it on deselect left the native border in place, so every rail button tapped
+                    // before kept an outline (artin, 1.13.0 large screen, Android and HarmonyOS).
+                    .border(SlockStroke.Default, if (selected) SlockColor.BorderBlack else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(
@@ -836,7 +839,8 @@ private fun SlockVerticalTabItem(
                 .fillMaxWidth()
                 .height(34.dp)
                 .background(if (selected) SlockColor.AccentPink else Color.Transparent)
-                .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
+                // Same as the rail item: a removed border modifier does not clear the native border.
+                .border(SlockStroke.Default, if (selected) SlockColor.BorderBlack else Color.Transparent)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
                 .padding(start = itemStartPadding, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
