@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: b0c357e4120846c81272fa2c6fca51f5d46b8ef4
+          ref: 528563ca1af9b7e4b8c18354057104acd5458d77
 
       - name: Record actual product source
         shell: bash
