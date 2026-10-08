@@ -12682,15 +12682,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         } else {
             base.composer
         }
-    val taskChannelKind =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-            parentChannelKind
-        } else {
-            channelKind
-        }
-    val supportsChannelTasks =
-        conversation.permissions.canCreateTask &&
-            !taskChannelKind.equals(JointChannelKindWireValue, ignoreCase = true)
+    // Joint channels have task surfaces like any channel (server task surface mapping).
+    val supportsChannelTasks = conversation.permissions.canCreateTask
     val resolvedCapabilityComposer =
         resolvedComposer.copy(
             showAsTaskToggle = resolvedComposer.showAsTaskToggle && supportsChannelTasks

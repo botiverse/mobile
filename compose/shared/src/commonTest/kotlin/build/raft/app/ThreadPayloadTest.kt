@@ -3787,13 +3787,13 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun sharedShellJointChannelRouteDisablesTaskSurfaces() {
-        val payload =
+    fun sharedShellJointChannelRouteHasRegularChannelTaskSurfaces() {
+        fun payloadFor(channelType: String) =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = ThreadId("joint-1"),
                     channelId = ChannelId("joint-1"),
-                    channelType = "joint",
+                    channelType = channelType,
                     kind = ConversationKind.Channel,
                     name = "partner",
                     subtitle = "Joint channel",
@@ -3802,19 +3802,25 @@ class ThreadPayloadTest {
                     permissions = ConversationPermissions(canSend = true, canCreateTask = true)
                 )
             )
+        val payload = payloadFor("joint")
+        val regular = payloadFor("channel")
 
+        // Joint task surfaces exist server-side; the client no longer hides them.
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals(false, payload.showTaskOpenActions)
-        assertEquals(false, payload.showTaskStatusActions)
-        assertEquals(false, payload.composer.showAsTaskToggle)
-        assertEquals(false, payload.resolveThreadComposer().showAsTaskToggle)
-        assertEquals(false, payload.supportsChannelTasks())
-        assertEquals(false, shouldStartThreadTasksJoin(payload.copy(status = "content"), null, ChannelId("joint-1")))
+        assertEquals(true, payload.supportsChannelTasks())
+        assertEquals(regular.showTaskOpenActions, payload.showTaskOpenActions)
+        assertEquals(regular.showTaskStatusActions, payload.showTaskStatusActions)
+        assertEquals(regular.composer.showAsTaskToggle, payload.composer.showAsTaskToggle)
+        assertEquals(regular.resolveThreadComposer().showAsTaskToggle, payload.resolveThreadComposer().showAsTaskToggle)
+        assertEquals(
+            shouldStartThreadTasksJoin(regular.copy(status = "content"), null, ChannelId("joint-1")),
+            shouldStartThreadTasksJoin(payload.copy(status = "content"), null, ChannelId("joint-1"))
+        )
     }
 
     @Test
-    fun sharedShellReplyThreadWithJointParentDisablesTaskSurfaces() {
-        val payload =
+    fun sharedShellReplyThreadWithJointParentHasRegularTaskSurfaces() {
+        fun payloadFor(parentKind: String) =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
                     threadId = threadIdentity(ChannelId("joint-1"), MessageId("message-1")),
@@ -3828,18 +3834,20 @@ class ThreadPayloadTest {
                             parentChannelId = ChannelId("joint-1"),
                             parentMessageId = MessageId("message-1"),
                             streamChannelId = ChannelId("thread-message-1"),
-                            parentChannelKind = "joint"
+                            parentChannelKind = parentKind
                         )
                 )
             )
+        val payload = payloadFor("joint")
+        val regular = payloadFor("channel")
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("joint", payload.parentChannelKind)
-        assertEquals(false, payload.showTaskOpenActions)
-        assertEquals(false, payload.showTaskStatusActions)
-        assertEquals(false, payload.composer.showAsTaskToggle)
-        assertEquals(false, payload.resolveThreadComposer().showAsTaskToggle)
-        assertEquals(false, payload.supportsChannelTasks())
+        assertEquals(true, payload.supportsChannelTasks())
+        assertEquals(regular.showTaskOpenActions, payload.showTaskOpenActions)
+        assertEquals(regular.showTaskStatusActions, payload.showTaskStatusActions)
+        assertEquals(regular.composer.showAsTaskToggle, payload.composer.showAsTaskToggle)
+        assertEquals(regular.resolveThreadComposer().showAsTaskToggle, payload.resolveThreadComposer().showAsTaskToggle)
     }
 
     @Test
@@ -4206,8 +4214,8 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun jointReplyThreadLaunchDisablesInitialTaskSurfaces() {
-        val initialPayload =
+    fun jointReplyThreadLaunchHasRegularInitialTaskSurfaces() {
+        fun launchFor(parentKind: String) =
             WireThreadLaunchPayload(
                 instanceId = "thread-route",
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4216,17 +4224,19 @@ class ThreadPayloadTest {
                 parentChannelId = "joint-1",
                 parentMessageId = "parent-message-1",
                 parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                parentChannelKind = "joint",
+                parentChannelKind = parentKind,
                 originParentMessageId = "parent-message-1"
             ).toInitialPayload("fallback")
+        val initialPayload = launchFor("joint")
+        val regular = launchFor("channel")
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals("joint", initialPayload.parentChannelKind)
-        assertEquals(false, initialPayload.showTaskOpenActions)
-        assertEquals(false, initialPayload.showTaskStatusActions)
-        assertEquals(false, initialPayload.composer.showAsTaskToggle)
-        assertEquals(false, initialPayload.resolveThreadComposer().showAsTaskToggle)
-        assertEquals(false, initialPayload.supportsChannelTasks())
+        assertEquals(regular.showTaskOpenActions, initialPayload.showTaskOpenActions)
+        assertEquals(regular.showTaskStatusActions, initialPayload.showTaskStatusActions)
+        assertEquals(regular.composer.showAsTaskToggle, initialPayload.composer.showAsTaskToggle)
+        assertEquals(regular.resolveThreadComposer().showAsTaskToggle, initialPayload.resolveThreadComposer().showAsTaskToggle)
+        assertEquals(regular.supportsChannelTasks(), initialPayload.supportsChannelTasks())
     }
 
     @Test
