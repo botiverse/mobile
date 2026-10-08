@@ -11,8 +11,12 @@ rollout: full
 
 ## zh-CN
 
-修复在任务很多的服务器上进入“动态”时界面卡住几秒的问题：刷新动态时给条目匹配任务状态的计算从随任务数平方增长改为线性，不再长时间占住动态数据。
+修复在任务较多的服务器上，打开或返回“动态”时界面会卡住几秒的问题。
 
 ## en
 
-Fixed the Activity tab freezing for several seconds on servers with many tasks. Matching task status to Activity rows now scales linearly with the number of tasks instead of quadratically, so a refresh no longer holds Activity data for seconds.
+Fixed the Activity tab freezing for a few seconds when opened or returned to on servers with many tasks.
+
+## ja
+
+タスクの多いサーバーで「アクティビティ」を開いたり戻ったりしたときに、画面が数秒止まる問題を修正しました。
