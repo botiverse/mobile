@@ -7,8 +7,9 @@
 # ("<pkg> has no access to content://media/external/downloads/N"). The one captured failure
 # (run 37855699822) overlapped MediaProvider's first-boot database creation/migration, which is
 # when the single CI run executes. Why the grant is not honoured there is still under
-# investigation. Before the test, block on a synchronous scan_volume of external_primary
-# (fallback: the logged boot scan); a readiness timeout fails the run. This narrows coverage of
+# investigation. Before the test, wait-media-provider-ready.sh requires an explicit readiness
+# signal (a verified scan_volume Result, else the logged boot scan) within a deadline; a
+# readiness timeout fails the run. This narrows coverage of
 # the boot phase on purpose; the cross-UID and byte assertions are unchanged and not retried.
 #
 # Usage: run-public-downloads-authority.sh <api-level> [repeat] [mode]
@@ -30,32 +31,17 @@ summary_file="attachment-public-downloads-api${api}-repeat-summary.txt"
 media_pkg="$(adb shell pm list packages 2>/dev/null | tr -d '\r' | sed -n 's/^package://p' | grep -E '^com\.(google\.)?android\.providers\.media\.module$' | head -n 1)"
 
 wait_for_boot() {
-  adb wait-for-device
+  timeout 300 adb wait-for-device || { echo "wait-for-device timeout" >&2; return 1; }
   for _ in $(seq 1 180); do
     [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && return 0
     sleep 1
   done
   echo "boot_completed timeout" >&2
+  return 1
 }
 
 wait_for_media_ready() {
-  local started=$SECONDS
-  # A synchronous scan call blocks until MediaProvider's databases are open (creation and
-  # migration done) and the volume scan has finished.
-  if adb shell content call --uri content://media --method scan_volume --arg external_primary >/dev/null 2>&1; then
-    echo "media_ready=scan_volume seconds=$((SECONDS - started))"
-    return 0
-  fi
-  # Fallback: wait for the boot scan of external_primary to be logged.
-  for _ in $(seq 1 120); do
-    if adb logcat -d -s MediaProvider 2>/dev/null | grep -q "Scanned external_primary"; then
-      echo "media_ready=logcat seconds=$((SECONDS - started))"
-      return 0
-    fi
-    sleep 1
-  done
-  echo "media_ready=timeout seconds=$((SECONDS - started))"
-  return 1
+  "$here/wait-media-provider-ready.sh"
 }
 
 : > "$summary_file"

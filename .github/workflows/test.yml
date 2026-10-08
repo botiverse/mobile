@@ -930,6 +930,7 @@ jobs:
         run: |
           scripts/ci/test_assert_instrumentation_ok.sh
           scripts/ci/test_instrumentation_retry_classification.sh
+          scripts/ci/test_wait_media_provider_ready.sh
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
