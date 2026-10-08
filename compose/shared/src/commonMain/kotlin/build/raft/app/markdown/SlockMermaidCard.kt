@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -63,6 +64,15 @@ internal fun slockMermaidZoomIn(scale: Float): Float =
 internal fun slockMermaidZoomOut(scale: Float): Float =
     (scale / SlockMermaidZoomFactor).coerceAtLeast(SlockMermaidMinScale)
 
+// Toolbar zoom is relative to the fitted preview, so narrow screens and rotations
+// recompute the base scale without resetting the user's zoom choice.
+internal fun slockMermaidInlineScale(diagramWidth: Float, availableWidth: Float, zoom: Float): Float {
+    if (!diagramWidth.isFinite() || diagramWidth <= 0f || !availableWidth.isFinite() || availableWidth <= 0f) {
+        return zoom
+    }
+    return (availableWidth / diagramWidth).coerceAtMost(1f) * zoom
+}
+
 private val SlockMermaidInlineMinHeight = 160.dp
 private val SlockMermaidToolbarButtonSize = 28.dp
 
@@ -74,6 +84,7 @@ private val SlockMermaidToolbarButtonSize = 28.dp
 @Composable
 internal fun SlockMermaidCard(
     code: String,
+    diagramWidth: Float,
     codeContent: @Composable () -> Unit,
     diagramContent: @Composable (scale: Float) -> Unit
 ) {
@@ -152,25 +163,28 @@ internal fun SlockMermaidCard(
         if (view == SlockMermaidView.Code) {
             codeContent()
         } else {
-            LazyRow(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = SlockMermaidInlineMinHeight)
-                        .clipToBounds()
-                        .padding(vertical = 16.dp)
-                        // Android's same-axis parent interception uses scrollWithParent,
-                        // separately from nested-scroll delta handoff. Keep both edges in
-                        // this diagram, while the vertical message list retains its axis.
-                        .setProp("scrollWithParent", 0)
-                        .nestedScroll(
-                            scrollUp = NestedScrollMode.SELF_ONLY,
-                            scrollDown = NestedScrollMode.SELF_ONLY
-                        ),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                item { diagramContent(scale) }
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                val fittedScale = slockMermaidInlineScale(diagramWidth, maxWidth.value, scale)
+                LazyRow(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = SlockMermaidInlineMinHeight)
+                            .clipToBounds()
+                            .padding(vertical = 16.dp)
+                            // Android's same-axis parent interception uses scrollWithParent,
+                            // separately from nested-scroll delta handoff. Keep both edges in
+                            // this diagram, while the vertical message list retains its axis.
+                            .setProp("scrollWithParent", 0)
+                            .nestedScroll(
+                                scrollUp = NestedScrollMode.SELF_ONLY,
+                                scrollDown = NestedScrollMode.SELF_ONLY
+                            ),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item { diagramContent(fittedScale) }
+                }
             }
         }
     }
