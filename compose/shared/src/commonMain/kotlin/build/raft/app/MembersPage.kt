@@ -10663,6 +10663,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         }
                     } else AdvancedRuntimeSection(
                         runtime = runtime,
+                        existingRuntimeId = stableInitialConfig.runtime,
                         onRuntimeChange = { nextRuntime ->
                             val nextModel =
                                 if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {

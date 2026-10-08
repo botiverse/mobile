@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeConversationRow
@@ -5866,6 +5867,7 @@ internal class SharedThreadStore(
         delay(ThreadInitialAccessLookupTimeoutMillis)
     },
 ) {
+    private val readStateProjection = ThreadReadStateProjection()
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
@@ -7926,6 +7928,9 @@ internal class SharedThreadStore(
         val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()
         val currentSession = dataSource.readSession()
         val currentUserId = currentSession?.user?.id
+        val readStateOwner = if (event is PerReceiverReadStateChanged) {
+            dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+        } else null
         val repliesPageIdentity = captureThreadRepliesPageIdentity(acceptedPayload)
         val decision =
             realtimeGapRecoveryMutex.withLock {
@@ -7945,6 +7950,21 @@ internal class SharedThreadStore(
                         messageCount = currentPayload.messages.size,
                         dropped = true,
                     )
+                }
+                if (event is PerReceiverReadStateChanged) {
+                    val sessionServerId = currentSession?.currentServerId
+                    val owner = visiblePayloadOwnerScopeId
+                    if (!sessionServerId.isNullOrBlank() && !currentUserId.isNullOrBlank() &&
+                        owner != null && owner == readStateOwner && (event.serverId == null || event.serverId.value == sessionServerId)) {
+                        readStateProjection.observe(currentPayload, owner, event.scopes)
+                        val emitted = reducePayloadPatch(cachePayload = true) { payload ->
+                            readStateProjection.project(payload, owner)
+                        }
+                        return@withLock RealtimeEventDecision(source = "read_state", emitted = emitted,
+                            messageCount = currentPayload.messages.size)
+                    }
+                    return@withLock RealtimeEventDecision(source = "read_state_identity_mismatch",
+                        messageCount = currentPayload.messages.size, dropped = true)
                 }
                 dataSource.seedRealtimeThreadAuthorProfiles(
                     serverId = currentSession?.currentServerId,
@@ -7966,6 +7986,7 @@ internal class SharedThreadStore(
                     }
                 }
                 if (event is ThreadUpdated) {
+                    readStateProjection.contentChanged(event.threadChannelId.value, event.latestReply?.seq)
                     currentPayload.cacheThreadId()?.let { factThreadId ->
                         dataSource.recordReplyCountRealtimeFact(
                             threadId = factThreadId,
@@ -9709,7 +9730,10 @@ internal class SharedThreadStore(
 
     private fun reduceState(nextState: SharedThreadState): Boolean {
         val previousState = _state.value
-        val synchronizedState = nextState.withSynchronizedTimelineSlice()
+        val projectedState = if (nextState.payload === previousState.payload) nextState else nextState.copy(
+            payload = readStateProjection.project(nextState.payload, visiblePayloadOwnerScopeId)
+        )
+        val synchronizedState = projectedState.withSynchronizedTimelineSlice()
         val emitted = synchronizedState != previousState
         if (!emitted) return false
         _state.value = synchronizedState
@@ -9724,7 +9748,7 @@ internal class SharedThreadStore(
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
         if (emitted && cachePayload) {
             dataSource.cachePayload(
-                nextPayload,
+                _state.value.payload,
                 ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
             )
         }
@@ -9782,7 +9806,7 @@ internal class SharedThreadStore(
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
         if (emitted && cachePayload) {
             dataSource.cachePayload(
-                nextPayload,
+                _state.value.payload,
                 ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
             )
         }

@@ -783,8 +783,8 @@ data class Heartbeat(val seq: Long) : RealtimeEvent
 /**
  * RFC 041 per-receiver read-state push (server PR #4175,
  * `routes/channels.ts::emitReadStateUpdated[Bulk]`). Identity-only per §2.3:
- * the payload carries the watermark (`maxReadSeq`) and its version, never
- * derived display state. The receiving member is implied by the user-room the
+ * the payload carries the watermark (`maxReadSeq`) and its version. Server
+ * PR #9113 additionally supplies an optional unread count for incomplete reply projections. The receiving member is implied by the user-room the
  * socket is joined to, so no memberId travels on the wire; `readStateVersion`
  * is per-(user, channel) — `user_channel_read_cursors.read_state_version`,
  * PK (user_id, channel_id) — so version gating must key on the scope, not the
@@ -794,7 +794,8 @@ data class Heartbeat(val seq: Long) : RealtimeEvent
 data class PerReceiverReadStateScope(
     val scopeId: ChannelId,
     val maxReadSeq: Long?,
-    val readStateVersion: Long
+    val readStateVersion: Long,
+    val unreadCount: Int? = null
 )
 
 @Serializable

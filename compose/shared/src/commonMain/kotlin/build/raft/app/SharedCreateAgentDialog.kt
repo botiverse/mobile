@@ -1256,6 +1256,7 @@ internal fun SharedCreateAgentDialog(
         !submitting &&
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
+        (external || runtime in supportedRuntimeIds) &&
         (external ||
             if (v2Active) {
                 v2Loaded != null && v2Errors.isEmpty()
@@ -1271,7 +1272,7 @@ internal fun SharedCreateAgentDialog(
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
         val machineId = selectedMachineId ?: return@LaunchedEffect
-        if (!external && selectedMachineRuntimeIds.isNotEmpty() && runtime !in selectedMachineRuntimeIds) {
+        if (!external && selectedMachineRuntimeIds.isNotEmpty() && (runtime !in selectedMachineRuntimeIds || runtime !in supportedRuntimeIds)) {
             resetRuntimeForMachine(machineId)
         }
     }
@@ -1948,7 +1949,6 @@ internal fun BuiltInRuntimeSection(
     val runtimeOptions = createAgentRuntimeDropdownItems(
         machineRuntimeIds = machineRuntimeIds,
         allowStaticFallback = false,
-        currentRuntimeId = runtime,
         comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
         notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
     )
@@ -2134,6 +2134,7 @@ internal fun AdvancedRuntimeSection(
     runtimeModelsLoading: Boolean = false,
     onRuntimeModelsRefresh: () -> Unit = {},
     retainUnavailableSelectedPreset: Boolean = false,
+    existingRuntimeId: String? = null,
     machineRuntimeIds: List<String> = emptyList(),
     runtimeAvailabilityError: String? = null,
     enabled: Boolean,
@@ -2176,7 +2177,7 @@ internal fun AdvancedRuntimeSection(
         createAgentRuntimeDropdownItems(
             machineRuntimeIds = machineRuntimeIds,
             allowStaticFallback = runtimeAvailabilityError == null,
-            currentRuntimeId = runtime,
+            currentRuntimeId = existingRuntimeId,
             comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
             notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
         )

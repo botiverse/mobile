@@ -619,6 +619,7 @@ private data class ReadStateUpdatedDto(
     val scopeId: String,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long,
+    val unreadCount: JsonElement? = null,
 )
 
 @Serializable
@@ -626,6 +627,7 @@ private data class ReadStateScopeWireDto(
     val scopeId: String,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long,
+    val unreadCount: JsonElement? = null,
 )
 
 @Serializable
@@ -1358,6 +1360,14 @@ private fun SyncResumeResponseDto.toDomainOrRecovery(diagnostics: (String) -> Un
     )
 }
 
+// Optional counts are hints; malformed counts must not discard a valid watermark.
+// Matches server emitReadStateUpdated[Bulk] at slock 2172d9b38 (PR #9113).
+private fun JsonElement?.readStateUnreadCountOrNull(): Int? {
+    val value = this as? JsonPrimitive ?: return null
+    if (value.isString) return null
+    return value.content.toIntOrNull()?.takeIf { it >= 0 }
+}
+
 private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
     val cleanMaxReadSeq = maxReadSeq?.takeIf { it >= 0L } ?: return null
@@ -1368,7 +1378,8 @@ private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
             PerReceiverReadStateScope(
                 scopeId = ChannelId(cleanScopeId),
                 maxReadSeq = cleanMaxReadSeq,
-                readStateVersion = readStateVersion
+                readStateVersion = readStateVersion,
+                unreadCount = unreadCount.readStateUnreadCountOrNull()
             )
         )
     )
@@ -1382,7 +1393,8 @@ private fun ReadStateUpdatedBulkDto.toDomain(): PerReceiverReadStateChanged? {
         PerReceiverReadStateScope(
             scopeId = ChannelId(cleanScopeId),
             maxReadSeq = cleanMaxReadSeq,
-            readStateVersion = scope.readStateVersion
+            readStateVersion = scope.readStateVersion,
+            unreadCount = scope.unreadCount.readStateUnreadCountOrNull()
         )
     }
     if (cleanScopes.isEmpty()) return null

@@ -185,6 +185,68 @@ private class ConcurrentTestLogBuffer {
 
 class SharedThreadStoreTest {
     @Test
+    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = runBlocking {
+        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
+            messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
+                replyCount = 8, unreadReplyCount = 4)))))
+        val dataSource = testSharedThreadDataSource(
+            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
+        val event = build.raft.app.model.PerReceiverReadStateChanged(ServerId("wrong-server"),
+            listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(event))
+        assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(event.copy(serverId = ServerId("server-1"))))
+        assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+        store.accept(SharedThreadIntent.Refresh)
+        assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+        fun contentEvent(seq: Long?) = ThreadUpdated(
+            parentMessageId = MessageId("m1"), threadChannelId = ChannelId("reply-channel"),
+            replyCount = 8, lastReplyAt = "2026-05-19T16:13:00Z", participantIds = emptyList(),
+            unreadCount = 4, firstUnreadMessageId = MessageId("reply-old"),
+            latestReply = seq?.let { ReplyPreview(messageId = "reply-$it", seq = it, content = "reply",
+                senderId = "u2", senderType = "human", senderName = "Peer", createdAt = "2026-05-19T16:13:00Z") })
+        for (seq in listOf(null, 9L, 10L)) {
+            store.accept(SharedThreadIntent.ApplyRealtimeEvent(contentEvent(seq)))
+            assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+            assertNull(store.state.value.payload.messages.single().firstUnreadReplyMessageId)
+        }
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(contentEvent(11).copy(unreadCount = 1,
+            firstUnreadMessageId = MessageId("reply-11"))))
+        assertEquals(1, store.state.value.payload.messages.single().unreadReplyCount)
+        store.clear()
+        scope.cancel()
+    }
+
+    @Test
+    fun receiverZeroReadEventClearsStaleJumpThroughStore() = runBlocking {
+        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
+            messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
+                replyCount = 8).copy(firstUnreadReplyMessageId = MessageId("reply-old"))))))
+        val dataSource = testSharedThreadDataSource(
+            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+        assertEquals("reply-old", store.state.value.payload.messages.single().firstUnreadReplyMessageId)
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(build.raft.app.model.PerReceiverReadStateChanged(
+            ServerId("server-1"), listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))))
+        assertNull(store.state.value.payload.messages.single().firstUnreadReplyMessageId)
+        store.clear()
+        scope.cancel()
+    }
+
+    @Test
     fun readOnlyReplyFallbackClassifiesEveryThreadMutationAsWriteAccess() {
         val threadMutations =
             listOf(

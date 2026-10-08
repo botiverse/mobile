@@ -62,7 +62,7 @@ class AgentRuntimeConfigTest {
             ),
             ids
         )
-        assertEquals(setOf("kimi", "gemini"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
+        assertEquals(setOf("kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
     }
 
     @Test
