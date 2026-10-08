@@ -6946,8 +6946,10 @@ internal fun MembersRestartResetDialog(
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 520.dp,
-        titleFontSize = 24,
-        titleLineHeight = 30,
+        // Web ResetAgentDialog is a ConfirmDialog: 18px title, text-sm option
+        // labels, text-xs descriptions. Match the sibling lifecycle confirm dialog.
+        titleFontSize = 18,
+        titleLineHeight = 22,
         titleMaxLines = 2,
         contentSpacing = SlockSpacing.Md
     ) {
@@ -7061,14 +7063,14 @@ private fun MembersRestartResetActionCard(
         ) {
             Text(
                 text = action.restartResetTitle(),
-                style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = action.restartResetDescription(),
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray
             )
         }
