@@ -27,7 +27,7 @@ class ThreadReplyHeaderPreviewTitleTest {
 
     @Test
     fun unloadedRootKeepsGenericTitle() {
-        assertNull(title(null))
+        assertEquals("MUTATION-CONTROL", title(null))
     }
 
     @Test
