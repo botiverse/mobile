@@ -2665,10 +2665,25 @@ private fun List<InboxItem>.withActivityThreadTaskProjection(
     tasksDataStore ?: return this
     val projection = tasksDataStore.projection(serverId, SharedTasksScope.Server)
     if (projection.status == SharedTasksDataStoreStatus.Idle || projection.tasks.isEmpty()) return this
+    // Only tasks bound to a Thread row on this page can change it. Filtering first keeps
+    // the work proportional to the page instead of the Server's whole task list.
+    val pageParentMessageIds =
+        mapNotNullTo(mutableSetOf()) { item ->
+            item.parentMessageId?.value?.trim()?.takeIf { item.kind == InboxItemKind.Thread && it.isNotBlank() }
+        }
+    if (pageParentMessageIds.isEmpty()) return this
+    val pageTasks =
+        projection.tasks.filter { task ->
+            listOfNotNull(task.messageId, task.parentMessageId).any { messageId ->
+                messageId.value.trim() in pageParentMessageIds
+            }
+        }
+    if (pageTasks.isEmpty()) return this
+    val notificationProjections = tasksDataStore.notificationProjections(pageTasks.map { it.id })
     val taskBindingsByMessageId =
-        projection.tasks
+        pageTasks
             .flatMap { task ->
-                val notificationProjection = tasksDataStore.notificationProjection(task.id)
+                val notificationProjection = notificationProjections[task.id]
                 val localRoute =
                     notificationProjection
                         ?.routes
