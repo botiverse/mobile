@@ -422,33 +422,32 @@ private fun ThreadInlineAudioSeekBar(
     var widthPx by remember { mutableStateOf(0f) }
     var dragX by remember { mutableStateOf<Float?>(null) }
     val density = LocalDensity.current
+    // The rail is inset by half the thumb on each side so the thumb never leaves
+    // the seek area (it would otherwise touch the play button and the time label).
     val thumbHalfPx = with(density) { 6.dp.toPx() }
+    val trackPx = (widthPx - 2 * thumbHalfPx).coerceAtLeast(0f)
+    fun fractionAt(x: Float): Float = if (trackPx > 0f) ((x - thumbHalfPx) / trackPx).coerceIn(0f, 1f) else 0f
+    fun seekTo(x: Float) {
+        if (seekEnabled && totalTimeMs > 0) {
+            onSeek((fractionAt(x) * totalTimeMs).roundToInt().coerceIn(0, totalTimeMs))
+        }
+    }
     val playedFraction =
         if (totalTimeMs > 0) (currentTimeMs.toFloat() / totalTimeMs.toFloat()).coerceIn(0f, 1f) else 0f
-    val fraction =
-        dragX?.let { x -> if (widthPx > 0f) (x / widthPx).coerceIn(0f, 1f) else 0f } ?: playedFraction
+    val fraction = dragX?.let(::fractionAt) ?: playedFraction
     Box(
         modifier = modifier
             .height(28.dp)
             .onGloballyPositioned { coordinates -> widthPx = coordinates.size.width.toFloat() }
             .pointerInput(seekEnabled, totalTimeMs) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        if (seekEnabled) {
-                            slockFilePreviewVideoSeekTimeFromTap(offset.x, widthPx, totalTimeMs)?.let(onSeek)
-                        }
-                    }
-                )
+                detectTapGestures(onTap = { offset -> seekTo(offset.x) })
             }
             .pointerInput(seekEnabled, totalTimeMs) {
                 detectHorizontalDragGestures(
                     onDragStart = { offset -> if (seekEnabled) dragX = offset.x },
                     onDragEnd = {
-                        val x = dragX
+                        dragX?.let(::seekTo)
                         dragX = null
-                        if (seekEnabled && x != null) {
-                            slockFilePreviewVideoSeekTimeFromTap(x, widthPx, totalTimeMs)?.let(onSeek)
-                        }
                     },
                     onDragCancel = { dragX = null }
                 ) { _, dragAmount ->
@@ -459,6 +458,7 @@ private fun ThreadInlineAudioSeekBar(
     ) {
         Box(
             modifier = Modifier
+                .padding(horizontal = 6.dp)
                 .fillMaxWidth()
                 .height(8.dp)
                 .background(SlockColor.SurfaceWhite)
@@ -473,7 +473,7 @@ private fun ThreadInlineAudioSeekBar(
         }
         Box(
             modifier = Modifier
-                .offset { IntOffset((fraction * widthPx - thumbHalfPx).roundToInt(), 0) }
+                .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
                 .size(12.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
