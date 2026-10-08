@@ -6551,10 +6551,7 @@ private fun MembersLifecycleConfirmation(
                 color = SlockColor.TextBlack
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
-        ) {
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
@@ -6727,11 +6724,7 @@ private fun MembersAgentIssueReportDialog(
                 }
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
@@ -6914,10 +6907,7 @@ private fun MembersAgentIssueReportReceiptDialog(
                     onClick = onCopyReference
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
+            SlockDialogFooter {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_done),
                     backgroundColor = SlockColor.AccentLime,
@@ -6938,11 +6928,8 @@ internal fun MembersRestartResetDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val titleTemplate = stringResource(MR.strings.member_dialog_restart_title)
-    // Uppercase the name only in Latin-script locales; see slockDisplayUppercase.
-    val titleAgentName = if (titleTemplate.containsSlockCjk()) agentName else agentName.uppercase()
     SlockUnifiedDialog(
-        title = titleTemplate.replace("%1\$s", titleAgentName),
+        title = stringResource(MR.strings.member_dialog_restart_title).replace("%1\$s", agentName),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 520.dp,
@@ -7001,11 +6988,7 @@ internal fun MembersRestartResetDialog(
         // Same footer as the app's other confirm dialogs (and web ConfirmDialog):
         // right-aligned buttons at their natural width. The old per-action min
         // widths (124dp + up to 220dp) overflowed narrow phones.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 leadingIcon = SlockLucideIconName.X,
@@ -10800,12 +10783,7 @@ private fun MembersAgentRuntimeConfigDialog(
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
+            SlockDialogFooter {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
@@ -11099,11 +11077,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                     color = SlockColor.TextBlack
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            SlockDialogFooter {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     backgroundColor = SlockColor.SurfaceWhite,

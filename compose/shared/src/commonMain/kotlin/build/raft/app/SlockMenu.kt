@@ -224,7 +224,7 @@ internal fun SlockTaskStatusMenuOverlay(
 private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: Boolean, minWidth: Dp): Dp {
     val widestLabelWidth =
         items.maxOfOrNull { item ->
-            val label = if (uppercaseLabels) item.label.uppercase() else item.label
+            val label = if (uppercaseLabels) item.label.slockDisplayUppercase() else item.label
             label.fold(0) { total, char -> total + if (char.code > 127) 14 else 8 }
         } ?: 0
     return (widestLabelWidth + SlockBaseMenuChromeWidthValue)
@@ -269,7 +269,7 @@ internal fun SlockBaseMenuRow(
                 Spacer(modifier = Modifier.width(SlockBaseMenuIconSize))
             }
             Text(
-                text = if (uppercaseLabel) item.label.uppercase() else item.label,
+                text = if (uppercaseLabel) item.label.slockDisplayUppercase() else item.label,
                 style = SlockType.Caption.copy(
                     fontSize = labelFontSize,
                     lineHeight = labelLineHeight,

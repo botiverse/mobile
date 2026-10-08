@@ -1434,6 +1434,8 @@
     <string name="announcement_action_skip">Skip</string>
     <string name="tasks_label_new_tasks">New tasks</string>
     <string name="tasks_create_multiple_hint">Add one or more task titles. Empty rows are ignored.</string>
+    <string name="tasks_create_action">Create</string>
+    <string name="tasks_create_action_creating">Creating…</string>
     <string name="home_action_view">View</string>
     <string name="home_action_retry">Retry</string>
     <string name="home_section_servers">SERVERS</string>

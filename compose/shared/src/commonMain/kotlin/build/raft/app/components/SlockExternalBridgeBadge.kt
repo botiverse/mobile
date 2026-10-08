@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import androidx.compose.runtime.Composable
 import build.raft.app.SlockColor
 import build.raft.app.SlockMonoFamily
@@ -50,7 +51,7 @@ internal fun SlockExternalBridgeBadge(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = stringResource(MR.strings.channel_bridge_provider_slack).uppercase(),
+            text = stringResource(MR.strings.channel_bridge_provider_slack).slockDisplayUppercase(),
             style =
                 SlockType.Caption
                     .copy(

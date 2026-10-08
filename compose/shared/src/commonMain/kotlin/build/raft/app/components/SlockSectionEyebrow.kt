@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
 import build.raft.app.withSlockFontWeight
@@ -21,7 +22,7 @@ internal fun SlockSectionEyebrow(
     lineHeight: TextUnit = 18.sp
 ) {
     Text(
-        text = label.uppercase(),
+        text = label.slockDisplayUppercase(),
         style = SlockType.SectionLabel
             .copy(fontSize = fontSize, lineHeight = lineHeight)
             .withSlockFontWeight(FontWeight.Bold),

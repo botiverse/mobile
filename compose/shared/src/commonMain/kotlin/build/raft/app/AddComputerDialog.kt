@@ -137,12 +137,7 @@ private fun AddComputerTypeStep(
         userFacingError?.takeIf { it.isNotBlank() && state.canManage && !state.atLimit }?.let {
             Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
@@ -244,12 +239,7 @@ private fun AddComputerWaitingStep(
         userFacingError?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
@@ -323,16 +313,18 @@ private fun AddComputerConnectedStep(
             required = true,
             enabled = !state.saving
         )
-        SlockBrutalActionButton(
-            label = if (state.saving) {
-                stringResource(MR.strings.settings_computers_action_saving)
-            } else {
-                stringResource(MR.strings.common_done)
-            },
-            onClick = { onIntent(SharedSettingsIntent.CompleteAddComputerDialog) },
-            enabled = !state.saving,
-            backgroundColor = SlockColor.AccentLime
-        )
+        SlockDialogFooter {
+            SlockBrutalActionButton(
+                label = if (state.saving) {
+                    stringResource(MR.strings.settings_computers_action_saving)
+                } else {
+                    stringResource(MR.strings.common_done)
+                },
+                onClick = { onIntent(SharedSettingsIntent.CompleteAddComputerDialog) },
+                enabled = !state.saving,
+                backgroundColor = SlockColor.AccentLime
+            )
+        }
     }
 }
 
@@ -362,7 +354,7 @@ private fun AddComputerTypeCard(
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                title.uppercase(),
+                title.slockDisplayUppercase(),
                 style = SlockType.Button.copy(
                     fontSize = 12.sp,
                     lineHeight = 14.sp,

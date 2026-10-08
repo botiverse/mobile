@@ -217,7 +217,7 @@ internal fun SlockBottomTabBar(
         Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             items.forEachIndexed { index, item ->
                 val selected = item.selected
-                val label = remember(item.label) { item.label.uppercase() }
+                val label = remember(item.label) { item.label.slockDisplayUppercase() }
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -385,7 +385,7 @@ private fun SlockSharedAndroidFloatingBottomTabBarHost(
                         modifier = Modifier.size(17.dp)
                     )
                     Text(
-                        text = item.label.uppercase(),
+                        text = item.label.slockDisplayUppercase(),
                         style = SlockType.Caption.copy(
                             color = when {
                                 !item.enabled -> Color.Black.copy(alpha = 0.26f)

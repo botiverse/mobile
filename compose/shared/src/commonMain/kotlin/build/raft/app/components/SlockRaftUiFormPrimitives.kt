@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import build.raft.app.SlockColor
 import build.raft.app.slockSlugSlashCenteringOffsetDp
 import build.raft.app.SlockShadow
@@ -107,7 +108,7 @@ private fun SlockFormFieldLabel(
     val labelLineHeight = if (compact) 14.sp else 18.sp
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = if (uppercase) label.uppercase() else label,
+            text = if (uppercase) label.slockDisplayUppercase() else label,
             style =
                 SlockType.SectionLabel
                     .copy(

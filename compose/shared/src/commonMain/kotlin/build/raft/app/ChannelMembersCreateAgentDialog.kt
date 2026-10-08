@@ -77,8 +77,10 @@ internal fun ChannelMembersCreateAgentDialog(
         SlockUnifiedDialog(title = stringResource(MR.strings.thread_action_add_member),
             onDismiss = onDismiss, dismissEnabled = !submitting) {
             Text(error ?: joinFailedLabel, style = SlockType.Body)
-            SlockBrutalActionButton(label = stringResource(MR.strings.common_retry),
-                enabled = !submitting, onClick = { submit(null) })
+            SlockDialogFooter {
+                SlockBrutalActionButton(label = stringResource(MR.strings.common_retry),
+                    enabled = !submitting, onClick = { submit(null) })
+            }
         }
     } else {
         SharedCreateAgentDialog(

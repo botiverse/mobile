@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import build.raft.app.Button as SlockAnchorButton
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
@@ -274,7 +275,7 @@ internal fun SlockBrutalSectionLabel(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = label.uppercase(),
+            text = label.slockDisplayUppercase(),
             style = SlockType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight, letterSpacing = 1.1.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
@@ -1527,7 +1528,7 @@ internal fun SlockToolbarChip(
                     SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
                 }
                 Text(
-                    text = if (uppercase) label.uppercase() else label,
+                    text = if (uppercase) label.slockDisplayUppercase() else label,
                     style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
                     color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,

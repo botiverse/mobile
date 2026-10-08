@@ -1598,7 +1598,7 @@ private fun SharedTasksStatusLabel(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            text = (label ?: status.localizedLabel()).uppercase(),
+            text = (label ?: status.localizedLabel()).slockDisplayUppercase(),
             style = SlockType.TabLabel,
             color = SlockColor.TextBlack,
             maxLines = 1,
@@ -1640,7 +1640,7 @@ private fun SharedTasksPillButton(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = label.uppercase(),
+                    text = label.slockDisplayUppercase(),
                     style = SlockType.SectionLabel,
                     color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
@@ -1934,24 +1934,23 @@ private fun TasksCreateDialog(
                 }
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(Modifier.weight(1f))
-            SlockToolbarChip(
+        SlockDialogFooter {
+            SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
-                iconName = null,
-                active = false,
                 enabled = !loading,
+                backgroundColor = SlockColor.SurfaceWhite,
                 onClick = onDismiss
             )
-            SlockToolbarChip(
-                label = if (loading) "Creating\u2026" else "Create",
-                iconName = SlockLucideIconName.Check,
-                active = true,
+            SlockBrutalActionButton(
+                label =
+                    if (loading) {
+                        stringResource(MR.strings.tasks_create_action_creating)
+                    } else {
+                        stringResource(MR.strings.tasks_create_action)
+                    },
+                leadingIcon = SlockLucideIconName.Check,
                 enabled = anyNonBlank && !loading,
+                backgroundColor = SlockColor.AccentPink,
                 onClick = { onSubmit(titles) }
             )
         }

@@ -10471,7 +10471,7 @@ private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotifi
 @Composable
 private fun SettingsNotificationSectionLabel(label: String) {
     Text(
-        text = label.uppercase(),
+        text = label.slockDisplayUppercase(),
         style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
         color = SlockColor.TextMutedGray,
         modifier = Modifier.fillMaxWidth().padding(start = 2.dp, top = 4.dp, bottom = 2.dp)
@@ -10800,6 +10800,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
     val connectedAppError = actionState.connectedAppsErrorFor(action, app.id)
     SlockUnifiedDialog(
         title = app.name,
+        uppercaseTitle = false,
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 456.dp
@@ -10841,7 +10842,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
                 item { SettingsFormErrorText(connectedAppError) }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        SlockDialogFooter {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_open),
@@ -10880,6 +10881,7 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
 ) {
     SlockUnifiedDialog(
         title = app.name,
+        uppercaseTitle = false,
         onDismiss = onDismiss,
         maxWidth = 456.dp
     ) {
@@ -10900,12 +10902,14 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
         SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
         SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_agent_manifest), app.agentManifestUrl)
         app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.common_open),
-                onClick = { onOpenUrl(url) },
-                leadingIcon = SlockLucideIconName.ExternalLink,
-                backgroundColor = SlockColor.SurfaceWhite
-            )
+            SlockDialogFooter {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.common_open),
+                    onClick = { onOpenUrl(url) },
+                    leadingIcon = SlockLucideIconName.ExternalLink,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
+            }
         }
     }
 }
@@ -10944,7 +10948,7 @@ private fun SettingsConnectedAppsConfirmDialog(
             value = client?.clientId ?: marketplaceApp?.clientId ?: installedApp?.clientId
         )
         actionState.connectedAppsErrorFor(action, target.id)?.let { SettingsFormErrorText(it) }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
@@ -11824,11 +11828,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                     errorMessage?.takeIf { it.isNotBlank() }?.let {
                         SettingsServerDeleteWarningBanner(serverName = null, text = it)
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    SlockDialogFooter {
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_cancel),
                             onClick = onCancel,
@@ -12591,7 +12591,7 @@ private fun SharedSettingsSectionCard(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Text(
-            section.title.uppercase(),
+            section.title.slockDisplayUppercase(),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
@@ -19249,12 +19249,7 @@ private fun SharedCreateChannelDialog(
             }
         }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(Modifier.weight(1f))
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !submitting,
@@ -19453,7 +19448,7 @@ private fun SharedCreateChannelMemberSectionLabel(label: String) {
                 .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
-            text = label.uppercase(),
+            text = label.slockDisplayUppercase(),
             style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.2.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1
@@ -21488,7 +21483,7 @@ private fun SharedHomeSearchSectionLabel(
     visualTextScale: Float = 1f,
 ) {
     Text(
-        text = label.uppercase(),
+        text = label.slockDisplayUppercase(),
         style =
             SlockType.Caption
                 .withSlockFontWeight(FontWeight.Bold)
