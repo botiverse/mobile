@@ -3219,6 +3219,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 .filterNot { it == sourceRef }
                 .toSet()
         if (!composerImageOperationGate.isCurrent(token)) {
+            bridge.log("composer_image_compress_result index=$index result=stale")
             return null to responseRefs
         }
         val parsed = parseSlockFilePreviewCompressedImageResult(response)
@@ -3305,6 +3306,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
 
     fun postComposerImageSelection() {
+        // First statement on purpose: a missing tap log then means the click never reached
+        // this handler, independent of every gate below.
+        bridge.log("composer_image_done_tap finalizing=$composerImageFinalizing")
         if (composerImageFinalizing) {
             logComposerImageHandoffRejected("finalizing", 0)
             return
