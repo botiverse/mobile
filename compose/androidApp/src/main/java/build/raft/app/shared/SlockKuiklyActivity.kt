@@ -163,6 +163,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.FileOutputStream
 import java.net.URL
 import java.net.URLDecoder
@@ -3539,9 +3540,9 @@ internal class SlockKuiklyImageAdapter(
     private companion object {
         private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
         private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+        private const val LOCAL_IMAGE_HEADER_SNIFF_BYTES = 512
         private const val MOUNTED_AVATAR_BITMAP_CACHE_BYTES = 8 * 1024 * 1024
         private const val MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES = 1024 * 1024
-        private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
                 object : LruCache<SlockNetworkImageRequestKey, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
@@ -3776,26 +3777,32 @@ internal class SlockKuiklyImageAdapter(
             runCatching {
                         val src = imageLoadOption.src
                         val uri = Uri.parse(src)
-                        val bytes =
-                                when {
-                                    imageLoadOption.isFile() -> {
-                                        val path = uri.path
-                                        if (!path.isNullOrBlank()) {
-                                            File(path).readBytes()
-                                        } else {
-                                            context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
-                                        }
-                                    }
-                                    else ->
-                                            context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
-                                } ?: return@runCatching null
+                        val filePath = uri.path?.takeIf { imageLoadOption.isFile() && it.isNotBlank() }
+                        val openInput: () -> InputStream? = {
+                            if (filePath != null) {
+                                FileInputStream(filePath)
+                            } else {
+                                context.contentResolver.openInputStream(uri)
+                            }
+                        }
                         val contentType =
                                 if (imageLoadOption.isContentUri()) {
                                     context.contentResolver.getType(uri)
                                 } else {
                                     null
                                 }
-                        drawableFromBytes(bytes, imageLoadOption, contentType)
+                        // Never read a local raster image into memory as a whole: a 60 MB picked
+                        // PNG would need the file bytes plus the full-size bitmap and OOM the
+                        // preview.  Sniff a short header for SVG, otherwise decode from the
+                        // stream with bounds-first sampling.
+                        val header =
+                                openInput()?.use { input -> input.readLocalImageHeader() }
+                                        ?: return@runCatching null
+                        if (header.looksLikeSvg(contentType)) {
+                            val bytes = openInput()?.use { input -> input.readBytes() } ?: return@runCatching null
+                            return@runCatching svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
+                        }
+                        slockDecodeSampledBitmap(openInput, imageLoadOption.targetDecodeEdgePx())?.toBitmapDrawable()
                                 ?: throw IllegalStateException("Image decode failed")
                     }
                     .onSuccess { drawable ->
@@ -3972,6 +3979,17 @@ internal class SlockKuiklyImageAdapter(
         return bitmapFromBytes(bytes, imageLoadOption)?.toBitmapDrawable()
     }
 
+    private fun InputStream.readLocalImageHeader(): ByteArray {
+        val buffer = ByteArray(LOCAL_IMAGE_HEADER_SNIFF_BYTES)
+        var filled = 0
+        while (filled < buffer.size) {
+            val read = read(buffer, filled, buffer.size - filled)
+            if (read < 0) break
+            filled += read
+        }
+        return buffer.copyOf(filled)
+    }
+
     private fun bitmapFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Bitmap? {
         val boundsOptions =
                 BitmapFactory.Options().apply {
@@ -3988,18 +4006,8 @@ internal class SlockKuiklyImageAdapter(
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
     }
 
-    private fun HRImageLoadOption.bitmapDecodeSampleSize(sourceWidth: Int, sourceHeight: Int): Int {
-        val target = targetDecodeEdgePx()
-        var sampleSize = 1
-        var sampledWidth = sourceWidth
-        var sampledHeight = sourceHeight
-        while (max(sampledWidth, sampledHeight) / 2 >= target) {
-            sampleSize *= 2
-            sampledWidth /= 2
-            sampledHeight /= 2
-        }
-        return sampleSize.coerceAtLeast(1)
-    }
+    private fun HRImageLoadOption.bitmapDecodeSampleSize(sourceWidth: Int, sourceHeight: Int): Int =
+            slockBitmapDecodeSampleSize(sourceWidth, sourceHeight, targetDecodeEdgePx())
 
     private fun HRImageLoadOption.targetDecodeEdgePx(): Int {
         val density = context.resources.displayMetrics.density.coerceAtLeast(1f)
@@ -4011,7 +4019,7 @@ internal class SlockKuiklyImageAdapter(
                 max(context.resources.displayMetrics.widthPixels, context.resources.displayMetrics.heightPixels)
         return (requestedEdgePx ?: screenEdgePx)
                 .coerceAtLeast(256)
-                .coerceAtMost(MAX_BITMAP_DECODE_EDGE_PX)
+                .coerceAtMost(SLOCK_MAX_BITMAP_DECODE_EDGE_PX)
     }
 
     private fun Bitmap.toBitmapDrawable(): BitmapDrawable =
