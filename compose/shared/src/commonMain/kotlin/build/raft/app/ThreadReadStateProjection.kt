@@ -8,7 +8,7 @@ import build.raft.app.model.PerReceiverReadStateScope
  * can still contribute unread. This is not a replacement for canonical refresh.
  */
 internal class ThreadReadStateProjection {
-    private data class Fact(val version: Long, val maxReadSeq: Long, val unreadCount: Int?, val replyCount: Int?)
+    private data class Fact(val version: Long, val maxReadSeq: Long, val unreadCount: Int?, val replyCount: Int?, val latestReplySeq: Long?)
     private var owner: String? = null
     private var route: ThreadRouteIdentity? = null
     private val facts = linkedMapOf<String, Fact>()
@@ -26,16 +26,21 @@ internal class ThreadReadStateProjection {
             if (maxReadSeq < 0 || scope.readStateVersion <= 0) continue
             val previous = facts[scope.scopeId.value]
             if (previous != null && (scope.readStateVersion <= previous.version || maxReadSeq < previous.maxReadSeq)) continue
-            val baseline = parents.filter { it.threadChannelId == scope.scopeId.value }.maxOfOrNull { it.replyCount }
-            facts[scope.scopeId.value] = Fact(scope.readStateVersion, maxReadSeq, scope.unreadCount?.takeIf { it >= 0 }, baseline)
+            val matchingParents = parents.filter { it.threadChannelId == scope.scopeId.value }
+            val baseline = matchingParents.maxOfOrNull { it.replyCount }
+            val latestSeq = matchingParents.flatMap { it.inlineReplies?.replies.orEmpty() }.mapNotNull { it.seq }.maxOrNull()
+            facts[scope.scopeId.value] = Fact(scope.readStateVersion, maxReadSeq, scope.unreadCount?.takeIf { it >= 0 }, baseline, latestSeq)
         }
         while (facts.size > 2048) facts.remove(facts.keys.first())
     }
 
-    // A newer content event owns unread again; retain its read-version checkpoint only.
-    fun contentChanged(threadChannelId: String) {
+    // Duplicate/late content events must not undo a read. Require evidence of new replies;
+    // after reading everything, the read watermark itself is a complete tail witness.
+    fun contentChanged(threadChannelId: String, latestReplySeq: Long?) {
         val fact = facts[threadChannelId] ?: return
-        facts[threadChannelId] = fact.copy(unreadCount = null)
+        val tail = fact.latestReplySeq ?: fact.maxReadSeq.takeIf { fact.unreadCount == 0 }
+        val tailAdvanced = tail != null && latestReplySeq != null && latestReplySeq > maxOf(tail, fact.maxReadSeq)
+        if (tailAdvanced) facts[threadChannelId] = fact.copy(unreadCount = null)
     }
 
     fun project(payload: KuiklyThreadScreenPayload, ownerScopeId: String?): KuiklyThreadScreenPayload {
@@ -45,9 +50,10 @@ internal class ThreadReadStateProjection {
             val count = fact.unreadCount ?: return this
             val baseline = fact.replyCount ?: return this
             val upperBound = (count.toLong() + (replyCount.toLong() - baseline).coerceAtLeast(0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            if (unreadReplyCount <= upperBound) return this
-            return copy(unreadReplyCount = upperBound,
-                firstUnreadReplyMessageId = if (upperBound == 0) null else firstUnreadReplyMessageId)
+            val nextCount = minOf(unreadReplyCount, upperBound)
+            val nextJump = if (upperBound == 0) null else firstUnreadReplyMessageId
+            if (nextCount == unreadReplyCount && nextJump == firstUnreadReplyMessageId) return this
+            return copy(unreadReplyCount = nextCount, firstUnreadReplyMessageId = nextJump)
         }
         val nextMessages = payload.messages.map { it.project() }
         val nextOrigin = payload.originMessage?.project()

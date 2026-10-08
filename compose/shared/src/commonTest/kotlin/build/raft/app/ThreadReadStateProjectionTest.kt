@@ -28,6 +28,13 @@ class ThreadReadStateProjectionTest {
         assertNull(complete.firstUnreadReplyMessageId)
     }
 
+    @Test fun zeroHintClearsJumpEvenWhenBadgeAlreadyZero() {
+        val projection = ThreadReadStateProjection()
+        val initial = payload(count = 0)
+        projection.observe(initial, "owner", listOf(read(0)))
+        assertNull(projection.project(initial, "owner").messages.single().firstUnreadReplyMessageId)
+    }
+
     @Test fun staleRefreshCannotResurrectBadgeButNewRepliesRemainUnread() {
         val projection = ThreadReadStateProjection()
         val initial = payload()
@@ -40,12 +47,24 @@ class ThreadReadStateProjectionTest {
         val projection = ThreadReadStateProjection()
         val initial = payload()
         projection.observe(initial, "owner", listOf(read(0)))
-        projection.contentChanged("reply-channel")
+        projection.contentChanged("reply-channel", latestReplySeq = 11)
         // A deletion followed by a new reply may leave the total unchanged.
         val newer = payload(count = 1)
         assertSame(newer, projection.project(newer, "owner"))
         projection.observe(newer, "owner", listOf(read(0)))
         assertSame(newer, projection.project(newer, "owner"))
+    }
+
+    @Test fun duplicateOrLateContentEventsCannotResurrectClearedBadge() {
+        val projection = ThreadReadStateProjection()
+        val initial = payload()
+        projection.observe(initial, "owner", listOf(read(0)))
+        for (seq in listOf(null, 9L, 10L)) {
+            projection.contentChanged("reply-channel", latestReplySeq = seq)
+            assertEquals(0, projection.project(initial, "owner").messages.single().unreadReplyCount)
+        }
+        projection.contentChanged("reply-channel", latestReplySeq = null)
+        assertEquals(1, projection.project(payload(count = 1, replies = 9), "owner").messages.single().unreadReplyCount)
     }
 
     @Test fun staleDuplicateAndRegressingWatermarksCannotLowerNewerBadge() {

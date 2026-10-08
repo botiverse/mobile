@@ -7986,7 +7986,7 @@ internal class SharedThreadStore(
                     }
                 }
                 if (event is ThreadUpdated) {
-                    readStateProjection.contentChanged(event.threadChannelId.value)
+                    readStateProjection.contentChanged(event.threadChannelId.value, event.latestReply?.seq)
                     currentPayload.cacheThreadId()?.let { factThreadId ->
                         dataSource.recordReplyCountRealtimeFact(
                             threadId = factThreadId,
