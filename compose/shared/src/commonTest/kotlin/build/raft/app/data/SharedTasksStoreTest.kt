@@ -794,6 +794,46 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun historicalJointTaskWireReadOnlyReasonBlocksClaim() {
+        val readOnly =
+            TaskWireDto(
+                id = "task-joint-old",
+                revision = 3L,
+                channelId = "joint-local",
+                status = "todo",
+                readOnlyReason = "historical_joint_task"
+            ).toTaskSummary()
+        val writable = TaskWireDto(id = "task-new", revision = 1L, channelId = "joint-local", status = "todo").toTaskSummary()
+
+        assertEquals("historical_joint_task", readOnly?.readOnlyReason)
+        assertEquals(false, readOnly?.canClaim)
+        assertEquals(null, writable?.readOnlyReason)
+        assertEquals(true, writable?.canClaim)
+    }
+
+    @Test
+    fun readOnlyJointProjectionIsServerLocalAndHasNoMutationRoute() {
+        val store = SharedTasksDataStore()
+        val host =
+            task("task-joint", TaskStatus.Todo, channelId = ChannelId("channel-host"), revision = 5L)
+                .copy(messageId = MessageId("message-joint"))
+        val participant =
+            host.copy(channelId = ChannelId("channel-peer"), canClaim = false, readOnlyReason = "historical_joint_task")
+
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-host", host))
+        // The read-only marker is projection-local, so it never turns one revision into a conflict.
+        assertEquals(false, store.upsertTask("server-peer", participant) == SharedTaskFactFoldOutcome.Conflict)
+
+        assertEquals(null, store.projection("server-host", SharedTasksScope.Server).tasks.single().readOnlyReason)
+        assertEquals(
+            "historical_joint_task",
+            store.projection("server-peer", SharedTasksScope.Server).tasks.single().readOnlyReason
+        )
+        assertEquals(ChannelId("channel-host"), store.mutationProjection("server-host", host.id, expectedRevision = 5L)?.channelId)
+        assertEquals(null, store.mutationProjection("server-peer", host.id, expectedRevision = 5L))
+    }
+
+    @Test
     fun sharedTasksNotificationFactDedupesCanonicalMessageAndRetainsBothLocalRoutes() {
         val store = SharedTasksDataStore()
         val host =

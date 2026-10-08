@@ -621,7 +621,13 @@ data class TaskSummary(
     val canClaim: Boolean = true,
     val description: String? = null,
     /** Monotonic revision of the canonical task fact. Projection-local channel fields are not part of it. */
-    val revision: Long? = null
+    val revision: Long? = null,
+    /**
+     * Projection-local authority from the server (e.g. "historical_joint_task" for a pre-conversion
+     * task seen from a joint participant). Non-null means read-only: no claim, status or assignee
+     * changes, matching web's authorizeTaskAction / canChangeTaskStatus.
+     */
+    val readOnlyReason: String? = null
 )
 
 // Inbox Models

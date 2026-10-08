@@ -898,7 +898,8 @@ private fun SharedTasksLoadedBodyContent(
             else -> Unit
         }
 
-        statusMenuTask?.let { task ->
+        // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web.
+        statusMenuTask?.takeIf { it.readOnlyReason == null }?.let { task ->
             val updating = state.statusUpdatingTaskId == task.id.value
             val resolvedStatusAnchor =
                 statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
@@ -926,7 +927,7 @@ private fun SharedTasksLoadedBodyContent(
         // picker reuses the searchable filter popover (stdrc msg=4c357cb1) — humans
         // first, then agents, "unassigned" sentinel always first and never filtered
         // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
-        assigneeMenuTask?.let { task ->
+        assigneeMenuTask?.takeIf { it.readOnlyReason == null }?.let { task ->
             val resolvedAssigneeAnchor =
                 assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
                     ?: return@let

@@ -1220,7 +1220,8 @@ internal data class TaskWireDto(
     val claimedAt: String? = null,
     val completedAt: String? = null,
     val createdAt: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    val readOnlyReason: String? = null
 )
 
 internal fun TaskWireDto.toTaskSummary(
@@ -1245,8 +1246,9 @@ internal fun TaskWireDto.toTaskSummary(
         creator = memberFrom(createdByType, createdById, createdByName, "task_creator", diagnostics),
         channelName = channelName,
         updatedAtLabel = (updatedAt ?: createdAt ?: claimedAt ?: completedAt).orEmpty(),
-        canClaim = true,
-        description = description?.trim()?.takeIf { it.isNotBlank() }
+        canClaim = readOnlyReason.isNullOrBlank(),
+        description = description?.trim()?.takeIf { it.isNotBlank() },
+        readOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() }
     )
 }
 
