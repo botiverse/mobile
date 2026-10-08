@@ -3375,6 +3375,39 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersRestartDialogRestart() {
+        captureKmpComponentCase(
+            caseId = "components.members.restart-dialog.restart",
+            pageName = "compose_members_restart_dialog_visual",
+            pageData = JSONObject().put("action", "restart"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersRestartDialogResetSession() {
+        captureKmpComponentCase(
+            caseId = "components.members.restart-dialog.reset-session",
+            pageName = "compose_members_restart_dialog_visual",
+            pageData = JSONObject().put("action", "reset_session"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersRestartDialogFullReset() {
+        captureKmpComponentCase(
+            caseId = "components.members.restart-dialog.full-reset",
+            pageName = "compose_members_restart_dialog_visual",
+            pageData = JSONObject().put("action", "reset_full"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersAgentDetailProfile() {
         captureKmpComponentCase(
             caseId = "components.members.agent-detail.profile",

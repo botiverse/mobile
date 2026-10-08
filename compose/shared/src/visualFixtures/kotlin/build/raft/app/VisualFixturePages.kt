@@ -1218,6 +1218,32 @@ internal class ComposeMembersAgentDetailVisualPage : BasePager() {
     }
 }
 
+@Page("compose_members_restart_dialog_visual", supportInLocal = true)
+internal class ComposeMembersRestartDialogVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        val actionKey = pageData.params.optString("action")
+        val agentName = pageData.params.optString("agentName").ifBlank { "沈括" }
+        setContent {
+            var selected by remember {
+                mutableStateOf(
+                    MembersAgentLifecycleAction.entries.firstOrNull { it.actionKey == actionKey }
+                        ?: MembersAgentLifecycleAction.Restart
+                )
+            }
+            MembersRestartResetDialog(
+                agentName = agentName,
+                selectedAction = selected,
+                busy = false,
+                errorMessage = null,
+                onSelectedActionChange = { selected = it },
+                onConfirm = {},
+                onDismiss = {}
+            )
+        }
+    }
+}
+
 @Page("compose_tasks_panel_visual", supportInLocal = true)
 internal class ComposeTasksPanelVisualPage : BasePager() {
     override fun willInit() {

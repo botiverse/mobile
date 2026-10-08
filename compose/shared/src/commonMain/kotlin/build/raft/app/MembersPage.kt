@@ -6929,7 +6929,7 @@ private fun MembersAgentIssueReportReceiptDialog(
 }
 
 @Composable
-private fun MembersRestartResetDialog(
+internal fun MembersRestartResetDialog(
     agentName: String,
     selectedAction: MembersAgentLifecycleAction,
     busy: Boolean,
