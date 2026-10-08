@@ -121,7 +121,9 @@ private data class SharedTasksTaskUpsert(
 private data class SharedTasksProjectionRoute(
     val channelId: ChannelId?,
     val channelName: String?,
-    val canClaim: Boolean
+    val canClaim: Boolean,
+    /** Server-local read-only authority (joint participant history); blocks mutation routes. */
+    val readOnlyReason: String? = null
 )
 
 internal enum class SharedTaskFactFoldOutcome {
@@ -151,7 +153,8 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
         SharedTasksProjectionRoute(
             channelId = incoming.channelId,
             channelName = incoming.channelName,
-            canClaim = incoming.canClaim
+            canClaim = incoming.canClaim,
+            readOnlyReason = incoming.readOnlyReason
         )
     val nextRoutes = taskProjectionRoutes + (key to incomingRoute)
     val route = nextRoutes[key]
@@ -237,13 +240,14 @@ private fun Long?.compareTaskRevision(existing: Long?): Int =
     }
 
 private fun TaskSummary.withoutTaskProjectionRoute(): TaskSummary =
-    copy(channelId = null, channelName = null, canClaim = true)
+    copy(channelId = null, channelName = null, canClaim = true, readOnlyReason = null)
 
 private fun TaskSummary.withTaskProjectionRoute(route: SharedTasksProjectionRoute?): TaskSummary =
     copy(
         channelId = route?.channelId,
         channelName = route?.channelName,
-        canClaim = route?.canClaim ?: false
+        canClaim = route?.canClaim ?: false,
+        readOnlyReason = route?.readOnlyReason
     )
 
 /**
@@ -488,6 +492,8 @@ private fun SharedTasksDataStoreState.statusMutationProjection(
     val key = SharedTasksTaskKey(serverId, taskId)
     val route = taskProjectionRoutes[key] ?: return null
     if (route.channelId == null) return null
+    // Read-only projections (historical joint tasks on a participant) have no write target.
+    if (route.readOnlyReason != null) return null
     val task =
         statusMutations[key]?.optimisticTask
             ?: canonicalTaskFacts[taskId]?.withTaskProjectionRoute(route)

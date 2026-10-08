@@ -80,8 +80,9 @@ internal data class WireThreadLaunchPayload(
         val isReplyThread = routeKinds.isReplyThread
         val resolvedParentSurfaceKind = routeKinds.parentSurfaceKind
         val resolvedParentChannelKind = routeKinds.parentChannelKind
-        val taskChannelKind = if (isReplyThread) resolvedParentChannelKind else routeKinds.channelKind
-        val supportsChannelTasks = !taskChannelKind.equals(JointChannelKindWireValue, ignoreCase = true)
+        // Joint channels have task surfaces like any channel: the server maps each
+        // participant's local joint channel id to the canonical task surface.
+        val supportsChannelTasks = true
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =

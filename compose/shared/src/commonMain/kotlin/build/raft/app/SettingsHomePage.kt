@@ -23420,10 +23420,8 @@ internal fun buildAppShellThreadPayload(
             null
         }
     val canSend = accessState.joined && accessState.permissions.canSend
-    val taskChannelKind = if (isReplyThread) parentChannelKind else routeChannelKind
-    val supportsChannelTasks =
-        accessState.permissions.canCreateTask &&
-            !taskChannelKind.equals(JointChannelKindWireValue, ignoreCase = true)
+    // Joint channels have task surfaces like any channel (server task surface mapping).
+    val supportsChannelTasks = accessState.permissions.canCreateTask
     val composer =
         KuiklyThreadComposerPayload(
             surfaceKind = surfaceKind,
