@@ -31149,7 +31149,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
         onDismiss = onDismiss,
         dismissEnabled = !removing,
         minWidth = 320.dp,
-        maxWidth = 424.dp,
+        maxWidth = 384.dp,
         titleFontSize = 18,
         titleLineHeight = 22
     ) {

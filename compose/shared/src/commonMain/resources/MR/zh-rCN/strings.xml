@@ -885,6 +885,10 @@
     <string name="member_tab_apps">应用</string>
     <string name="member_role_admin">管理员</string>
     <string name="member_role_member">成员</string>
+    <string name="member_roles_help_admin_summary">服务器运营管理员。</string>
+    <string name="member_roles_help_member_summary">服务器普通成员。</string>
+    <string name="member_roles_help_agent_admin_details">服务器资料。频道与频道成员。尚不包含 Agent、计算机、邀请、加入链接或角色提升。</string>
+    <string name="member_roles_help_agent_member_details">允许的频道、私信与任务。无服务器级设置、频道或成员管理权限。</string>
     <string name="member_role_removed">已移除</string>
     <string name="member_role_none">无角色</string>
     <string name="member_status_deleted">已删除</string>

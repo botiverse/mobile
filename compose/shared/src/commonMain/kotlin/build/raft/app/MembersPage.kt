@@ -6589,7 +6589,7 @@ private fun MembersAgentIssueReportDialog(
         title = stringResource(MR.strings.member_report_issue_title).slockDisplayUppercase(),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
-        maxWidth = 420.dp,
+        maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
         titleLineHeight = 22,
@@ -6740,7 +6740,8 @@ private fun MembersAgentIssueReportDialog(
                     },
                 leadingIcon = if (busy) SlockLucideIconName.Loader else SlockLucideIconName.Bug,
                 enabled = consented && !busy,
-                backgroundColor = SlockColor.AccentOrange,
+                // Web ReportIssueDialog submits with the pink primary action.
+                backgroundColor = SlockColor.AccentPink,
                 onClick = {
                     onSubmit(
                         description.text,
@@ -6776,7 +6777,8 @@ private fun MembersAgentIssueReportOption(
         Text(
             text = label,
             modifier = Modifier.weight(1f),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+            // Web option labels are text-sm, regular weight.
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
             color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
         )
     }
@@ -7828,23 +7830,22 @@ private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_title_agent_roles).slockDisplayUppercase(),
         onDismiss = onDismiss,
-        maxWidth = 432.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
+        // Web RolePermissionHelpDialog: DialogCard max-w-md, rows space-y-3.
+        maxWidth = 448.dp
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             MembersAgentRoleHelpRow(
-                role = "Admin",
-                summary = "Operational server admin.",
-                details = "Server profile. Channels and channel members. No agents, machines, invites, join links, or role promotion yet."
+                role = stringResource(MR.strings.member_role_admin),
+                summary = stringResource(MR.strings.member_roles_help_admin_summary),
+                details = stringResource(MR.strings.member_roles_help_agent_admin_details)
             )
             MembersAgentRoleHelpRow(
-                role = "Member",
-                summary = "Regular server participant.",
-                details = "Allowed channels, DMs, and tasks. No server-level settings, channels, or membership management."
+                role = stringResource(MR.strings.member_role_member),
+                summary = stringResource(MR.strings.member_roles_help_member_summary),
+                details = stringResource(MR.strings.member_roles_help_agent_member_details)
             )
         }
     }
@@ -7861,11 +7862,11 @@ private fun MembersAgentRoleHelpRow(
             .fillMaxWidth()
             .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.20f))
             .background(SlockColor.SurfaceWhite)
-            .padding(SlockSpacing.Sm),
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -7887,7 +7888,7 @@ private fun MembersAgentRoleHelpRow(
         }
         Text(
             text = details,
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 22.sp),
             color = SlockColor.TextBlack.copy(alpha = 0.75f)
         )
     }
@@ -11046,7 +11047,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
 ) {
     SlockUnifiedDialog(
         title = confirmation.title.localized(),
-        maxWidth = 420.dp,
+        maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
         titleLineHeight = 22,

@@ -355,9 +355,10 @@ private fun AddComputerTypeCard(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 title.slockDisplayUppercase(),
+                // Web AddMachineDialog type cards: text-sm title, text-xs detail.
                 style = SlockType.Button.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
                     color = if (enabled || selected) SlockColor.TextBlack else SlockColor.TextMutedGray
                 ),
                 color = if (enabled || selected) SlockColor.TextBlack else SlockColor.TextMutedGray,
@@ -367,8 +368,8 @@ private fun AddComputerTypeCard(
             Text(
                 detail,
                 style = SlockType.Caption.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     color = if (enabled || selected) SlockColor.TextMutedGray else SlockColor.EmptyStateGray
                 ),
                 color = if (enabled || selected) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,

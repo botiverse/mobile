@@ -1244,6 +1244,41 @@ internal class ComposeMembersRestartDialogVisualPage : BasePager() {
     }
 }
 
+@Page("compose_announcement_modal_visual", supportInLocal = true)
+internal class ComposeAnnouncementModalVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        val pageIndex = pageData.params.optInt("pageIndex", 0)
+        setContent {
+            SharedAnnouncementModal(
+                announcement =
+                    build.raft.app.data.AnnouncementItem(
+                        id = "visual-announcement",
+                        title = "Raft 1.13 更新",
+                        body = "",
+                        pages =
+                            listOf(
+                                build.raft.app.data.AnnouncementPageItem(
+                                    title = "新的动态页",
+                                    body = "动态页现在按时间线展示提及、回复和任务变化。"
+                                ),
+                                build.raft.app.data.AnnouncementPageItem(
+                                    title = "大屏模式",
+                                    body = "平板和折叠屏上可以同时看到列表和详情。"
+                                ),
+                                build.raft.app.data.AnnouncementPageItem(
+                                    title = null,
+                                    body = "更多改动见更新日志。"
+                                )
+                            )
+                    ),
+                onDismiss = {},
+                initialPageIndex = pageIndex
+            )
+        }
+    }
+}
+
 @Page("compose_tasks_panel_visual", supportInLocal = true)
 internal class ComposeTasksPanelVisualPage : BasePager() {
     override fun willInit() {

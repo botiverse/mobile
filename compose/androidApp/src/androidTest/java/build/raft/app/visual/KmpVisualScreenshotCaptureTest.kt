@@ -3375,6 +3375,39 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureAnnouncementModalFirstPage() {
+        captureKmpComponentCase(
+            caseId = "components.announcement-modal.first-page",
+            pageName = "compose_announcement_modal_visual",
+            pageData = JSONObject().put("pageIndex", 0),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureAnnouncementModalMiddlePage() {
+        captureKmpComponentCase(
+            caseId = "components.announcement-modal.middle-page",
+            pageName = "compose_announcement_modal_visual",
+            pageData = JSONObject().put("pageIndex", 1),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureAnnouncementModalLastPage() {
+        captureKmpComponentCase(
+            caseId = "components.announcement-modal.last-page",
+            pageName = "compose_announcement_modal_visual",
+            pageData = JSONObject().put("pageIndex", 2),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersRestartDialogRestart() {
         captureKmpComponentCase(
             caseId = "components.members.restart-dialog.restart",

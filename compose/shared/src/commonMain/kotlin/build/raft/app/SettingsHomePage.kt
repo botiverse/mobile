@@ -10934,14 +10934,17 @@ private fun SettingsConnectedAppsConfirmDialog(
         title = if (deleting) stringResource(MR.strings.settings_connected_apps_delete_title) else stringResource(MR.strings.settings_connected_apps_uninstall_title),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
-        maxWidth = 424.dp
+        // Web ConfirmDialog: max-w-sm, text-sm muted body.
+        maxWidth = 384.dp
     ) {
-        SettingsFormDetailText(
-            if (deleting) {
+        Text(
+            text = if (deleting) {
                 MR.strings.settings_connected_apps_delete_detail.format(listOf(appName)).localized()
             } else {
                 MR.strings.settings_connected_apps_uninstall_detail.format(listOf(appName)).localized()
-            }
+            },
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextMutedGray
         )
         SettingsConnectedAppDetailField(
             label = stringResource(MR.strings.settings_connected_apps_label_client_id),
@@ -10953,7 +10956,6 @@ private fun SettingsConnectedAppsConfirmDialog(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
                 enabled = !busy,
-                leadingIcon = SlockLucideIconName.X,
                 backgroundColor = SlockColor.SurfaceWhite
             )
             SlockBrutalActionButton(
@@ -11751,7 +11753,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                 modifier =
                     Modifier
                         .padding(horizontal = 18.dp)
-                        .widthIn(max = 360.dp)
+                        .widthIn(max = 384.dp)
                         .slockFloatingContentClickTarget()
             ) {
                 Box(
