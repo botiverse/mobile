@@ -15,6 +15,10 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.resources.MR
 import build.raft.app.slockBottomSafeAreaPadding
 import build.raft.app.slockTopSafeAreaPadding
+import com.tencent.kuikly.compose.extension.NestedScrollMode
+import com.tencent.kuikly.compose.extension.nestedScroll
+import com.tencent.kuikly.compose.extension.setProp
+import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -148,16 +152,25 @@ internal fun SlockMermaidCard(
         if (view == SlockMermaidView.Code) {
             codeContent()
         } else {
-            Box(
+            LazyRow(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = SlockMermaidInlineMinHeight)
                         .clipToBounds()
-                        .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center
+                        .padding(vertical = 16.dp)
+                        // Android's same-axis parent interception uses scrollWithParent,
+                        // separately from nested-scroll delta handoff. Keep both edges in
+                        // this diagram, while the vertical message list retains its axis.
+                        .setProp("scrollWithParent", 0)
+                        .nestedScroll(
+                            scrollUp = NestedScrollMode.SELF_ONLY,
+                            scrollDown = NestedScrollMode.SELF_ONLY
+                        ),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                diagramContent(scale)
+                item { diagramContent(scale) }
             }
         }
     }
