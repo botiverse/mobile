@@ -8,7 +8,7 @@ import build.raft.app.model.Message
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Shadow-compare for the flag-gated sync-core message rollout (`sync_core_messages_v0`).
+ * Shadow-compare for the flag-gated sync-core message rollout (`sync_core_messages_v1`).
  *
  * While the flag is in SHADOW mode the existing realtime path (RealtimeEventMapper → Message → store → UI)
  * stays authoritative. In parallel, the SAME raw socket JSON is run through the new canonical pipeline

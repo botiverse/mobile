@@ -28,10 +28,12 @@ import kotlinx.serialization.json.Json
  * Wire contract (server-verified): POST `feature-flags/evaluate` with `{serverId, keys, platform}` (batch,
  * per-server; userId is derived server-side from auth, NOT in the body), returning `{evaluations:[{key,
  * enabled, reason}]}`. `platform` (slock #186, landed) is a `"web" | "mobile"` rule stage — evaluated between the
- * user and server stages — so a rollout like `sync_core_messages_v0` can target mobile-only. This client
+ * user and server stages — so a rollout like `sync_core_messages_v1` can target mobile-only. This client
  * always sends `"mobile"` ([FEATURE_FLAG_PLATFORM_MOBILE]); the server treats every KMP surface as mobile.
  */
-const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v0"
+// v1 since 1.13.0: 1.12 and the web client read `sync_core_messages_v0` without the offline-cache fixes, so a
+// per-server rule on this key reaches 1.13.0+ mobile builds only (artin, #raft-mobile-reconcile:82129b92).
+const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v1"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
 const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0"
@@ -175,7 +177,7 @@ internal class SlockFeatureFlagsNetworkApi(
 
 /**
  * Caches the registered flag evaluation per server. [prefetch] issues the batch request (this is what
- * makes `sync_core_messages_v0` traffic appear at `feature-flags/evaluate`) and updates the snapshot;
+ * makes `sync_core_messages_v1` traffic appear at `feature-flags/evaluate`) and updates the snapshot;
  * [snapshotFor]/[isEnabled] are safe defaults-off reads before/without a resolve. A failed fetch leaves
  * the prior snapshot (or Unresolved) — flags default OFF, so the gated feature stays dark, never broken.
  */

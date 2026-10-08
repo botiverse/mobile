@@ -105,7 +105,7 @@ import kotlin.time.TimeSource
  */
 class RealtimeEventMapper(
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
-    // Flag-gated canonical projection gateway (`sync_core_messages_v0`). Default no-op keeps the mapper
+    // Flag-gated canonical projection gateway (`sync_core_messages_v1`). Default no-op keeps the mapper
     // decoupled and unchanged in behavior (returns null: zero decode, null carry); the provider injects the
     // real gateway when shadow mode is active. The gateway owns the flag gate, the face selection and the
     // ONE canonical decode per frame — the mapper only attaches the returned carry to the event.

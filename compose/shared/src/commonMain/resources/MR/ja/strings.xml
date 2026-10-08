@@ -2160,4 +2160,5 @@
     <string name="thread_members_create_named_agent">%1$s を作成</string>
     <string name="app_update_download_paused">ダウンロード一時停止中 — 再開を待っています</string>
     <string name="app_update_download_failed">ダウンロードに失敗しました。再試行してください。</string>
+    <string name="thread_audio_playback_position">再生位置</string>
 </resources>

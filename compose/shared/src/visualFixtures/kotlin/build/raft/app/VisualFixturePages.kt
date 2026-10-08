@@ -34,6 +34,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -1284,6 +1285,24 @@ internal class ComposeHomeSidebarRowStatesVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeSidebarRowStatesVisualContent() }
+    }
+}
+
+@Page("compose_thread_inline_audio_controls_visual", supportInLocal = true)
+internal class ComposeThreadInlineAudioControlsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Column(
+                modifier = com.tencent.kuikly.compose.ui.Modifier.padding(16.dp),
+                verticalArrangement = com.tencent.kuikly.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+            ) {
+                // Paused at the start, playing mid-way, and finished.
+                ThreadInlineAudioControls(false, true, 0, 135_000, {}, {})
+                ThreadInlineAudioControls(true, true, 42_000, 135_000, {}, {})
+                ThreadInlineAudioControls(false, true, 135_000, 135_000, {}, {})
+            }
+        }
     }
 }
 

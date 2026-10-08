@@ -36,7 +36,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun prefetchResolvesEnabledFlagAndDefaultsUnknownOff() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api)
         val snapshot = flags.prefetch(server)
         assertTrue(snapshot.resolved)
@@ -48,7 +48,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun diagnosticOverrideHookReceivesServerValueAndDecidesBothReadShapes() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":false}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":false}]}"""))
         val seen = mutableListOf<Triple<ServerId?, String, Boolean>>()
         val flags =
             SharedServerFeatureFlags(
@@ -75,7 +75,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun diagnosticOverrideHookCanForceAServerEnabledFlagOff() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api, diagnosticOverride = { _, _, _ -> false })
         flags.prefetch(server)
         assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
@@ -85,7 +85,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun withoutDiagnosticOverrideHookReadsAreTheRawSnapshot() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api)
         assertFalse(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         flags.prefetch(server)
@@ -96,7 +96,7 @@ class SharedServerFeatureFlagsTest {
     fun readStateV1FlagIsIndependentAndDefaultsOffUntilItsOwnEvaluation() = runBlocking {
         val flags =
             SharedServerFeatureFlags(
-                FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true},{"key":"sync_core_read_state_v1","enabled":true}]}"""))
+                FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":true},{"key":"sync_core_read_state_v1","enabled":true}]}"""))
             )
 
         assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
@@ -107,7 +107,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun explicitDisabledFlagStaysOff() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":false}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":false}]}"""))
         val flags = SharedServerFeatureFlags(api)
         flags.prefetch(server)
         assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
@@ -543,7 +543,7 @@ class SharedServerFeatureFlagsTest {
     @Test
     fun networkApiSendsMobilePlatformInRequestBody() = runBlocking {
         // slock #186: the server evaluates a `platform` rule stage; the mobile client must report "mobile"
-        // so a mobile-only rollout (e.g. sync_core_messages_v0) targets this client and not web.
+        // so a mobile-only rollout (e.g. sync_core_messages_v1) targets this client and not web.
         val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
         SlockFeatureFlagsNetworkApi(client).evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         val body = client.lastBody ?: error("no request body captured")
