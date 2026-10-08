@@ -22,10 +22,10 @@ on:
         description: "Re-run the public-Downloads authority class N times per API level to reproduce the intermittent API 31 cross-UID SecurityException. Default 1."
         type: number
         default: 1
-      attachment_authority_reboot:
-        description: "With attachment_authority_repeat, reboot the emulator before each iteration so every run starts right after boot, like the single CI run."
-        type: boolean
-        default: false
+      attachment_authority_mode:
+        description: "Public-download authority runner mode: ci (default), reboot, or ab-fresh (clear MediaProvider + reboot each iteration; odd iterations skip the readiness wait as a control)."
+        type: string
+        default: ci
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -978,7 +978,7 @@ jobs:
             adb wait-for-device
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            scripts/ci/run-public-downloads-authority.sh ${{ matrix.api-level }} ${{ inputs.attachment_authority_repeat || 1 }} ${{ inputs.attachment_authority_reboot || false }}
+            scripts/ci/run-public-downloads-authority.sh ${{ matrix.api-level }} ${{ inputs.attachment_authority_repeat || 1 }} ${{ inputs.attachment_authority_mode || 'ci' }}
 
       - name: Upload API ${{ matrix.api-level }} attachment evidence
         if: always()

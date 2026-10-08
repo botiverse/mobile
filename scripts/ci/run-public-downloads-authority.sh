@@ -1,56 +1,112 @@
 #!/usr/bin/env bash
 # Runs the public-Downloads authority instrumentation on the current emulator and always
-# captures the framework logcat that explains a cross-UID read denial (MediaProvider,
-# URI grants, ActivityManager). The API 31 lane intermittently reports
-# "external reader failed: SecurityException"; the probe only sees the exception, while
-# the denying check is logged by system_server/MediaProvider.
+# captures the framework logcat that explains a cross-UID read denial.
 #
-# Usage: run-public-downloads-authority.sh <api-level> [repeat] [reboot]
-#   repeat (default 1) re-runs the class back to back to reproduce intermittent failures;
-#   reboot=true reboots the emulator before every iteration after the first, so each run
-#   starts right after BOOT_COMPLETED like the single CI run does (MediaProvider's boot
-#   SCAN_VOLUME is still in flight). The script exits non-zero if any iteration fails.
+# Why the readiness wait exists: on a freshly created AVD the first boot runs MediaProvider's
+# database creation, legacy migration and boot SCAN_VOLUME. A cross-UID read issued inside that
+# window is intermittently denied by MediaProvider.checkAccess ("<pkg> has no access to
+# content://media/external/downloads/N") even though the URI grant is in place (reproduced on
+# API 31, run 37855699822). The single CI run lands right after BOOT_COMPLETED, so wait for
+# MediaProvider to finish a synchronous scan of external_primary before testing.
+#
+# Usage: run-public-downloads-authority.sh <api-level> [repeat] [mode]
+#   repeat (default 1): run the class N times back to back.
+#   mode (default ci):
+#     ci        wait for MediaProvider readiness, then run (normal CI behaviour)
+#     reboot    reboot before every iteration after the first, wait, then run
+#     ab-fresh  per iteration: clear MediaProvider data and reboot (fresh-AVD-like first boot);
+#               odd iterations run immediately (control), even iterations wait first (fix)
 set -uo pipefail
 
-api="${1:?usage: run-public-downloads-authority.sh <api-level> [repeat]}"
+api="${1:?usage: run-public-downloads-authority.sh <api-level> [repeat] [mode]}"
 repeat="${2:-1}"
-reboot="${3:-false}"
+mode="${3:-ci}"
 here="$(cd "$(dirname "$0")" && pwd)"
 logcat_file="attachment-public-downloads-api${api}-logcat.txt"
 summary_file="attachment-public-downloads-api${api}-repeat-summary.txt"
+media_pkg="$(adb shell pm list packages 2>/dev/null | tr -d '\r' | sed -n 's/^package://p' | grep -E '^com\.(google\.)?android\.providers\.media\.module$' | head -n 1)"
 
-adb logcat -c || true
+wait_for_boot() {
+  adb wait-for-device
+  for _ in $(seq 1 180); do
+    [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && return 0
+    sleep 1
+  done
+  echo "boot_completed timeout" >&2
+}
+
+wait_for_media_ready() {
+  local started=$SECONDS
+  # A synchronous scan call blocks until MediaProvider's databases are open (creation and
+  # migration done) and the volume scan has finished.
+  if adb shell content call --uri content://media --method scan_volume --arg external_primary >/dev/null 2>&1; then
+    echo "media_ready=scan_volume seconds=$((SECONDS - started))"
+    return 0
+  fi
+  # Fallback: wait for the boot scan of external_primary to be logged.
+  for _ in $(seq 1 120); do
+    if adb logcat -d -s MediaProvider 2>/dev/null | grep -q "Scanned external_primary"; then
+      echo "media_ready=logcat seconds=$((SECONDS - started))"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "media_ready=timeout seconds=$((SECONDS - started))"
+  return 1
+}
+
 : > "$summary_file"
 : > "$logcat_file"
+adb logcat -G 16M >/dev/null 2>&1 || true
 overall=0
 for i in $(seq 1 "$repeat"); do
-  if [ "$reboot" = true ] && [ "$i" -gt 1 ]; then
-    adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
-    adb reboot
-    adb wait-for-device
-    for _ in $(seq 1 120); do
-      [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
-      sleep 1
-    done
-    adb logcat -c || true
+  wait_media=true
+  case "$mode" in
+    reboot)
+      if [ "$i" -gt 1 ]; then
+        adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
+        adb reboot; wait_for_boot; adb logcat -G 16M >/dev/null 2>&1 || true
+      fi
+      ;;
+    ab-fresh)
+      adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
+      if [ -n "$media_pkg" ]; then adb shell pm clear "$media_pkg" >/dev/null 2>&1 || true; fi
+      adb reboot; wait_for_boot; adb logcat -G 16M >/dev/null 2>&1 || true
+      if [ $((i % 2)) -eq 1 ]; then wait_media=false; fi
+      ;;
+  esac
+  ready="media_ready=skipped"
+  if [ "$wait_media" = true ]; then
+    if ! ready="$(wait_for_media_ready)"; then
+      # Never test on an unready MediaProvider: a timeout is a failed run, not a skip.
+      echo "iteration=$i wait=true $ready rc=1" | tee -a "$summary_file"
+      overall=1
+      continue
+    fi
   fi
   if [ "$repeat" -eq 1 ]; then
     out="attachment-public-downloads-api${api}-instrumentation.txt"
   else
     out="attachment-public-downloads-api${api}-instrumentation-${i}.txt"
   fi
+  skip_idle=false
+  if [ "$wait_media" = false ]; then skip_idle=true; fi
   "$here/run-instrumentation-with-retry.sh" "$out" 1 -- adb shell am instrument -w -r \
+    -e skipMediaIdle "$skip_idle" \
     -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest \
     build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
   rc=$?
-  echo "iteration=$i rc=$rc" | tee -a "$summary_file"
+  echo "iteration=$i wait=$wait_media $ready rc=$rc" | tee -a "$summary_file"
   if [ "$rc" -ne 0 ]; then
     overall=$rc
     grep -h "external reader failed" "$out" | head -n 1 | tee -a "$summary_file" || true
   fi
 done
 adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
-grep -E "MediaProvider|UriGrants|SecurityException|ActivityManager: Permission|ExternalReadProbe" \
-  "$logcat_file" | tail -n 200 > "attachment-public-downloads-api${api}-logcat-focus.txt" || true
-echo "failures=$(grep -c 'rc=[1-9]' "$summary_file") of $repeat" | tee -a "$summary_file"
+grep -E "MediaProvider|MediaUpgradeReceiver|has no access|ExternalReadProbe" \
+  "$logcat_file" | tail -n 400 > "attachment-public-downloads-api${api}-logcat-focus.txt" || true
+{
+  echo "control_failures=$(grep -c 'wait=false .*rc=[1-9]' "$summary_file") of $(grep -c 'wait=false' "$summary_file")"
+  echo "wait_failures=$(grep -c 'wait=true .*rc=[1-9]' "$summary_file") of $(grep -c 'wait=true' "$summary_file")"
+} | tee -a "$summary_file"
 exit "$overall"
