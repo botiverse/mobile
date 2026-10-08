@@ -999,7 +999,7 @@
     <string name="member_error_description_too_long">説明は %1$s 文字以内にしてください</string>
     <string name="member_dialog_full_reset_warning">MEMORY.md と notes/ を含むすべてのワークスペースファイルが完全に削除されます。元に戻すことはできません。</string>
     <string name="member_dialog_restart_description">エージェントプロセスを停止して再起動します。ランタイムセッションとワークスペースファイルは保持されます。</string>
-    <string name="member_dialog_reset_session_description">ランタイムセッションをクリアして再起動します。ワークスペースファイル（MEMORY.md、notes/）は保持されます。</string>
+    <string name="member_dialog_reset_session_description">ランタイムセッションをクリアして再起動します。MEMORY.md や notes/ などのワークスペースファイルは保持されます。</string>
     <string name="member_dialog_full_reset_description">ランタイムセッションをクリアし、すべてのワークスペースファイルを削除して、最初から再起動します。</string>
     <string name="member_title_load_error">メンバーを読み込めませんでした</string>
     <string name="member_title_agent_roles">エージェントの役割</string>

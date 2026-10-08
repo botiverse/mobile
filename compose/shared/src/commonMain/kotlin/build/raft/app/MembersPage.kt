@@ -6129,7 +6129,7 @@ private fun MembersDetailContent(
             // Reuse the shared unified dialog (React ConfirmDialog is a plain
             // card: uppercase 18px title + X, no header divider, max-w-sm).
             SlockUnifiedDialog(
-                title = membersLifecycleConfirmTitle(action).uppercase(),
+                title = membersLifecycleConfirmTitle(action).slockDisplayUppercase(),
                 dismissEnabled = lifecycleInFlight != action.actionKey,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
@@ -6589,7 +6589,7 @@ private fun MembersAgentIssueReportDialog(
         mutableStateOf(runtimeTranscriptAvailable)
     }
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_title).uppercase(),
+        title = stringResource(MR.strings.member_report_issue_title).slockDisplayUppercase(),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
         maxWidth = 420.dp,
@@ -6809,7 +6809,7 @@ private fun MembersAgentIssueReportReferenceRow(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = label.uppercase(),
+            text = label.slockDisplayUppercase(),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack.copy(alpha = 0.6f)
         )
@@ -6829,7 +6829,7 @@ private fun MembersAgentIssueReportReceiptDialog(
     onDismiss: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_success_title).uppercase(),
+        title = stringResource(MR.strings.member_report_issue_success_title).slockDisplayUppercase(),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -6929,7 +6929,7 @@ private fun MembersAgentIssueReportReceiptDialog(
 }
 
 @Composable
-private fun MembersRestartResetDialog(
+internal fun MembersRestartResetDialog(
     agentName: String,
     selectedAction: MembersAgentLifecycleAction,
     busy: Boolean,
@@ -6938,13 +6938,18 @@ private fun MembersRestartResetDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val titleTemplate = stringResource(MR.strings.member_dialog_restart_title)
+    // Uppercase the name only in Latin-script locales; see slockDisplayUppercase.
+    val titleAgentName = if (titleTemplate.containsSlockCjk()) agentName else agentName.uppercase()
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_restart_title).replace("%1\$s", agentName.uppercase()),
+        title = titleTemplate.replace("%1\$s", titleAgentName),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 520.dp,
-        titleFontSize = 24,
-        titleLineHeight = 30,
+        // Web ResetAgentDialog is a ConfirmDialog: 18px title, text-sm option
+        // labels, text-xs descriptions. Match the sibling lifecycle confirm dialog.
+        titleFontSize = 18,
+        titleLineHeight = 22,
         titleMaxLines = 2,
         contentSpacing = SlockSpacing.Md
     ) {
@@ -6993,9 +6998,12 @@ private fun MembersRestartResetDialog(
                 }
             }
         }
+        // Same footer as the app's other confirm dialogs (and web ConfirmDialog):
+        // right-aligned buttons at their natural width. The old per-action min
+        // widths (124dp + up to 220dp) overflowed narrow phones.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockBrutalActionButton(
@@ -7003,9 +7011,6 @@ private fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 backgroundColor = SlockColor.SurfaceWhite,
-                minWidth = 124.dp,
-                minHeight = 36.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
@@ -7013,9 +7018,6 @@ private fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.RotateCcw,
                 enabled = !busy,
                 backgroundColor = selectedAction.restartResetAccentColor(),
-                minWidth = selectedAction.restartResetButtonMinWidth(),
-                minHeight = 36.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onConfirm
             )
         }
@@ -7029,22 +7031,23 @@ private fun MembersRestartResetActionCard(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val shadowOffset = if (selected) 4.dp else 0.dp
+    // Every card reserves the shadow gutter and keeps the shadow box; only its color
+    // follows selection. Reserving it only on the selected card made that card 4dp
+    // narrower than its siblings and shifted the list whenever the selection changed.
+    val shadowOffset = 4.dp
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(end = shadowOffset, bottom = shadowOffset)
     ) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(if (selected) SlockColor.ShadowBlack else Color.Transparent)
+        )
         Column(
             modifier =
                 Modifier
@@ -7060,14 +7063,14 @@ private fun MembersRestartResetActionCard(
         ) {
             Text(
                 text = action.restartResetTitle(),
-                style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = action.restartResetDescription(),
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray
             )
         }
@@ -7103,10 +7106,10 @@ private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
 @Composable
 private fun MembersAgentLifecycleAction.restartResetTitle(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent).uppercase()
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session).uppercase()
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart).uppercase()
-        else -> localizedLabel().uppercase()
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent).slockDisplayUppercase()
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session).slockDisplayUppercase()
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart).slockDisplayUppercase()
+        else -> localizedLabel().slockDisplayUppercase()
     }
 
 @Composable
@@ -7116,14 +7119,6 @@ private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
         MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
         MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
         else -> localizedLabel()
-    }
-
-private fun MembersAgentLifecycleAction.restartResetButtonMinWidth(): Dp =
-    when (this) {
-        MembersAgentLifecycleAction.Restart -> 136.dp
-        MembersAgentLifecycleAction.ResetSession -> 220.dp
-        MembersAgentLifecycleAction.ResetFull -> 206.dp
-        else -> 136.dp
     }
 
 @Composable
@@ -7494,7 +7489,7 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).uppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).slockDisplayUppercase())
         val descriptionMissing = member.description.isNullOrBlank()
         Text(
             text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
@@ -7554,7 +7549,7 @@ private fun MembersHumanInfoSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
         MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
             if (editingRole) {
                 Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
@@ -7848,7 +7843,7 @@ private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
 @Composable
 private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_title_agent_roles).uppercase(),
+        title = stringResource(MR.strings.member_title_agent_roles).slockDisplayUppercase(),
         onDismiss = onDismiss,
         maxWidth = 432.dp,
         titleFontSize = 18,
@@ -7933,7 +7928,7 @@ private fun MembersHumanCreatedAgentsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).uppercase())
+            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase())
             Text(
                 text = createdAgents.size.toString(),
                 style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -7975,7 +7970,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).uppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
         SlockBrutalActionButton(
             label = stringResource(MR.strings.member_action_remove_member),
             leadingIcon = SlockLucideIconName.Trash2,
@@ -8345,7 +8340,7 @@ private fun MembersAgentProfileHeader(
             ) {
                 MembersDetailSectionDivider()
                 SlockSectionEyebrow(
-                    label = stringResource(MR.strings.member_action_choose_avatar).uppercase(),
+                    label = stringResource(MR.strings.member_action_choose_avatar).slockDisplayUppercase(),
                     fontSize = 11.sp,
                     lineHeight = 16.sp
                 )
@@ -8717,7 +8712,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_label_display_name).uppercase(),
+                title = stringResource(MR.strings.member_label_display_name).slockDisplayUppercase(),
                 showEdit = canEdit && !editingDisplayName,
                 onEditClick = {
                     displayNameEditorAuthority = agentProfileEditAuthority
@@ -8804,7 +8799,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_description).uppercase(),
+                title = stringResource(MR.strings.member_section_description).slockDisplayUppercase(),
                 showEdit = canEdit && !editingRole,
                 onEditClick = {
                     roleEditorAuthority = agentProfileEditAuthority
@@ -9035,7 +9030,7 @@ private fun MembersAgentInfoSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
         // Role row: React keeps this as a label affordance plus an inline role chip/editor,
         // not the compact two-column metadata row used by Computer/Created/Creator.
         Column(
@@ -9577,7 +9572,7 @@ private fun MembersAgentRuntimeConfigSection(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
+                title = stringResource(MR.strings.member_section_runtime_config).slockDisplayUppercase(),
                 showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                 onEditClick = {
                     runtimeConfigError = null
@@ -9714,7 +9709,7 @@ private fun MembersAgentProfileTab(
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
         if (deleted) {
-            MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).uppercase()) {
+            MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).slockDisplayUppercase()) {
                 MembersDetailField(stringResource(MR.strings.member_label_status), stringResource(MR.strings.member_status_deleted))
                 MembersDetailField(stringResource(MR.strings.member_label_deleted_at), summary.deletedAt.orDash())
             }
@@ -9831,7 +9826,7 @@ private fun MembersAgentProfileActionsSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).uppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
         if (primaryAction != null) {
             SlockBrutalActionButton(
                 label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
@@ -10057,7 +10052,7 @@ private fun MembersAgentRuntimeConfigField(
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
-            text = label.uppercase(),
+            text = label.slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
@@ -10539,7 +10534,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
 
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
+        title = stringResource(MR.strings.member_dialog_edit_runtime_config).slockDisplayUppercase(),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -11446,7 +11441,7 @@ private fun MembersAgentCreatedAgentsSection(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_created_agents).uppercase(),
+                stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase(),
                 modifier = Modifier.weight(1f)
             )
             Text(
@@ -11593,13 +11588,13 @@ private fun MembersAgentChatTabContent(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Text(
-            text = stringResource(MR.strings.member_section_agent_channels_dms).uppercase(),
+            text = stringResource(MR.strings.member_section_agent_channels_dms).slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
         Text(
-            text = stringResource(MR.strings.member_section_channels).uppercase(),
+            text = stringResource(MR.strings.member_section_channels).slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
@@ -11623,7 +11618,7 @@ private fun MembersAgentChatTabContent(
                 .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
         )
         Text(
-            text = stringResource(MR.strings.member_section_private_chats).uppercase(),
+            text = stringResource(MR.strings.member_section_private_chats).slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
@@ -11690,7 +11685,7 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
                     color = SlockColor.TextMutedGrayArgb
                 )
                 Text(
-                    text = stringResource(MR.strings.member_label_muted).uppercase(),
+                    text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
                     style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
                         .withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextMutedGray
@@ -11794,7 +11789,7 @@ private fun MembersAgentDmRow(
             )
         }
         Text(
-            text = stringResource(MR.strings.member_label_activity_only).uppercase(),
+            text = stringResource(MR.strings.member_label_activity_only).slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
@@ -11959,7 +11954,7 @@ private fun MembersAgentWorkspaceTab(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(
-        title = stringResource(MR.strings.member_section_workspace).uppercase(),
+        title = stringResource(MR.strings.member_section_workspace).slockDisplayUppercase(),
         modifier = modifier,
         framed = false,
         trailingContent = {
@@ -12163,7 +12158,7 @@ private fun MembersAgentAppsTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).uppercase(), modifier = modifier) {
+    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).slockDisplayUppercase(), modifier = modifier) {
         Text(
             text = stringResource(MR.strings.member_hint_connected_apps),
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -12325,7 +12320,7 @@ private fun MembersAgentActivityTab(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_activity_diagnostics).uppercase(),
+                stringResource(MR.strings.member_section_activity_diagnostics).slockDisplayUppercase(),
                 modifier = Modifier.weight(1f)
             )
             SlockBrutalActionButton(
@@ -13220,7 +13215,7 @@ private fun MembersDetailField(label: String, value: String) {
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Text(
-            text = label.uppercase(),
+            text = label.slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
