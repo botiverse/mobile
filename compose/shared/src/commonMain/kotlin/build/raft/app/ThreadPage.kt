@@ -15185,6 +15185,7 @@ private fun ThreadPageContentContent(
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
+                    originMessage = timelineSlice.originMessage,
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -15791,6 +15792,8 @@ internal fun ThreadPageHeader(
     agentFollowersHeader: @Composable () -> Unit = {},
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
+    originMessage: KuiklyThreadMessageItem? = payload.originMessage,
+    originReplyCount: Int = payload.originMessage?.replyCount ?: 0,
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -15805,8 +15808,25 @@ internal fun ThreadPageHeader(
     onTitleClick: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val replyThreadPreviewTitle =
+        if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
+            replyThreadHeaderPreviewTitle(
+                origin = originMessage,
+                imageLabel = stringResource(MR.strings.thread_reply_title_preview_image),
+                fileLabel = stringResource(MR.strings.thread_reply_title_preview_file)
+            )
+        } else {
+            null
+        }
+    val replyThreadReplyCountLabel =
+        when {
+            headerDisplay.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || originReplyCount <= 0 -> null
+            originReplyCount == 1 -> stringResource(MR.strings.thread_inline_reply_count_one)
+            else -> stringResource(MR.strings.thread_inline_reply_count_many, originReplyCount)
+        }
+    val headerSubtitle = replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
     val localizedHeaderTitle =
-        localizedThreadHeaderTitle(
+        replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
             localizedReplyThread = stringResource(MR.strings.thread_reply_title),
@@ -15890,7 +15910,7 @@ internal fun ThreadPageHeader(
                     }
                     dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
-                headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
+                headerSubtitle?.let {
                     Text(
                         text = it,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
