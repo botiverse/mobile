@@ -6996,9 +6996,12 @@ private fun MembersRestartResetDialog(
                 }
             }
         }
+        // Cancel keeps its natural width and the confirm button takes the rest, so the
+        // row spans the same width as the cards above. Fixed min widths (up to 124dp +
+        // 220dp) left a ragged left edge and overflowed narrow phones.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockBrutalActionButton(
@@ -7006,7 +7009,7 @@ private fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 backgroundColor = SlockColor.SurfaceWhite,
-                minWidth = 124.dp,
+                minWidth = 96.dp,
                 minHeight = 36.dp,
                 textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onDismiss
@@ -7015,8 +7018,9 @@ private fun MembersRestartResetDialog(
                 label = if (busy) stringResource(MR.strings.member_action_restarting) else selectedAction.restartResetButtonLabel(),
                 leadingIcon = SlockLucideIconName.RotateCcw,
                 enabled = !busy,
+                modifier = Modifier.weight(1f),
                 backgroundColor = selectedAction.restartResetAccentColor(),
-                minWidth = selectedAction.restartResetButtonMinWidth(),
+                minWidth = 0.dp,
                 minHeight = 36.dp,
                 textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onConfirm
@@ -7032,22 +7036,23 @@ private fun MembersRestartResetActionCard(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val shadowOffset = if (selected) 4.dp else 0.dp
+    // Every card reserves the shadow gutter and keeps the shadow box; only its color
+    // follows selection. Reserving it only on the selected card made that card 4dp
+    // narrower than its siblings and shifted the list whenever the selection changed.
+    val shadowOffset = 4.dp
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(end = shadowOffset, bottom = shadowOffset)
     ) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(if (selected) SlockColor.ShadowBlack else Color.Transparent)
+        )
         Column(
             modifier =
                 Modifier
@@ -7119,14 +7124,6 @@ private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
         MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
         MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
         else -> localizedLabel()
-    }
-
-private fun MembersAgentLifecycleAction.restartResetButtonMinWidth(): Dp =
-    when (this) {
-        MembersAgentLifecycleAction.Restart -> 136.dp
-        MembersAgentLifecycleAction.ResetSession -> 220.dp
-        MembersAgentLifecycleAction.ResetFull -> 206.dp
-        else -> 136.dp
     }
 
 @Composable
