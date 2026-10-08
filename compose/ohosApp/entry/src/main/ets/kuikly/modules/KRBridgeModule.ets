@@ -1059,7 +1059,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         callback({ "status": "cancelled" });
         return;
       }
-      fs.copyFileSync(path, targetUri);
+      // Media-library URIs must be opened through fileIo before copying.
+      // copyFileSync accepts filesystem paths or descriptors, not photo URIs.
+      const exportSource = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      try {
+        const exportTarget = fs.openSync(targetUri, fs.OpenMode.WRITE_ONLY);
+        try {
+          fs.copyFileSync(exportSource.fd, exportTarget.fd);
+        } finally {
+          fs.closeSync(exportTarget);
+        }
+      } finally {
+        fs.closeSync(exportSource);
+      }
       callback({
         "status": "saved",
         "message": "Saved to Photos",
@@ -1080,6 +1092,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       } else if (businessError.code === 201) {
         callback({ "status": "permission_denied", "message": "Allow Photos access, then try again", "retryable": true });
       } else {
+        SlockOhosAppDiagnostics.record("gallery", `Photo export failed: code=${businessError.code}`);
         callback({ "status": "photos_failed", "message": "Unable to save image to Photos", "retryable": true });
       }
     } finally {
