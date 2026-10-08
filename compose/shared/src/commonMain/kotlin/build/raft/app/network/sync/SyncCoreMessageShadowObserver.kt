@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Live-traffic implementation of the [MessageShadowObserver] canonical projection gateway for the
- * `sync_core_messages_v0` rollout.
+ * `sync_core_messages_v1` rollout.
  *
  * SHADOW mode only: for every authoritative message the legacy realtime path produces, it decodes the same
  * raw payload through the canonical ingress EXACTLY ONCE, runs the shadow-compare over that pre-decoded

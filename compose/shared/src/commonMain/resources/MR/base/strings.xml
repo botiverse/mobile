@@ -2167,4 +2167,5 @@
     <string name="thread_members_create_named_agent">Create %1$s</string>
     <string name="app_update_download_paused">Download paused — waiting to resume</string>
     <string name="app_update_download_failed">Download failed. Tap Retry to download again.</string>
+    <string name="thread_audio_playback_position">Playback position</string>
 </resources>

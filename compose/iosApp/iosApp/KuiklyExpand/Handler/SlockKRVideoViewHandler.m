@@ -41,6 +41,19 @@
 
         NSURL *url = [NSURL URLWithString:src ?: @""];
         AVPlayerItem *item = url ? [AVPlayerItem playerItemWithURL:url] : nil;
+        // Attachment audio is intentional media playback, including audio-only
+        // files. The default SoloAmbient category silences it in Silent mode.
+        // Configure before exposing AVKit controls: their Play button bypasses
+        // krv_play. AVPlayer activates the session when playback actually starts;
+        // merely opening a preview must not interrupt another app's audio.
+        NSError *audioSessionError = nil;
+        if (![[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback
+                                                    mode:AVAudioSessionModeDefault
+                                                 options:0
+                                                   error:&audioSessionError]) {
+            NSLog(@"[SlockMedia] audio session configuration failed: %@ (%ld)",
+                  audioSessionError.domain, (long)audioSessionError.code);
+        }
         _player = [AVPlayer playerWithPlayerItem:item];
         _playerViewController = [[AVPlayerViewController alloc] init];
         _playerViewController.player = _player;

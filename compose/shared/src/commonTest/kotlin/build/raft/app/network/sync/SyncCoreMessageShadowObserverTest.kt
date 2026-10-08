@@ -1,5 +1,5 @@
 /*
- * Shadow gateway gate + no-apply invariants (sync_core_messages_v0).
+ * Shadow gateway gate + no-apply invariants (sync_core_messages_v1).
  *
  * Nails the rollout-safety properties LiBai flagged for #700 plus the #607 decode-once contract:
  *  - flag OFF => the gateway does NO work: ZERO canonical decodes, compare never runs, zero diagnostics,

@@ -1229,7 +1229,7 @@ jobs:
           fi
           exit "$status"
 
-      - name: Test native image loader completion
+      - name: Test native image loader and media audio session
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: compose/iosApp
         run: |
@@ -1240,6 +1240,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
             -only-testing:iosAppTests/SlockImageLoaderTests \
+            -only-testing:iosAppTests/SlockMediaAudioSessionTests \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO test-without-building \
             > "$GITHUB_WORKSPACE/xcodebuild-image-loader-tests.log" 2>&1
           status=$?
