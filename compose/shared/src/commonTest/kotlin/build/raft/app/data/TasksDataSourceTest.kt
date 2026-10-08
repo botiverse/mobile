@@ -250,27 +250,6 @@ class TasksDataSourceTest {
     }
 
     @Test
-    fun typedTasksApiMapsJointChannelUnsupportedAsCapabilityBlocker() = runBlocking {
-        val client =
-            SlockTasksApiClient(
-                RecordingTasksApi(
-                    listResponse =
-                        HomeNetworkResponse(
-                            code = 409,
-                            bodyText = null,
-                            errorBodyText = """{"error":"joint_channel_tasks_unsupported"}"""
-                        )
-                )
-            )
-
-        val result = client.channelTasks(ChannelId("joint-1"), DataRequestPriority.Visible)
-
-        val blocker = assertIs<DataResult.NoPermission>(result).blocker
-        assertEquals("joint_channel_tasks_unsupported", blocker.code)
-        assertEquals("channel_tasks", blocker.requiredCapability)
-    }
-
-    @Test
     fun taskWireMappingPreservesTrimmedDescription() = runBlocking {
         val client =
             SlockTasksApiClient(

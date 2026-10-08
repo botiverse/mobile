@@ -847,7 +847,6 @@ internal fun HomeNetworkResponse.toTasksResult(
     source: String = "tasks",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskSnapshot> {
-    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
@@ -951,7 +950,6 @@ internal fun HomeNetworkResponse.toTaskActionResult(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
     requestedStatus: TaskStatus? = null,
 ): DataResult<TaskActionResult> {
-    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
@@ -984,7 +982,6 @@ internal fun HomeNetworkResponse.toTaskAssignActionResult(
     source: String = "tasks_assign",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskActionResult> {
-    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
@@ -1049,7 +1046,6 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
     source: String = "tasks_convert_message",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskConvertResult> {
-    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
@@ -1070,7 +1066,6 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
 }
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
-    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
@@ -1086,17 +1081,6 @@ internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     } else {
         DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
     }
-}
-
-private fun HomeNetworkResponse.unsupportedChannelTasksBlocker(): PermissionBlocker? {
-    if (code != 409) return null
-    val body = errorBodyText ?: bodyText
-    if (body?.contains("joint_channel_tasks_unsupported", ignoreCase = true) != true) return null
-    return PermissionBlocker(
-        code = "joint_channel_tasks_unsupported",
-        requiredCapability = "channel_tasks",
-        serverMessage = tasksServerErrorTextOrNull()
-    )
 }
 
 private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {

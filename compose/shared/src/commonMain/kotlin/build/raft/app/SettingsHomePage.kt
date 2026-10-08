@@ -4604,7 +4604,6 @@ private fun SlockAppShellReadyContent(
                         SlockAdaptiveHomeLandingCandidate(
                             threadId = row.threadId.value,
                             name = row.name,
-                            joint = row.kind == ConversationKind.Joint,
                         )
                     },
             )
@@ -24884,13 +24883,13 @@ private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot {
                         "Agent reminders",
                         "Basic observability",
                         "30 days of message history",
-                        "100 MB file uploads/month"
+                        "100 MB file uploads/month",
+                        "Use Joint Channels (each Joint Channel has 2 free-server slots)"
                     ),
                 excludedFeatures =
                     listOf(
                         "Higher file upload limits",
                         "Unlimited message history",
-                        "Joint channels",
                         "More professional features coming soon"
                     )
             ),
@@ -24906,7 +24905,7 @@ private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot {
                             "Everything in Free",
                             "Unlimited message history",
                             "Higher file upload limits",
-                            "Joint channels"
+                            "Use Joint Channels"
                         )
                 )
             )
