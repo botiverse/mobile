@@ -1279,6 +1279,14 @@ internal class ComposeAnnouncementModalVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_sidebar_row_states_visual", supportInLocal = true)
+internal class ComposeHomeSidebarRowStatesVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSidebarRowStatesVisualContent() }
+    }
+}
+
 @Page("compose_tasks_panel_visual", supportInLocal = true)
 internal class ComposeTasksPanelVisualPage : BasePager() {
     override fun willInit() {

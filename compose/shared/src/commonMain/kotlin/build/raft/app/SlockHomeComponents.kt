@@ -5372,6 +5372,40 @@ private fun SidebarActivityRow(
     )
 }
 
+/**
+ * Visual fixture: every sidebar row type, selected and default, in the sidebar's
+ * 2dp-gap list. Rows never reserve space for the selection shadow (it draws into
+ * the gap, like web box-shadow), so selecting a row cannot change its size.
+ */
+@Composable
+internal fun HomeSidebarRowStatesVisualContent() {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .padding(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        val rowModifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+        SidebarActionRow(SlockLucideIconName.Search, "Search", modifier = rowModifier, selected = true)
+        SidebarActionRow(SlockLucideIconName.Bookmark, "Saved", modifier = rowModifier)
+        ChannelRow(
+            content = ChannelRowContent(name = "general"),
+            modifier = rowModifier,
+            interaction = ChannelRowInteraction(identity = "visual-general", state = ChannelRowInteractionState.Selected)
+        )
+        ChannelRow(content = ChannelRowContent(name = "design"), modifier = rowModifier)
+        DirectMessageRow(
+            name = "artin",
+            avatarLabel = "AR",
+            modifier = rowModifier,
+            interactionState = ChannelRowInteractionState.Selected
+        )
+        DirectMessageRow(name = "Cindy", avatarLabel = "CI", modifier = rowModifier)
+    }
+}
+
 @Composable
 private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
     val gestureIdentity = "$icon:$label"
@@ -5432,7 +5466,6 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
             .then(clickModifier)
             .hoverable(hoverInteractionSource)
     ) {
@@ -5709,7 +5742,6 @@ private fun ChannelRow(
                     .fillMaxWidth()
                     .offset { IntOffset(0, drag.offsetY.roundToInt()) }
                     .homeRowAnchorCapture(interaction.captureLongPressAnchor || captureAnchorForPress, rowAnchor)
-                    .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
                     .then(rowDragModifier)
                     .then(hoverableModifier)
