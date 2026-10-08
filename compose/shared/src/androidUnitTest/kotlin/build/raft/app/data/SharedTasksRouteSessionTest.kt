@@ -106,6 +106,29 @@ class SharedTasksRouteSessionTest {
     }
 
     @Test
+    fun returningToPreviouslyLoadedServerRevalidatesItsFirstPage() = runTest {
+        val auth = InMemorySlockAuthSessionStore(session("A"))
+        val api = Api()
+        val shared = SharedTasksDataStore(scope = backgroundScope)
+        fun route() = SharedTasksRouteSession(
+            SharedTasksRouteOwner("test-api", "user", "A"), backgroundScope,
+            auth, SharedTasksDataSource(api), shared
+        )
+        val first = route()
+        first.start()
+        runCurrent()
+        assertEquals("task-A", first.tasks().single().id.value)
+        first.close()
+        val returned = route()
+        returned.start()
+        runCurrent()
+        assertEquals(listOf("A", "A"), api.calls, "A retained shared cache must not skip revalidation")
+        assertEquals("task-A", returned.tasks().single().id.value)
+        assertTrue(!returned.viewModel.state.value.refreshing)
+        returned.close()
+    }
+
+    @Test
     fun queuedOldRouteCannotLoadForNewAccountOrServer() = runTest {
         val auth = InMemorySlockAuthSessionStore(session("A"))
         val api = Api()
