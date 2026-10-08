@@ -16,3 +16,7 @@ rollout: full
 ## en
 
 Fixed uploaded image thumbnails failing to reopen in the composer. Single images and galleries can be previewed and edited before sending.
+
+## ja
+
+アップロード後、入力欄の画像サムネイルをタップしてもプレビューが開かない問題を修正しました。単一画像と複数画像を送信前にプレビュー・編集できます。
