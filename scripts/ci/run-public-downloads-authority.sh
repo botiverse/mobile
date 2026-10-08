@@ -30,14 +30,24 @@ logcat_file="attachment-public-downloads-api${api}-logcat.txt"
 summary_file="attachment-public-downloads-api${api}-repeat-summary.txt"
 media_pkg="$(adb shell pm list packages 2>/dev/null | tr -d '\r' | sed -n 's/^package://p' | grep -E '^com\.(google\.)?android\.providers\.media\.module$' | head -n 1)"
 
+boot_timeout="${BOOT_TIMEOUT:-300}"
+
 wait_for_boot() {
-  timeout 300 adb wait-for-device || { echo "wait-for-device timeout" >&2; return 1; }
-  for _ in $(seq 1 180); do
-    [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && return 0
+  local deadline=$((SECONDS + boot_timeout))
+  timeout "$boot_timeout" adb wait-for-device || { echo "boot=wait_for_device_timeout"; return 1; }
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    [ "$(timeout 15 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && return 0
     sleep 1
   done
-  echo "boot_completed timeout" >&2
+  echo "boot=boot_completed_timeout"
   return 1
+}
+
+# Reboots and waits for the new boot; any failure is reported and must fail the iteration.
+reboot_device() {
+  timeout 60 adb reboot >/dev/null 2>&1 || { echo "boot=reboot_command_failed"; return 1; }
+  wait_for_boot || return 1
+  adb logcat -G 16M >/dev/null 2>&1 || true
 }
 
 wait_for_media_ready() {
@@ -55,14 +65,23 @@ for i in $(seq 1 "$repeat"); do
       wait_media=false
       if [ "$i" -gt 1 ]; then
         adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
-        adb reboot; wait_for_boot; adb logcat -G 16M >/dev/null 2>&1 || true
+        if ! boot="$(reboot_device)"; then
+          echo "iteration=$i wait=false $boot rc=1" | tee -a "$summary_file"
+          overall=1
+          continue
+        fi
       fi
       ;;
     ab-fresh)
       adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
       if [ -n "$media_pkg" ]; then adb shell pm clear "$media_pkg" >/dev/null 2>&1 || true; fi
-      adb reboot; wait_for_boot; adb logcat -G 16M >/dev/null 2>&1 || true
       if [ $((i % 2)) -eq 1 ]; then wait_media=false; fi
+      if ! boot="$(reboot_device)"; then
+        # A failed reboot is a failed iteration, never a valid control or fix sample.
+        echo "iteration=$i wait=$wait_media $boot rc=1" | tee -a "$summary_file"
+        overall=1
+        continue
+      fi
       ;;
   esac
   ready="media_ready=skipped"
@@ -93,7 +112,10 @@ adb logcat -d -v threadtime >> "$logcat_file" 2>/dev/null || true
 grep -E "MediaProvider|MediaUpgradeReceiver|has no access|ExternalReadProbe" \
   "$logcat_file" | tail -n 400 > "attachment-public-downloads-api${api}-logcat-focus.txt" || true
 {
-  echo "control_failures=$(grep -c 'wait=false .*rc=[1-9]' "$summary_file") of $(grep -c 'wait=false' "$summary_file")"
-  echo "wait_failures=$(grep -c 'wait=true .*rc=[1-9]' "$summary_file") of $(grep -c 'wait=true' "$summary_file")"
+  # Boot/reboot failures are reported separately and never count as experiment samples.
+  samples="$(grep '^iteration=' "$summary_file" | grep -v ' boot=' || true)"
+  echo "boot_failures=$(grep -c ' boot=' "$summary_file")"
+  echo "control_failures=$(grep -c 'wait=false .*rc=[1-9]' <<<"$samples") of $(grep -c 'wait=false' <<<"$samples")"
+  echo "wait_failures=$(grep -c 'wait=true .*rc=[1-9]' <<<"$samples") of $(grep -c 'wait=true' <<<"$samples")"
 } | tee -a "$summary_file"
 exit "$overall"
