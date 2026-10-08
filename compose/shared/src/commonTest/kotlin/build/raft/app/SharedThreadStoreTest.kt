@@ -184,9 +184,10 @@ private class ConcurrentTestLogBuffer {
 }
 
 class SharedThreadStoreTest {
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = kotlinx.coroutines.test.runTest {
+    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = runBlocking {
+        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
                 replyCount = 8, unreadReplyCount = 4)))))
@@ -194,9 +195,8 @@ class SharedThreadStoreTest {
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
-        val store = SharedThreadStore(dataSource = dataSource, scope = backgroundScope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        testScheduler.runCurrent()
         assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
         val event = build.raft.app.model.PerReceiverReadStateChanged(ServerId("wrong-server"),
             listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))
@@ -205,7 +205,6 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.ApplyRealtimeEvent(event.copy(serverId = ServerId("server-1"))))
         assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
         store.accept(SharedThreadIntent.Refresh)
-        testScheduler.runCurrent()
         assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
         fun contentEvent(seq: Long?) = ThreadUpdated(
             parentMessageId = MessageId("m1"), threadChannelId = ChannelId("reply-channel"),
@@ -222,11 +221,13 @@ class SharedThreadStoreTest {
             firstUnreadMessageId = MessageId("reply-11"))))
         assertEquals(1, store.state.value.payload.messages.single().unreadReplyCount)
         store.clear()
+        scope.cancel()
     }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun receiverZeroReadEventClearsStaleJumpThroughStore() = kotlinx.coroutines.test.runTest {
+    fun receiverZeroReadEventClearsStaleJumpThroughStore() = runBlocking {
+        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
                 replyCount = 8).copy(firstUnreadReplyMessageId = MessageId("reply-old"))))))
@@ -234,15 +235,15 @@ class SharedThreadStoreTest {
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
-        val store = SharedThreadStore(dataSource = dataSource, scope = backgroundScope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        testScheduler.runCurrent()
         assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
         assertEquals("reply-old", store.state.value.payload.messages.single().firstUnreadReplyMessageId)
         store.accept(SharedThreadIntent.ApplyRealtimeEvent(build.raft.app.model.PerReceiverReadStateChanged(
             ServerId("server-1"), listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))))
         assertNull(store.state.value.payload.messages.single().firstUnreadReplyMessageId)
         store.clear()
+        scope.cancel()
     }
 
     @Test
