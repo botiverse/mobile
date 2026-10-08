@@ -44,7 +44,7 @@ internal actual fun SlockMermaidDiagramBlock(
     if (layoutScene != null && layoutScene.width > 0 && layoutScene.height > 0) {
         SlockMermaidCard(
             code = code,
-            diagramWidth = layoutScene.width,
+            diagramWidth = layoutScene.width.toFloat(),
             codeContent = fallback,
             diagramContent = { scale ->
                 MakeKuiklyComposeNode<CanvasView>(
