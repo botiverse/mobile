@@ -5361,7 +5361,29 @@ internal class SlockKuiklyBridgeModule(
                 val result =
                         runCatching {
                                     val install = action != "handsUpdateStatus"
-                                    checkHandsUpdate(install = install)
+                                    val tracked = handsUpdateDownloads.values.firstOrNull {
+                                        it.downloadId.toString() == request.optString("token")
+                                    }
+                                    if (action == "handsUpdateInstall" && tracked != null && !tracked.failed &&
+                                        tracked.status() == DownloadManager.STATUS_SUCCESSFUL) {
+                                        // A completed local APK must remain installable while Hands is offline.
+                                        val local = tracked.toInstallResult(appContext, source = "progress_button")
+                                        loadSettingsDeveloper() + mapOf(
+                                            "updateCheckSupported" to true,
+                                            "updateAvailable" to true,
+                                            "currentVersionLabel" to BuildConfig.VERSION_NAME,
+                                            "currentVersionCode" to BuildConfig.VERSION_CODE.toLong(),
+                                            "latestVersionCode" to tracked.versionCode,
+                                            "updateTransactionState" to if (local.errorCode == null) "installer_opened" else "ready_to_install",
+                                            "updateCheckStatusLabel" to local.statusLabel,
+                                            "updateCheckActionLabel" to local.actionLabel,
+                                            "updateCheckDetail" to local.detail,
+                                            "updateCheckErrorCode" to local.errorCode.orEmpty(),
+                                            "updateDownloadProgressToken" to tracked.downloadId.toString()
+                                        )
+                                    } else {
+                                        checkHandsUpdate(install = install)
+                                    }
                                 }
                                 .getOrElse { throwable ->
                                     SlockAppLog.record(

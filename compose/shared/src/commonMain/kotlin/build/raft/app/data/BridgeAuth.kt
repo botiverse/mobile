@@ -306,6 +306,9 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         handsUpdateAction("handsUpdateInstall")
 
+    override suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        handsUpdateAction("handsUpdateInstall", token)
+
     override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
         if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val response =
@@ -604,8 +607,8 @@ internal class BridgeSettingsPlatformCapabilities(
         return response.toSystemNotificationActionResult()
     }
 
-    private suspend fun handsUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", action))
+    private suspend fun handsUpdateAction(action: String, token: String = ""): DataResult<SharedSettingsUpdateCheckSnapshot> {
+        val response = settingsCapability(JSONObject().put("action", action).put("token", token))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(handsUpdateBridgeError(response?.toString()))
         }

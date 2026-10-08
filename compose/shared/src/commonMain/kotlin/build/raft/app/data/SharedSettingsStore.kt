@@ -548,6 +548,9 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_hands_update_install_unavailable", retryable = false))
 
+    suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        installHandsUpdate()
+
     suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 

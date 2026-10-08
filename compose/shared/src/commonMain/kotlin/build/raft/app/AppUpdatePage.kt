@@ -171,7 +171,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                     actionRunning = true
                     errorMessage = null
                     try {
-                        val result = environment.settingsCapabilities.installHandsUpdate()
+                        val result = environment.settingsCapabilities.installHandsUpdateForToken(snapshot?.downloadProgressToken.orEmpty())
                         val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
                         snapshot = projection.snapshot
                         errorMessage = projection.errorMessage
@@ -649,6 +649,7 @@ internal fun SharedSettingsUpdateCheckSnapshot.withLocalDownloadTerminal(
     progress: SharedUpdateDownloadProgress?
 ): SharedSettingsUpdateCheckSnapshot {
     if (progress == null || progress.active || progress.token != downloadProgressToken) return this
+    if (transactionState == SharedSettingsUpdateTransactionState.InstallerOpened || errorCode.startsWith("install_")) return this
     return when (progress.phase) {
         "ready" -> copy(
             transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
