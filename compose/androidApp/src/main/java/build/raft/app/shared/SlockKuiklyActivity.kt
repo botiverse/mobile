@@ -3987,7 +3987,9 @@ internal class SlockKuiklyImageAdapter(
                 BitmapFactory.Options().apply {
                     inJustDecodeBounds = true
                 }
-        openInput()?.use { input -> BitmapFactory.decodeStream(input, null, boundsOptions) } ?: return null
+        // With inJustDecodeBounds the decoder always returns null; only a missing stream aborts.
+        val boundsInput = openInput() ?: return null
+        boundsInput.use { input -> BitmapFactory.decodeStream(input, null, boundsOptions) }
         val decodeOptions =
                 BitmapFactory.Options().apply {
                     if (boundsOptions.outWidth > 0 && boundsOptions.outHeight > 0) {
