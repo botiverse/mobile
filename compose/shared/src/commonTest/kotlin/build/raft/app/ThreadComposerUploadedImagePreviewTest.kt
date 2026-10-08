@@ -39,7 +39,8 @@ class ThreadComposerUploadedImagePreviewTest {
                     assertLocalImage(restored, files[selected], replacements[selected])
                     assertEquals(!original, restored.composerImageCompressAfterEdit)
                     assertTrue(restored.composerImageOriginalOptionEnabled)
-                    assertEquals(files.map { it.fileRef }, restored.composerImageOwnedTemporaryFileRefs)
+                    assertTrue(restored.composerImageOwnedTemporaryFileRefs.isEmpty())
+                    assertTrue(restored.imageGallery.none { it.composerImageOwnedTemporary })
                     val deliveredReplacements = slockFilePreviewComposerImageEventsForPayload(
                         eventPayload = restored,
                         singleEvent = { _, _, _ -> restored.composerImageReplaceAttachmentId },
@@ -95,6 +96,31 @@ class ThreadComposerUploadedImagePreviewTest {
         assertTrue(trace.requiresAuthenticatedRouteAuthority())
         assertEquals(SlockFilePreviewSourceThreadAttachment, trace.payload.source)
         assertFalse(trace.payload.composerImageCanComplete)
+    }
+
+    @Test
+    fun cancellingReopenedEditorRetiresOnlyNewOutputsAndPreservesDraftInputs() {
+        listOf(listOf(image("first")), listOf(image("first"), image("second"))).forEach { files ->
+            val payload = assertNotNull(threadComposerUploadedImagePreviewPayload(
+                "thread", "action", files, files.map { "remote-${it.id}" }, 0, false
+            ))
+            val registry = SlockFilePreviewEphemeralActionRegistry()
+            registry.register("session", "thread", setOf("action"), payload.composerImageOwnedTemporaryFileRefs.toSet())
+            assertTrue(registry.retireActive("session").cleanupFileRefs.isEmpty())
+
+            registry.register("session-edited", "thread", setOf("action"), payload.composerImageOwnedTemporaryFileRefs.toSet())
+            val output = image("new-output")
+            val outputRef = assertNotNull(output.fileRef)
+            assertTrue(registry.trackOwnedTemporaryFileRef("session-edited", "thread", outputRef))
+            val edited = if (files.size == 1) {
+                payload.withComposerImageFinalResult(output, compressed = false)
+            } else {
+                payload.withComposerImageGalleryFinalResult(0, output, compressed = false)
+            }
+            assertEquals(listOf(outputRef), edited.composerImageOwnedTemporaryFileRefs)
+            assertEquals(setOf(outputRef), registry.retireActive("session-edited").cleanupFileRefs)
+            assertEquals("remote-first", edited.composerImageReplaceAttachmentId)
+        }
     }
 
     @Test

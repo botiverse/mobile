@@ -25,14 +25,18 @@ internal fun threadComposerUploadedImagePreviewPayload(
     if (files.size == 1) {
         return local.copy(
             imageGallery = emptyList(),
+            // The draft already owns this input; cancelling a second preview must not delete it.
+            composerImageOwnedTemporaryFileRefs = emptyList(),
             composerImageReplaceAttachmentId = replacementAttachmentIds.single(),
             messageDesc = null
         )
     }
     return local.copy(
+        composerImageOwnedTemporaryFileRefs = emptyList(),
         imageGallery = files.mapIndexed { index, file ->
             file.toComposerImageGalleryImage().copy(
-                composerImageReplaceAttachmentId = replacementAttachmentIds[index]
+                composerImageReplaceAttachmentId = replacementAttachmentIds[index],
+                composerImageOwnedTemporary = false
             )
         }
     ).withImageGalleryIndex(selectedIndex)
