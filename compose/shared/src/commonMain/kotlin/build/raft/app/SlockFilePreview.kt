@@ -1918,6 +1918,9 @@ private fun SlockFilePreviewStandalonePageContent() {
             unableToOpenAttachment = unableToOpenAttachment
         )
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
+    val composerImageCompressionFailed =
+        stringResource(MR.strings.thread_error_reason_attachment_image_compression_failed)
+    val composerImageHandoffFailed = stringResource(MR.strings.thread_error_attachment_upload)
     val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
     val imageSavedToPhotos = stringResource(MR.strings.thread_image_preview_saved_to_photos)
     val imagePhotosPermissionDenied = stringResource(MR.strings.thread_image_preview_photos_permission_denied)
@@ -3071,17 +3074,30 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    fun logComposerImageHandoffRejected(reason: String, eventCount: Int) {
+        bridge.logWarn(
+            "composer_image_handoff_rejected reason=$reason events=$eventCount " +
+                "session=${launchPayloadTrace.sessionId.take(12)} " +
+                "gallery=${payload.imageGallery.size} compress=${payload.composerImageCompressAfterEdit}"
+        )
+    }
     fun postComposerImageEvents(
         events: List<JSONObject>,
         closePage: Boolean = true,
         threadKey: String = payload.composerImageThreadKey
     ): Boolean {
-        if (events.isEmpty()) return false
+        if (events.isEmpty()) {
+            logComposerImageHandoffRejected("no_events", events.size)
+            return false
+        }
         val fileRefByActionId =
             events.associate { event ->
                 event.optString("actionId") to event.optString("fileRef")
             }
-        if (fileRefByActionId.size != events.size) return false
+        if (fileRefByActionId.size != events.size) {
+            logComposerImageHandoffRejected("duplicate_action_id", events.size)
+            return false
+        }
         val retirement =
             ephemeralActionRegistry.prepareDeliveryBatch(
                 sessionId = launchPayloadTrace.sessionId,
@@ -3092,6 +3108,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             // A duplicate/late native callback can arrive after the first delivery
             // already moved this session to pending. Retire only an active session;
             // never abort or delete a batch that a consumer may already own.
+            logComposerImageHandoffRejected("delivery_batch_unavailable", events.size)
             retireCurrentEphemeralSession(cleanupPending = false)
             return false
         }
@@ -3111,6 +3128,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         // event. Attempt every action even if an unrelated local listener throws on an earlier one.
         val posted = slockFilePreviewPostComposerImageEvents(events)
         if (!posted) {
+            logComposerImageHandoffRejected("event_post_failed", events.size)
             retireCurrentEphemeralSession(cleanupPending = true)
             return false
         }
@@ -3185,6 +3203,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     ): Pair<PlatformFile?, Set<String>> {
         val sourceRef = source.fileRef?.trim()?.takeIf { it.isNotBlank() }
             ?: return null to emptySet()
+        bridge.log("composer_image_compress_start index=$index sourceBytes=${source.sizeBytes ?: -1}")
         val response =
             bridge.compressThreadImage(
                 fileRef = sourceRef,
@@ -3200,9 +3219,16 @@ private fun SlockFilePreviewStandalonePageContent() {
                 .filterNot { it == sourceRef }
                 .toSet()
         if (!composerImageOperationGate.isCurrent(token)) {
+            bridge.log("composer_image_compress_result index=$index result=stale")
             return null to responseRefs
         }
-        return when (val parsed = parseSlockFilePreviewCompressedImageResult(response)) {
+        val parsed = parseSlockFilePreviewCompressedImageResult(response)
+        bridge.log(
+            "composer_image_compress_result index=$index sourceBytes=${source.sizeBytes ?: -1} " +
+                "result=${if (parsed is SlockFilePreviewCompressedImageResult.Success) "success" else "failure"} " +
+                "outputBytes=${(parsed as? SlockFilePreviewCompressedImageResult.Success)?.file?.sizeBytes ?: -1}"
+        )
+        return when (parsed) {
             is SlockFilePreviewCompressedImageResult.Success -> {
                 val outputRef = parsed.file.fileRef?.trim().orEmpty()
                 // Native must write a new object.  Reusing the source ref would make a later
@@ -3280,11 +3306,26 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
 
     fun postComposerImageSelection() {
-        if (composerImageFinalizing) return
+        // First statement on purpose: a missing tap log then means the click never reached
+        // this handler, independent of every gate below.
+        bridge.log("composer_image_done_tap finalizing=$composerImageFinalizing")
+        if (composerImageFinalizing) {
+            logComposerImageHandoffRejected("finalizing", 0)
+            return
+        }
         val token =
             composerImageOperationGate.begin(
                 requestId = "${payload.composerImageActionId.ifBlank { launchPayloadTrace.sessionId }}-done"
-            ) ?: return
+            )
+        if (token == null) {
+            logComposerImageHandoffRejected("operation_busy", 0)
+            return
+        }
+        bridge.log(
+            "composer_image_done_start gallery=${payload.imageGallery.size} " +
+                "compress=${payload.composerImageCompressAfterEdit} " +
+                "sizeBytes=${payload.composerImageSizeBytes ?: -1}"
+        )
         composerImageFinalizing = true
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
@@ -3310,7 +3351,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 if (composerImageOperationGate.isCurrent(token)) {
                                     composerImageOperationGate.complete(token)
                                     composerImageFinalizing = false
-                                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                    bridge.toast(composerImageCompressionFailed)
                                 }
                                 return@launch
                             }
@@ -3343,7 +3384,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                             if (composerImageOperationGate.isCurrent(token)) {
                                 composerImageOperationGate.complete(token)
                                 composerImageFinalizing = false
-                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                bridge.toast(composerImageCompressionFailed)
                             }
                             return@launch
                         }
@@ -3370,7 +3411,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         retireCurrentEphemeralSession(cleanupPending = false)
                         composerImageOperationGate.complete(token)
                         composerImageFinalizing = false
-                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        bridge.toast(composerImageCompressionFailed)
                         return@launch
                     }
                     val posted =
@@ -3381,6 +3422,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                     if (!posted) {
                         composerImageOperationGate.complete(token)
                         composerImageFinalizing = false
+                        // postComposerImageEvents already logged the reason; never leave Done
+                        // looking like a dead button.
+                        bridge.toast(composerImageHandoffFailed)
                         return@launch
                     }
                     // Commit page-local payload only after registry admission and event relay
@@ -3394,12 +3438,13 @@ private fun SlockFilePreviewStandalonePageContent() {
                     composerImageOperationGate.cancel(token)
                     cleanupComposerImageTemporaryRefs(generatedRefs)
                     throw cancelled
-                } catch (_: Throwable) {
+                } catch (error: Throwable) {
+                    logComposerImageHandoffRejected("exception_${error::class.simpleName.orEmpty()}", 0)
                     composerImageOperationGate.complete(token)
                     cleanupComposerImageTemporaryRefs(generatedRefs)
                     if (composerImageOperationGate.activeToken() == null) {
                         composerImageFinalizing = false
-                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        bridge.toast(composerImageCompressionFailed)
                     }
                 } finally {
                     if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
@@ -3451,7 +3496,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 // still live.
                 if (composerImageOperationGate.complete(token)) {
                     composerImageEditSaving = false
-                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                    bridge.toast(composerImageCompressionFailed)
                 }
                 return@toImage
             }
@@ -3478,7 +3523,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 cleanupComposerImageTemporaryRefs(cleanupRefs)
                                 composerImageOperationGate.complete(token)
                                 composerImageEditSaving = false
-                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                bridge.toast(composerImageCompressionFailed)
                                 return@launch
                             }
                             compressed = true
@@ -3552,7 +3597,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         composerImageOperationGate.complete(token)
                         cleanupComposerImageTemporaryRefs(cleanupRefs)
                         composerImageEditSaving = false
-                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        bridge.toast(composerImageCompressionFailed)
                     } finally {
                         if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
                             activeComposerImageOperationJob.value = null
