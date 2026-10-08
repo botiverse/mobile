@@ -18,7 +18,9 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 
 // task #226: global announcement modal, aligned with web. Shows the latest
 // active (server-dedup'd, per-user) announcement. Multi-page markdown with
@@ -41,14 +43,25 @@ internal fun SharedAnnouncementModal(
     val hasMultiplePages = pages.size > 1
 
     SlockUnifiedDialog(
-        title = page.title?.takeIf { it.isNotBlank() } ?: announcement.title,
+        // Web AnnouncementModal: the header always shows the announcement title;
+        // each page's own title sits at the top of the body.
+        title = announcement.title,
         onDismiss = onDismiss,
-        maxWidth = 456.dp
+        maxWidth = 576.dp
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            page.title?.takeIf { it.isNotBlank() }?.let { pageTitle ->
+                item {
+                    Text(
+                        text = pageTitle.slockDisplayUppercase(),
+                        style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                        color = SlockColor.TextBlack
+                    )
+                }
+            }
             item {
                 SlockMarkdownBody(
                     body = page.body,
@@ -56,41 +69,40 @@ internal fun SharedAnnouncementModal(
                 )
             }
         }
-        if (hasMultiplePages) {
+        // Web footer: page indicator on the left; Back (after the first page) and
+        // Next / OK on the right. Closing the dialog is the dismiss path.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (hasMultiplePages) "${pageIndex + 1} / ${pages.size}" else "",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray
+            )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (hasMultiplePages && pageIndex > 0) {
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_back),
+                        onClick = { pageIndex -= 1 },
+                        leadingIcon = SlockLucideIconName.ChevronLeft,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                }
+                val isLastPage = pageIndex >= pages.lastIndex
                 SlockBrutalActionButton(
-                    label = stringResource(MR.strings.pagination_prev),
-                    onClick = { if (pageIndex > 0) pageIndex -= 1 },
-                    leadingIcon = SlockLucideIconName.ChevronLeft,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    enabled = pageIndex > 0
-                )
-                Text(
-                    "${pageIndex + 1} / ${pages.size}",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
-                )
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.pagination_next),
-                    onClick = { if (pageIndex < pages.lastIndex) pageIndex += 1 },
-                    leadingIcon = SlockLucideIconName.ChevronRight,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    enabled = pageIndex < pages.lastIndex
+                    label = stringResource(
+                        if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next
+                    ),
+                    onClick = { if (isLastPage) onDismiss() else pageIndex += 1 },
+                    leadingIcon = if (isLastPage) null else SlockLucideIconName.ChevronRight,
+                    backgroundColor = SlockColor.BrandYellow
                 )
             }
         }
-        SlockBrutalActionButton(
-            label = stringResource(
-                if (hasMultiplePages && pageIndex < pages.lastIndex) MR.strings.announcement_action_skip
-                else MR.strings.announcement_action_got_it
-            ),
-            onClick = onDismiss,
-            backgroundColor = SlockColor.BrandYellow,
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 }

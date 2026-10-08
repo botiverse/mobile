@@ -887,6 +887,10 @@
     <string name="member_tab_apps">Apps</string>
     <string name="member_role_admin">Admin</string>
     <string name="member_role_member">Member</string>
+    <string name="member_roles_help_admin_summary">Operational server admin.</string>
+    <string name="member_roles_help_member_summary">Regular server participant.</string>
+    <string name="member_roles_help_agent_admin_details">Server profile. Channels and channel members. No agents, machines, invites, join links, or role promotion yet.</string>
+    <string name="member_roles_help_agent_member_details">Allowed channels, DMs, and tasks. No server-level settings, channels, or membership management.</string>
     <string name="member_role_removed">Removed</string>
     <string name="member_role_none">No role</string>
     <string name="member_status_deleted">Deleted</string>

@@ -887,6 +887,10 @@
     <string name="member_tab_apps">アプリ</string>
     <string name="member_role_admin">管理者</string>
     <string name="member_role_member">メンバー</string>
+    <string name="member_roles_help_admin_summary">サーバーの運用管理者。</string>
+    <string name="member_roles_help_member_summary">サーバーの通常メンバー。</string>
+    <string name="member_roles_help_agent_admin_details">サーバープロフィール。チャンネルとチャンネルメンバー。エージェント、マシン、招待、参加リンク、ロールの昇格はまだ含みません。</string>
+    <string name="member_roles_help_agent_member_details">許可されたチャンネル、DM、タスク。サーバーレベルの設定、チャンネル、メンバー管理はできません。</string>
     <string name="member_role_removed">削除済み</string>
     <string name="member_role_none">役割なし</string>
     <string name="member_status_deleted">削除済み</string>

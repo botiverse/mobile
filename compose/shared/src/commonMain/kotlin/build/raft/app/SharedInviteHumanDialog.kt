@@ -186,7 +186,8 @@ internal fun SharedInviteHumanDialog(
                         },
                     enabled = canSubmit,
                     minWidth = 126.dp,
-                    backgroundColor = SlockColor.AccentRed,
+                    // Web InviteHumanDialog sends with the pink primary action.
+                    backgroundColor = SlockColor.AccentPink,
                     leadingIcon = SlockLucideIconName.Mail,
                     textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
                     onClick = {
