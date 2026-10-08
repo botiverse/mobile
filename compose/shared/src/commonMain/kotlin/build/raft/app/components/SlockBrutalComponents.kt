@@ -1288,7 +1288,9 @@ internal fun SlockBrutalActionButton(
                 modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
-                    .then(if (!enabled) Modifier.alpha(0.4f) else Modifier)
+                    // Always apply alpha and vary its value: a removed modifier leaves the
+                    // stale native alpha behind on Kuikly, so a re-enabled button stayed dim.
+                    .alpha(if (enabled) 1f else 0.4f)
                     .shadow(
                         elevation = 3.dp,
                         shape = shape,

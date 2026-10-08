@@ -30807,7 +30807,7 @@ internal fun ThreadForwardNoteDialog(
                     } else {
                         stringResource(MR.strings.common_send)
                     },
-                icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
+                icon = if (sending) SlockLucideIconName.Loader else SlockLucideIconName.Send,
                 onClick = onSend,
                 color = SlockColor.AccentPink,
                 enabled = selectedTargetLabel.isNotBlank() && !sending
@@ -32058,16 +32058,19 @@ internal fun ThreadSettingsModal(
                 item {
                     when (activeDanger) {
                         ThreadSettingsDangerAction.Visibility -> {
-                            Text(
-                                text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
-                                style = SlockType.Body,
-                                color = SlockColor.TextBlack
-                            )
-                            Text(
-                                text = stringResource(MR.strings.thread_settings_visibility_detail),
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextMutedGray
-                            )
+                            // A lazy item stacks its children; the Column keeps the two lines apart.
+                            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                                Text(
+                                    text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
+                                    style = SlockType.Body,
+                                    color = SlockColor.TextBlack
+                                )
+                                Text(
+                                    text = stringResource(MR.strings.thread_settings_visibility_detail),
+                                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                                    color = SlockColor.TextMutedGray
+                                )
+                            }
                         }
                         ThreadSettingsDangerAction.Archive,
                         ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
