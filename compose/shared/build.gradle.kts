@@ -184,6 +184,9 @@ kotlin {
             dependencies {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
                 implementation("org.robolectric:robolectric:4.14.1")
+                // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
+                implementation(libs.androidx.recyclerview)
+                implementation(libs.androidx.core.ktx)
                 implementation("build.raft.mermaid:mermaid-core:0.1.9")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.9")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.9")
