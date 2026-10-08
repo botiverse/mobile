@@ -1076,21 +1076,26 @@ private fun HomeSavedRouterContent(
                     )
             ) {
                 is ConversationOpenResolution.Resolved -> {
-                    parkStandaloneSelection(
-                        environment = environment,
-                        workspaceStore = environment.sharedWorkspaceStore,
-                        request = resolution.request,
-                        serverId = savedServerId,
-                    )
-                    environment.pager.openStandaloneHomeMessageRequest(
-                        bridge = environment.bridge,
-                        request = resolution.request,
-                        source = "home_saved",
-                        timeContext = environment.timeContext,
-                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                                    storeScope = environment.storeScope
-                    )
+                    // Large-screen inline Saved opens in the shared detail pane, like Search.
+                    environment.inlineOpenRequest?.let { open ->
+                        open(resolution.request, "home_saved")
+                    } ?: run {
+                        parkStandaloneSelection(
+                            environment = environment,
+                            workspaceStore = environment.sharedWorkspaceStore,
+                            request = resolution.request,
+                            serverId = savedServerId,
+                        )
+                        environment.pager.openStandaloneHomeMessageRequest(
+                            bridge = environment.bridge,
+                            request = resolution.request,
+                            source = "home_saved",
+                            timeContext = environment.timeContext,
+                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                        )
+                    }
                 }
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
