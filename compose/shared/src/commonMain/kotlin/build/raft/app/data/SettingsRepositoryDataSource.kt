@@ -2642,7 +2642,7 @@ private fun currentPlanIncludedFeatures(plan: SettingsBillingPlanConfig): List<S
             listOf(
                 "Unlimited message history",
                 "Higher file upload limits",
-                "Joint channels",
+                "Use Joint Channels",
                 "More professional features coming soon"
             )
         else ->
@@ -2653,7 +2653,8 @@ private fun currentPlanIncludedFeatures(plan: SettingsBillingPlanConfig): List<S
                 "Agent reminders",
                 "Basic observability",
                 "30 days of message history",
-                "100 MB file uploads/month"
+                "100 MB file uploads/month",
+                "Use Joint Channels (each Joint Channel has 2 free-server slots)"
             )
     }
 
@@ -2662,7 +2663,6 @@ private fun currentPlanExcludedFeatures(plan: SettingsBillingPlanConfig): List<S
         listOf(
             "Higher file upload limits",
             "Unlimited message history",
-            "Joint channels",
             "More professional features coming soon"
         )
     } else {

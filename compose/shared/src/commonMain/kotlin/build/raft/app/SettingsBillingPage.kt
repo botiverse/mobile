@@ -133,7 +133,7 @@ internal val settingsBillingSmokePayload =
                         "Unlimited agents on your own computers",
                         "30 days of message history"
                     ),
-                excludedFeatures = listOf("Unlimited message history", "Joint Channels"),
+                excludedFeatures = listOf("Unlimited message history"),
                 usageRows =
                     listOf(
                         KuiklySettingsPlanUsageRow("Messages", "4,120 / 10,000"),

@@ -1830,7 +1830,7 @@ private fun SlockStructuralHomeShellContent(
         }
     var sortOverlaySection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var activeMenuSection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
-    val allChannelId = remember(channels) { channels.firstOrNull { it.kind != JointChannelKindWireValue && it.name == "all" }?.id }
+    val allChannelId = remember(channels) { channels.firstOrNull { it.name == "all" }?.id }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState) {
         val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
         regularChannels

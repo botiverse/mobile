@@ -305,12 +305,12 @@ class SlockAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun defaultLandingRestoresVisibleSelectionThenFallsBackToNonJointAll() {
+    fun defaultLandingRestoresVisibleSelectionThenFallsBackToAll() {
+        // Joint channels are ordinary channels; like web, "all" is found by name only.
         val candidates =
             listOf(
-                SlockAdaptiveHomeLandingCandidate("joint-all", "all", joint = true),
-                SlockAdaptiveHomeLandingCandidate("channel-all", "all", joint = false),
-                SlockAdaptiveHomeLandingCandidate("dm-a", "Alice", joint = false),
+                SlockAdaptiveHomeLandingCandidate("channel-all", "all"),
+                SlockAdaptiveHomeLandingCandidate("dm-a", "Alice"),
             )
 
         assertEquals("dm-a", resolveSlockAdaptiveHomeLandingId("dm-a", candidates))

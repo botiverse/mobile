@@ -115,7 +115,6 @@ internal fun WireThreadLaunchPayload.toSlockAdaptiveDetailIdentity(
 internal data class SlockAdaptiveHomeLandingCandidate(
     val threadId: String,
     val name: String,
-    val joint: Boolean,
 )
 
 internal fun resolveSlockAdaptiveHomeLandingId(
@@ -126,7 +125,7 @@ internal fun resolveSlockAdaptiveHomeLandingId(
         ?.trim()
         ?.takeIf(String::isNotBlank)
         ?.let { selected -> candidates.firstOrNull { it.threadId == selected }?.threadId }
-        ?: candidates.firstOrNull { !it.joint && it.name == "all" }?.threadId
+        ?: candidates.firstOrNull { it.name == "all" }?.threadId
 
 internal fun resolveSlockHomeSelectedConversationId(
     adaptiveWorkspaceEnabled: Boolean,

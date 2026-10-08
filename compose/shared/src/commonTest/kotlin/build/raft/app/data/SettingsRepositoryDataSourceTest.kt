@@ -555,8 +555,13 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(listOf("downgrade"), downgrade.data.notices.map { it.key })
         assertEquals("warning", downgrade.data.notices.single().tone)
         assertEquals(listOf("Agents over limit", "Computers over limit", "Channels over limit"), downgrade.data.notices.single().rows.map { it.label })
-        // Feature label casing aligned with the web billing fixture (e33a9e30).
-        assertTrue(downgrade.data.currentPlan.excludedFeatures.contains("Joint channels"))
+        // Like web billingControls: Free includes Joint Channels with free-server slots.
+        assertFalse(downgrade.data.currentPlan.excludedFeatures.any { it.contains("Joint", ignoreCase = true) })
+        assertTrue(
+            downgrade.data.currentPlan.includedFeatures.contains(
+                "Use Joint Channels (each Joint Channel has 2 free-server slots)"
+            )
+        )
 
         assertTrue(founder is DataResult.Content)
         assertEquals("Founder", founder.data.currentPlan.planName)
