@@ -29,7 +29,9 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal fun SharedAnnouncementModal(
     announcement: AnnouncementItem,
     onDismiss: () -> Unit,
-    onOpenUrl: (String) -> Unit = {}
+    onOpenUrl: (String) -> Unit = {},
+    // Visual fixtures open on a given page; production always starts at 0.
+    initialPageIndex: Int = 0
 ) {
     // Server contract: `pages[]` carries the multi-page body; fall back to the
     // flattened first-page `body` when a payload predates the pages field.
@@ -38,7 +40,7 @@ internal fun SharedAnnouncementModal(
             announcement.pages.takeIf { it.isNotEmpty() }
                 ?: listOf(build.raft.app.data.AnnouncementPageItem(title = null, body = announcement.body))
         }
-    var pageIndex by remember(announcement.id) { mutableStateOf(0) }
+    var pageIndex by remember(announcement.id) { mutableStateOf(initialPageIndex.coerceIn(0, pages.lastIndex)) }
     val page = pages[pageIndex.coerceIn(0, pages.lastIndex)]
     val hasMultiplePages = pages.size > 1
 
