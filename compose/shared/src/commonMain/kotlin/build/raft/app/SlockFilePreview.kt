@@ -3203,6 +3203,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     ): Pair<PlatformFile?, Set<String>> {
         val sourceRef = source.fileRef?.trim()?.takeIf { it.isNotBlank() }
             ?: return null to emptySet()
+        bridge.log("composer_image_compress_start index=$index sourceBytes=${source.sizeBytes ?: -1}")
         val response =
             bridge.compressThreadImage(
                 fileRef = sourceRef,
@@ -3220,7 +3221,13 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (!composerImageOperationGate.isCurrent(token)) {
             return null to responseRefs
         }
-        return when (val parsed = parseSlockFilePreviewCompressedImageResult(response)) {
+        val parsed = parseSlockFilePreviewCompressedImageResult(response)
+        bridge.log(
+            "composer_image_compress_result index=$index sourceBytes=${source.sizeBytes ?: -1} " +
+                "result=${if (parsed is SlockFilePreviewCompressedImageResult.Success) "success" else "failure"} " +
+                "outputBytes=${(parsed as? SlockFilePreviewCompressedImageResult.Success)?.file?.sizeBytes ?: -1}"
+        )
+        return when (parsed) {
             is SlockFilePreviewCompressedImageResult.Success -> {
                 val outputRef = parsed.file.fileRef?.trim().orEmpty()
                 // Native must write a new object.  Reusing the source ref would make a later
