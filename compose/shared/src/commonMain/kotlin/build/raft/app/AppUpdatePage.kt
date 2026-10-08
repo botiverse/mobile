@@ -46,6 +46,9 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import build.raft.app.data.SharedUpdateDownloadProgress
+import build.raft.app.components.SlockProgressBar
 
 const val APP_UPDATE_PAGE = "compose_app_update"
 
@@ -53,7 +56,7 @@ const val APP_UPDATE_PAGE = "compose_app_update"
 internal class ComposeAppUpdatePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AppUpdateScreen(slockPageVisibleResumeTick) }
+        setContent { AppUpdateScreen(slockPageVisibleResumeTick, slockPageVisible) }
     }
 }
 
@@ -69,7 +72,7 @@ internal fun Pager.openAppUpdatePage(storeScope: SlockShellStoreScope) {
 }
 
 @Composable
-private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
+private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -84,6 +87,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
     var loading by remember { mutableStateOf(true) }
     var actionRunning by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
+    val downloadFailedMessage = stringResource(MR.strings.app_update_download_failed)
 
     fun refresh() {
         scope.launch {
@@ -93,13 +98,36 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
                 do {
                     val result = environment.settingsCapabilities.checkHandsUpdateStatus()
                     val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
-                    snapshot = projection.snapshot
-                    errorMessage = projection.errorMessage
+                    snapshot = projection.snapshot?.withLocalDownloadTerminal(progress)
+                    errorMessage = if (snapshot?.errorCode == "settings_hands_update_download_failed") downloadFailedMessage else projection.errorMessage
                 } while (refreshGate.completeAndShouldContinue())
             } finally {
                 loading = false
                 refreshGate.reset()
             }
+        }
+    }
+
+    val progressToken = snapshot?.downloadProgressToken.orEmpty()
+    LaunchedEffect(progressToken, pageVisible) {
+        progress = null
+        if (!pageVisible || progressToken.isBlank()) return@LaunchedEffect
+        while (true) {
+            val observed = environment.settingsCapabilities.readHandsDownloadProgress(progressToken)
+            if (observed == null || observed.token != progressToken) {
+                // A transient local query failure must not freeze the old percentage.
+                progress = null
+                delay(1_000)
+                continue
+            }
+            progress = observed
+            if (!observed.active) {
+                snapshot = snapshot?.withLocalDownloadTerminal(observed)
+                errorMessage = if (observed.phase == "failed") downloadFailedMessage else null
+                refresh()
+                break
+            }
+            delay(500)
         }
     }
 
@@ -128,7 +156,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
         )
         AppUpdateSummary(
             snapshot = snapshot,
-            loading = loading,
+            progress = progress?.takeIf { it.token == progressToken },
+            loading = loading && progress?.takeIf { it.token == progressToken }?.active != false,
             actionRunning = actionRunning,
             errorMessage = errorMessage,
             onRetry = ::refresh,
@@ -142,7 +171,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
                     actionRunning = true
                     errorMessage = null
                     try {
-                        val result = environment.settingsCapabilities.installHandsUpdate()
+                        val result = environment.settingsCapabilities.installHandsUpdateForToken(snapshot?.downloadProgressToken.orEmpty())
                         val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
                         snapshot = projection.snapshot
                         errorMessage = projection.errorMessage
@@ -283,7 +312,8 @@ internal fun AppUpdateSummary(
     errorMessage: String?,
     onRetry: () -> Unit,
     onSkipVersion: () -> Unit,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    progress: SharedUpdateDownloadProgress? = null
 ) {
     val currentVersion = snapshot?.currentVersionLabel.orEmpty().ifBlank { "-" }
     val latestVersion = snapshot?.latestVersionLabel.orEmpty().ifBlank { "-" }
@@ -330,7 +360,9 @@ internal fun AppUpdateSummary(
                 )
                 Text(
                     text =
-                        if (errorMessage != null) {
+                        if (snapshot?.errorCode == "settings_hands_update_download_failed") {
+                            stringResource(MR.strings.app_update_download_failed)
+                        } else if (errorMessage != null) {
                             errorMessage
                         } else {
                             snapshot?.detail.orEmpty()
@@ -349,6 +381,22 @@ internal fun AppUpdateSummary(
                 minWidth = 96.dp,
                 backgroundColor = SlockColor.AccentPink
             )
+        }
+        if (progress?.active == true) {
+            val bytes = appUpdateBytesLabel(progress.downloadedBytes)
+            val total = progress.totalBytes?.let(::appUpdateBytesLabel)
+            val label = if (total != null) "$bytes / $total" else bytes
+            Text(
+                text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+            // Unknown response length has no fabricated percentage/bar fill.
+            if (progress.percent != null) {
+                SlockProgressBar(value = progress.percent, label = label, showPercent = true)
+            } else {
+                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         if (appUpdateCanSkipVersion(snapshot)) {
@@ -482,6 +530,7 @@ internal fun appUpdatePrimaryActionLabel(
         actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel
+        snapshot.errorCode == "settings_hands_update_download_failed" -> retryLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Idle -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Checking -> checkingLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Patching -> preparingLabel
@@ -579,5 +628,39 @@ internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot
         SharedSettingsUpdateTransactionState.ReadyToInstall,
         SharedSettingsUpdateTransactionState.InstallerOpened,
         SharedSettingsUpdateTransactionState.Installed -> false
+    }
+}
+
+internal fun appUpdateBytesLabel(bytes: Long): String {
+    val size = bytes.coerceAtLeast(0L)
+    val unit = when {
+        size >= 1_073_741_824L -> 1_073_741_824L to "GB"
+        size >= 1_048_576L -> 1_048_576L to "MB"
+        size >= 1_024L -> 1_024L to "KB"
+        else -> return "$size B"
+    }
+    val whole = size / unit.first
+    val decimal = (size % unit.first) * 10L / unit.first
+    return "$whole.$decimal ${unit.second}"
+}
+
+/** Local completion remains actionable even when the subsequent offer refresh fails. */
+internal fun SharedSettingsUpdateCheckSnapshot.withLocalDownloadTerminal(
+    progress: SharedUpdateDownloadProgress?
+): SharedSettingsUpdateCheckSnapshot {
+    if (progress == null || progress.active || progress.token != downloadProgressToken) return this
+    if (transactionState == SharedSettingsUpdateTransactionState.InstallerOpened || errorCode.startsWith("install_")) return this
+    return when (progress.phase) {
+        "ready" -> copy(
+            transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+            statusLabel = "Install", actionLabel = "Install", errorCode = "", detail = ""
+        )
+        "failed" -> copy(
+            transactionState = SharedSettingsUpdateTransactionState.Failed,
+            transactionRetryable = true,
+            statusLabel = "Failed", actionLabel = "Download",
+            errorCode = "settings_hands_update_download_failed", detail = ""
+        )
+        else -> this
     }
 }

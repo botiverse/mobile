@@ -210,6 +210,7 @@ data class SharedSettingsUpdateCheckSnapshot(
     val latestVersionCode: Long = 0L,
     val latestChangelog: String = "",
     val downloadUrl: String = "",
+    val downloadProgressToken: String = "",
     val downloadSizesResolved: Boolean = false,
     val fullDownloadSizeBytes: Long = 0L,
     val patchDownloadSizeBytes: Long = 0L,
@@ -541,8 +542,14 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_hands_update_status_unavailable", retryable = false))
 
+    /** Local download observation only; never checks the remote update offer. */
+    suspend fun readHandsDownloadProgress(token: String): SharedUpdateDownloadProgress? = null
+
     suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_hands_update_install_unavailable", retryable = false))
+
+    suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        installHandsUpdate()
 
     suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)

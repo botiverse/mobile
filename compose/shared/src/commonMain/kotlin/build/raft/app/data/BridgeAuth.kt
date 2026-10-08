@@ -298,8 +298,16 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         handsUpdateAction("handsUpdateStatus")
 
+    override suspend fun readHandsDownloadProgress(token: String): SharedUpdateDownloadProgress? {
+        val response = settingsCapability(JSONObject().put("action", "handsDownloadProgress").put("token", token))
+        return response?.toSharedUpdateDownloadProgress()
+    }
+
     override suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         handsUpdateAction("handsUpdateInstall")
+
+    override suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> =
+        handsUpdateAction("handsUpdateInstall", token)
 
     override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
         if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -599,8 +607,8 @@ internal class BridgeSettingsPlatformCapabilities(
         return response.toSystemNotificationActionResult()
     }
 
-    private suspend fun handsUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", action))
+    private suspend fun handsUpdateAction(action: String, token: String = ""): DataResult<SharedSettingsUpdateCheckSnapshot> {
+        val response = settingsCapability(JSONObject().put("action", action).put("token", token))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(handsUpdateBridgeError(response?.toString()))
         }
@@ -847,6 +855,7 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
                 latestVersionCode = optLong("latestVersionCode", 0L),
                 latestChangelog = optString("latestChangelog"),
                 downloadUrl = optString("updateDownloadUrl"),
+                downloadProgressToken = optString("updateDownloadProgressToken"),
                 downloadSizesResolved = optBoolean("updateDownloadSizesResolved", false),
                 fullDownloadSizeBytes = optLong("updateFullDownloadSizeBytes", 0L).coerceAtLeast(0L),
                 patchDownloadSizeBytes = optLong("updatePatchDownloadSizeBytes", 0L).coerceAtLeast(0L),
