@@ -398,10 +398,11 @@ internal fun ThreadInlineAudioControls(
                 .weight(1f)
                 .semantics {
                     seekContentDescription?.let { contentDescription = it }
-                    // Same accessibility seek action the Material Slider exposed.
+                    // Same accessibility seek action the Material Slider exposed; like the
+                    // Slider's valueRange, the target is in milliseconds (0..totalTimeMs).
                     setProgress { target ->
                         if (canPlay && totalTimeMs > 0) {
-                            onSeek((target.coerceIn(0f, 1f) * totalTimeMs).roundToInt())
+                            onSeek(target.roundToInt().coerceIn(0, totalTimeMs))
                             true
                         } else {
                             false
