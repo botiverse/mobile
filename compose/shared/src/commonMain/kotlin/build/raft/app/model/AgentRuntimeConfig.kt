@@ -122,7 +122,7 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", binary = "agy", supported = true),
     RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", binary = "", supported = true),
     RuntimeInfo(id = "kimi", displayName = "Kimi CLI (deprecated)", binary = "kimi", supported = true, deprecated = true),
-    RuntimeInfo(id = "copilot", displayName = "Copilot CLI", binary = "copilot", supported = true),
+    RuntimeInfo(id = "copilot", displayName = "Copilot CLI", binary = "copilot", supported = true, deprecated = true),
     RuntimeInfo(id = "cursor", displayName = "Cursor CLI", binary = "cursor-agent", supported = true),
     RuntimeInfo(id = "gemini", displayName = "Gemini CLI (deprecated)", binary = "gemini", supported = true, deprecated = true),
     RuntimeInfo(id = "opencode", displayName = "OpenCode", binary = "opencode", supported = true),

@@ -24,7 +24,7 @@ class SharedCreateAgentDialogTest {
 
         assertTrue(items.isNotEmpty())
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "copilot", "cursor", "opencode", "pi"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
             items.map { it.id }
         )
         assertFalse(items.any { it.custom })
@@ -38,7 +38,7 @@ class SharedCreateAgentDialogTest {
             )
 
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "copilot", "cursor", "opencode", "pi"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
             items.map { it.id }
         )
         assertEquals("Claude Code", items.first { it.id == "claude" }.label)
@@ -53,12 +53,23 @@ class SharedCreateAgentDialogTest {
     @Test
     fun runtimeDropdownRetainsOnlyTheCurrentDeprecatedRuntimeWhileEditing() {
         val createIds = createAgentRuntimeDropdownItems().map { it.id }
+        assertFalse("copilot" in createIds)
         assertFalse("kimi" in createIds)
         assertFalse("gemini" in createIds)
 
         val editingKimiIds = createAgentRuntimeDropdownItems(currentRuntimeId = "kimi").map { it.id }
         assertTrue("kimi" in editingKimiIds)
         assertFalse("gemini" in editingKimiIds)
+    }
+
+    @Test
+    fun copilotIsHiddenForCreationAndSwitchingButRetainedForExistingAgent() {
+        val installed = listOf("codex", "copilot")
+        assertFalse(createAgentRuntimeDropdownItems(installed).any { it.id == "copilot" })
+        assertFalse(createAgentRuntimeDropdownItems(installed, currentRuntimeId = "codex").any { it.id == "copilot" })
+        val existing = createAgentRuntimeDropdownItems(installed, currentRuntimeId = "copilot")
+        assertTrue(existing.single { it.id == "copilot" }.enabled)
+        assertTrue(createAgentRuntimeDropdownItems(currentRuntimeId = "copilot").any { it.id == "copilot" })
     }
 
     @Test

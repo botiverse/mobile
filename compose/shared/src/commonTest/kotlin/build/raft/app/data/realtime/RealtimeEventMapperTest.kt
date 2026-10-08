@@ -1084,6 +1084,20 @@ class RealtimeEventMapperTest {
     // Payload shapes mirror `routes/channels.ts::emitReadStateUpdated`,
     // `emitReadStateUpdatedBulk`, and `emitNotificationPrefsUpdated` verbatim.
 
+    // Canonical emit shapes: botiverse/slock 2172d9b38, routes/channels.ts (PR #9113).
+    @Test
+    fun readStateCountsAreOptionalForSingleAndBulkFrames() {
+        for (count in listOf("0", "2", "null", "-1", "1.5", "\"2\"", "{}")) {
+            val expected = when (count) { "0" -> 0; "2" -> 2; else -> null }
+            val scope = """{"scopeId":"reply-channel","maxReadSeq":10,"readStateVersion":2,"unreadCount":$count}"""
+            val single = assertIs<PerReceiverReadStateChanged>(RealtimeEventMapper().map(RealtimeSocketEvents.ReadStateUpdated, scope))
+            assertEquals(expected, single.scopes.single().unreadCount)
+            val bulk = assertIs<PerReceiverReadStateChanged>(RealtimeEventMapper().map(RealtimeSocketEvents.ReadStateUpdatedBulk,
+                """{"serverId":"server-1","scopes":[$scope]}"""))
+            assertEquals(expected, bulk.scopes.single().unreadCount)
+        }
+    }
+
     @Test
     fun readStateUpdatedMapsSingleScope() {
         val event =

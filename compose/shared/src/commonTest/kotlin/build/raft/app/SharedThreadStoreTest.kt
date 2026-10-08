@@ -185,6 +185,29 @@ private class ConcurrentTestLogBuffer {
 
 class SharedThreadStoreTest {
     @Test
+    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = kotlinx.coroutines.test.runTest {
+        val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
+            messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
+                replyCount = 8, unreadReplyCount = 4)))))
+        val dataSource = testSharedThreadDataSource(
+            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
+        val store = SharedThreadStore(dataSource = dataSource, scope = backgroundScope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
+        val event = build.raft.app.model.PerReceiverReadStateChanged(ServerId("wrong-server"),
+            listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(event))
+        assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(event.copy(serverId = ServerId("server-1"))))
+        assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+        store.accept(SharedThreadIntent.Refresh)
+        assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
+        store.clear()
+    }
+
+    @Test
     fun readOnlyReplyFallbackClassifiesEveryThreadMutationAsWriteAccess() {
         val threadMutations =
             listOf(
