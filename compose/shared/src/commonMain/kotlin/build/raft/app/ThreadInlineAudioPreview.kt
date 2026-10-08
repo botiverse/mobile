@@ -426,7 +426,7 @@ private fun ThreadInlineAudioSeekBar(
     // the seek area (it would otherwise touch the play button and the time label).
     val thumbHalfPx = with(density) { 6.dp.toPx() }
     val trackPx = (widthPx - 2 * thumbHalfPx).coerceAtLeast(0f)
-    fun fractionAt(x: Float): Float = if (trackPx > 0f) ((x - thumbHalfPx) / trackPx).coerceIn(0f, 1f) else 0f
+    fun fractionAt(x: Float): Float = threadInlineAudioSeekFraction(x, widthPx, thumbHalfPx)
     fun seekTo(x: Float) {
         if (seekEnabled && totalTimeMs > 0) {
             onSeek((fractionAt(x) * totalTimeMs).roundToInt().coerceIn(0, totalTimeMs))
@@ -450,8 +450,10 @@ private fun ThreadInlineAudioSeekBar(
                         dragX = null
                     },
                     onDragCancel = { dragX = null }
-                ) { _, dragAmount ->
-                    dragX = dragX?.let { (it + dragAmount).coerceIn(0f, widthPx) }
+                ) { change, _ ->
+                    // Follow the finger's absolute position; accumulating dragAmount on
+                    // top of onDragStart's offset double-counts the touch-slop distance.
+                    if (seekEnabled) dragX = change.position.x.coerceIn(0f, widthPx)
                 }
             },
         contentAlignment = Alignment.CenterStart
@@ -479,4 +481,11 @@ private fun ThreadInlineAudioSeekBar(
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
         )
     }
+}
+
+/** Maps a touch x within the seek box to a 0..1 fraction of the thumb-inset track. */
+internal fun threadInlineAudioSeekFraction(x: Float, widthPx: Float, thumbHalfPx: Float): Float {
+    val trackPx = widthPx - 2 * thumbHalfPx
+    if (trackPx <= 0f) return 0f
+    return ((x - thumbHalfPx) / trackPx).coerceIn(0f, 1f)
 }
