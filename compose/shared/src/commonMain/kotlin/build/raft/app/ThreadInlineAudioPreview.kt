@@ -25,16 +25,27 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.Slider
-import com.tencent.kuikly.compose.material3.SliderDefaults
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.setProgress
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.tencent.kuikly.core.views.PlayState
 
 internal enum class ThreadInlineAudioPreviewStatus {
@@ -323,59 +334,186 @@ private fun ThreadInlineAudioSurface(
                     )
                 }
             } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SlockBrutalIconButton(
-                            iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
-                            onClick = {
-                                playback = playback.toggle()
-                            },
-                            enabled = canPlay,
-                            size = 32.dp,
-                            shadowOffset = 0.dp,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                        Text(
-                            text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                val positionLabel = stringResource(MR.strings.thread_audio_playback_position)
+                ThreadInlineAudioControls(
+                    isPlaying = isPlaying,
+                    canPlay = canPlay,
+                    currentTimeMs = currentTimeMs,
+                    totalTimeMs = totalTimeMs,
+                    seekContentDescription = positionLabel,
+                    onTogglePlay = { playback = playback.toggle() },
+                    // Scrubbing previews the time label; the player only seeks on release.
+                    onScrub = { scrubTimeMs = it?.toFloat() },
+                    onSeek = { targetMs ->
+                        scrubTimeMs = null
+                        playback = playback.seekTo(targetMs)
                     }
-                    val positionLabel = stringResource(MR.strings.thread_audio_playback_position)
-                    Slider(
-                        value = currentTimeMs.toFloat().coerceIn(0f, totalTimeMs.coerceAtLeast(1).toFloat()),
-                        onValueChange = { scrubTimeMs = it },
-                        onValueChangeFinished = {
-                            scrubTimeMs?.let { playback = playback.seekTo(it.toInt()) }
-                            scrubTimeMs = null
-                        },
-                        valueRange = 0f..totalTimeMs.coerceAtLeast(1).toFloat(),
-                        enabled = canPlay && totalTimeMs > 0,
-                        modifier = Modifier.fillMaxWidth().semantics {
-                            contentDescription = positionLabel
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = SlockColor.TextBlack,
-                            activeTrackColor = SlockColor.TextBlack,
-                            inactiveTrackColor = SlockColor.EmptyStateGray
-                        )
-                    )
-                }
+                )
             }
         }
     }
+}
+
+/**
+ * Web InlineAudioPlayer row: play button, seekable rail with a square thumb, and a
+ * fixed-width "current / total" mono label.
+ */
+@Composable
+internal fun ThreadInlineAudioControls(
+    isPlaying: Boolean,
+    canPlay: Boolean,
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    onTogglePlay: () -> Unit,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    seekContentDescription: String? = null,
+    onScrub: (Int?) -> Unit = {}
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceCream)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockBrutalIconButton(
+            iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+            onClick = onTogglePlay,
+            enabled = canPlay,
+            size = 28.dp,
+            iconSize = 14.dp,
+            shadowOffset = 0.dp,
+            backgroundColor = SlockColor.SurfaceWhite
+        )
+        ThreadInlineAudioSeekBar(
+            currentTimeMs = currentTimeMs,
+            totalTimeMs = totalTimeMs,
+            seekEnabled = canPlay && totalTimeMs > 0,
+            onScrub = onScrub,
+            onSeek = onSeek,
+            modifier = Modifier
+                .weight(1f)
+                .semantics {
+                    seekContentDescription?.let { contentDescription = it }
+                    // Same accessibility seek action the Material Slider exposed; like the
+                    // Slider's valueRange, the target is in milliseconds (0..totalTimeMs).
+                    setProgress { target ->
+                        if (canPlay && totalTimeMs > 0) {
+                            onSeek(target.roundToInt().coerceIn(0, totalTimeMs))
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                }
+        )
+        Text(
+            text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
+            style = SlockType.Caption.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            ).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            modifier = Modifier.width(76.dp)
+        )
+    }
+}
+
+/**
+ * Seekable progress rail matching web's audio-seek-rail: an 8dp bordered white
+ * rail with a cyan fill and a 12dp square thumb, inside a 28dp touch target. The
+ * rail is inset by half the thumb so the thumb never leaves the seek area. Tap
+ * seeks; a horizontal drag follows the finger (onScrub) and seeks on release.
+ * Pointer modifiers are always attached and gated by seekEnabled.
+ */
+@Composable
+private fun ThreadInlineAudioSeekBar(
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    seekEnabled: Boolean,
+    onScrub: (Int?) -> Unit,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var widthPx by remember { mutableStateOf(0f) }
+    var dragX by remember { mutableStateOf<Float?>(null) }
+    val thumbHalfPx = with(LocalDensity.current) { 6.dp.toPx() }
+    val trackPx = (widthPx - 2 * thumbHalfPx).coerceAtLeast(0f)
+    fun timeAt(x: Float): Int =
+        (threadInlineAudioSeekFraction(x, widthPx, thumbHalfPx) * totalTimeMs).roundToInt().coerceIn(0, totalTimeMs.coerceAtLeast(0))
+    val playedFraction =
+        if (totalTimeMs > 0) (currentTimeMs.toFloat() / totalTimeMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val fraction = dragX?.let { threadInlineAudioSeekFraction(it, widthPx, thumbHalfPx) } ?: playedFraction
+    Box(
+        modifier = modifier
+            .height(28.dp)
+            .onGloballyPositioned { coordinates -> widthPx = coordinates.size.width.toFloat() }
+            .pointerInput(seekEnabled, totalTimeMs) {
+                detectTapGestures(onTap = { offset -> if (seekEnabled) onSeek(timeAt(offset.x)) })
+            }
+            .pointerInput(seekEnabled, totalTimeMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        if (seekEnabled) {
+                            dragX = offset.x
+                            onScrub(timeAt(offset.x))
+                        }
+                    },
+                    onDragEnd = {
+                        val x = dragX
+                        dragX = null
+                        if (seekEnabled && x != null) onSeek(timeAt(x)) else onScrub(null)
+                    },
+                    onDragCancel = {
+                        dragX = null
+                        onScrub(null)
+                    }
+                ) { change, _ ->
+                    // Follow the finger's absolute position; accumulating dragAmount on
+                    // top of onDragStart's offset double-counts the touch-slop distance.
+                    if (seekEnabled) {
+                        val x = change.position.x.coerceIn(0f, widthPx)
+                        dragX = x
+                        onScrub(timeAt(x))
+                    }
+                }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 6.dp)
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(8.dp)
+                    .background(SlockColor.AccentCyan)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
+                .size(12.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        )
+    }
+}
+
+/** Maps a touch x within the seek box to a 0..1 fraction of the thumb-inset track. */
+internal fun threadInlineAudioSeekFraction(x: Float, widthPx: Float, thumbHalfPx: Float): Float {
+    val trackPx = widthPx - 2 * thumbHalfPx
+    if (trackPx <= 0f) return 0f
+    return ((x - thumbHalfPx) / trackPx).coerceIn(0f, 1f)
 }
