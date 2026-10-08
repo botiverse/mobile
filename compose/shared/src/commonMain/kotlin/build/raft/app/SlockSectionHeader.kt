@@ -414,7 +414,7 @@ internal fun SlockCollapsibleSectionHeader(
             rotationAnimationDurationSeconds = SlockCollapsibleSectionTokens.AnimationDurationSeconds
         )
         Text(
-            if (uppercaseLabel) label.uppercase() else label,
+            if (uppercaseLabel) label.slockDisplayUppercase() else label,
             style = SlockType.SectionLabel,
             color = SlockColor.TextBlack
         )

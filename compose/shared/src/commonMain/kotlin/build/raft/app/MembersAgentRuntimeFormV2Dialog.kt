@@ -76,7 +76,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     val changed = form != null && values != initialValues
 
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
+        title = stringResource(MR.strings.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -137,12 +137,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
+            SlockDialogFooter {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !saving,

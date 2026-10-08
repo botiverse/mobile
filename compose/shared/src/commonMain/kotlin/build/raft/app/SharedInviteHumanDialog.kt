@@ -169,12 +169,7 @@ internal fun SharedInviteHumanDialog(
                 }
             }
         }
-        Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
+        SlockDialogFooter {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,

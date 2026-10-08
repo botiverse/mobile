@@ -152,7 +152,7 @@ internal fun SlockFilterPopover(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = title.uppercase(),
+                        text = title.slockDisplayUppercase(),
                         style = SlockType.Caption.copy(
                             fontSize = 10.sp,
                             lineHeight = 12.sp,
@@ -349,7 +349,7 @@ internal fun SlockFilterPopover(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = title.uppercase(),
+                        text = title.slockDisplayUppercase(),
                         style = SlockType.Caption.copy(
                             fontSize = 10.sp,
                             lineHeight = 12.sp,

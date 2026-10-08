@@ -220,7 +220,7 @@ private fun SettingsStorageSummary(
         modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(title.uppercase(), style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(title.slockDisplayUppercase(), style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         Text(size, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         SettingsStorageButton(refreshLabel, iconName = SlockLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
     }

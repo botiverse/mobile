@@ -362,20 +362,25 @@ internal fun SlockUnifiedDialog(
     minWidth: Dp = 312.dp,
     maxWidth: Dp = 408.dp,
     outerPadding: Dp = SlockSpacing.Md,
-    contentPadding: Dp = 20.dp,
+    // Web dialogs (raft-ui Dialog / DialogCard) use p-6 and an 18px bold uppercase
+    // title; these defaults follow them so call sites only override deliberately.
+    contentPadding: Dp = 24.dp,
     // Horizontal inset for the title/close header. Defaults to contentPadding so
     // ordinary dialogs are unchanged; dialogs that set contentPadding = 0 to let
     // an edge-to-edge list bleed (e.g. Forward) still keep the header aligned
     // with their own 16dp-inset content instead of flush against the border.
     headerPadding: Dp = contentPadding,
-    titleFontSize: Int = 22,
-    titleLineHeight: Int = 26,
+    titleFontSize: Int = 18,
+    titleLineHeight: Int = 22,
     titleMaxLines: Int = 1,
+    // Uppercased through slockDisplayUppercase, so CJK titles keep their case.
+    uppercaseTitle: Boolean = true,
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val displayTitle = if (uppercaseTitle) title.slockDisplayUppercase() else title
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
@@ -384,7 +389,7 @@ internal fun SlockUnifiedDialog(
     if (hostState == null) {
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
             SlockUnifiedDialogSurface(
-                title = title,
+                title = displayTitle,
                 overline = overline,
                 onDismiss = onDismiss,
                 modifier = modifier,
@@ -418,7 +423,7 @@ internal fun SlockUnifiedDialog(
             // full-window native touch barrier below independently interactive dialog content.
             Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
                 SlockUnifiedDialogSurface(
-                    title = title,
+                    title = displayTitle,
                     overline = overline,
                     onDismiss = onDismiss,
                     modifier = modifier,
@@ -450,6 +455,26 @@ internal fun SlockUnifiedDialog(
             hostState.remove(hostKey)
         }
     }
+}
+
+/** Gap between dialog footer buttons; web dialogs use gap-3 (12px). */
+internal val SlockDialogFooterGap = 12.dp
+
+/**
+ * The one footer layout for dialogs: buttons right-aligned at their natural width,
+ * like web ConfirmDialog / DialogCard footers (`flex justify-end gap-3`).
+ */
+@Composable
+internal fun SlockDialogFooter(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
 }
 
 @Composable
@@ -897,7 +922,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (channelPageStyle) badge else badge.uppercase(),
+                            text = if (channelPageStyle) badge else badge.slockDisplayUppercase(),
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
                             color = SlockColor.TextBlack,
                             maxLines = 1,

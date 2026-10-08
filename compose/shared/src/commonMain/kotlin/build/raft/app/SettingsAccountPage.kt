@@ -577,7 +577,7 @@ private fun SettingsEmailField(
                 overflow = TextOverflow.Ellipsis
             )
             if (verified) {
-                SettingsStatusBadge(verifiedLabel.uppercase(), SlockColor.AccentLime, SlockLucideIconName.Shield)
+                SettingsStatusBadge(verifiedLabel.slockDisplayUppercase(), SlockColor.AccentLime, SlockLucideIconName.Shield)
             }
         }
     }

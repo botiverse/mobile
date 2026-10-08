@@ -1427,6 +1427,8 @@
     <string name="announcement_action_skip">スキップ</string>
     <string name="tasks_label_new_tasks">新しいタスク</string>
     <string name="tasks_create_multiple_hint">1 件以上のタスクタイトルを追加してください。空の行は無視されます。</string>
+    <string name="tasks_create_action">作成</string>
+    <string name="tasks_create_action_creating">作成中…</string>
     <string name="home_action_view">表示</string>
     <string name="home_action_retry">再試行</string>
     <string name="home_section_servers">サーバー</string>

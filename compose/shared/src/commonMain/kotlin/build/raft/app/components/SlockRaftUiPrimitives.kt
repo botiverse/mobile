@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import build.raft.app.Button as SlockButton
 import build.raft.app.SlockAvatar
 import build.raft.app.SlockColor
@@ -131,7 +132,7 @@ private fun SlockBrutalBadgeChrome(
             SlockLucideIcon(it, modifier = Modifier.size(10.dp), color = if (tone == SlockBrutalTone.Black) "#FFFFFFFF" else "#FF000000")
         }
         Text(
-            text = if (uppercase) label.uppercase() else label,
+            text = if (uppercase) label.slockDisplayUppercase() else label,
             style =
                 SlockType.Caption
                     .copy(

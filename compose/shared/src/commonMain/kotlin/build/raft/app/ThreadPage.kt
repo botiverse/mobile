@@ -15947,7 +15947,7 @@ private fun ThreadActivityMutedBadge() {
             color = SlockColor.TextBlackArgb
         )
         Text(
-            text = stringResource(MR.strings.member_label_muted).uppercase(),
+            text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 11.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
@@ -30612,7 +30612,7 @@ internal fun <T> SlockForwardTargetPicker(
                         detail =
                             when {
                                 state.errorCode != null ->
-                                    userFacingErrorLabels.forErrorCode(state.errorCode)?.uppercase()
+                                    userFacingErrorLabels.forErrorCode(state.errorCode)?.slockDisplayUppercase()
                                         ?: stringResource(MR.strings.common_error)
                                 state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
                                 else -> stringResource(MR.strings.thread_add_member_try_different_search)
@@ -30746,6 +30746,7 @@ internal fun ThreadForwardNoteDialog(
 ) {
     SlockUnifiedDialog(
         title = stringResource(MR.strings.thread_forward_add_note),
+        uppercaseTitle = false,
         onDismiss = onDismiss,
         dismissEnabled = !sending,
         keyboardAvoidanceEnabled = true,
@@ -30789,11 +30790,7 @@ internal fun ThreadForwardNoteDialog(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        SlockDialogFooter {
             SlockModalActionButton(
                 label = stringResource(MR.strings.common_back),
                 icon = SlockLucideIconName.ArrowLeft,
@@ -31082,6 +31079,7 @@ internal fun ThreadSharePreviewModal(
 ) {
     SlockUnifiedDialog(
         title = stringResource(MR.strings.thread_share_preview_title),
+        uppercaseTitle = false,
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 360.dp,
@@ -31114,8 +31112,7 @@ internal fun ThreadSharePreviewModal(
                     )
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(modifier = Modifier.weight(1f))
+            SlockDialogFooter {
                 SlockModalActionButton(
                     label = stringResource(MR.strings.thread_share_copy_markdown),
                     icon = SlockLucideIconName.Copy,
@@ -31175,11 +31172,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
                 color = SlockColor.AccentRed
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        SlockDialogFooter {
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
@@ -31297,7 +31290,7 @@ private fun ThreadAddMemberModal(
             addMemberStatus == "failed" ->
                 "$addFailedLabel: " +
                     (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
-                        ?: genericErrorLabel).uppercase()
+                        ?: genericErrorLabel).slockDisplayUppercase()
             else -> null
         }
     val content: @Composable () -> Unit = {
@@ -31475,7 +31468,7 @@ private fun ThreadAddMemberModal(
         }
     } else {
         SlockUnifiedDialog(
-            title = stringResource(MR.strings.thread_action_add_member), onDismiss = onDismiss,
+            title = stringResource(MR.strings.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
@@ -31984,8 +31977,7 @@ internal fun ThreadSettingsModal(
                     }
                 }
                 item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Spacer(modifier = Modifier.weight(1f))
+                    SlockDialogFooter {
                         // React's Edit Channel form buttons carry no leading icons
                         // (btn-brutal text-only Cancel / Save Changes) — task #348.
                         SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
@@ -32074,7 +32066,7 @@ internal fun ThreadSettingsModal(
                     }
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SlockDialogFooter {
                     val isSingleConfirm =
                         threadSettingsDangerConfirmationMode(activeDanger.id) ==
                             ThreadSettingsDangerConfirmationMode.SingleConfirm
@@ -32088,7 +32080,6 @@ internal fun ThreadSettingsModal(
                         icon = if (isSingleConfirm) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                     SlockModalActionButton(
                         label = activeDanger.localizedButtonLabel(),
                         icon = activeDanger.icon,
@@ -32321,6 +32312,7 @@ private fun ThreadTaskDetailDialog(
     val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
     SlockUnifiedDialog(
         title = taskNumberLabel ?: task.channelName.orEmpty(),
+        uppercaseTitle = false,
         overline = headerOverline,
         titleFontSize = 14,
         titleLineHeight = 18,

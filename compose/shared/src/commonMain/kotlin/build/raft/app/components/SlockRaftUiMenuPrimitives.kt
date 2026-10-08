@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.slockDisplayUppercase
 import build.raft.app.SlockAnchoredPopover
 import build.raft.app.SlockColor
 import build.raft.app.SlockFloatingDefaultViewportGap
@@ -115,7 +116,7 @@ internal fun SlockSelectionPopover(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = title.uppercase(),
+                        text = title.slockDisplayUppercase(),
                         style = SlockType.SectionLabel.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 1.0.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.60f),
                         maxLines = 1,

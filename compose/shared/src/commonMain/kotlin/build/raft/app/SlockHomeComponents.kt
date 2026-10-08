@@ -4806,7 +4806,7 @@ private fun HomeServerDrawerSectionHeader(
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label.uppercase(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.weight(1f), maxLines = 1)
+        Text(label.slockDisplayUppercase(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.weight(1f), maxLines = 1)
         Text(count.toString(), style = SlockType.Caption, color = SlockColor.TextMutedGray, maxLines = 1)
     }
 }
