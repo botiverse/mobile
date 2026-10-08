@@ -53,6 +53,7 @@ DECLARED_TEST_IDS=(
   "diagnostics-caller-pipeline"
   "durable-partition-migration"
   "thread-newer-auto-pagination"
+  "local-image-sampled-decode"
 )
 
 # Test metadata maps
@@ -69,6 +70,12 @@ declare -A TEST_EXIT_CODE
 declare -A TEST_DURATION
 
 init_test_metadata() {
+  TEST_CLASS["local-image-sampled-decode"]="build.raft.app.shared.SlockLocalImageSampledDecodeConnectedTest"
+  TEST_RUNNER["local-image-sampled-decode"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["local-image-sampled-decode"]=1
+  TEST_OUTPUT["local-image-sampled-decode"]="local-image-sampled-decode-instrumentation.txt"
+  TEST_CONDITION["local-image-sampled-decode"]="always"
+
   TEST_CLASS["inactive-host-rendering"]="build.raft.app.shared.SlockKuiklyInactiveHostRenderingTest"
   TEST_RUNNER["inactive-host-rendering"]="$RUNNER_CONNECTED"
   TEST_RETRIES["inactive-host-rendering"]=1

@@ -1,5 +1,8 @@
 package build.raft.app.shared
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.InputStream
 import kotlin.math.max
 
 /** Longest decoded bitmap edge for in-app image rendering. */
@@ -43,4 +46,27 @@ internal fun slockBitmapDecodeSampleSize(
         sampledHeight /= 2
     }
     return sampleSize.coerceAtLeast(1)
+}
+
+/**
+ * Decodes an image from [openInput] without ever holding the encoded file in memory: one pass
+ * reads the bounds, a second pass decodes with [slockBitmapDecodeSampleSize].  [openInput] is
+ * called once per pass and must return a fresh stream (or null when the source is gone).
+ */
+internal fun slockDecodeSampledBitmap(
+    openInput: () -> InputStream?,
+    targetEdgePx: Int,
+): Bitmap? {
+    val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    // With inJustDecodeBounds the decoder always returns null; only a missing stream aborts.
+    val boundsInput = openInput() ?: return null
+    boundsInput.use { input -> BitmapFactory.decodeStream(input, null, boundsOptions) }
+    val decodeOptions =
+        BitmapFactory.Options().apply {
+            if (boundsOptions.outWidth > 0 && boundsOptions.outHeight > 0) {
+                inSampleSize =
+                    slockBitmapDecodeSampleSize(boundsOptions.outWidth, boundsOptions.outHeight, targetEdgePx)
+            }
+        }
+    return openInput()?.use { input -> BitmapFactory.decodeStream(input, null, decodeOptions) }
 }

@@ -3802,7 +3802,7 @@ internal class SlockKuiklyImageAdapter(
                             val bytes = openInput()?.use { input -> input.readBytes() } ?: return@runCatching null
                             return@runCatching svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
                         }
-                        bitmapFromLocalStream(openInput, imageLoadOption)?.toBitmapDrawable()
+                        slockDecodeSampledBitmap(openInput, imageLoadOption.targetDecodeEdgePx())?.toBitmapDrawable()
                                 ?: throw IllegalStateException("Image decode failed")
                     }
                     .onSuccess { drawable ->
@@ -3977,27 +3977,6 @@ internal class SlockKuiklyImageAdapter(
 
     private fun bitmapDrawableFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Drawable? {
         return bitmapFromBytes(bytes, imageLoadOption)?.toBitmapDrawable()
-    }
-
-    private fun bitmapFromLocalStream(
-            openInput: () -> InputStream?,
-            imageLoadOption: HRImageLoadOption
-    ): Bitmap? {
-        val boundsOptions =
-                BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-        // With inJustDecodeBounds the decoder always returns null; only a missing stream aborts.
-        val boundsInput = openInput() ?: return null
-        boundsInput.use { input -> BitmapFactory.decodeStream(input, null, boundsOptions) }
-        val decodeOptions =
-                BitmapFactory.Options().apply {
-                    if (boundsOptions.outWidth > 0 && boundsOptions.outHeight > 0) {
-                        inSampleSize =
-                                imageLoadOption.bitmapDecodeSampleSize(boundsOptions.outWidth, boundsOptions.outHeight)
-                    }
-                }
-        return openInput()?.use { input -> BitmapFactory.decodeStream(input, null, decodeOptions) }
     }
 
     private fun InputStream.readLocalImageHeader(): ByteArray {
