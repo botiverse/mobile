@@ -16,6 +16,7 @@ public final class AndroidAttachmentPublicDownloadsExternalReadProbeActivity ext
     public static final String RESULT_SIZE = "sizeBytes";
     public static final String RESULT_SHA256 = "sha256";
     public static final String RESULT_ERROR = "errorType";
+    public static final String RESULT_ERROR_MESSAGE = "errorMessage";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +45,9 @@ public final class AndroidAttachmentPublicDownloadsExternalReadProbeActivity ext
             resultCode = RESULT_OK;
         } catch (Throwable throwable) {
             result.putString(RESULT_ERROR, throwable.getClass().getSimpleName());
+            // The message names the denying check (e.g. MediaProvider ownership vs URI grant);
+            // the class name alone cannot distinguish them.
+            result.putString(RESULT_ERROR_MESSAGE, String.valueOf(throwable.getMessage()));
         }
         if (receiver != null) receiver.send(resultCode, result);
         finish();
