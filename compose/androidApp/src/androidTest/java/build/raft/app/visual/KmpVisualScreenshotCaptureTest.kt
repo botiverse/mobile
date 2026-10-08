@@ -3408,6 +3408,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSidebarRowStates() {
+        captureKmpComponentCase(
+            caseId = "components.home.sidebar.row-states",
+            pageName = "compose_home_sidebar_row_states_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureMembersRestartDialogRestart() {
         captureKmpComponentCase(
             caseId = "components.members.restart-dialog.restart",
