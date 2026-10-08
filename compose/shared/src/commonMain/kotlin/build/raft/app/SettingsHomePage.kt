@@ -177,7 +177,6 @@ import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksRouteOwner
-import build.raft.app.data.SharedTasksRouteSession
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
@@ -3065,23 +3064,15 @@ private fun SlockAppShellReadyContent(
         accountId = readySession?.user?.id,
         serverId = readyServerId
     )
-    val tasksRoute = remember(tasksOwner, shellAuthStore, tasksDataSource, sharedStores) {
-        SharedTasksRouteSession(
-            owner = tasksOwner,
-            parentScope = appShellCoroutineScope,
-            authStore = shellAuthStore,
-            dataSource = tasksDataSource,
-            sharedTasksDataStore = sharedStores.tasksDataStore,
-            diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
-        )
-    }
-    DisposableEffect(tasksRoute) {
-        onDispose { tasksRoute.close() }
-    }
+    val tasksBinding = rememberSharedTasksRoute(
+        owner = tasksOwner,
+        authStore = shellAuthStore,
+        dataSource = tasksDataSource,
+        sharedTasksDataStore = sharedStores.tasksDataStore
+    )
+    val tasksRoute = tasksBinding.route
     val tasksViewModel = tasksRoute.viewModel
-    // collectAsState retains its value when only its Flow changes. A new owner must
-    // render Loading immediately, never even one frame of the previous server.
-    val tasksState = key(tasksRoute) { tasksViewModel.state.collectAsState().value }
+    val tasksState = tasksBinding.state
     // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
     // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
     // locked rule). The resolved ordered keys are the single source for the bottom bar,
