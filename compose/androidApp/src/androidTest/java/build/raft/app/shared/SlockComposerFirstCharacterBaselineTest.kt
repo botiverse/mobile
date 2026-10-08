@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Intent
+import android.os.Bundle
 import android.text.Spanned
 import android.view.View
 import android.view.ViewGroup
@@ -33,6 +34,18 @@ class SlockComposerFirstCharacterBaselineTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            // Recover emulator-owned focus before waitForIdleSync/editor checks. A launcher
+            // ANR can leave this activity rendered but unable to receive window focus.
+            // Keep the host readiness and first-character assertions below unchanged.
+            val recovery = AndroidActiveWindowRecovery.awaitActiveWindow(context.packageName)
+            val recoveryReceipt = "FIRST_CHARACTER_WINDOW_RECOVERY ${recovery.describe()}"
+            instrumentation.sendStatus(
+                0,
+                Bundle().apply { putString("firstCharacterWindowRecovery", recoveryReceipt) },
+            )
+            println(recoveryReceipt)
+            assertTrue("fixture did not acquire the active window; $recoveryReceipt", recovery.acquired)
+
             waitUntil("composer EditText should attach and finish its empty layout") {
                 var ready = false
                 scenario.onActivity { activity ->
