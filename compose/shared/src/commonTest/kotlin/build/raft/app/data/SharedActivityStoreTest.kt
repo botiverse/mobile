@@ -3668,6 +3668,94 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityTaskProjectionBindsOnlyPageRowsWithExplicitOverrideOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tasksDataStore = SharedTasksDataStore()
+        fun task(id: String, number: Int, messageId: String?, parentMessageId: String? = null, status: TaskStatus = TaskStatus.Todo) =
+            TaskSummary(
+                id = TaskId(id),
+                title = "Task $number",
+                status = status,
+                taskNumber = number,
+                messageId = messageId?.let(::MessageId),
+                parentMessageId = parentMessageId?.let(::MessageId),
+                channelId = ChannelId("parent-channel"),
+                updatedAtLabel = "now"
+            )
+        // A large Server task list where only a handful of tasks touch this page.
+        val unrelated = (1..3000).map { task("task-unrelated-$it", 10_000 + it, "unrelated-message-$it") }
+        val tasks =
+            unrelated.take(1500) +
+                // Two tasks share one parent message: the later one in Server order wins.
+                task("task-shared-first", 11, "shared-parent", status = TaskStatus.Todo) +
+                task("task-shared-second", 12, "shared-parent", status = TaskStatus.InReview) +
+                // Bound through parentMessageId rather than messageId.
+                task("task-via-parent", 21, "own-message", parentMessageId = "parent-link", status = TaskStatus.Done) +
+                unrelated.drop(1500)
+        tasksDataStore.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = tasks, summaryCounts = emptyMap())
+        )
+        val sharedRow = threadItem("thread-shared").copy(parentMessageId = MessageId("shared-parent"))
+        val parentLinkRow = threadItem("thread-parent-link").copy(parentMessageId = MessageId("parent-link"))
+        val unboundRow = threadItem("thread-unbound").copy(parentMessageId = MessageId("no-task-here"), taskNumber = 99)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(sharedRow, parentLinkRow, unboundRow)))
+                    ),
+                tasksDataStore = tasksDataStore
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        val items = store.state.value.items.associateBy { it.key }
+        assertEquals(12, items.getValue("thread:thread-shared").taskNumber)
+        assertEquals(TaskStatus.InReview, items.getValue("thread:thread-shared").taskStatus)
+        assertEquals(21, items.getValue("thread:thread-parent-link").taskNumber)
+        assertEquals(TaskStatus.Done, items.getValue("thread:thread-parent-link").taskStatus)
+        assertEquals(99, items.getValue("thread:thread-unbound").taskNumber)
+        assertEquals(null, items.getValue("thread:thread-unbound").taskStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTaskProjectionLeavesRowsUntouchedForConflictedTaskFacts() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tasksDataStore = SharedTasksDataStore()
+        val fact =
+            TaskSummary(
+                id = TaskId("task-conflict"),
+                title = "Conflicted task",
+                status = TaskStatus.Todo,
+                taskNumber = 55,
+                messageId = MessageId("parent-message"),
+                channelId = ChannelId("parent-channel"),
+                revision = 3L,
+                updatedAtLabel = "now"
+            )
+        tasksDataStore.upsertTask("server-1", fact)
+        tasksDataStore.upsertTask("server-2", fact.copy(status = TaskStatus.Done, title = "Disagreeing payload"))
+        val row = threadItem("thread-conflict").copy(taskNumber = 55, taskStatus = TaskStatus.InProgress)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(row)))),
+                tasksDataStore = tasksDataStore
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        val item = store.state.value.items.single()
+        assertEquals(55, item.taskNumber)
+        assertEquals(TaskStatus.InProgress, item.taskStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun jointTaskActivityFactDedupesAndOpensThroughEachServerLocalRoute() = runBlocking {
         val tasksDataStore = SharedTasksDataStore()
         val canonicalTask =

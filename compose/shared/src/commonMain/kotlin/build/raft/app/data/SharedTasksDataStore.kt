@@ -1140,27 +1140,44 @@ internal class SharedTasksDataStore(
      * Server-local. Returning one projection with N routes prevents host/peer duplicates without
      * inventing a canonical channel target.
      */
-    fun notificationProjection(taskId: TaskId): SharedTaskNotificationProjection? {
+    fun notificationProjection(taskId: TaskId): SharedTaskNotificationProjection? =
+        notificationProjections(listOf(taskId))[taskId]
+
+    /**
+     * Batch form of [notificationProjection]. Routes are grouped in one pass over the route
+     * table, so projecting N tasks costs O(N + routes) instead of O(N * routes). Activity
+     * refreshes project every task bound to the visible rows; on a Server with thousands of
+     * tasks the per-task scan took seconds while the Activity store held its state lock.
+     */
+    fun notificationProjections(taskIds: Collection<TaskId>): Map<TaskId, SharedTaskNotificationProjection> {
+        if (taskIds.isEmpty()) return emptyMap()
         val current = state.value
-        if (taskId in current.canonicalConflicts) return null
-        val fact = current.canonicalTaskFacts[taskId] ?: return null
-        val messageId = fact.messageId ?: return null
-        val routes =
-            current.taskProjectionRoutes
-                .mapNotNull { (key, route) ->
-                    if (key.taskId != taskId) return@mapNotNull null
-                    val channelId = route.channelId ?: return@mapNotNull null
-                    SharedTaskNotificationRoute(serverId = key.serverId, channelId = channelId)
-                }
-                .distinct()
-                .sortedWith(compareBy(SharedTaskNotificationRoute::serverId, { it.channelId.value }))
-        if (routes.isEmpty()) return null
-        return SharedTaskNotificationProjection(
-            taskId = taskId,
-            messageId = messageId,
-            revision = fact.revision,
-            routes = routes
-        )
+        val wanted =
+            taskIds.filterTo(mutableSetOf()) { taskId ->
+                taskId !in current.canonicalConflicts && current.canonicalTaskFacts[taskId]?.messageId != null
+            }
+        if (wanted.isEmpty()) return emptyMap()
+        val routesByTaskId = mutableMapOf<TaskId, MutableSet<SharedTaskNotificationRoute>>()
+        current.taskProjectionRoutes.forEach { (key, route) ->
+            if (key.taskId !in wanted) return@forEach
+            val channelId = route.channelId ?: return@forEach
+            routesByTaskId
+                .getOrPut(key.taskId) { mutableSetOf() }
+                .add(SharedTaskNotificationRoute(serverId = key.serverId, channelId = channelId))
+        }
+        val projections = mutableMapOf<TaskId, SharedTaskNotificationProjection>()
+        routesByTaskId.forEach { (taskId, routes) ->
+            val fact = current.canonicalTaskFacts[taskId] ?: return@forEach
+            val messageId = fact.messageId ?: return@forEach
+            projections[taskId] =
+                SharedTaskNotificationProjection(
+                    taskId = taskId,
+                    messageId = messageId,
+                    revision = fact.revision,
+                    routes = routes.sortedWith(compareBy(SharedTaskNotificationRoute::serverId, { it.channelId.value }))
+                )
+        }
+        return projections
     }
 
     /**
