@@ -5343,6 +5343,18 @@ internal class SlockKuiklyBridgeModule(
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
         val request = JSONObject(params ?: "{}")
         val action = request.optString("action")
+        if (action == "handsDownloadProgress") {
+            val token = request.optString("token")
+            val tracked = handsUpdateDownloads.values.firstOrNull { it.downloadId.toString() == token }
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launch {
+                val progress = withContext(Dispatchers.IO) {
+                    runCatching { tracked?.progressPayload() }.getOrNull()
+                }
+                callback?.invoke(progress ?: mapOf("status" to "unavailable"))
+            }
+            return
+        }
         if (action == "handsUpdateCheck" || action == "handsUpdateStatus" || action == "handsUpdateInstall") {
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
@@ -6034,6 +6046,7 @@ internal class SlockKuiklyBridgeModule(
                         "latestVersionCode" to (response.latest?.version_code ?: response.latest_version_code ?: 0L),
                         "latestChangelog" to response.latest?.changelog.orEmpty(),
                         "updateDownloadUrl" to response.asset?.download_url.orEmpty(),
+                        "updateDownloadProgressToken" to (handsUpdateDownloads[response.handsDownloadKey(arch)]?.downloadId?.toString().orEmpty()),
                         "updateDownloadSizesResolved" to true,
                         "updateFullDownloadSizeBytes" to (displaySizes.fullSizeBytes ?: 0L),
                         "updatePatchDownloadSizeBytes" to (displaySizes.patchSizeBytes ?: 0L),
@@ -6380,8 +6393,8 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun currentHandsDownloadResult(response: UpdateCheckResponse, arch: String?): HandsInstallResult {
-        val tracked = currentHandsDownload(response, arch) ?: return HandsInstallResult()
-        return when (tracked.status()) {
+        val tracked = handsUpdateDownloads[response.handsDownloadKey(arch)] ?: return HandsInstallResult()
+        return when (if (tracked.failed) DownloadManager.STATUS_FAILED else tracked.status()) {
             DownloadManager.STATUS_SUCCESSFUL -> {
                 tracked.completed = true
                 HandsInstallResult(
@@ -6399,8 +6412,10 @@ internal class SlockKuiklyBridgeModule(
                         actionLabel = "Downloading"
                 )
             else -> {
-                handsUpdateDownloads.remove(tracked.key)
-                HandsInstallResult()
+                HandsInstallResult(
+                    statusLabel = "Failed", actionLabel = "Download",
+                    errorCode = "settings_hands_update_download_failed"
+                )
             }
         }
     }
@@ -9010,6 +9025,28 @@ private data class HandsUpdateDownload(
         @Volatile var completed: Boolean = false,
         @Volatile var failed: Boolean = false
 ) {
+    fun progressPayload(): Map<String, Any> {
+        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                return mapOf(
+                    "status" to "ok",
+                    "token" to downloadId.toString(),
+                    "phase" to when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> "ready"
+                        DownloadManager.STATUS_FAILED -> "failed"
+                        DownloadManager.STATUS_PAUSED -> "paused"
+                        else -> "downloading"
+                    },
+                    "downloadedBytes" to it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                    "totalBytes" to it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                )
+            }
+        }
+        return mapOf("status" to "ok", "token" to downloadId.toString(), "phase" to "failed")
+    }
+
     fun status(): Int =
             if (completed) {
                 DownloadManager.STATUS_SUCCESSFUL

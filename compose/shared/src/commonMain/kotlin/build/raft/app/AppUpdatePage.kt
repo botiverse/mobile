@@ -46,6 +46,9 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import build.raft.app.data.SharedUpdateDownloadProgress
+import build.raft.app.components.SlockProgressBar
 
 const val APP_UPDATE_PAGE = "compose_app_update"
 
@@ -53,7 +56,7 @@ const val APP_UPDATE_PAGE = "compose_app_update"
 internal class ComposeAppUpdatePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AppUpdateScreen(slockPageVisibleResumeTick) }
+        setContent { AppUpdateScreen(slockPageVisibleResumeTick, slockPageVisible) }
     }
 }
 
@@ -69,7 +72,7 @@ internal fun Pager.openAppUpdatePage(storeScope: SlockShellStoreScope) {
 }
 
 @Composable
-private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
+private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -103,6 +106,23 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
         }
     }
 
+    var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
+    val progressToken = snapshot?.downloadProgressToken.orEmpty()
+    LaunchedEffect(progressToken, pageVisible) {
+        progress = null
+        if (!pageVisible || progressToken.isBlank()) return@LaunchedEffect
+        while (true) {
+            val observed = environment.settingsCapabilities.readHandsDownloadProgress(progressToken)
+            if (observed == null || observed.token != progressToken) break
+            progress = observed
+            if (!observed.active) {
+                refresh()
+                break
+            }
+            delay(500)
+        }
+    }
+
     LaunchedEffect(Unit) { refresh() }
     LaunchedEffect(pageVisibleResumeTick) {
         if (appUpdatePageShouldRefreshOnResume(pageVisibleResumeTick)) {
@@ -128,6 +148,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int) {
         )
         AppUpdateSummary(
             snapshot = snapshot,
+            progress = progress?.takeIf { it.token == progressToken },
             loading = loading,
             actionRunning = actionRunning,
             errorMessage = errorMessage,
@@ -283,7 +304,8 @@ internal fun AppUpdateSummary(
     errorMessage: String?,
     onRetry: () -> Unit,
     onSkipVersion: () -> Unit,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    progress: SharedUpdateDownloadProgress? = null
 ) {
     val currentVersion = snapshot?.currentVersionLabel.orEmpty().ifBlank { "-" }
     val latestVersion = snapshot?.latestVersionLabel.orEmpty().ifBlank { "-" }
@@ -330,7 +352,9 @@ internal fun AppUpdateSummary(
                 )
                 Text(
                     text =
-                        if (errorMessage != null) {
+                        if (snapshot?.errorCode == "settings_hands_update_download_failed") {
+                            stringResource(MR.strings.app_update_download_failed)
+                        } else if (errorMessage != null) {
                             errorMessage
                         } else {
                             snapshot?.detail.orEmpty()
@@ -349,6 +373,22 @@ internal fun AppUpdateSummary(
                 minWidth = 96.dp,
                 backgroundColor = SlockColor.AccentPink
             )
+        }
+        if (progress?.active == true) {
+            val bytes = appUpdateBytesLabel(progress.downloadedBytes)
+            val total = progress.totalBytes?.let(::appUpdateBytesLabel)
+            val label = if (total != null) "$bytes / $total" else bytes
+            Text(
+                text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+            // Unknown response length has no fabricated percentage/bar fill.
+            if (progress.percent != null) {
+                SlockProgressBar(value = progress.percent, label = label, showPercent = true)
+            } else {
+                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         if (appUpdateCanSkipVersion(snapshot)) {
@@ -482,6 +522,7 @@ internal fun appUpdatePrimaryActionLabel(
         actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel
+        snapshot.errorCode == "settings_hands_update_download_failed" -> retryLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Idle -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Checking -> checkingLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Patching -> preparingLabel
@@ -580,4 +621,17 @@ internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot
         SharedSettingsUpdateTransactionState.InstallerOpened,
         SharedSettingsUpdateTransactionState.Installed -> false
     }
+}
+
+internal fun appUpdateBytesLabel(bytes: Long): String {
+    val size = bytes.coerceAtLeast(0L)
+    val unit = when {
+        size >= 1_073_741_824L -> 1_073_741_824L to "GB"
+        size >= 1_048_576L -> 1_048_576L to "MB"
+        size >= 1_024L -> 1_024L to "KB"
+        else -> return "$size B"
+    }
+    val whole = size / unit.first
+    val decimal = (size % unit.first) * 10L / unit.first
+    return "$whole.$decimal ${unit.second}"
 }

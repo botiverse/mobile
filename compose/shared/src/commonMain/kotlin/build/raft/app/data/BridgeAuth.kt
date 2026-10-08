@@ -298,6 +298,11 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         handsUpdateAction("handsUpdateStatus")
 
+    override suspend fun readHandsDownloadProgress(token: String): SharedUpdateDownloadProgress? {
+        val response = settingsCapability(JSONObject().put("action", "handsDownloadProgress").put("token", token))
+        return response?.toSharedUpdateDownloadProgress()
+    }
+
     override suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         handsUpdateAction("handsUpdateInstall")
 
@@ -847,6 +852,7 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
                 latestVersionCode = optLong("latestVersionCode", 0L),
                 latestChangelog = optString("latestChangelog"),
                 downloadUrl = optString("updateDownloadUrl"),
+                downloadProgressToken = optString("updateDownloadProgressToken"),
                 downloadSizesResolved = optBoolean("updateDownloadSizesResolved", false),
                 fullDownloadSizeBytes = optLong("updateFullDownloadSizeBytes", 0L).coerceAtLeast(0L),
                 patchDownloadSizeBytes = optLong("updatePatchDownloadSizeBytes", 0L).coerceAtLeast(0L),
