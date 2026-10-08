@@ -5432,7 +5432,6 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
             .then(clickModifier)
             .hoverable(hoverInteractionSource)
     ) {
@@ -5709,7 +5708,6 @@ private fun ChannelRow(
                     .fillMaxWidth()
                     .offset { IntOffset(0, drag.offsetY.roundToInt()) }
                     .homeRowAnchorCapture(interaction.captureLongPressAnchor || captureAnchorForPress, rowAnchor)
-                    .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
                     .then(rowDragModifier)
                     .then(hoverableModifier)
