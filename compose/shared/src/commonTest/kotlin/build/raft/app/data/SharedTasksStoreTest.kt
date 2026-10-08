@@ -824,6 +824,37 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksBatchNotificationProjectionMatchesSingleTaskProjection() {
+        val store = SharedTasksDataStore()
+        val tasks =
+            (1..40).map { index ->
+                task("task-$index", TaskStatus.Todo, channelId = ChannelId("channel-$index"), revision = index.toLong())
+                    .copy(messageId = MessageId("message-$index"))
+            }
+        tasks.forEach { store.upsertTask("server-host", it) }
+        tasks.filter { it.id.value.endsWith("0") }.forEach { task ->
+            store.upsertTask("server-peer", task.copy(channelId = ChannelId("peer-${task.id.value}")))
+        }
+        val withoutMessage = task("task-no-message", TaskStatus.Todo, channelId = ChannelId("channel-x")).copy(messageId = null)
+        store.upsertTask("server-host", withoutMessage)
+
+        val requested = tasks.map { it.id } + withoutMessage.id + TaskId("task-unknown")
+        val batch = store.notificationProjections(requested)
+
+        assertEquals(tasks.size, batch.size)
+        requested.forEach { taskId ->
+            assertEquals(store.notificationProjection(taskId), batch[taskId])
+        }
+        assertEquals(
+            listOf(
+                SharedTaskNotificationRoute("server-host", ChannelId("channel-10")),
+                SharedTaskNotificationRoute("server-peer", ChannelId("peer-task-10"))
+            ),
+            batch[TaskId("task-10")]?.routes
+        )
+    }
+
+    @Test
     fun authoritativeSnapshotRemovesOnlyItsMissingLocalRouteAndPreservesPeerRoute() = runBlocking {
         val store = SharedTasksDataStore()
         val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
