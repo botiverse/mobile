@@ -6996,12 +6996,12 @@ internal fun MembersRestartResetDialog(
                 }
             }
         }
-        // Cancel keeps its natural width and the confirm button takes the rest, so the
-        // row spans the same width as the cards above. Fixed min widths (up to 124dp +
-        // 220dp) left a ragged left edge and overflowed narrow phones.
+        // Same footer as the app's other confirm dialogs (and web ConfirmDialog):
+        // right-aligned buttons at their natural width. The old per-action min
+        // widths (124dp + up to 220dp) overflowed narrow phones.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockBrutalActionButton(
@@ -7009,20 +7009,13 @@ internal fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 backgroundColor = SlockColor.SurfaceWhite,
-                minWidth = 96.dp,
-                minHeight = 36.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
                 label = if (busy) stringResource(MR.strings.member_action_restarting) else selectedAction.restartResetButtonLabel(),
                 leadingIcon = SlockLucideIconName.RotateCcw,
                 enabled = !busy,
-                modifier = Modifier.weight(1f),
                 backgroundColor = selectedAction.restartResetAccentColor(),
-                minWidth = 0.dp,
-                minHeight = 36.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onConfirm
             )
         }
