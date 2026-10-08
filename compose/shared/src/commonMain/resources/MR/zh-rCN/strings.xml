@@ -1004,7 +1004,7 @@
     <string name="member_error_description_too_long">描述最多只能包含 %1$s 个字符</string>
     <string name="member_dialog_full_reset_warning">这会永久删除所有工作区文件，包括 MEMORY.md 和 notes/。此操作无法撤销。</string>
     <string name="member_dialog_restart_description">停止并重启 Agent 进程。保留运行时会话和工作区文件。</string>
-    <string name="member_dialog_reset_session_description">清除运行时会话并重启。保留工作区文件（MEMORY.md、notes/）。</string>
+    <string name="member_dialog_reset_session_description">清除运行时会话并重启，保留 MEMORY.md、notes/ 等工作区文件。</string>
     <string name="member_dialog_full_reset_description">清除运行时会话、删除所有工作区文件，然后从头重启。</string>
     <string name="member_title_load_error">无法加载成员</string>
     <string name="member_title_agent_roles">Agent 角色</string>
