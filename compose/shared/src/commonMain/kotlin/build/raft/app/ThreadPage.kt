@@ -8506,49 +8506,18 @@ private fun SharedThreadRouteContentContent(
                 )
                 return
             }
-            val selectedIndex = composerImageGroup.currentIndex.coerceIn(0, galleryFiles.lastIndex)
-            val selectedFile = galleryFiles[selectedIndex]
             composerImageActionCounter += 1
             val baseActionId =
                 "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${attachmentId.take(12)}"
-            val groupId = "$baseActionId-group"
-            val galleryImages =
-                galleryFiles.mapIndexed { index, file ->
-                    file.toComposerImageGalleryImage().copy(
-                        // This is an editor opened from the already-uploaded composer row. Keep
-                        // the remote row id as an explicit replacement witness; the local file
-                        // id is only the source/admission identity.
-                        composerImageReplaceAttachmentId =
-                            composerImageGroup.images.getOrNull(index)?.id.orEmpty()
-                    )
-                }
             openTrackedComposerImagePreview(
-                threadAttachment.toThreadAttachmentLazyPreviewPayload(
-                    kind = "image",
-                    imageGallery = composerImageGroup.images,
-                    imageGalleryIndex = composerImageGroup.currentIndex
-                ).copy(
-                    imageUrl = selectedFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
-                    externalFileName = selectedFile.fileName.ifBlank { name },
-                    externalMimeType = selectedFile.mimeType.orEmpty(),
-                    imageGallery = galleryImages,
-                    composerImageThreadKey = threadInstanceKey,
-                    composerImageActionId = baseActionId,
-                    composerImageGroupId = groupId,
-                    composerImageFileRef = selectedFile.fileRef.orEmpty(),
-                    composerImageFileName = selectedFile.fileName.ifBlank { name },
-                    composerImageMimeType = selectedFile.mimeType.orEmpty(),
-                    composerImageSizeBytes = selectedFile.sizeBytes,
-                    composerImagePreviewUri = selectedFile.composerLocalPreviewUri().orEmpty(),
-                    composerImageOwnedTemporaryFileRefs =
-                        galleryFiles
-                            .filter(PlatformFile::isComposerImageOwnedTemporary)
-                            .mapNotNull(PlatformFile::fileRef),
-                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
-                    composerImageOriginalOptionEnabled = true,
-                    composerImageCanComplete = true,
-                    composerImageCanEdit = true
-                )
+                threadComposerUploadedImagePreviewPayload(
+                    threadInstanceKey = threadInstanceKey,
+                    actionId = baseActionId,
+                    files = galleryFiles,
+                    replacementAttachmentIds = composerImageGroup.images.map { it.id },
+                    selectedIndex = composerImageGroup.currentIndex,
+                    originalImage = currentDraftState.originalImage
+                ) ?: return
             )
         } else if (threadAttachment.isImageAttachment()) {
             composerImageActionCounter += 1
@@ -8566,29 +8535,14 @@ private fun SharedThreadRouteContentContent(
                 return
             }
             openTrackedComposerImagePreview(
-                threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
-                    imageUrl = composerImageFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
-                    externalFileName = composerImageFile.fileName.ifBlank { name },
-                    externalMimeType = composerImageFile.mimeType.orEmpty(),
-                    composerImageThreadKey = threadInstanceKey,
-                    composerImageActionId = composerImageActionId,
-                    composerImageFileRef = composerImageFile.fileRef.orEmpty(),
-                    composerImageFileName = composerImageFile.fileName.ifBlank { name },
-                    composerImageMimeType = composerImageFile.mimeType.orEmpty(),
-                    composerImageSizeBytes = composerImageFile.sizeBytes,
-                    composerImagePreviewUri = composerImageFile.composerLocalPreviewUri().orEmpty(),
-                    composerImageOwnedTemporaryFileRefs =
-                        listOfNotNull(
-                            composerImageFile
-                                .takeIf(PlatformFile::isComposerImageOwnedTemporary)
-                                ?.fileRef
-                        ),
-                    composerImageReplaceAttachmentId = attachment.id,
-                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
-                    composerImageOriginalOptionEnabled = true,
-                    composerImageCanComplete = true,
-                    composerImageCanEdit = true
-                )
+                threadComposerUploadedImagePreviewPayload(
+                    threadInstanceKey = threadInstanceKey,
+                    actionId = composerImageActionId,
+                    files = listOf(composerImageFile),
+                    replacementAttachmentIds = listOf(attachment.id),
+                    selectedIndex = 0,
+                    originalImage = currentDraftState.originalImage
+                ) ?: return
             )
         } else {
             openAttachmentNoPreview(threadAttachment)
