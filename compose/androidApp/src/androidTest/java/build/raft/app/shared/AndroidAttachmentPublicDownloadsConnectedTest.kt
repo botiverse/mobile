@@ -42,12 +42,6 @@ class AndroidAttachmentPublicDownloadsConnectedTest {
     @Test
     fun realMediaStoreCollisionAndLargeZipCommitExactBytesThenExternalDelete() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val skipMediaIdle = InstrumentationRegistry.getArguments().getString("skipMediaIdle") == "true"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !skipMediaIdle) {
-            // Drain MediaProvider's pending work before publishing; the CI runner additionally
-            // waits for its boot scan (see scripts/ci/run-public-downloads-authority.sh).
-            MediaStore.waitForIdle(context.contentResolver)
-        }
         assertTrue(ProcessAndroidAttachmentMediaStoreCleanup.awaitCompletion())
         assertTrue(ProcessAndroidAttachmentPublicDownloads.awaitRecovery())
         val resolver = context.contentResolver

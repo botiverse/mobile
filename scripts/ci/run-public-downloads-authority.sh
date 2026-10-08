@@ -89,10 +89,7 @@ for i in $(seq 1 "$repeat"); do
   else
     out="attachment-public-downloads-api${api}-instrumentation-${i}.txt"
   fi
-  skip_idle=false
-  if [ "$wait_media" = false ]; then skip_idle=true; fi
   "$here/run-instrumentation-with-retry.sh" "$out" 1 -- adb shell am instrument -w -r \
-    -e skipMediaIdle "$skip_idle" \
     -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest \
     build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
   rc=$?
