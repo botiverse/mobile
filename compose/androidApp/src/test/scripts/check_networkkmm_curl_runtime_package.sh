@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# network-android-curl-runtime:0.1.0-raft.39, published from
-# botiverse/KuiklyBase-components@cbf6dc03ae32df69a251b059fa0ea3c539a9ec93.
+# network-android-curl-runtime:0.1.0-raft.40, published from
+# botiverse/KuiklyBase-components@ff1277ae143f373bb3f1c13a4b3f6dd6d36fbead.
 readonly EXPECTED_ARM64_SHA256='ddac276dc36207f863ea2e71539aabdbf2ac4824f87bff9e72860696ce227c60'
 readonly EXPECTED_X86_64_SHA256='1c69801d79da9edaf946cd3e008e00e942397f9503f0ac74ffa0efc1630256c4'
 readonly EXPECTED_CA_SHA256='86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c'
