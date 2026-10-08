@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.setProgress
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
@@ -395,7 +396,18 @@ internal fun ThreadInlineAudioControls(
             onSeek = onSeek,
             modifier = Modifier
                 .weight(1f)
-                .semantics { seekContentDescription?.let { contentDescription = it } }
+                .semantics {
+                    seekContentDescription?.let { contentDescription = it }
+                    // Same accessibility seek action the Material Slider exposed.
+                    setProgress { target ->
+                        if (canPlay && totalTimeMs > 0) {
+                            onSeek((target.coerceIn(0f, 1f) * totalTimeMs).roundToInt())
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                }
         )
         Text(
             text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
