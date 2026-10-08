@@ -47,4 +47,22 @@ class UpdateDownloadProgressTest {
         assertEquals("1.5 KB", appUpdateBytesLabel(1536))
         assertEquals("50.0 MB", appUpdateBytesLabel(50L * 1024 * 1024))
     }
+    @Test fun localTerminalSurvivesFailedOfferRefresh() {
+        val initial = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true,
+            statusLabel = "Downloading", actionLabel = "Downloading", downloadProgressToken = "42")
+        for (phase in listOf("ready", "failed")) {
+            val progress = SharedUpdateDownloadProgress("42", 100, 100, phase)
+            val local = initial.withLocalDownloadTerminal(progress)
+            val remoteFailure: DataResult<SharedSettingsUpdateCheckSnapshot> = DataResult.Error(ScreenError("network_error"))
+            val result = remoteFailure.toAppUpdateResultProjection(local, "unavailable", englishErrorPresentationStringsForTest())
+            val retained = assertNotNull(result.snapshot).withLocalDownloadTerminal(progress)
+            assertTrue(appUpdatePrimaryActionEnabled(retained, false, false, result.errorMessage))
+            assertEquals(if (phase == "ready") "Install" else "Retry", appUpdatePrimaryActionLabel(retained, false))
+        }
+    }
+
+    @Test fun oldAttemptCannotOverrideNewDownload() {
+        val current = SharedSettingsUpdateCheckSnapshot(downloadProgressToken = "new")
+        assertEquals(current, current.withLocalDownloadTerminal(SharedUpdateDownloadProgress("old", 100, 100, "failed")))
+    }
 }

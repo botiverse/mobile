@@ -87,6 +87,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     var loading by remember { mutableStateOf(true) }
     var actionRunning by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
+    val downloadFailedMessage = stringResource(MR.strings.app_update_download_failed)
 
     fun refresh() {
         scope.launch {
@@ -96,8 +98,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                 do {
                     val result = environment.settingsCapabilities.checkHandsUpdateStatus()
                     val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
-                    snapshot = projection.snapshot
-                    errorMessage = projection.errorMessage
+                    snapshot = projection.snapshot?.withLocalDownloadTerminal(progress)
+                    errorMessage = if (snapshot?.errorCode == "settings_hands_update_download_failed") downloadFailedMessage else projection.errorMessage
                 } while (refreshGate.completeAndShouldContinue())
             } finally {
                 loading = false
@@ -106,16 +108,22 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
         }
     }
 
-    var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
     val progressToken = snapshot?.downloadProgressToken.orEmpty()
     LaunchedEffect(progressToken, pageVisible) {
         progress = null
         if (!pageVisible || progressToken.isBlank()) return@LaunchedEffect
         while (true) {
             val observed = environment.settingsCapabilities.readHandsDownloadProgress(progressToken)
-            if (observed == null || observed.token != progressToken) break
+            if (observed == null || observed.token != progressToken) {
+                // A transient local query failure must not freeze the old percentage.
+                progress = null
+                delay(1_000)
+                continue
+            }
             progress = observed
             if (!observed.active) {
+                snapshot = snapshot?.withLocalDownloadTerminal(observed)
+                errorMessage = if (observed.phase == "failed") downloadFailedMessage else null
                 refresh()
                 break
             }
@@ -149,7 +157,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
         AppUpdateSummary(
             snapshot = snapshot,
             progress = progress?.takeIf { it.token == progressToken },
-            loading = loading,
+            loading = loading && progress?.takeIf { it.token == progressToken }?.active != false,
             actionRunning = actionRunning,
             errorMessage = errorMessage,
             onRetry = ::refresh,
@@ -634,4 +642,24 @@ internal fun appUpdateBytesLabel(bytes: Long): String {
     val whole = size / unit.first
     val decimal = (size % unit.first) * 10L / unit.first
     return "$whole.$decimal ${unit.second}"
+}
+
+/** Local completion remains actionable even when the subsequent offer refresh fails. */
+internal fun SharedSettingsUpdateCheckSnapshot.withLocalDownloadTerminal(
+    progress: SharedUpdateDownloadProgress?
+): SharedSettingsUpdateCheckSnapshot {
+    if (progress == null || progress.active || progress.token != downloadProgressToken) return this
+    return when (progress.phase) {
+        "ready" -> copy(
+            transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+            statusLabel = "Install", actionLabel = "Install", errorCode = "", detail = ""
+        )
+        "failed" -> copy(
+            transactionState = SharedSettingsUpdateTransactionState.Failed,
+            transactionRetryable = true,
+            statusLabel = "Failed", actionLabel = "Download",
+            errorCode = "settings_hands_update_download_failed", detail = ""
+        )
+        else -> this
+    }
 }
