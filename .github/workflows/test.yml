@@ -18,6 +18,10 @@ on:
         description: "Task #91: force a controlled nonzero OHOS shared-compile exit to prove the resource-receipt artifact still uploads on RED. Does not affect normal runs."
         type: boolean
         default: false
+      attachment_authority_repeat:
+        description: "Re-run the public-Downloads authority class N times per API level to reproduce the intermittent API 31 cross-UID SecurityException. Default 1."
+        type: number
+        default: 1
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -970,7 +974,7 @@ jobs:
             adb wait-for-device
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            scripts/ci/run-instrumentation-with-retry.sh attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPublicDownloadsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
+            scripts/ci/run-public-downloads-authority.sh ${{ matrix.api-level }} ${{ inputs.attachment_authority_repeat || 1 }}
 
       - name: Upload API ${{ matrix.api-level }} attachment evidence
         if: always()
@@ -979,7 +983,9 @@ jobs:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
             api${{ matrix.api-level }}-connectedtest-app-badging.txt
-            attachment-public-downloads-api${{ matrix.api-level }}-instrumentation.txt
+            attachment-public-downloads-api${{ matrix.api-level }}-instrumentation*.txt
+            attachment-public-downloads-api${{ matrix.api-level }}-logcat*.txt
+            attachment-public-downloads-api${{ matrix.api-level }}-repeat-summary.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
           retention-days: 7
