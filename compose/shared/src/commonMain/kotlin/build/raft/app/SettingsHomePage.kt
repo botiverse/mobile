@@ -1186,6 +1186,9 @@ private val bottomTabBarSmokeItems = listOf(
  *  middle pane under the wide LeftRail; it is not a persisted tab key. */
 internal const val AppShellRailSearchKey = "rail_search"
 
+/** Saved opened from the Home sidebar in desktop mode: an inline list pane, like rail Search. */
+internal const val AppShellRailSavedKey = "rail_saved"
+
 internal fun appShellBottomTabs(
     selectedKey: String,
     homeLabel: String,
@@ -6615,7 +6618,14 @@ private fun SlockAppShellReadyContent(
                                     openHomeSecondaryDestination(HomeDestinationActivity)
                                 },
                                 onOpenSaved = {
-                                    openHomeSecondaryDestination(HomeDestinationSaved)
+                                    if (desktopModeOnLargeScreen) {
+                                        // Large screens keep the rail and open Saved as the
+                                        // list pane with the shared detail beside it.
+                                        railInlineSecondaryDestination = AppShellRailSavedKey
+                                        bridge.log("app_shell_rail_secondary_open destination=saved")
+                                    } else {
+                                        openHomeSecondaryDestination(HomeDestinationSaved)
+                                    }
                                 },
                                 onOpenComputers = {
                                     selectAppShellTab("settings")
@@ -6950,10 +6960,16 @@ private fun SlockAppShellReadyContent(
                     // tab host's middle area with its own list pane; the shared workspace
                     // detail slot to its right keeps working via adaptiveSplitListDetail.
                     // Narrow or flag-off never reaches here — the push path handles those.
-                    if (railInlineSecondaryDestination == AppShellRailSearchKey) {
+                    val railInlineDestination =
+                        when (railInlineSecondaryDestination) {
+                            AppShellRailSearchKey -> HomeDestinationSearch
+                            AppShellRailSavedKey -> HomeDestinationSaved
+                            else -> null
+                        }
+                    if (railInlineDestination != null) {
                         val searchListPane: @Composable (Boolean) -> Unit = { listActive ->
                             HomeSecondaryRouterContent(
-                                destination = HomeDestinationSearch,
+                                destination = railInlineDestination,
                                 routeVisibleTick = pageVisibleTick,
                                 initialSearchFocusInput = false,
                                 adaptivePane = shellScope.adaptivePane,
