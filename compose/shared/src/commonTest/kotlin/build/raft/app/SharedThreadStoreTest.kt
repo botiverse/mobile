@@ -184,6 +184,7 @@ private class ConcurrentTestLogBuffer {
 }
 
 class SharedThreadStoreTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
     fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = kotlinx.coroutines.test.runTest {
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
@@ -195,6 +196,7 @@ class SharedThreadStoreTest {
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
         val store = SharedThreadStore(dataSource = dataSource, scope = backgroundScope)
         store.accept(SharedThreadIntent.Start(basePayload()))
+        testScheduler.runCurrent()
         assertEquals(4, store.state.value.payload.messages.single().unreadReplyCount)
         val event = build.raft.app.model.PerReceiverReadStateChanged(ServerId("wrong-server"),
             listOf(build.raft.app.model.PerReceiverReadStateScope(ChannelId("reply-channel"), 10, 2, 0)))
@@ -203,6 +205,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.ApplyRealtimeEvent(event.copy(serverId = ServerId("server-1"))))
         assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
         store.accept(SharedThreadIntent.Refresh)
+        testScheduler.runCurrent()
         assertEquals(0, store.state.value.payload.messages.single().unreadReplyCount)
         store.clear()
     }

@@ -9730,9 +9730,10 @@ internal class SharedThreadStore(
 
     private fun reduceState(nextState: SharedThreadState): Boolean {
         val previousState = _state.value
-        val synchronizedState = nextState.copy(
+        val projectedState = if (nextState.payload === previousState.payload) nextState else nextState.copy(
             payload = readStateProjection.project(nextState.payload, visiblePayloadOwnerScopeId)
-        ).withSynchronizedTimelineSlice()
+        )
+        val synchronizedState = projectedState.withSynchronizedTimelineSlice()
         val emitted = synchronizedState != previousState
         if (!emitted) return false
         _state.value = synchronizedState
