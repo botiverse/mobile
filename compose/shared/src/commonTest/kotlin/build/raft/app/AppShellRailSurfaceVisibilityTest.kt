@@ -238,6 +238,34 @@ class AppShellRailSurfaceVisibilityTest {
     }
 
     @Test
+    fun `inline saved behaves like inline search on rail surfaces`() {
+        // task #110: desktop-mode Saved opens as the rail-inline list pane, like Search.
+        assertTrue(
+            appShellSharedDetailSurfaceVisible(
+                pageVisible = true,
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                railInlineSecondaryDestination = AppShellRailSavedKey,
+            )
+        )
+        // First Back closes an open saved message, then exits Saved.
+        assertTrue(
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = "home",
+                railInlineSecondaryDestination = AppShellRailSavedKey,
+                selectionPresent = true,
+            )
+        )
+        assertFalse(
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = "home",
+                railInlineSecondaryDestination = AppShellRailSavedKey,
+                selectionPresent = false,
+            )
+        )
+    }
+
+    @Test
     fun `activity destination survives narrowing once reached`() {
         val legacy = SlockSlackNavTabs.LegacyOrder
         // Wide rail: Activity allowed even under legacy keys.
