@@ -176,7 +176,7 @@ import build.raft.app.data.ComputerSummary
 import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
-import build.raft.app.data.SharedTasksViewModel
+import build.raft.app.data.SharedTasksRouteOwner
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
@@ -3046,16 +3046,6 @@ private fun SlockAppShellReadyContent(
     val homeSearchSavedState = homeShellState.searchSaved
     val selectedHomeDestination = homeShellState.destination
     val selectedHomeConversationId = homeShellState.selectedConversationId
-    val tasksViewModel: SharedTasksViewModel =
-        viewModel(key = "shared-tasks") {
-            SharedTasksViewModel(
-                authStore = shellAuthStore,
-                dataSource = tasksDataSource,
-                sharedTasksDataStore = sharedStores.tasksDataStore,
-                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
-            )
-        }
-    val tasksState by tasksViewModel.state.collectAsState()
     var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readyGate = authGateState as? SharedAuthGateState.Ready
@@ -3069,6 +3059,20 @@ private fun SlockAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    val tasksOwner = SharedTasksRouteOwner(
+        environment = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+        accountId = readySession?.user?.id,
+        serverId = readyServerId
+    )
+    val tasksBinding = rememberSharedTasksRoute(
+        owner = tasksOwner,
+        authStore = shellAuthStore,
+        dataSource = tasksDataSource,
+        sharedTasksDataStore = sharedStores.tasksDataStore
+    )
+    val tasksRoute = tasksBinding.route
+    val tasksViewModel = tasksRoute.viewModel
+    val tasksState = tasksBinding.state
     // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
     // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
     // locked rule). The resolved ordered keys are the single source for the bottom bar,
@@ -4966,7 +4970,7 @@ private fun SlockAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(selectedTab, authoritativeHomeStartAllowed) {
+    LaunchedEffect(tasksRoute, selectedTab, authoritativeHomeStartAllowed) {
         if (selectedTab == "tasks" && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
@@ -4980,7 +4984,7 @@ private fun SlockAppShellReadyContent(
                         "filter" to tasksState.selectedFilter?.name.orEmpty()
                     )
             )
-            tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
+            tasksRoute.start()
         }
     }
     LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
@@ -6356,6 +6360,7 @@ private fun SlockAppShellReadyContent(
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         Box(modifier = Modifier.fillMaxSize()) {
+                        key(tasksRoute) {
                         SharedTasksScreen(
                             state = tasksState,
                             onIntent = { intent ->
@@ -6404,6 +6409,7 @@ private fun SlockAppShellReadyContent(
                                 )
                             }
                         )
+                        }
                         if (tasksDetailOverlayOpen) {
                             SlockTasksDetailOverlay(
                                 onDismiss = ::closeTasksDetailOverlay,
