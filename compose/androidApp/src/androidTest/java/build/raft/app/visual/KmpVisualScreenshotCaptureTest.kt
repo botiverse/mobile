@@ -3408,6 +3408,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadInlineAudioControls() {
+        captureKmpComponentCase(
+            caseId = "components.thread.inline-audio.controls",
+            pageName = "compose_thread_inline_audio_controls_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureMembersRestartDialogRestart() {
         captureKmpComponentCase(
             caseId = "components.members.restart-dialog.restart",

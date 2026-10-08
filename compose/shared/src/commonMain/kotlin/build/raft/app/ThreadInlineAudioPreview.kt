@@ -30,6 +30,17 @@ import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.kuikly.core.views.VideoPlayControl
 
@@ -262,6 +273,7 @@ private fun ThreadInlineAudioSurface(
             var playState by remember(source) { mutableStateOf(PlayState.NONE) }
             var currentTimeMs by remember(source) { mutableStateOf(0) }
             var totalTimeMs by remember(source) { mutableStateOf(0) }
+            var seekRequest by remember(source) { mutableStateOf<SlockFilePreviewVideoSeekRequest?>(null) }
             val isPlaying = playState == PlayState.PLAYING
             val canPlay = source.isNotBlank()
 
@@ -269,7 +281,7 @@ private fun ThreadInlineAudioSurface(
                 SlockFilePreviewKuiklyVideo(
                     source = source,
                     playControl = playControl,
-                    seekRequest = null,
+                    seekRequest = seekRequest,
                     onPlayStateChanged = { playState = it },
                     onPlayTimeChanged = { current, total ->
                         currentTimeMs = current
@@ -314,66 +326,156 @@ private fun ThreadInlineAudioSurface(
                     )
                 }
             } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SlockBrutalIconButton(
-                            iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
-                            onClick = {
-                                playControl =
-                                    if (isPlaying) {
-                                        VideoPlayControl.PAUSE
-                                    } else {
-                                        VideoPlayControl.PLAY
-                                    }
-                            },
-                            enabled = canPlay,
-                            size = 32.dp,
-                            shadowOffset = 0.dp,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                        Text(
-                            text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                ThreadInlineAudioControls(
+                    isPlaying = isPlaying,
+                    canPlay = canPlay,
+                    currentTimeMs = currentTimeMs,
+                    totalTimeMs = totalTimeMs,
+                    onTogglePlay = {
+                        playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                    },
+                    onSeek = { targetMs ->
+                        currentTimeMs = targetMs
+                        if (playState == PlayState.PLAY_END) {
+                            playState = PlayState.PAUSED
+                        }
+                        seekRequest = SlockFilePreviewVideoSeekRequest(
+                            id = (seekRequest?.id ?: 0) + 1,
+                            timeMs = targetMs
                         )
                     }
-                    val progressFraction =
-                        if (totalTimeMs > 0) {
-                            (currentTimeMs.toFloat() / totalTimeMs.toFloat()).coerceIn(0f, 1f)
-                        } else {
-                            0f
-                        }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .background(SlockColor.EmptyStateGray)
-                    ) {
-                        if (progressFraction > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progressFraction)
-                                    .height(4.dp)
-                                    .background(SlockColor.TextBlack)
-                            )
-                        }
-                    }
-                }
+                )
             }
         }
+    }
+}
+
+/**
+ * Web InlineAudioPlayer row: play button, seekable rail with a square thumb, and a
+ * fixed-width "current / total" mono label.
+ */
+@Composable
+internal fun ThreadInlineAudioControls(
+    isPlaying: Boolean,
+    canPlay: Boolean,
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    onTogglePlay: () -> Unit,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceCream)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockBrutalIconButton(
+            iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+            onClick = onTogglePlay,
+            enabled = canPlay,
+            size = 28.dp,
+            iconSize = 14.dp,
+            shadowOffset = 0.dp,
+            backgroundColor = SlockColor.SurfaceWhite
+        )
+        ThreadInlineAudioSeekBar(
+            currentTimeMs = currentTimeMs,
+            totalTimeMs = totalTimeMs,
+            seekEnabled = canPlay && totalTimeMs > 0,
+            onSeek = onSeek,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
+            style = SlockType.Caption.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            ).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            modifier = Modifier.width(76.dp)
+        )
+    }
+}
+
+/**
+ * Seekable progress rail matching web's audio-seek-rail: an 8dp bordered white
+ * rail with a cyan fill and a 12dp square thumb, inside a 28dp touch target.
+ * Tap jumps; horizontal drag previews and seeks on release. The pointer modifiers
+ * are always attached (seekEnabled gates them) so no modifier is ever removed.
+ */
+@Composable
+private fun ThreadInlineAudioSeekBar(
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    seekEnabled: Boolean,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var widthPx by remember { mutableStateOf(0f) }
+    var dragX by remember { mutableStateOf<Float?>(null) }
+    val density = LocalDensity.current
+    val thumbHalfPx = with(density) { 6.dp.toPx() }
+    val playedFraction =
+        if (totalTimeMs > 0) (currentTimeMs.toFloat() / totalTimeMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val fraction =
+        dragX?.let { x -> if (widthPx > 0f) (x / widthPx).coerceIn(0f, 1f) else 0f } ?: playedFraction
+    Box(
+        modifier = modifier
+            .height(28.dp)
+            .onGloballyPositioned { coordinates -> widthPx = coordinates.size.width.toFloat() }
+            .pointerInput(seekEnabled, totalTimeMs) {
+                detectTapGestures(
+                    onTap = { offset ->
+                        if (seekEnabled) {
+                            slockFilePreviewVideoSeekTimeFromTap(offset.x, widthPx, totalTimeMs)?.let(onSeek)
+                        }
+                    }
+                )
+            }
+            .pointerInput(seekEnabled, totalTimeMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset -> if (seekEnabled) dragX = offset.x },
+                    onDragEnd = {
+                        val x = dragX
+                        dragX = null
+                        if (seekEnabled && x != null) {
+                            slockFilePreviewVideoSeekTimeFromTap(x, widthPx, totalTimeMs)?.let(onSeek)
+                        }
+                    },
+                    onDragCancel = { dragX = null }
+                ) { _, dragAmount ->
+                    dragX = dragX?.let { (it + dragAmount).coerceIn(0f, widthPx) }
+                }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(8.dp)
+                    .background(SlockColor.AccentCyan)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((fraction * widthPx - thumbHalfPx).roundToInt(), 0) }
+                .size(12.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        )
     }
 }
