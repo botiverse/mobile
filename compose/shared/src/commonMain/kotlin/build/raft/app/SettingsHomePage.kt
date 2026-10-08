@@ -11747,7 +11747,6 @@ private fun SettingsServerDeleteConfirmationDialog(
                 modifier =
                     Modifier
                         .padding(horizontal = 18.dp)
-                        .offset(x = (-10).dp, y = (-36).dp)
                         .widthIn(max = 360.dp)
                         .slockFloatingContentClickTarget()
             ) {
