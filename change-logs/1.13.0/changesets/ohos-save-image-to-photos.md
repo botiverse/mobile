@@ -2,7 +2,7 @@
 type: fixed
 area: attachments
 platforms: [ohos]
-pull_request: pending
+pull_request: 2884
 rollout: full
 ---
 
