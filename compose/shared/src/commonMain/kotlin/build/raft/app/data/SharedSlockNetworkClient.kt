@@ -79,6 +79,26 @@ internal class SharedSlockNetworkClient(
             expectedAuthority = null
         )
 
+    override suspend fun requestWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?
+    ): HomeNetworkResponse =
+        requestInternal(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText,
+            expectedAuthority = null,
+            extraHeaders = headers
+        )
+
     override suspend fun requestBound(
         priority: DataRequestPriority,
         path: String,
@@ -98,6 +118,27 @@ internal class SharedSlockNetworkClient(
             expectedAuthority = expectedAuthority
         )
 
+    override suspend fun requestBoundWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse =
+        requestInternal(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText,
+            expectedAuthority = expectedAuthority,
+            extraHeaders = headers
+        )
+
     private suspend fun requestInternal(
         priority: DataRequestPriority,
         path: String,
@@ -105,7 +146,8 @@ internal class SharedSlockNetworkClient(
         query: List<Pair<String, String>>,
         serverIdOverride: ServerId?,
         bodyText: String?,
-        expectedAuthority: SlockExpectedAuthBinding?
+        expectedAuthority: SlockExpectedAuthBinding?,
+        extraHeaders: Map<String, String> = emptyMap()
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val category = path.networkDiagnosticsCategory()
@@ -139,6 +181,7 @@ internal class SharedSlockNetworkClient(
                                 method = method.uppercase(),
                                 headers =
                                     buildMap {
+                                        putAll(extraHeaders)
                                         put(HEADER_AUTHORIZATION, auth.authorization)
                                         put(HEADER_SERVER_ID, auth.serverId)
                                     },

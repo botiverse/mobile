@@ -94,7 +94,8 @@ interface SlockComputersApi {
 }
 
 internal class SlockComputersNetworkApi(
-    private val networkClient: SlockNetworkClient
+    private val networkClient: SlockNetworkClient,
+    private val runtimeFormLanguageTag: () -> String? = { runtimeFormRequestLanguageTag() }
 ) : SlockComputersApi {
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse =
         machines(serverId, DataRequestPriority.Visible)
@@ -189,9 +190,10 @@ internal class SlockComputersNetworkApi(
         machineId: String,
         runtimeId: String
     ): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/${runtimeId.trim()}",
+            headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag()),
             serverIdOverride = serverId
         )
 
@@ -202,11 +204,12 @@ internal class SlockComputersNetworkApi(
         sourceId: String,
         refresh: Boolean
     ): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
             path =
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
                     "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
+            headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag()),
             query = if (refresh) listOf("refresh" to "1") else emptyList(),
             serverIdOverride = serverId
         )

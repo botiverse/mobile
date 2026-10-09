@@ -67,7 +67,8 @@ internal interface SlockAgentsApi {
 }
 
 internal class SlockAgentsNetworkApi(
-    private val networkClient: SlockNetworkClient
+    private val networkClient: SlockNetworkClient,
+    private val runtimeFormLanguageTag: () -> String? = { runtimeFormRequestLanguageTag() }
 ) : SlockAgentsApi {
     override suspend fun agents(): HomeNetworkResponse =
         networkClient.request(
@@ -162,9 +163,10 @@ internal class SlockAgentsNetworkApi(
         )
 
     override suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
-            path = "agents/${agentId.value}/runtime-form"
+            path = "agents/${agentId.value}/runtime-form",
+            headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag())
         )
 
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse =

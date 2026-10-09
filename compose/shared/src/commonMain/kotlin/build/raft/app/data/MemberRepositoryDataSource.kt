@@ -65,6 +65,29 @@ interface SlockNetworkClient {
         bodyText: String? = null
     ): HomeNetworkResponse
 
+    /**
+     * [request] with extra request headers (e.g. `Accept-Language`). Auth and server-binding headers
+     * still come from the client and win over a same-named extra header. Clients that cannot send
+     * extra headers fall back to the plain request.
+     */
+    suspend fun requestWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        method: String = "GET",
+        query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: ServerId? = null,
+        bodyText: String? = null
+    ): HomeNetworkResponse =
+        request(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText
+        )
+
     suspend fun requestRawAbsoluteUrl(
         priority: DataRequestPriority,
         url: String,
@@ -171,6 +194,27 @@ internal interface AuthorityBoundSlockNetworkClient {
         expectedAuthority: SlockExpectedAuthBinding
     ): HomeNetworkResponse
 
+    /** [requestBound] with extra request headers; see [SlockNetworkClient.requestWithHeaders]. */
+    suspend fun requestBoundWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        method: String = "GET",
+        query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: ServerId? = null,
+        bodyText: String? = null,
+        expectedAuthority: SlockExpectedAuthBinding
+    ): HomeNetworkResponse =
+        requestBound(
+            priority = priority,
+            path = path,
+            method = method,
+            query = query,
+            serverIdOverride = serverIdOverride,
+            bodyText = bodyText,
+            expectedAuthority = expectedAuthority
+        )
+
     suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority,
         channelId: ChannelId,
@@ -245,6 +289,26 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
             bound?.requestBound(
                 priority = priority,
                 path = path,
+                method = method,
+                query = query,
+                serverIdOverride = serverIdOverride,
+                bodyText = bodyText,
+                expectedAuthority = expectedAuthority
+            ) ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun requestWithHeaders(
+            priority: DataRequestPriority,
+            path: String,
+            headers: Map<String, String>,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse =
+            bound?.requestBoundWithHeaders(
+                priority = priority,
+                path = path,
+                headers = headers,
                 method = method,
                 query = query,
                 serverIdOverride = serverIdOverride,
