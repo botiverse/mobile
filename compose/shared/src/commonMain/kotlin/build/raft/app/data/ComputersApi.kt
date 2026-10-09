@@ -84,6 +84,12 @@ interface SlockComputersApi {
         refresh: Boolean = false
     ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
+    /** Read-only `GET …/runtime-account-usage/:provider` (task #137); refresh is not exposed. */
+    suspend fun runtimeAccountUsage(
+        serverId: ServerId,
+        machineId: String,
+        provider: String
+    ): HomeNetworkResponse = error("runtimeAccountUsage is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
 }
 
@@ -212,6 +218,13 @@ internal class SlockComputersNetworkApi(
             serverIdOverride = serverId
         )
 
+    override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}",
+            serverIdOverride = serverId
+        )
+
     override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
@@ -300,6 +313,16 @@ internal class SlockComputersApiClient(
                 defaultModel = wire.defaultModel
             )
         }
+
+    suspend fun runtimeAccountUsage(
+        serverId: ServerId,
+        machineId: String,
+        provider: RuntimeAccountUsageProvider
+    ): DataResult<RuntimeAccountUsageRead> =
+        transport.runtimeAccountUsage(serverId, machineId, provider.wire).mapComputersBody(
+            "computer_runtime_account_usage_contract_mismatch",
+            JsonElement.serializer()
+        ) { wire -> wire.toRuntimeAccountUsageRead() }
 
     suspend fun runtimeOptions(
         serverId: ServerId,
