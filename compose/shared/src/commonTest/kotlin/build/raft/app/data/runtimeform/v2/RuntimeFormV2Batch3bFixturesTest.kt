@@ -27,7 +27,7 @@ class RuntimeFormV2Batch3bFixturesTest {
             "claude.edit" to CLAUDE_V2_EDIT_JSON,
             "cursor.form" to CURSOR_V2_FORM_JSON,
             "cursor.edit" to CURSOR_V2_EDIT_JSON,
-            "copilot.form" to COPILOT_V2_FORM_JSON,
+            "copilot.edit" to COPILOT_V2_EDIT_JSON,
         )) {
             val parsed = form(json)
             assertTrue(parsed.blockingFieldKeys.isEmpty(), "$name: no unsupported required field")
@@ -40,7 +40,6 @@ class RuntimeFormV2Batch3bFixturesTest {
         for ((name, json, sources) in listOf(
             Triple("claude", CLAUDE_V2_FORM_JSON, claudeSources),
             Triple("cursor", CURSOR_V2_FORM_JSON, mapOf("model" to source(CURSOR_V2_FALLBACK_SOURCE_JSON))),
-            Triple("copilot", COPILOT_V2_FORM_JSON, mapOf("model" to source(COPILOT_V2_LIVE_SOURCE_JSON))),
         )) {
             val parsed = form(json)
             assertEquals(emptyMap(), validateRuntimeFormV2(parsed, sources, initialRuntimeFormV2Values(parsed, sources)), name)

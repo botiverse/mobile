@@ -163,7 +163,7 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/builtin.edit.json, sha256 486af4d089b8cd48fb77dafc609143ba57da508c8b5cd93dbe6d5c2e15041183 */
+/** fixtures/builtin.edit.json, sha256 358eaae8d5bc741017b4a31d7f2a75b1fa410877e6db2df89ba3dc2768880694 */
 internal const val BUILTIN_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -318,6 +318,12 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
       "pointer": "/model",
       "dependsOn": "/providerId"
     }
+  },
+  "writeOnlyKeepRequiresUnchanged": {
+    "/apiKey": [
+      "/providerId",
+      "/baseUrl"
+    ]
   },
   "values": {
     "providerId": "openai-compatible",
@@ -1878,7 +1884,7 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/claude.edit.json, sha256 7667e567d12db4480c8d0dd459448eee4dca90f675345650de4423e7f5beb4d3 */
+/** fixtures/claude.edit.json, sha256 523d30a8075d8f7505ebea4fd8243b65da048dd857483e727693edb69392decc */
 internal const val CLAUDE_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "claude",
@@ -2069,6 +2075,12 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
       "kind": "select",
       "pointer": "/model"
     }
+  },
+  "writeOnlyKeepRequiresUnchanged": {
+    "/apiKey": [
+      "/provider",
+      "/apiUrl"
+    ]
   },
   "values": {
     "provider": "custom",
@@ -2457,11 +2469,11 @@ internal const val CURSOR_V2_FALLBACK_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/copilot.form.json, sha256 8fa777294e76b4871a5195b4382572bd6938cb251caf2593d987476fbc76a70f */
-internal const val COPILOT_V2_FORM_JSON: String = """{
+/** fixtures/copilot.edit.json, sha256 f110cb7aebe489669a4bca186380821b90db49d96b6df9e9137c95bd5d11a5bc */
+internal const val COPILOT_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "copilot",
-  "schemaVersion": "copilot.create.v1",
+  "schemaVersion": "copilot.edit.v1",
   "requiredClientCapabilities": [
     "select.custom_value",
     "choice.labels",
@@ -2562,20 +2574,27 @@ internal const val COPILOT_V2_FORM_JSON: String = """{
     "model": {
       "protocolVersion": 1,
       "runtimeId": "copilot",
-      "schemaVersion": "copilot.create.v1",
+      "schemaVersion": "copilot.edit.v1",
       "sourceId": "model",
       "kind": "select",
       "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "vendor/copilot-custom",
+    "reasoningEffort": "high",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
     }
   }
 }
 """
 
-/** fixtures/copilot.option-source.live.json, sha256 1f14406e2134b70d80d6066f645d24c98ddfb16729b30ab9588ea6b87b6fdec5 */
+/** fixtures/copilot.option-source.live.json, sha256 7667953f1d3b4e858bc0bb8b4a162c1891ce952f46602e6356255250df7eaed7 */
 internal const val COPILOT_V2_LIVE_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "copilot",
-  "schemaVersion": "copilot.create.v1",
+  "schemaVersion": "copilot.edit.v1",
   "sourceId": "model",
   "kind": "select",
   "pointer": "/model",
@@ -2880,7 +2899,7 @@ internal const val PI_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/pi.edit.json, sha256 8513a039edfe082db9d70f5a97226d6fbf65ea8f7830a9f6630697ff5205f2c9 */
+/** fixtures/pi.edit.json, sha256 a452337bf7bb55552aa5b377a65e6f098dea0f008c598b6d38bcccd85127f0a4 */
 internal const val PI_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "pi",
@@ -3130,6 +3149,11 @@ internal const val PI_V2_EDIT_JSON: String = """{
       "dependsOn": "/provider"
     }
   },
+  "writeOnlyKeepRequiresUnchanged": {
+    "/apiKey": [
+      "/provider"
+    ]
+  },
   "values": {
     "provider": "deepseek",
     "providerModel": "deepseek/deepseek-v4-pro",
@@ -3141,7 +3165,7 @@ internal const val PI_V2_EDIT_JSON: String = """{
 }
 """
 
-/** fixtures/pi.edit.configured.json, sha256 87749ffb8cbef2eb45a9fd0400ffd88aae2d3a2ee51993fe330b12d0f938ebfb */
+/** fixtures/pi.edit.configured.json, sha256 794c022770fd0dfcb73e040da5b15489d16be24f09c6652299b58077f927f192 */
 internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "pi",
@@ -3390,6 +3414,11 @@ internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
       "pointer": "/providerModel",
       "dependsOn": "/provider"
     }
+  },
+  "writeOnlyKeepRequiresUnchanged": {
+    "/apiKey": [
+      "/provider"
+    ]
   },
   "values": {
     "provider": "configured",

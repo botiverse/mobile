@@ -54,7 +54,8 @@ FIXTURES = [
     ("CURSOR_V2_FORM_JSON", "cursor.form.json"),
     ("CURSOR_V2_EDIT_JSON", "cursor.edit.json"),
     ("CURSOR_V2_FALLBACK_SOURCE_JSON", "cursor.option-source.fallback.json"),
-    ("COPILOT_V2_FORM_JSON", "copilot.form.json"),
+    # slock #9013 deprecated Copilot for new agents: no create form, edit only.
+    ("COPILOT_V2_EDIT_JSON", "copilot.edit.json"),
     ("COPILOT_V2_LIVE_SOURCE_JSON", "copilot.option-source.live.json"),
     # Batch 4 (slock #8647): Pi, "configured" (Computer's own models, typed allowed) or DeepSeek (per-provider list).
     ("PI_V2_FORM_JSON", "pi.form.json"),

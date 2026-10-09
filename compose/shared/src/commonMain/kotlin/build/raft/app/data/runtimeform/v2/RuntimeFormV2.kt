@@ -1,4 +1,4 @@
-// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 1556344f2749e4c0). Do not edit.
+// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 3c29f0af666633d7). Do not edit.
 // Decode with Json { ignoreUnknownKeys = true }: every type is open.
 // Enumerated strings stay String so an unknown value never fails decoding.
 package build.raft.app.data.runtimeform.v2
@@ -19,6 +19,8 @@ data class RuntimeFormV2Definition(
     /** Client capabilities this form needs beyond the base v2 renderer. Absent or null means []. A client that sees an entry it does not implement, a value that is not an array, or a non-string entry must treat the whole v2 form as unavailable and fall back to its v1/legacy form; it must never render a partial v2 form. Names (frozen): `select.custom_value` (OptionSource.customValueAllowed), `choice.labels` (FieldCopy.choices), `option_source.status` (OptionSource.status/reason/retryable). A form lists a name only when it uses that feature; the server never sends those fields to a form that does not list the name. */
     val requiredClientCapabilities: List<String>? = null,
     val values: Map<String, JsonElement>? = null,
+    /** Edit only (sent with `values`). Keyed by the pointer of a writeOnly field (e.g. `/apiKey`); the value lists the pointers of the fields the stored secret is bound to (e.g. `["/provider", "/apiUrl"]`). On edit a blank writeOnly field keeps the stored secret only while every listed field still equals its value in `values`. Comparison: both sides as strings (absent = ""), surrounding whitespace trimmed and trailing `/` characters removed, then exact. A listed field that is currently hidden by `visibility` is not compared. When a listed field differs and the secret is blank (and visible), the client must treat the secret as required and block saving, saying a new secret is needed; the server refuses that save anyway (`api_key_required` at the field). Absent: a blank writeOnly field always means keep. A secret pointer or listed pointer naming no field is ignored. Optional and advisory: no requiredClientCapabilities entry; a client that ignores it still gets the server's refusal. */
+    val writeOnlyKeepRequiresUnchanged: Map<String, List<String>>? = null,
 )
 
 @Serializable
