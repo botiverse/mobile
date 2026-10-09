@@ -1785,6 +1785,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
             val networkRequestScheduler = SlockRequestScheduler()
             val networkExecutor = createPlatformSlockHttpExecutor(networkWarningLogger)
+            val networkReachabilityGates = SlockHostReachabilityGates()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -1808,7 +1809,8 @@ internal class SlockSharedStoreProvider private constructor(
                     terminalAuthLossReporter = terminalAuthLossReporter,
                     requestScheduler = networkRequestScheduler,
                     platformFileResolver = platformFileResolver,
-                    executor = networkExecutor
+                    executor = networkExecutor,
+                    reachabilityGates = networkReachabilityGates
                 )
             }
             val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient =
@@ -1826,7 +1828,8 @@ internal class SlockSharedStoreProvider private constructor(
                         terminalAuthLossReporter = terminalAuthLossReporter,
                         requestScheduler = networkRequestScheduler,
                         platformFileResolver = platformFileResolver,
-                        executor = networkExecutor
+                        executor = networkExecutor,
+                        reachabilityGates = networkReachabilityGates
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)
