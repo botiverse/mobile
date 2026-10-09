@@ -287,7 +287,7 @@ internal class SlockSandboxWebViewEvent : Event() {
             val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@register
             val kind = parsed.optString("kind", "").trim()
             val payload = parsed.optJSONObject("payload") ?: return@register
-            if (!kind.matches(Regex("^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*)+$"))) return@register
+            if (!kind.matches(Regex("^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*)*$"))) return@register
             handler(kind, payload)
         }
     }
