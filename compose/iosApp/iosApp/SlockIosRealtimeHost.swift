@@ -160,7 +160,7 @@ final class SlockIosRealtimeHost: NSObject {
             guard !desiredServerIds.isEmpty else {
                 self.disconnectAllLocked(reason: disconnectReason)
                 self.processIdentity = nil
-                self.log("process_reconcile result=cleared reason=\(disconnectReason)")
+                self.record("info", "process_reconcile result=cleared reason=\(disconnectReason)")
                 return
             }
             let principalId = self.clean(authorityPrincipalId)
@@ -173,7 +173,7 @@ final class SlockIosRealtimeHost: NSObject {
                 authorityAuthGeneration > 0,
                 !familyId.isEmpty
             else {
-                self.log("process_reconcile_skip reason=invalid_authority serverCount=\(desiredServerIds.count)")
+                self.record("warn", "process_reconcile_skip reason=invalid_authority serverCount=\(desiredServerIds.count)")
                 self.disconnectAllLocked(reason: "invalid_process_authority")
                 self.processIdentity = nil
                 return
@@ -301,7 +301,7 @@ final class SlockIosRealtimeHost: NSObject {
         runtime.manager = manager
         runtime.socket = socket
         installSocketHandlers(socket, serverId: params.serverId, generation: generation)
-        log("connect_start transport=swift_socketio serverId=\(params.serverId) generation=\(generation)")
+        record("info", "connect_start transport=swift_socketio serverId=\(params.serverId) generation=\(generation)")
         socket.connect(withPayload: [
             "token": params.accessToken,
             "serverId": params.serverId,
@@ -316,7 +316,8 @@ final class SlockIosRealtimeHost: NSObject {
                 runtime.state = .connected
                 self.nextPresenceTransportEpoch += 1
                 runtime.presenceTransportEpoch = self.nextPresenceTransportEpoch
-                self.log(
+                self.record(
+                    "info",
                     "socket_io_connected serverId=\(serverId) generation=\(generation) " +
                         "presenceEpoch=\(runtime.presenceTransportEpoch)"
                 )
@@ -328,14 +329,27 @@ final class SlockIosRealtimeHost: NSObject {
             self?.queue.async {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
                 runtime.state = .disconnected
-                self.log("socket_io_disconnected serverId=\(serverId) reason=\(data.first.map { "\($0)" } ?? "")")
+                self.record("warn", "socket_io_disconnected serverId=\(serverId) generation=\(generation) reason=\(data.first.map { "\($0)" } ?? "")")
+            }
+        }
+        // task #191: observation only — Socket.IO's own reconnect policy is unchanged.
+        socket.on(clientEvent: .reconnect) { [weak self] data, _ in
+            self?.queue.async {
+                guard let self, self.currentRuntime(serverId: serverId, generation: generation) != nil else { return }
+                self.record("info", "socket_io_reconnect serverId=\(serverId) generation=\(generation) reason=\(data.first.map { "\($0)" } ?? "")")
+            }
+        }
+        socket.on(clientEvent: .reconnectAttempt) { [weak self] data, _ in
+            self?.queue.async {
+                guard let self, self.currentRuntime(serverId: serverId, generation: generation) != nil else { return }
+                self.record("info", "socket_io_reconnect_attempt serverId=\(serverId) generation=\(generation) remaining=\(data.first.map { "\($0)" } ?? "")")
             }
         }
         socket.on(clientEvent: .error) { [weak self] data, _ in
             self?.queue.async {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
                 runtime.state = .disconnected
-                self.log("socket_io_error serverId=\(serverId) data=\(data)")
+                self.record("warn", "socket_io_error serverId=\(serverId) generation=\(generation) data=\(data)")
                 self.requestAuthRefresh(runtime: runtime, reason: "connect_error")
             }
         }
@@ -508,7 +522,7 @@ final class SlockIosRealtimeHost: NSObject {
             runtime.joinedChannels.removeAll()
             runtime.roomEngine.resetRoomStateForHost()
         }
-        log("disconnect serverId=\(runtime.serverId) reason=\(reason) keepSession=\(keepSession)")
+        record("info", "disconnect serverId=\(runtime.serverId) reason=\(reason) keepSession=\(keepSession)")
     }
 
     private func requestAuthRefresh(runtime: Runtime, reason: String) {
@@ -663,6 +677,13 @@ final class SlockIosRealtimeHost: NSObject {
 
     private func log(_ message: String) {
         NSLog("[SlockIosRealtime] %@", message)
+    }
+
+    // task #191: connection lifecycle also goes to raft-diagnostics.jsonl (NSLog alone never
+    // reaches a Hands feedback bundle). Low volume, so it is marked critical to survive pressure.
+    private func record(_ level: String, _ message: String) {
+        log(message)
+        SlockIosDiagnosticsRecordWithContext(level, "SlockIosRealtime", message, 0, false, true)
     }
 
     private func clean(_ value: String) -> String {
