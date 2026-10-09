@@ -2165,31 +2165,7 @@ internal fun MembersPageContent(
                             createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
                         }
                 if (result is DataResult.Content) {
-                    // The create response carries machineId but usually no machineName
-                    // (runtimeProfile is empty for a fresh agent), so resolve the name
-                    // from the dialog's machine options to avoid a transient
-                    // "no computer" grouping until the members refresh lands.
-                    val machineId = result.data.machineId?.takeIf { it.isNotBlank() }
-                        ?: submit.machineId?.takeIf { it.isNotBlank() }
-                    val machineName = result.data.machineName?.takeIf { it.isNotBlank() }
-                        ?: machineId?.let { id ->
-                            computersSlice.machines.firstOrNull { it.id == id }?.name?.takeIf { name -> name.isNotBlank() }
-                        }
-                    val profile = build.raft.app.model.MemberProfile(
-                        id = build.raft.app.model.MemberId(result.data.id),
-                        displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
-                        handle = result.data.name,
-                        kind = build.raft.app.model.MemberKind.Agent,
-                        description = result.data.description,
-                        roleDescription = result.data.model,
-                        avatarUrl = result.data.avatarUrl,
-                        avatar = build.raft.app.model.AvatarReference.fromWireValue(result.data.avatarUrl),
-                        presence = build.raft.app.model.Presence.Offline,
-                        permissionBadges = listOfNotNull(
-                            machineName?.let { "computer:$it" },
-                            machineId?.let { "computer-id:$it" }
-                        )
-                    )
+                    val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
@@ -14090,3 +14066,35 @@ internal fun groupedAgentMembers(
         }
 
 internal const val membersNoComputerGroupLabel = "no computer"
+
+/**
+ * The members row for an agent that was just created, shown until the members refresh lands. It
+ * carries the agent's computer (the create response's machineId, else the one the dialog sent; the
+ * name from the response, else the dialog's machine list) so the row never groups under "no
+ * computer" (task #148; the shell members screen used to add it without any computer).
+ */
+internal fun createdAgentMemberProfile(
+    agent: build.raft.app.data.AgentSummary,
+    submit: SharedCreateAgentDialogSubmit,
+    machines: List<SharedCreateAgentMachineOption>
+): MemberProfile {
+    val machineId = agent.machineId?.takeIf { it.isNotBlank() }
+        ?: submit.machineId?.takeIf { it.isNotBlank() }
+    val machineName = agent.machineName?.takeIf { it.isNotBlank() }
+        ?: machineId?.let { id -> machines.firstOrNull { it.id == id }?.name?.takeIf { name -> name.isNotBlank() } }
+    return MemberProfile(
+        id = MemberId(agent.id),
+        displayName = agent.displayName?.takeIf { it.isNotBlank() } ?: agent.name,
+        handle = agent.name,
+        kind = MemberKind.Agent,
+        description = agent.description,
+        roleDescription = agent.model,
+        avatarUrl = agent.avatarUrl,
+        avatar = AvatarReference.fromWireValue(agent.avatarUrl),
+        presence = Presence.Offline,
+        permissionBadges = listOfNotNull(
+            machineName?.let { "computer:$it" },
+            machineId?.let { "computer-id:$it" }
+        )
+    )
+}

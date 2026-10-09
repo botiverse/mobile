@@ -18132,17 +18132,7 @@ private fun SharedMembersScreen(
                             createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
                         }
                 if (result is DataResult.Content) {
-                    val profile = MemberProfile(
-                        id = MemberId(result.data.id),
-                        displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
-                        handle = result.data.name,
-                        kind = MemberKind.Agent,
-                        description = result.data.activityDetail,
-                        roleDescription = result.data.model,
-                        avatarUrl = result.data.avatarUrl,
-                        avatar = AvatarReference.fromWireValue(result.data.avatarUrl),
-                        presence = Presence.Offline
-                    )
+                    val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     val nextState =
                         when (val latest = state) {
                             is SharedMembersUiState.Content ->
@@ -18151,6 +18141,25 @@ private fun SharedMembersScreen(
                         }
                     state = nextState
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
+                    // The row above is only a stand-in: replace it with the server's record. Re-entering
+                    // the page seeds the store from this cached content, so without a forced refresh the
+                    // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).
+                    val refreshed =
+                        serverMembersStore.refreshMembers(
+                            ServerId(serverId),
+                            DataRequestPriority.Background,
+                            force = true,
+                            reason = "members_agent_created"
+                        )
+                    val latest = state as? SharedMembersUiState.Content
+                    if (refreshed is DataResult.Content && latest != null) {
+                        serverMembersStore.currentServerMembersContent(ServerId(serverId), fallbackServer = latest.server)
+                            ?.let { snapshot ->
+                                val content = latest.copy(server = snapshot.server, members = snapshot.members)
+                                state = content
+                                onContentLoaded(content)
+                            }
+                    }
                 }
                 when (result) {
                     is DataResult.Content -> DataResult.Content(Unit)
