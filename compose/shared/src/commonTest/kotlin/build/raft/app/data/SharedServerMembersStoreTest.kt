@@ -537,6 +537,68 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun forcedRetryReplacesAFlightStuckSinceTheOutageInsteadOfJoiningIt() = runBlocking {
+        // Task #150: a members flight started during a network outage never returns; the user's
+        // Retry (a forced load) must start a fresh flight, and the stuck one must never publish.
+        val owner = ProcessServerMembersOwner(environmentId = "https://api.example.test", accountId = "a", serverId = "server-1")
+        val stuck = CompletableDeferred<DataResult<MemberSnapshot>>()
+        val started = CompletableDeferred<Unit>()
+        var fetches = 0
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = { _, _ ->
+                    fetches += 1
+                    if (fetches == 1) {
+                        started.complete(Unit)
+                        stuck.await()
+                    }
+                    else DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u1", "Fresh"))))
+                },
+                staleForcedFlightAge = kotlin.time.Duration.ZERO
+            )
+        val outage = async { core.load(owner, DataRequestPriority.Background, force = false, reason = "outage") }
+        started.await()
+
+        val retried = core.load(owner, DataRequestPriority.Visible, force = true, reason = "members_retry")
+        assertIs<DataResult.Content<MemberSnapshot>>(retried.result)
+        assertTrue(retried.publicationCurrent)
+        assertEquals(2, fetches)
+
+        // The stuck flight finally answers: it is stale and does not replace the fresh snapshot.
+        stuck.complete(DataResult.Error(ScreenError("network_dns_failed")))
+        assertEquals(false, outage.await().publicationCurrent)
+        val cached = core.load(owner, DataRequestPriority.Visible, force = false, reason = "after")
+        assertIs<DataResult.Content<MemberSnapshot>>(cached.result)
+        assertEquals(2, fetches, "served from the fresh flight's cache")
+    }
+
+    @Test
+    fun aForcedLoadStillJoinsARecentFlight() = runBlocking {
+        val owner = ProcessServerMembersOwner(environmentId = "https://api.example.test", accountId = "a", serverId = "server-1")
+        val release = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        var fetches = 0
+        val core =
+            ProcessServerMembersCore(fetchMembers = { _, _ ->
+                fetches += 1
+                started.complete(Unit)
+                release.await()
+                DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u1", "One"))))
+            })
+        val first = async { core.load(owner, DataRequestPriority.Visible, force = false, reason = "first") }
+        started.await()
+        // Runs up to its join on the active flight before the flight is released.
+        val second =
+            async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                core.load(owner, DataRequestPriority.Visible, force = true, reason = "members_retry")
+            }
+        release.complete(Unit)
+        assertIs<DataResult.Content<MemberSnapshot>>(first.await().result)
+        assertIs<DataResult.Content<MemberSnapshot>>(second.await().result)
+        assertEquals(1, fetches, "a young flight is joined, not duplicated")
+    }
+
+    @Test
     fun oldFailureCannotOverwriteNewerSuccessfulFacadePublication() = runBlocking {
         var fetches = 0
         val core =

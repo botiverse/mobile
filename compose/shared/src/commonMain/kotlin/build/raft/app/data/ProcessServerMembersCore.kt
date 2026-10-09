@@ -9,8 +9,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import build.raft.app.model.ServerId
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeMark
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 internal data class ProcessServerMembersOwner(
@@ -70,7 +72,8 @@ internal class ProcessServerMembersCore(
     private val fetchMembers: suspend (DataRequestPriority, ServerId) -> DataResult<MemberSnapshot>,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val maxEntries: Int = 16,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val staleForcedFlightAge: Duration = StaleForcedFlightAge
 ) {
     init {
         require(maxEntries > 0)
@@ -97,11 +100,25 @@ internal class ProcessServerMembersCore(
         val decision =
             mutex.withLock {
                 activeFlights[directoryOwner]?.let { active ->
-                    logger(
-                        "process_members_flight result=join ${directoryOwner.diagnosticsKey} " +
-                            "force=$force priority=${priority.name} reason=$reason"
-                    )
-                    return@withLock LoadDecision.Flight(active, started = false)
+                    if (force && active.startedAt.elapsedNow() >= staleForcedFlightAge) {
+                        // Task #150: a flight started during a network outage can outlive it (a
+                        // transport call that never returns). A forced load (the user's Retry) must
+                        // not join it forever: drop it and bump the owner generation so its late
+                        // result is never published, then start a fresh flight below.
+                        activeFlights.remove(directoryOwner)
+                        ownerGenerations[directoryOwner] = (ownerGenerations[directoryOwner] ?: 0L) + 1L
+                        logger(
+                            "process_members_flight result=replace_stale ${directoryOwner.diagnosticsKey} " +
+                                "ageMs=${active.startedAt.elapsedNow().inWholeMilliseconds} " +
+                                "priority=${priority.name} reason=$reason"
+                        )
+                    } else {
+                        logger(
+                            "process_members_flight result=join ${directoryOwner.diagnosticsKey} " +
+                                "force=$force priority=${priority.name} reason=$reason"
+                        )
+                        return@withLock LoadDecision.Flight(active, started = false)
+                    }
                 }
                 if (!force) {
                     cache.remove(directoryOwner)?.let { cached ->
@@ -368,7 +385,8 @@ internal class ProcessServerMembersCore(
     private data class ActiveFlight(
         val token: Any,
         val generation: ProcessServerMembersGeneration,
-        val result: Deferred<ProcessServerMembersLoadResult>
+        val result: Deferred<ProcessServerMembersLoadResult>,
+        val startedAt: TimeMark = TimeSource.Monotonic.markNow()
     )
 
     private sealed interface LoadDecision {
@@ -381,6 +399,8 @@ internal class ProcessServerMembersCore(
 
     private companion object {
         val CacheTtl = 10.minutes
+        /** A forced load replaces an active flight older than this instead of joining it (task #150). */
+        val StaleForcedFlightAge = 45.seconds
     }
 }
 

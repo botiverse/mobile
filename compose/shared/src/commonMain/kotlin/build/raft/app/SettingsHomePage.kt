@@ -17895,7 +17895,15 @@ private fun SharedMembersScreen(
         )
     }
 
-    LaunchedEffect(membersRefreshKey, currentServerId) {
+    // Task #150: a Retry tap forces the reload so it can never be satisfied by (or stuck behind)
+    // what the failed attempt left in the shared members core.
+    var membersRetryForce by remember { mutableStateOf(false) }
+    // Keyed locally too: the parent's refresh key reaches this screen through a tab content lambda,
+    // so a Retry must not depend on that lambda being recomposed to re-run the load.
+    var membersRetryNonce by remember { mutableStateOf(0) }
+    LaunchedEffect(membersRefreshKey, currentServerId, membersRetryNonce) {
+        val force = membersRetryForce
+        membersRetryForce = false
         var previousContent: SharedMembersUiState.Content? = null
         try {
             previousContent =
@@ -17910,11 +17918,22 @@ private fun SharedMembersScreen(
             }
             val server = session?.servers?.firstOrNull { it.id == currentServerId }?.toServerSummary()
             if (session == null || currentServerId.isNullOrBlank() || server == null) {
+                // Was silent: a Retry that ends here never reached the network.
+                slockLogger("SlockMembersPage")(
+                    "members_page_load_skipped reason=server_required session=${session != null} " +
+                        "serverSelected=${!currentServerId.isNullOrBlank()} serverInSession=${server != null}"
+                )
                 state = previousContent ?: SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
             val serverId = ServerId(currentServerId)
-            val response = serverMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
+            val response =
+                serverMembersStore.refreshMembers(
+                    serverId,
+                    DataRequestPriority.Visible,
+                    force = force,
+                    reason = if (force) "members_retry" else "members_page"
+                )
             state =
                 when (response) {
                     is DataResult.Content -> {
@@ -17954,7 +17973,11 @@ private fun SharedMembersScreen(
             MembersPageErrorContent(
                 message = membersLoadFailedMessage,
                 code = current.code,
-                onRetry = onRetry
+                onRetry = {
+                    membersRetryForce = true
+                    membersRetryNonce += 1
+                    onRetry()
+                }
             )
         is SharedMembersUiState.Content -> {
             val serverId = current.server.id.value
