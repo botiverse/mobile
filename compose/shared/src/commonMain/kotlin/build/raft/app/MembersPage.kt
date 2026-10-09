@@ -4956,7 +4956,9 @@ internal fun MembersListContent(
                 )
             }
             if (agentsExpanded) {
-                groupedAgentMembers(agents).forEach { group ->
+                groupedAgentMembers(agents) { machineId ->
+                    createAgentMachines.firstOrNull { it.id == machineId }?.name
+                }.forEach { group ->
                     item("group_${group.key}") {
                         val groupExpanded = !isAgentGroupCollapsed(group.key)
                         Row(
@@ -14060,7 +14062,17 @@ private fun SlockSpinnerIcon(
     )
 }
 
-internal fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
+/**
+ * Groups agents by computer. The list row of an agent carries its `machineId` but a name only via
+ * `runtimeProfile.current.machineName`, which is null until the agent first runs; such an agent is
+ * still on a computer, so its group is named from [machineName] (the server's computer list), then
+ * any row's own name, then the id. Only an agent without a `machineId` is "no computer" (task #147
+ * follow-up #148: a new Built-in Pi agent on daybed-earth was listed under "no computer").
+ */
+internal fun groupedAgentMembers(
+    members: List<MemberProfile>,
+    machineName: (machineId: String) -> String? = { null }
+): List<MembersAgentGroup> =
     members
         .groupBy { member ->
             member.membersComputerId
@@ -14068,9 +14080,12 @@ internal fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgen
                 ?: build.raft.app.data.MembersAgentMachineGroupNoMachineKey
         }
         .map { (key, groupedMembers) ->
+            val machineId = groupedMembers.firstNotNullOfOrNull { it.membersComputerId }
             MembersAgentGroup(
                 key = key,
-                label = groupedMembers.firstOrNull()?.membersComputerName
+                label = machineId?.let(machineName)?.takeIf { it.isNotBlank() }
+                    ?: groupedMembers.firstNotNullOfOrNull { it.membersComputerName }
+                    ?: machineId
                     ?: membersNoComputerGroupLabel,
                 members = groupedMembers
             )

@@ -51,6 +51,29 @@ class MembersAgentMachineGroupCollapseTest {
     }
 
     @Test
+    fun anAgentWithAMachineIdButNoNameIsNeverListedUnderNoComputer() {
+        // Task #148: the list row carries machineId; the name is null until the agent first runs.
+        val agents =
+            listOf(
+                member("fresh", "computer-id:machine-9"),
+                member("other", "computer:Office Mini", "computer-id:machine-2"),
+                member("none")
+            )
+
+        val named = groupedAgentMembers(agents) { id -> mapOf("machine-9" to "daybed-earth")[id] }
+        assertEquals("daybed-earth", named.single { it.key == "machine-9" }.label, "named from the computer list")
+        assertEquals("Office Mini", named.single { it.key == "machine-2" }.label)
+        assertEquals(membersNoComputerGroupLabel, named.single { it.key == MembersAgentMachineGroupNoMachineKey }.label)
+
+        val unloaded = groupedAgentMembers(agents)
+        assertEquals("machine-9", unloaded.single { it.key == "machine-9" }.label, "computer list not loaded: show the id")
+        assertEquals(1, unloaded.count { it.label == membersNoComputerGroupLabel }, "only the agent without a machine")
+
+        val renamed = groupedAgentMembers(agents) { id -> mapOf("machine-2" to "Office Studio")[id] }
+        assertEquals("Office Studio", renamed.single { it.key == "machine-2" }.label, "the computer list wins over a stale row name")
+    }
+
+    @Test
     fun collapseStoreRoundTripsOnlyUnderTheWebKeyFamily() {
         val backing = InMemorySlockKeyValueStore()
         val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
