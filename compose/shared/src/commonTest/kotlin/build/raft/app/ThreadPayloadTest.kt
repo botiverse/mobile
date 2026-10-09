@@ -1925,6 +1925,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun floatingOverlayPositionSupportsHorizontalCenterPlacement() {
+        val viewport = SlockFloatingOverlayLayout(size = Size(width = 400f, height = 800f))
+        val anchor = Offset(x = 350f, y = 100f) // trigger is on the far right
+
+        // Centered horizontally: (400 - 280) / 2 = 60f
+        // Vertical below anchor: 100 + 6 = 106f
+        val centered = viewport.positionContent(
+            anchor = anchor,
+            contentSize = Size(width = 280f, height = 200f),
+            viewportGap = 8f,
+            verticalOffset = 6f,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+        )
+        assertEquals(Offset(60f, 106f), centered)
+
+        // With horizontal offset
+        val withOffset = viewport.positionContent(
+            anchor = anchor,
+            contentSize = Size(width = 280f, height = 200f),
+            viewportGap = 8f,
+            horizontalOffset = 10f,
+            verticalOffset = 6f,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+        )
+        assertEquals(Offset(70f, 106f), withOffset)
+
+        // Clamped when wider than viewport minus gap
+        val wideContent = viewport.positionContent(
+            anchor = anchor,
+            contentSize = Size(width = 420f, height = 200f),
+            viewportGap = 8f,
+            verticalOffset = 6f,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+        )
+        assertEquals(Offset(8f, 106f), wideContent)
+    }
+
+    @Test
     fun typedPayloadKeepsMembersAndSettingsActions() {
         val payload =
             KuiklyThreadScreenPayload(

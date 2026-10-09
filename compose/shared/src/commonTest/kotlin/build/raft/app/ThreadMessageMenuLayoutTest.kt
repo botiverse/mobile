@@ -71,4 +71,27 @@ class ThreadMessageMenuLayoutTest {
         assertEquals("thread_message:message-1", threadMessageMenuOwnerIdentity("message-1"))
         assertEquals("thread_message:message-2", threadMessageMenuOwnerIdentity("message-2"))
     }
+
+    @Test
+    fun horizontalPositionCentersWithinViewport() {
+        // Viewport 390 wide, content 288 wide, gap 8 -> max X is 390 - 288 - 8 = 94. Center is (390 - 288)/2 = 51
+        val centeredX = slockHorizontalPosition(
+            localAnchorX = 350f,
+            contentWidth = 288f,
+            viewportWidth = 390f,
+            viewportGap = 8f,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+        )
+        assertEquals(51f, centeredX)
+
+        // Anchor mode places relative to localAnchorX
+        val anchorX = slockHorizontalPosition(
+            localAnchorX = 50f,
+            contentWidth = 288f,
+            viewportWidth = 390f,
+            viewportGap = 8f,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.Anchor
+        )
+        assertEquals(50f, anchorX)
+    }
 }

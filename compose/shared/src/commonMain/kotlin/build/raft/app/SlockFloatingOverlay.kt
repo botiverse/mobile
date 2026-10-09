@@ -38,6 +38,11 @@ internal enum class SlockFloatingVerticalPlacement {
     Auto
 }
 
+internal enum class SlockFloatingHorizontalPlacement {
+    Anchor,
+    Center
+}
+
 internal enum class SlockFloatingOverlayOutsidePointerMode {
     /** Consume an outside gesture and dismiss without activating the covered control. */
     Dismiss,
@@ -60,6 +65,7 @@ internal fun SlockModalAnchoredPopover(
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
     verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    horizontalPlacement: SlockFloatingHorizontalPlacement = SlockFloatingHorizontalPlacement.Anchor,
     horizontalAutoFlip: Boolean = false,
     dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
     content: @Composable () -> Unit
@@ -75,6 +81,7 @@ internal fun SlockModalAnchoredPopover(
             verticalOffset = verticalOffset,
             verticalOffsetAbove = verticalOffsetAbove,
             verticalPlacement = verticalPlacement,
+            horizontalPlacement = horizontalPlacement,
             horizontalAutoFlip = horizontalAutoFlip,
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             content = content
@@ -93,6 +100,7 @@ internal fun SlockAnchoredPopover(
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
     verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    horizontalPlacement: SlockFloatingHorizontalPlacement = SlockFloatingHorizontalPlacement.Anchor,
     // #223: when true, the popover flips to the left of the anchor if
     // there is no room on the right. Used by SlockBaseMenuOverlay so
     // long-press menus don't run off the screen's right edge.
@@ -111,6 +119,7 @@ internal fun SlockAnchoredPopover(
         verticalOffset = verticalOffset,
         verticalOffsetAbove = verticalOffsetAbove,
         verticalPlacement = verticalPlacement,
+        horizontalPlacement = horizontalPlacement,
         horizontalAutoFlip = horizontalAutoFlip,
         dismissActivationDelayMillis = dismissActivationDelayMillis,
         outsidePointerMode = outsidePointerMode,
@@ -270,6 +279,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
     verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    horizontalPlacement: SlockFloatingHorizontalPlacement = SlockFloatingHorizontalPlacement.Anchor,
     // #223: when true, place content to the left of the anchor (anchor
     // is treated as the content's right edge) when there is no room on
     // the right. Mirrors React placeSidebarContextMenu.ts placeMenuAxis
@@ -288,6 +298,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
         viewportWidth = size.width,
         horizontalOffset = horizontalOffset,
         viewportGap = viewportGap,
+        horizontalPlacement = horizontalPlacement,
         autoFlip = horizontalAutoFlip
     )
     val y = slockVerticalPosition(
@@ -304,9 +315,12 @@ internal fun SlockFloatingOverlayLayout.positionContent(
 
 /**
  * Compute the horizontal pixel offset for a floating overlay relative to
- * [SlockFloatingOverlayLayout.origin].  When [autoFlip] is true and the
+ * [SlockFloatingOverlayLayout.origin]. When [horizontalPlacement] is [SlockFloatingHorizontalPlacement.Center],
+ * the overlay is placed horizontally centered within the viewport bounds plus [horizontalOffset],
+ * clamped to [[viewportGap], [maxX]].
+ * When [autoFlip] is true and the
  * preferred right-of-anchor placement overflows the viewport, the overlay
- * is placed to the left of the anchor.  When both sides overflow the
+ * is placed to the left of the anchor. When both sides overflow the
  * viewport the side that shows more of the content is chosen (#327).
  */
 internal fun slockHorizontalPosition(
@@ -315,9 +329,14 @@ internal fun slockHorizontalPosition(
     viewportWidth: Float,
     horizontalOffset: Float = 0f,
     viewportGap: Float = SlockFloatingDefaultViewportGap,
+    horizontalPlacement: SlockFloatingHorizontalPlacement = SlockFloatingHorizontalPlacement.Anchor,
     autoFlip: Boolean = false
 ): Float {
     val maxX = (viewportWidth - contentWidth - viewportGap).coerceAtLeast(viewportGap)
+    if (horizontalPlacement == SlockFloatingHorizontalPlacement.Center) {
+        val centerX = ((viewportWidth - contentWidth) / 2f) + horizontalOffset
+        return centerX.coerceIn(viewportGap, maxX)
+    }
     if (!autoFlip) {
         return (localAnchorX + horizontalOffset).coerceIn(viewportGap, maxX)
     }

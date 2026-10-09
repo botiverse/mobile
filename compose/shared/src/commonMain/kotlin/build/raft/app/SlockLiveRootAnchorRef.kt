@@ -60,6 +60,7 @@ internal class SlockPopoverAnchor private constructor(
         verticalOffset: Float,
         verticalOffsetAbove: Float,
         verticalPlacement: SlockFloatingVerticalPlacement,
+        horizontalPlacement: SlockFloatingHorizontalPlacement = SlockFloatingHorizontalPlacement.Anchor,
         horizontalAutoFlip: Boolean,
         dismissActivationDelayMillis: Long,
         outsidePointerMode: SlockFloatingOverlayOutsidePointerMode,
@@ -80,6 +81,7 @@ internal class SlockPopoverAnchor private constructor(
                     verticalOffset = verticalOffset,
                     verticalOffsetAbove = verticalOffsetAbove,
                     verticalPlacement = verticalPlacement,
+                    horizontalPlacement = horizontalPlacement,
                     horizontalAutoFlip = horizontalAutoFlip
                 ) ?: return@SlockFloatingOverlayHost
             Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
