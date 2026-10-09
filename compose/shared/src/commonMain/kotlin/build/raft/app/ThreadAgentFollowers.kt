@@ -256,7 +256,8 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
     SlockAnchoredPopover(
         anchor = anchor, contentSize = size,
         onDismiss = { dispatch(ThreadAgentFollowersIntent.Close) },
-        horizontalOffset = -size.width,
+        horizontalOffset = 0f,
+        horizontalPlacement = SlockFloatingHorizontalPlacement.Center,
         verticalOffset = with(density) { 6.dp.toPx() },
         viewportGap = with(density) { 8.dp.toPx() },
         verticalPlacement = SlockFloatingVerticalPlacement.Auto,
