@@ -21,6 +21,17 @@ private val computersApiJson = Json {
     encodeDefaults = true
     coerceInputValues = true
 }
+// Runtime-options and option-source lists are additive on the server side: a new field must not
+// break shipped clients (Hands c453ba5f — slock #8600 added `runtimeFormV2` and strict decoding
+// failed every Create Agent runtime list).
+private val runtimeFormListJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    coerceInputValues = false
+}
+
+// Form definitions stay strict: an unknown keyword inside a versioned schema can change what the form
+// means, so it fails closed for that one runtime instead of rendering a guess.
 private val runtimeFormApiJson = Json {
     ignoreUnknownKeys = false
     encodeDefaults = true
@@ -299,7 +310,7 @@ internal class SlockComputersApiClient(
         return transport.runtimeOptions(serverId, normalizedMachineId).mapComputersBody(
             "computer_runtime_options_contract_mismatch",
             ComputerRuntimeSelectionCatalogDto.serializer(),
-            runtimeFormApiJson
+            runtimeFormListJson
         ) { wire -> wire.toDomain(normalizedMachineId) }
     }
 
@@ -347,7 +358,7 @@ internal class SlockComputersApiClient(
         return response.mapComputersBody(
             "runtime_form_option_source_contract_mismatch",
             AgentCreateFormOptionSourceDto.serializer(),
-            runtimeFormApiJson
+            runtimeFormListJson
         ) { wire -> wire.toDomain(ref, sourceRef) }
     }
 
@@ -724,7 +735,9 @@ private fun RuntimeFormDefinitionRefDto.toDomain(): SharedRuntimeFormDefinitionR
 private data class ComputerRuntimeSelectionCatalogDto(
     val context: String,
     val machineId: String,
-    val options: List<ComputerRuntimeSelectionOptionDto>
+    // Raw rows, decoded one by one in toDomain: a row with a missing field or a wrong JSON type is
+    // left out on its own instead of failing the whole response.
+    val options: List<JsonElement>
 )
 
 @Serializable
@@ -744,8 +757,17 @@ private fun ComputerRuntimeSelectionCatalogDto.toDomain(
     expectedMachineId: String
 ): SharedCreateAgentRuntimeCatalog? {
     if (context != "new_agent" || machineId.trim() != expectedMachineId) return null
-    val mapped = options.mapNotNull { it.toDomain() }
-    if (mapped.size != options.size || mapped.map { it.runtimeId }.distinct().size != mapped.size) return null
+    // One row this client cannot read (missing field, wrong type, a new status value, an inconsistent
+    // row) is left out on its own; it must not take every other runtime down with it. The first row
+    // wins a duplicate id.
+    val mapped =
+        options
+            .mapNotNull { row ->
+                runCatching {
+                    runtimeFormListJson.decodeFromJsonElement(ComputerRuntimeSelectionOptionDto.serializer(), row)
+                }.getOrNull()?.toDomain()
+            }
+            .distinctBy { it.runtimeId }
     return SharedCreateAgentRuntimeCatalog(machineId = expectedMachineId, options = mapped)
 }
 
