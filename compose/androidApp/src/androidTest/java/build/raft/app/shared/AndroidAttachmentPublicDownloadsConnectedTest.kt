@@ -363,7 +363,10 @@ class AndroidAttachmentPublicDownloadsConnectedTest {
             val data = checkNotNull(resultData.get())
             assertEquals(
                 "external reader failed: " +
-                    data.getString(AndroidAttachmentPublicDownloadsExternalReadProbeActivity.RESULT_ERROR),
+                    data.getString(AndroidAttachmentPublicDownloadsExternalReadProbeActivity.RESULT_ERROR) +
+                    " message=" +
+                    data.getString(AndroidAttachmentPublicDownloadsExternalReadProbeActivity.RESULT_ERROR_MESSAGE) +
+                    " uri=" + uri,
                 Activity.RESULT_OK,
                 resultCode.get()
             )
