@@ -180,9 +180,9 @@ private fun SettingsWebViewScreen() {
                 spec = settingsFeedbackWebViewSpec,
                 onHostMessage = { kind, _ ->
                     when (kind) {
-                        "feedback:close" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                        "feedback:auth-required" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                        "feedback:integration-unavailable" -> {
+                        "close" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        "auth-required" -> Unit // keep the page and draft; auth/session reconciliation supplies the next token
+                        "integration-unavailable" -> {
                             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
                             pager.openSettingsHandsFeedbackPage(
                                 pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
@@ -569,9 +569,10 @@ internal fun StandaloneSettingsWebViewContent(
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val apiOrigin = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
     val injectedJavaScript =
-        remember(spec.surface, session, hostAuthBinding) {
-            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface)
+        remember(spec.surface, session, hostAuthBinding, apiOrigin) {
+            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, apiOrigin)
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
@@ -823,9 +824,13 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
+    apiOrigin: String = "",
 ): String {
+    if (surface == SettingsWebViewSurface.Feedback) {
+        return feedbackWebViewBootstrapJavaScript(session, hostBinding, apiOrigin)
+    }
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    val clientKind = if (surface == SettingsWebViewSurface.Feedback) feedbackClientKindJavaScript() else ""
+    val clientKind = ""
     return """
         (function() {
           try {
@@ -838,28 +843,35 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     """.trimIndent()
 }
 
-internal fun feedbackClientKindJavaScript(): String = """
-(function() {
-  var header = "X-Raft-Client-Kind";
-  var kind = "android";
-  var originalFetch = window.fetch;
-  if (originalFetch && !originalFetch.__raftAndroidClientKind) {
-    var wrappedFetch = function(input, init) {
-      init = init || {};
-      var headers = new Headers(init.headers || (input && input.headers) || {});
-      headers.set(header, kind);
-      init.headers = headers;
-      return originalFetch.call(this, input, init);
-    };
-    wrappedFetch.__raftAndroidClientKind = true;
-    window.fetch = wrappedFetch;
-  }
-  var originalOpen = XMLHttpRequest.prototype.open;
-  var originalSend = XMLHttpRequest.prototype.send;
-  if (!originalSend.__raftAndroidClientKind) {
-    XMLHttpRequest.prototype.open = function() { this.__raftClientKind = true; return originalOpen.apply(this, arguments); };
-    XMLHttpRequest.prototype.send = function() { if (this.__raftClientKind) { try { this.setRequestHeader(header, kind); } catch (_) {} } return originalSend.apply(this, arguments); };
-    XMLHttpRequest.prototype.send.__raftAndroidClientKind = true;
-  }
-})();
-""".trimIndent()
+internal fun feedbackWebViewBootstrapJavaScript(
+    session: StoredAuthSession?,
+    binding: SettingsWebViewHostAuthBinding?,
+    apiOrigin: String,
+): String {
+    val json = kotlinx.serialization.json.Json
+    val accountId = json.encodeToString(binding?.accountId.orEmpty())
+    val sessionGeneration = binding?.sessionGeneration ?: 0L
+    val webViewGeneration = binding?.webViewGeneration ?: 0L
+    val accessToken = json.encodeToString(session?.accessToken.orEmpty())
+    val api = json.encodeToString(apiOrigin)
+    return """
+        (function() { 'use strict';
+          var port = window.raftHostPort;
+          var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
+          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:'android', clientVersion:'mobile', locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
+          Object.defineProperty(window, 'RaftFeedback', {value:{version:'raft-feedback-v1', session:session, emit:function(event, nextBinding){ if (!port) return; try { port.postMessage(JSON.stringify({kind:event,payload:nextBinding || binding})); } catch (_) {} }}, writable:false, configurable:false});
+        })();
+    """.trimIndent()
+}
+
+internal fun feedbackWebViewRuntimeSessionJavaScript(
+    accessToken: String,
+    accountId: String,
+    sessionGeneration: Long,
+    webViewGeneration: Long,
+): String {
+    val json = kotlinx.serialization.json.Json
+    return """
+        (function() { var host = window.RaftFeedback; if (!host || !host.session) return; host.session.accessToken = ${json.encodeToString(accessToken)}; host.session.accountId = ${json.encodeToString(accountId)}; host.session.sessionGeneration = $sessionGeneration; host.session.webViewGeneration = $webViewGeneration; window.dispatchEvent(new CustomEvent('raft:feedback-session-updated', {detail:host.session})); })();
+    """.trimIndent()
+}

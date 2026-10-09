@@ -247,14 +247,23 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     fun dispatch(update: SettingsWebViewAccessTokenUpdate) {
         val dispatched =
             controller.evaluateJavaScript(
-                settingsWebViewRuntimeAccessTokenJavaScript(
-                    accessToken = update.accessToken,
-                    accountId = update.accountId,
-                    serverId = update.serverId,
-                    sessionGeneration = update.sessionGeneration,
-                    webViewGeneration = update.webViewGeneration,
-                    sequence = update.sequence,
-                )
+                if (surface == SettingsWebViewSurface.Feedback) {
+                    feedbackWebViewRuntimeSessionJavaScript(
+                        accessToken = update.accessToken,
+                        accountId = update.accountId,
+                        sessionGeneration = update.sessionGeneration,
+                        webViewGeneration = update.webViewGeneration,
+                    )
+                } else {
+                    settingsWebViewRuntimeAccessTokenJavaScript(
+                        accessToken = update.accessToken,
+                        accountId = update.accountId,
+                        serverId = update.serverId,
+                        sessionGeneration = update.sessionGeneration,
+                        webViewGeneration = update.webViewGeneration,
+                        sequence = update.sequence,
+                    )
+                }
             )
         if (!dispatched) fence.onDispatchFailed(update)
         logger(
