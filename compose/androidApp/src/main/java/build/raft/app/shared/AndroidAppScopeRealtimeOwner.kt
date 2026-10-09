@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Bundle
@@ -122,6 +123,10 @@ internal object AndroidAppScopeRealtimeOwner {
                             _networkCapabilities: NetworkCapabilities
                         ) {
                             onNetworkCapabilitiesChanged(appContext)
+                        }
+
+                        override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                            onNetworkDnsConfigurationMaybeChanged(appContext, linkProperties)
                         }
 
                         override fun onLost(network: Network) {
@@ -525,6 +530,30 @@ internal object AndroidAppScopeRealtimeOwner {
                 source = "network_available"
             )
         }
+    }
+
+    @Volatile
+    private var lastDnsConfiguration: String? = null
+
+    /**
+     * Task #150: a DNS change on the same network (Private DNS switched, new DNS servers) can make
+     * the API host resolvable again without any onAvailable. Announce it like a new network so the
+     * shared reachability gate stops short-circuiting at once. Only DNS-relevant properties count,
+     * so routine address/route updates do not re-announce.
+     */
+    fun onNetworkDnsConfigurationMaybeChanged(context: Context, linkProperties: LinkProperties) {
+        val dnsConfiguration = linkProperties.dnsConfigurationSignature()
+        val previous = lastDnsConfiguration
+        lastDnsConfiguration = dnsConfiguration
+        if (previous == null || previous == dnsConfiguration) return
+        SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_dns_configuration_changed")
+        val appContext = context.applicationContext
+        emitHostNetworkStatus(
+            context = appContext,
+            online = appContext.isHostNetworkOnline(),
+            source = "dns_configuration_changed",
+            force = true
+        )
     }
 
     fun onNetworkCapabilitiesChanged(context: Context) {
@@ -1122,3 +1151,8 @@ internal class AndroidProcessVisibilityTracker(
     @Synchronized
     fun currentForegroundEpoch(): Long = foregroundEpoch
 }
+
+/** DNS servers plus the Private DNS mode and host: what decides whether a name resolves. */
+private fun LinkProperties.dnsConfigurationSignature(): String =
+    "servers=${dnsServers.joinToString(",") { it.hostAddress.orEmpty() }};" +
+        "private=$isPrivateDnsActive:${privateDnsServerName.orEmpty()}"
