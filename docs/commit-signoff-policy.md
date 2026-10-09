@@ -1,5 +1,10 @@
 # Commit Sign-off Policy
 
+> **Superseded (2026-10-09).** Agent Git identity, push, review and merge now go
+> through Stamp; see "Agent Git identity comes from Stamp" and "Protected `main`"
+> in `AGENTS.md`. The `@mail.build` sign-off rule and the guarded merge wrappers
+> below are kept for history only.
+
 > **Status (2026-09-19):** the `Commit Sign-off` CI check, the `commit-msg` git
 > hook, `scripts/check-commit-signoff.sh`, `scripts/check-landed-commit-signoff.sh`
 > and the attestation ledger were removed on artin's decision, and the guarded
