@@ -228,6 +228,47 @@ class SharedComputersStoreTest {
     }
 
     @Test
+    fun silentTokenRefreshKeepsTheComputerListAndANewLoginClearsIt() = runBlocking {
+        // Task #147 (HuaTuo 17e2cca3): a refresh wiped this list mid-dialog, the create dialog lost its
+        // selected computer for a moment, reloaded its v2 form and dropped a typed API key.
+        val api = RecordingComputersApi()
+        val generation = SharedAuthLoginGeneration()
+        var session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "account-1", email = "user@raft.build"),
+                accessToken = "access-1",
+                refreshToken = "refresh-1"
+            )
+        val store =
+            SharedComputersStore(
+                computersApiClient = SlockComputersApiClient(api),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                ownerProvider = { sharedComputersOwner(session, "https://api.example.test/", generation.current()) }
+            )
+        store.ensureComputerPickerForServer("server-1")
+        val owner = store.state.value.owner
+
+        session = session.copy(accessToken = "access-2", refreshToken = "refresh-2")
+        generation.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 7))
+        store.ensureComputerPickerForServer("server-1")
+
+        assertEquals(owner, store.state.value.owner)
+        assertEquals(listOf("machine-1"), store.state.value.selectComputerPickerSlice("server-1").machines.map { it.id })
+        assertEquals(1, api.callCount, "the list is neither wiped nor fetched again")
+
+        generation.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 8))
+        generation.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 8))
+        store.reconcileOwner()
+        assertTrue(store.state.value.owner != owner, "a new login is a new owner")
+        assertFalse(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
+        assertEquals(
+            sharedComputersOwner(session, "https://api.example.test", "8"),
+            store.state.value.owner,
+            "the same event seen by two collectors moves the generation once"
+        )
+    }
+
+    @Test
     fun accountSwitchClearsSnapshotsAndRejectsOldCompletion() = runBlocking {
         val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
         val ownerB = SharedComputersOwner("environment", "account-b", "session-b")

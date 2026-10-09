@@ -62,6 +62,18 @@ internal data class SharedComputersOwner(
     val sessionGeneration: String
 )
 
+/** The computers cache owner for [session]; tokens are not part of it (see [SharedAuthLoginGeneration]). */
+internal fun sharedComputersOwner(
+    session: StoredAuthSession,
+    environmentId: String,
+    loginGeneration: String
+): SharedComputersOwner? {
+    val cleanEnvironmentId = environmentId.trim().trimEnd('/')
+    val accountId = session.user.id.trim()
+    if (cleanEnvironmentId.isBlank() || accountId.isBlank()) return null
+    return SharedComputersOwner(cleanEnvironmentId, accountId, loginGeneration)
+}
+
 internal data class SharedComputersState(
     val owner: SharedComputersOwner? = null,
     val serverSlices: Map<String, SharedComputersServerSlice> = emptyMap()
