@@ -62,7 +62,8 @@ private data class ServerSetupSwitchIntentWire(
     val targetServerId: String,
 )
 
-private val serverSetupWakeJson = Json { ignoreUnknownKeys = false }
+// Required fields must be present; fields a newer web build adds are ignored (artin, task #141).
+private val serverSetupWakeJson = Json { ignoreUnknownKeys = true }
 
 internal fun ServerSetupCompletionWake.matches(
     identity: ServerSetupAdmissionIdentity,
@@ -199,9 +200,9 @@ internal fun decodeServerSetupHostBridgeNavigation(
             runCatching { part.substring(0, separator) to decode(part.substring(separator + 1)) }.getOrNull()
         }
     }.toMap()
-    if (parameters.keys != setOf("kind", "payload")) return null
-    val payload = runCatching { JSONObject(parameters.getValue("payload")) }.getOrNull() ?: return null
-    return decodeServerSetupHostEvent(parameters.getValue("kind"), payload)
+    val kind = parameters["kind"] ?: return null
+    val payload = parameters["payload"]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
+    return decodeServerSetupHostEvent(kind, payload)
 }
 
 internal fun decodeServerSetupHostEvent(kind: String, payload: Any?): ServerSetupHostEvent? {

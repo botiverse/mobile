@@ -41,7 +41,15 @@ class ServerSetupOnboardingContractTest {
         assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, validPayload.toString()))
         assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject(validPayload.toString()).put("contractVersion", "v2")))
         assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject(validPayload.toString()).put("generation", "bad/value")))
-        assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject(validPayload.toString()).put("extra", true)))
+        assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject()
+            .put("contractVersion", SERVER_SETUP_CONTRACT_VERSION)
+            .put("serverId", "server-1")
+            .put("generation", "gen:1")))
+        assertEquals(
+            ServerSetupCompletionWake("server-1", "raft", "gen:1"),
+            decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject(validPayload.toString()).put("extra", true)),
+            "fields a newer web build adds are ignored"
+        )
         assertNull(decodeServerSetupCompletionWake(SERVER_SETUP_COMPLETION_KIND, JSONObject(validPayload.toString()).put("serverId", 1)))
     }
 
@@ -92,7 +100,7 @@ class ServerSetupOnboardingContractTest {
     }
 
     @Test
-    fun syntheticBridgeNavigationDecodesOnlyExactKeysAndPayload() {
+    fun syntheticBridgeNavigationNeedsKindAndPayloadAndIgnoresExtraParameters() {
         val payload = """{"contractVersion":"raft-onboarding-v1","serverId":"server-1","serverSlug":"raft","generation":"gen:1"}"""
         val encoded = payload.replace(":", "%3A").replace("{", "%7B").replace("}", "%7D").replace("\"", "%22")
         val url = "$SERVER_SETUP_BRIDGE_SCHEME://emit?kind=$SERVER_SETUP_COMPLETION_KIND&payload=$encoded"
@@ -100,7 +108,12 @@ class ServerSetupOnboardingContractTest {
             value.replace("%3A", ":").replace("%7B", "{").replace("%7D", "}").replace("%22", "\"")
         }
         assertEquals(ServerSetupCompletionWake("server-1", "raft", "gen:1"), wake)
-        assertNull(decodeServerSetupBridgeNavigation("$url&extra=1") { it })
+        val decode: (String) -> String = { value ->
+            value.replace("%3A", ":").replace("%7B", "{").replace("%7D", "}").replace("%22", "\"")
+        }
+        assertEquals(wake, decodeServerSetupBridgeNavigation("$url&extra=1", decode))
+        assertNull(decodeServerSetupBridgeNavigation("$SERVER_SETUP_BRIDGE_SCHEME://emit?payload=$encoded", decode))
+        assertNull(decodeServerSetupBridgeNavigation("$SERVER_SETUP_BRIDGE_SCHEME://emit?kind=$SERVER_SETUP_COMPLETION_KIND", decode))
     }
 
     @Test
