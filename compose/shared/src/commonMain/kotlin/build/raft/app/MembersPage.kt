@@ -3702,7 +3702,8 @@ internal fun MemberDetailPageContent(
                     store = store,
                     owner = runtimeAccountUsageOwner,
                     serverId = statusLookupServerId,
-                    onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } }
+                    onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } },
+                    log = { message -> bridge.log(message) }
                 )
             }
         }

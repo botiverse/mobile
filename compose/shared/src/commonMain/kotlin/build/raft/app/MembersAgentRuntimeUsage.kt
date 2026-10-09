@@ -56,7 +56,9 @@ internal class MembersRuntimeAccountUsageAccess(
     val owner: SharedComputersOwner?,
     val serverId: String?,
     /** Called when a read found [owner] is no longer the signed-in identity; re-resolve it. */
-    val onIdentityChanged: () -> Unit = {}
+    val onIdentityChanged: () -> Unit = {},
+    /** Diagnostics sink (no identity, token or machine data is ever written to it). */
+    val log: (String) -> Unit = {}
 )
 
 /**
@@ -111,6 +113,20 @@ internal fun membersRuntimeAccountUsageKey(
     val cleanMachineId = machineId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return RuntimeAccountUsageKey(owner = owner, serverId = serverId, machineId = cleanMachineId, provider = provider)
 }
+
+/** Coarse, data-free label of a load for diagnostics. */
+internal fun RuntimeAccountUsageLoad?.diagnosticsLabel(): String =
+    when (this) {
+        null -> "none"
+        RuntimeAccountUsageLoad.Forbidden -> "forbidden"
+        RuntimeAccountUsageLoad.Superseded -> "superseded"
+        is RuntimeAccountUsageLoad.Failed -> "failed:$code"
+        is RuntimeAccountUsageLoad.Loaded ->
+            when (val read = read) {
+                RuntimeAccountUsageRead.Missing -> "missing"
+                is RuntimeAccountUsageRead.Available -> if (read.stale) "stale" else "fresh"
+            }
+    }
 
 /** The usage entry is offered only once a read has returned something other than 403. */
 internal fun RuntimeAccountUsageLoad?.offersRuntimeAccountUsage(): Boolean =
@@ -169,6 +185,7 @@ internal fun MembersAgentRuntimeUsageChip(
         if (key == null || store == null) return@LaunchedEffect
         loading = true
         val result = store.read(key, force = reloadNonce > 0)
+        access?.log?.invoke("member_runtime_usage_read provider=${key.provider.wire} force=${reloadNonce > 0} result=${result.diagnosticsLabel()}")
         load = result.shownRuntimeAccountUsage()
         loading = false
         if (!load.offersRuntimeAccountUsage()) dialogOpen = false
@@ -176,12 +193,16 @@ internal fun MembersAgentRuntimeUsageChip(
     }
     val offered = key != null && load.offersRuntimeAccountUsage()
     val attention = offered && load.runtimeAccountUsageNeedsAttention()
-    // Keep the modifier chain shape stable (Kuikly keeps stale native props when a modifier is
-    // removed); only the enabled flag changes.
+    // The click handler is always attached and the modifier chain never changes shape (Kuikly
+    // keeps stale native props when a modifier is removed); whether a tap opens the card is
+    // decided inside the handler.
     MembersAgentRuntimeChip(
         label = if (offered) "$label ›" else label,
         kind = MembersAgentRuntimeChipKind.Runtime,
-        modifier = Modifier.clickable(enabled = offered) { dialogOpen = true }
+        modifier = Modifier.clickable {
+            access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
+            if (offered) dialogOpen = true
+        }
     )
     if (attention) {
         Text(
@@ -196,6 +217,7 @@ internal fun MembersAgentRuntimeUsageChip(
     // composition locals are not retained.
     val timeContext = LocalSlockTimeContextProvider.current?.current
     if (dialogOpen && offered) {
+        LaunchedEffect(Unit) { access?.log?.invoke("member_runtime_usage_dialog_composed") }
         MembersRuntimeAccountUsageDialog(
             runtimeLabel = label,
             timeContext = timeContext,
