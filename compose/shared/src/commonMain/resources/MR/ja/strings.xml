@@ -308,6 +308,8 @@
     <string name="thread_send_failure_details_copied">失敗の詳細をコピーしました</string>
     <string name="thread_state_original_unavailable">元のメッセージは利用できません。</string>
     <string name="thread_reply_title">スレッド</string>
+    <string name="thread_reply_title_preview_image">[画像]</string>
+    <string name="thread_reply_title_preview_file">[ファイル]</string>
     <string name="thread_channel_title">チャンネル</string>
     <string name="thread_direct_message_title">ダイレクトメッセージ</string>
     <string name="thread_state_no_replies">まだ返信はありません</string>
