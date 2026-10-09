@@ -265,20 +265,91 @@ class ComputersApiTest {
     }
 
     @Test
+    fun runtimeOptionsAcceptAdditiveServerFields() = runPortableCoroutineTest {
+        // Hands c453ba5f: slock #8600 adds `runtimeFormV2` to runtime-options rows and documents it as
+        // additive ("clients that do not know it ignore it"). Strict decoding of unknown keys failed the
+        // whole catalog, so Create Agent could not list any runtime on a v1.21.4 server.
+        val serverId = ServerId("server-1")
+        val withV2Marker =
+            canonicalRuntimeOptionsBody.replace(
+                "\"formDefinitionRef\":{\"protocolVersion\":1,\"runtimeId\":\"builtin\",\"schemaVersion\":\"builtin-pi.create.v3\"}",
+                "\"formDefinitionRef\":{\"protocolVersion\":1,\"runtimeId\":\"builtin\",\"schemaVersion\":\"builtin-pi.create.v3\"}," +
+                    "\"runtimeFormV2\":{\"protocolVersion\":2}"
+            )
+        val withFutureKeys =
+            canonicalRuntimeOptionsBody
+                .replace("{\"context\":\"new_agent\"", "{\"generatedAt\":\"2026-10-09T00:00:00Z\",\"context\":\"new_agent\"")
+                .replace("\"runtimeId\":\"codex\",", "\"runtimeId\":\"codex\",\"someFutureHint\":{\"a\":1},")
+        check(withV2Marker != canonicalRuntimeOptionsBody && "runtimeFormV2" in withV2Marker)
+        check("someFutureHint" in withFutureKeys && "generatedAt" in withFutureKeys)
+
+        listOf(withV2Marker, withFutureKeys).forEach { body ->
+            val catalog =
+                assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
+                    SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+                        .runtimeOptions(serverId, "machine-1")
+                ).data
+            assertEquals(listOf("codex", "builtin"), catalog.options.map { it.runtimeId })
+            assertEquals(
+                SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3"),
+                catalog.options.single { it.runtimeId == "builtin" }.formDefinitionRef
+            )
+        }
+
+        // Option-source lists are additive in the same way.
+        val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
+        val definition =
+            assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
+                SlockComputersApiClient(RecordingComputersApi()).runtimeFormDefinition(serverId, "machine-1", expectedRef)
+            ).data
+        val providerWithFutureKey =
+            canonicalProviderSourceBody.replace("\"defaultValue\":\"deepseek\"", "\"defaultValue\":\"deepseek\",\"fetchedAt\":\"2026-10-09T00:00:00Z\"")
+        check("fetchedAt" in providerWithFutureKey)
+        val source =
+            SlockComputersApiClient(
+                RecordingComputersApi(runtimeFormOptionSourceBodies = mapOf("provider" to providerWithFutureKey))
+            ).runtimeFormOptionSource(serverId, "machine-1", expectedRef, requireNotNull(definition.optionSources["provider"]))
+        assertIs<DataResult.Content<*>>(source)
+        Unit
+    }
+
+    @Test
     fun runtimeFormContractRejectsSelectionAndPointerMutations() = runPortableCoroutineTest {
         val serverId = ServerId("server-1")
         val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
 
+        // An inconsistent row is left out on its own (Hands c453ba5f); the rest of the catalog stays usable.
         listOf(
+            // Both rows claim selectable while not installed: both are dropped.
             canonicalRuntimeOptionsBody.replace(
                 "\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\"",
                 "\"capabilityStatus\":\"not_installed\",\"admissionStatus\":\"available_for_new\""
-            ),
+            ) to emptyList(),
+            // Only builtin's form ref points at another runtime: builtin is dropped, codex stays.
             canonicalRuntimeOptionsBody.replace(
                 "\"protocolVersion\":1,\"runtimeId\":\"builtin\"",
                 "\"protocolVersion\":1,\"runtimeId\":\"codex\""
-            )
+            ) to listOf("codex"),
+            // An unknown status value on one row: only that row is dropped.
+            canonicalRuntimeOptionsBody.replace(
+                "{\"runtimeId\":\"codex\",\"capabilityStatus\":\"available\"",
+                "{\"runtimeId\":\"codex\",\"capabilityStatus\":\"needs_login\""
+            ) to listOf("builtin")
+        ).forEach { (body, expectedRuntimeIds) ->
+            check(body != canonicalRuntimeOptionsBody)
+            val catalog =
+                assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
+                    SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+                        .runtimeOptions(serverId, "machine-1")
+                ).data
+            assertEquals(expectedRuntimeIds, catalog.options.map { it.runtimeId })
+        }
+        // A response for another machine or context is still refused as a whole.
+        listOf(
+            canonicalRuntimeOptionsBody.replace("\"machineId\":\"machine-1\"", "\"machineId\":\"machine-2\""),
+            canonicalRuntimeOptionsBody.replace("\"context\":\"new_agent\"", "\"context\":\"existing_agent\"")
         ).forEach { body ->
+            check(body != canonicalRuntimeOptionsBody)
             val result = SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
                 .runtimeOptions(serverId, "machine-1")
             assertEquals("computer_runtime_options_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
