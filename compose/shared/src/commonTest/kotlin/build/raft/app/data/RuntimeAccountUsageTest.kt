@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.yield
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -27,7 +28,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun freshSnapshotParsesAccountsAndWindowsIgnoringUnknownFields() = runPortableCoroutineTest {
+    fun freshSnapshotParsesAccountsAndWindowsIgnoringUnknownFields() = runPortableCoroutineTest<Unit> {
         val api = FakeUsageApi { ok(FRESH_BODY) }
         val read = assertIs<DataResult.Content<RuntimeAccountUsageRead>>(
             SlockComputersApiClient(api).runtimeAccountUsage(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude)
@@ -93,7 +94,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun unusableEnvelopeIsContractMismatch() = runPortableCoroutineTest {
+    fun unusableEnvelopeIsContractMismatch() = runPortableCoroutineTest<Unit> {
         listOf(
             """{"state":"brand_new"}""",
             """{"state":"fresh","snapshot":null}""",
@@ -110,7 +111,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun storeMaps403ToForbiddenAndServerErrorsToRetryableFailure() = runPortableCoroutineTest {
+    fun storeMaps403ToForbiddenAndServerErrorsToRetryableFailure() = runPortableCoroutineTest<Unit> {
         val forbidden = SharedRuntimeAccountUsageStore(SlockComputersApiClient(FakeUsageApi { status(403) }))
         assertSame(RuntimeAccountUsageLoad.Forbidden, forbidden.read(key()))
         val failing = SharedRuntimeAccountUsageStore(SlockComputersApiClient(FakeUsageApi { status(500) }))
@@ -122,7 +123,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun storeCachesSixtySecondsPerKeyAndForceReReads() = runPortableCoroutineTest {
+    fun storeCachesSixtySecondsPerKeyAndForceReReads() = runPortableCoroutineTest<Unit> {
         var now = 1_000L
         val api = FakeUsageApi { ok(FRESH_BODY) }
         val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { now })
@@ -142,7 +143,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun cacheIsIsolatedByIdentityServerMachineAndProvider() = runPortableCoroutineTest {
+    fun cacheIsIsolatedByIdentityServerMachineAndProvider() = runPortableCoroutineTest<Unit> {
         val api = FakeUsageApi { request ->
             if (request.contains("/m-denied/")) status(403) else ok(FRESH_BODY)
         }
@@ -170,7 +171,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun concurrentReadsOfOneKeyShareOneRequestAndOtherKeysDoNot() = runPortableCoroutineTest {
+    fun concurrentReadsOfOneKeyShareOneRequestAndOtherKeysDoNot() = runPortableCoroutineTest<Unit> {
         val gate = CompletableDeferred<Unit>()
         val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
         val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { 0L })
@@ -185,7 +186,7 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun cancelledReadForAnOldSubjectNeverPublishesAndNextReadRefetches() = runPortableCoroutineTest {
+    fun cancelledReadForAnOldSubjectNeverPublishesAndNextReadRefetches() = runPortableCoroutineTest<Unit> {
         val gate = CompletableDeferred<Unit>()
         val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
         val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { 0L })
@@ -200,7 +201,7 @@ class RuntimeAccountUsageTest {
     }
 
     private fun parse(body: String): RuntimeAccountUsageRead? =
-        computersApiJson.parseToJsonElement(body).toRuntimeAccountUsageRead()
+        Json.parseToJsonElement(body).toRuntimeAccountUsageRead()
 
     private fun key(): RuntimeAccountUsageKey =
         RuntimeAccountUsageKey(
