@@ -11,6 +11,6 @@ internal val settingsFeedbackWebViewSpec = StandaloneSettingsWebViewSpec(
     surface = SettingsWebViewSurface.Feedback,
     hostEventsEnabled = true,
     buildWebUrl = { webBaseUrl, _, _ ->
-        sharedSettingsHostShellWebUrl(webBaseUrl, "feedback")
+        sharedSettingsHostShellWebUrl(webBaseUrl, "feedback/")
     },
 )
