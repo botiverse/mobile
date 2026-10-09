@@ -51,3 +51,16 @@ internal fun replyThreadHeaderSubtitle(subtitle: String?, replyCountLabel: Strin
     listOfNotNull(subtitle?.takeIf { it.isNotBlank() }, replyCountLabel?.takeIf { it.isNotBlank() })
         .takeIf { it.isNotEmpty() }
         ?.joinToString(" · ")
+
+/**
+ * The route's render payload has its origin cleared (`withoutThreadTimelineContent`) and the
+ * timeline origin has its reply metadata stripped, so the count lives only in the metadata map.
+ */
+internal fun threadHeaderOriginReplyCount(
+    timelineSlice: ThreadTimelineSlice,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>
+): Int =
+    timelineSlice.originMessage
+        ?.let { replyMetadataByParentId[it.id]?.replyCount }
+        ?.coerceAtLeast(0)
+        ?: 0

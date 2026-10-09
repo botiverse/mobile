@@ -84,4 +84,39 @@ class ThreadReplyHeaderPreviewTitleTest {
         assertEquals("#反馈", replyThreadHeaderSubtitle("#反馈", null))
         assertNull(replyThreadHeaderSubtitle(" ", null))
     }
+
+    @Test
+    fun headerReplyCountSurvivesTheRenderProjection() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "t1143",
+                title = ThreadReplyPageTitle,
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                originMessage = origin(body = "root").copy(replyCount = 12)
+            )
+        // Same three projections SharedThreadState.toRenderSlice() hands the route.
+        val renderPayload = payload.withoutThreadTimelineContent()
+        val timelineSlice = payload.toThreadTimelineSlice()
+        val replyMetadata = payload.toThreadReplyMetadataMap()
+
+        // Neither object the header can see carries the count itself (the PR #2879 defect).
+        assertNull(renderPayload.originMessage)
+        assertEquals(0, timelineSlice.originMessage?.replyCount)
+
+        assertEquals(12, threadHeaderOriginReplyCount(timelineSlice, replyMetadata))
+        assertEquals("@Alice: root", title(timelineSlice.originMessage))
+    }
+
+    @Test
+    fun headerReplyCountIsZeroWithoutLoadedOrigin() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "t1143-empty",
+                title = ThreadReplyPageTitle,
+                status = "loading",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+            )
+        assertEquals(0, threadHeaderOriginReplyCount(payload.toThreadTimelineSlice(), payload.toThreadReplyMetadataMap()))
+    }
 }
