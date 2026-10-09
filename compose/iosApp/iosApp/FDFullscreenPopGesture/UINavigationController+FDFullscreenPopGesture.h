@@ -62,6 +62,10 @@
 /// Default to NO, bars are more likely to show.
 @property (nonatomic, assign) BOOL fd_prefersNavigationBarHidden;
 
+/// Enables content-area back swipes for pushed pages whose child pager has
+/// released a rightward drag at its first page.
+@property (nonatomic, assign) BOOL fd_interactivePopAllowsFullScreen;
+
 /// Max allowed initial distance to the leading edge when you begin the interactive
 /// pop gesture. 0 by default, which means the 40pt default edge strip; swipes that
 /// start in the content area never pop.

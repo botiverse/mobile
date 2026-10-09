@@ -67,6 +67,16 @@ static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *r
     return NO;
 }
 
+static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
+{
+    UIView *candidate = view;
+    while (candidate && candidate != rootView) {
+        if ([candidate conformsToProtocol:@protocol(UITextInput)]) return YES;
+        candidate = candidate.superview;
+    }
+    return NO;
+}
+
 static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 {
     if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
@@ -123,10 +133,13 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    // Record at touch-down whether this touch may start a back swipe. Only the leading-edge
-    // strip qualifies, so content-area swipes (pagers, lists) never pop.
-    if (gestureRecognizer.numberOfTouches > 0) {
-        return YES;
+    // Text inputs keep selection/focus gestures. Child horizontal scroll views are
+    // allowed to arbitrate by UIKit; the full-screen page policy only admits the
+    // back direction once the pager has released it.
+    if (gestureRecognizer.numberOfTouches > 0) return YES;
+    if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
+        self.touchBeganInEdgeZone = NO;
+        return NO;
     }
     UINavigationController *navigationController = self.navigationController;
     UIViewController *topViewController = navigationController.viewControllers.lastObject;
@@ -134,6 +147,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     SlockInteractivePopTouchAdmission admission = {
         .navigationStackCount = navigationController.viewControllers.count,
         .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
+        .allowsFullScreen = topViewController.fd_interactivePopAllowsFullScreen,
         .transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue],
         .maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge,
         .touchLocationX = location.x,
@@ -279,6 +293,11 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         [viewController isKindOfClass:KuiklyRenderViewController.class]
             ? (KuiklyRenderViewController *)viewController
             : nil;
+    if (renderViewController) {
+        // Only pages directly above the App Shell are in this contract. Deeper
+        // native routes retain the established edge-only behavior.
+        renderViewController.fd_interactivePopAllowsFullScreen = (self.viewControllers.count == 1);
+    }
     [self fd_setConversationForwardGestureEnabled:
         renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
 
@@ -427,6 +446,16 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
 @end
 
 @implementation UIViewController (FDFullscreenPopGesture)
+
+- (BOOL)fd_interactivePopAllowsFullScreen
+{
+    return [objc_getAssociatedObject(self, _cmd) boolValue];
+}
+
+- (void)setFd_interactivePopAllowsFullScreen:(BOOL)enabled
+{
+    objc_setAssociatedObject(self, @selector(fd_interactivePopAllowsFullScreen), @(enabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 - (BOOL)fd_interactivePopDisabled
 {
