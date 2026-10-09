@@ -19,7 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
-import androidx.webkit.WebMessageReplyProxy
+import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.tencent.kuikly.core.render.android.expand.component.KRView
@@ -846,7 +846,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         val originRule = documentStartScriptOriginRule(targetUrl) ?: return
         runCatching {
             val listener = object : WebViewCompat.WebMessageListener {
-                override fun onPostMessage(view: WebView, message: WebMessageCompat?, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: WebMessageReplyProxy) {
+                override fun onPostMessage(view: WebView, message: WebMessageCompat?, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
                     if (!isMainFrame || sourceOrigin.toString() != originRule) return
                     val raw = message?.data ?: return
                     hostMessageCallback?.invoke(mapOf("message" to raw))
