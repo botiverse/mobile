@@ -46,6 +46,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.SlockDohFallbackPolicy
 import build.raft.app.network.SlockNetworkTransportController
 import build.raft.app.network.installSlockNetworkTransportController
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
@@ -79,6 +80,7 @@ import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
+import com.tencent.kmm.network.export.VBTransportCurl
 import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -364,6 +366,7 @@ internal class SlockSharedStoreProvider private constructor(
     val networkClient: SlockNetworkClient,
     val networkTransportController: SlockNetworkTransportController,
     private val networkReachabilityGates: SlockHostReachabilityGates,
+    private val dohFallbackPolicy: SlockDohFallbackPolicy,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -665,10 +668,21 @@ internal class SlockSharedStoreProvider private constructor(
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
         ).start()
+        threadSendScope.launch {
+            // Task #153: a Local Feature Overrides change re-reads the DoH flag at once.
+            ProcessDiagnosticFeatureFlagOverrides.registry
+                .revisionFor(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
+                .collect {
+                    dohFallbackPolicy.reevaluate("override")
+                        ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
+                }
+        }
         KuiklyHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
             // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
             // again; stop short-circuiting requests at once instead of waiting for the next probe.
             networkReachabilityGates.onNetworkAvailable()
+            // Task #153: a new network resolves through the system first again, not via the DoH window.
+            runCatching { VBTransportCurl.onNetworkChanged() }
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
@@ -822,6 +836,10 @@ internal class SlockSharedStoreProvider private constructor(
                         scopeId = scope.shellInstanceId,
                         serverId = serverId
                     )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
+                    dohFallbackPolicy.updateActiveSelection(
+                        scopeId = scope.shellInstanceId,
+                        serverId = serverId
+                    )?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
                 }
             ).also { selectionStore ->
                 // Prefetch registered server feature flags whenever this shell selects a server, then
@@ -1800,6 +1818,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkRequestScheduler = SlockRequestScheduler()
             val networkExecutor = createPlatformSlockHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = SlockHostReachabilityGates()
+            val dohFallbackPolicy = SlockDohFallbackPolicy()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -1981,7 +2000,7 @@ internal class SlockSharedStoreProvider private constructor(
                     // builds can ForceOn/ForceOff the whole offline-cache line on one binary. Not entitled
                     // (release, or the page never opened) => the registry returns the server value unchanged.
                     diagnosticOverride = { serverId, key, serverEffective ->
-                        if (key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) {
+                        if (key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY && key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
                             serverEffective
                         } else {
                             val auth = presenceAuthContext.value
@@ -2012,6 +2031,10 @@ internal class SlockSharedStoreProvider private constructor(
                                 )
                                 ?.let(::logNetworkKmmRemoteConfig)
                         }
+                        if (key == MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
+                            dohFallbackPolicy.reevaluate("evaluation")
+                                ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
+                        }
                         if (key == MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY && environmentId != null) {
                             networkTransportController.applyRemoteEvaluation(
                                 environmentId = environmentId,
@@ -2023,6 +2046,11 @@ internal class SlockSharedStoreProvider private constructor(
                         }
                     },
                 )
+            // Task #153: the flag store's read covers online values, the last-known value (cold start
+            // during a DNS outage) and internal-build Local Feature Overrides.
+            dohFallbackPolicy.bind { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
+            }?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
             val currentGrantMessageShadowCommitLane =
                 CurrentGrantMessageShadowCommitLane(
                     strictReader = SqlDelightStrictMessageScopeSnapshotReader(database),
@@ -2287,6 +2315,7 @@ internal class SlockSharedStoreProvider private constructor(
                 networkClient = networkClient,
                 networkTransportController = networkTransportController,
                 networkReachabilityGates = networkReachabilityGates,
+                dohFallbackPolicy = dohFallbackPolicy,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,
