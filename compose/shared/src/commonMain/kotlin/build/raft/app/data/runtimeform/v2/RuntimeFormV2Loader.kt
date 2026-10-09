@@ -58,16 +58,25 @@ private val runtimeFormV2ErrorJson = Json { ignoreUnknownKeys = true }
  */
 internal class RuntimeFormV2Loader(
     private val computers: SlockComputersApi,
-    private val agents: SlockAgentsApi? = null
+    private val agents: SlockAgentsApi? = null,
+    private val logger: (String) -> Unit = {}
 ) {
-    suspend fun loadCreate(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> {
+    suspend fun loadCreate(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> =
+        loadCreateUnlogged(serverId, machineId, runtimeId)
+            .also { log("create", serverId, machineId, "runtimeId=$runtimeId", it) }
+
+    suspend fun loadEdit(serverId: ServerId, machineId: String, agentId: MemberId): DataResult<RuntimeFormV2Loaded> =
+        loadEditUnlogged(serverId, machineId, agentId)
+            .also { log("edit", serverId, machineId, "agentId=${agentId.value}", it) }
+
+    private suspend fun loadCreateUnlogged(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> {
         if (machineId.isBlank() || runtimeId.isBlank()) return failure("runtime_form_v2_ref_missing")
         val response = guarded { computers.runtimeFormV2(serverId, machineId, runtimeId) }
             ?: return failure("runtime_form_v2_request_failed")
         return loadFrom(response, serverId, machineId)
     }
 
-    suspend fun loadEdit(serverId: ServerId, machineId: String, agentId: MemberId): DataResult<RuntimeFormV2Loaded> {
+    private suspend fun loadEditUnlogged(serverId: ServerId, machineId: String, agentId: MemberId): DataResult<RuntimeFormV2Loaded> {
         val transport = agents ?: return failure("runtime_form_v2_edit_unavailable")
         if (machineId.isBlank()) return failure("runtime_form_v2_ref_missing")
         val response = guarded { transport.agentRuntimeFormV2(agentId) }
@@ -87,8 +96,22 @@ internal class RuntimeFormV2Loader(
         runtimeId: String,
         sourceId: String
     ): DataResult<RuntimeFormV2Source> {
-        if (machineId.isBlank() || runtimeId.isBlank()) return failure("runtime_form_v2_ref_missing")
-        return fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true)
+        val result =
+            if (machineId.isBlank() || runtimeId.isBlank()) failure("runtime_form_v2_ref_missing")
+            else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true)
+        log("source_refresh", serverId, machineId, "runtimeId=$runtimeId sourceId=$sourceId", result)
+        return result
+    }
+
+    /** One line per v2 load or re-probe, like v1's `create_agent_form_load`, so a device run can tell what happened. */
+    private fun log(kind: String, serverId: ServerId, machineId: String, detail: String, result: DataResult<*>) {
+        val outcome = when (result) {
+            is DataResult.Content -> "content"
+            is DataResult.Empty -> "empty"
+            is DataResult.Error -> "error:${result.error.code}"
+            is DataResult.NoPermission -> "no_permission:${result.blocker.code}"
+        }
+        logger("runtime_form_v2_load kind=$kind serverId=${serverId.value} machineId=$machineId $detail result=$outcome")
     }
 
     /** The agent as the server now stores it, read back after a v2 save (the client never maps values to a config). */

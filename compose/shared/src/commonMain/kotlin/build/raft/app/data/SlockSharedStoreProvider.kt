@@ -1110,25 +1110,25 @@ internal class SlockSharedStoreProvider private constructor(
     fun createAgentFormStore(scope: SlockShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {
             val shellAuthStore = authStore(scope)
+            val loginGeneration = SharedCreateAgentFormLoginGeneration()
+            val formLogger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
             SharedCreateAgentFormStore(
                 computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
-                        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
-                        val accountId = session.user.id.trim()
-                        if (environmentId.isBlank() || accountId.isBlank()) null
-                        else SharedCreateAgentFormOwner(
-                            environmentId = environmentId,
-                            accountId = accountId,
-                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                        sharedCreateAgentFormOwner(
+                            session = session,
+                            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+                            loginGeneration = loginGeneration.current()
                         )
                     }
                 },
-                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store"),
+                logger = formLogger,
                 runtimeFormV2Loader = RuntimeFormV2Loader(
                     computers = SlockComputersNetworkApi(networkClient(scope)),
-                    agents = SlockAgentsNetworkApi(networkClient(scope))
+                    agents = SlockAgentsNetworkApi(networkClient(scope)),
+                    logger = formLogger
                 ),
                 runtimeFormV2Enabled = { serverId ->
                     serverFeatureFlags.isEnabled(serverId, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)
@@ -1137,7 +1137,10 @@ internal class SlockSharedStoreProvider private constructor(
                 (shellAuthStore as? SlockAuthSessionEventSource)?.let { events ->
                     shellCreateAgentFormOwnerJobs.getOrPut(scope) {
                         threadSendScope.launch {
-                            events.authSessionEvents.collect { store.reconcileOwner() }
+                            events.authSessionEvents.collect { event ->
+                                loginGeneration.onAuthSessionEvent(event)
+                                store.reconcileOwner()
+                            }
                         }
                     }
                 }

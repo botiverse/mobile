@@ -234,6 +234,70 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
+    fun silentTokenRefreshKeepsTheFormSessionAndANewLoginStartsANewOne() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val generation = SharedCreateAgentFormLoginGeneration()
+        var session = formSession(user = "account-1", accessToken = "access-1")
+        val store = SharedCreateAgentFormStore(
+            SlockComputersApiClient(api),
+            this,
+            ownerProvider = { sharedCreateAgentFormOwner(session, "https://api.example.test/", generation.current()) }
+        )
+        val machineKey = SharedCreateAgentMachineFormKey("server-1", "machine-1")
+        assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(store.loadRuntimeCatalog("server-1", "machine-1"))
+        val owner = store.state.value.owner
+
+        // The auth store rotates both tokens and announces it, as on a device after `auth_refresh_successor_commit`.
+        session = session.copy(accessToken = "access-2", refreshToken = "refresh-2")
+        generation.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 2))
+        store.reconcileOwner()
+        generation.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 3))
+        store.reconcileOwner()
+
+        assertEquals(owner, store.state.value.owner, "a refresh is the same session")
+        assertTrue(machineKey in store.state.value.runtimeCatalogs, "the runtime list the form is showing survives")
+        assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(store.loadRuntimeCatalog("server-1", "machine-1"))
+        assertEquals(1, api.runtimeOptionsCallCount, "and is not fetched again")
+
+        generation.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 4))
+        store.reconcileOwner()
+        assertTrue(store.state.value.owner != owner, "logging in again is a new session")
+        assertTrue(store.state.value.runtimeCatalogs.isEmpty())
+    }
+
+    @Test
+    fun formOwnerIgnoresTokensAndFollowsAccountAndEnvironment() {
+        val session = formSession(user = "account-1", accessToken = "access-1")
+        val owner = sharedCreateAgentFormOwner(session, "https://api.example.test/", "1")
+        assertEquals(SharedCreateAgentFormOwner("https://api.example.test", "account-1", "1"), owner)
+        assertEquals(owner, sharedCreateAgentFormOwner(session.copy(accessToken = "access-2"), "https://api.example.test", "1"))
+        assertTrue(owner != sharedCreateAgentFormOwner(formSession(user = "account-2", accessToken = "access-1"), "https://api.example.test", "1"))
+        assertTrue(owner != sharedCreateAgentFormOwner(session, "https://other.example.test", "1"))
+        assertEquals(null, sharedCreateAgentFormOwner(formSession(user = " ", accessToken = "access-1"), "https://api.example.test", "1"))
+        assertEquals(null, sharedCreateAgentFormOwner(session, " ", "1"))
+
+        val generation = SharedCreateAgentFormLoginGeneration()
+        val start = generation.current()
+        generation.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 1))
+        generation.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
+        assertEquals(start, generation.current())
+        generation.onAuthSessionEvent(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.Logout))
+        val afterLogout = generation.current()
+        assertTrue(afterLogout != start)
+        generation.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 4))
+        assertTrue(generation.current() != afterLogout)
+    }
+
+    private fun formSession(user: String, accessToken: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = user, email = "user@raft.build"),
+            accessToken = accessToken,
+            refreshToken = "refresh-1",
+            selectedServerId = "server-1",
+            servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
+        )
+
+    @Test
     fun writeOnlySecretClearsOnEveryContractIdentityChange() {
         val base = SharedBuiltInWriteOnlyIdentity(
             environmentId = "https://api.example.test",
