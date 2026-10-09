@@ -385,6 +385,7 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         networkRequestLifetimeAdapter.install()
+        SlockIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
         if let userInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             SlockIosPushHost.acceptSystemNotificationOpen(
