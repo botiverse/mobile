@@ -2168,4 +2168,23 @@
     <string name="app_update_download_paused">Download paused — waiting to resume</string>
     <string name="app_update_download_failed">Download failed. Tap Retry to download again.</string>
     <string name="thread_audio_playback_position">Playback position</string>
+    <string name="member_runtime_usage_title">Account usage</string>
+    <string name="member_runtime_usage_attention">Usage needs attention</string>
+    <string name="member_runtime_usage_reading">Reading…</string>
+    <string name="member_runtime_usage_reload">Read again</string>
+    <string name="member_runtime_usage_read_failed">Could not read account usage. Try again.</string>
+    <string name="member_runtime_usage_missing">No usage reported yet</string>
+    <string name="member_runtime_usage_missing_detail">This Computer has not reported account usage for this runtime. This is not zero usage.</string>
+    <string name="member_runtime_usage_stale">Data is out of date. Values below may no longer be accurate.</string>
+    <string name="member_runtime_usage_account_fallback">Account</string>
+    <string name="member_runtime_usage_unsupported">This account does not report usage.</string>
+    <string name="member_runtime_usage_window_unavailable">Unavailable</string>
+    <string name="member_runtime_usage_limit_reached">Limit reached</string>
+    <string name="member_runtime_usage_resets_at">Resets %1$s</string>
+    <string name="member_runtime_usage_health_ok">OK</string>
+    <string name="member_runtime_usage_health_rate_limited">Rate limited</string>
+    <string name="member_runtime_usage_health_reauth_required">Sign-in required</string>
+    <string name="member_runtime_usage_health_unsupported">Not supported</string>
+    <string name="member_runtime_usage_health_error">Error</string>
+    <string name="member_runtime_usage_health_unknown">Unavailable</string>
 </resources>
