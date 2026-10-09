@@ -48,7 +48,9 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 internal class MembersRuntimeAccountUsageAccess(
     val store: SharedRuntimeAccountUsageStore,
     val owner: SharedComputersOwner?,
-    val serverId: String?
+    val serverId: String?,
+    /** Called when a read found [owner] is no longer the signed-in identity; re-resolve it. */
+    val onIdentityChanged: () -> Unit = {}
 )
 
 internal val LocalMembersRuntimeAccountUsageAccess =
@@ -69,7 +71,14 @@ internal fun membersRuntimeAccountUsageKey(
 
 /** The usage entry is offered only once a read has returned something other than 403. */
 internal fun RuntimeAccountUsageLoad?.offersRuntimeAccountUsage(): Boolean =
-    this != null && this !is RuntimeAccountUsageLoad.Forbidden
+    this != null && this !is RuntimeAccountUsageLoad.Forbidden && this !is RuntimeAccountUsageLoad.Superseded
+
+/**
+ * What the chip keeps after a read. A read for an identity that is no longer signed in shows
+ * nothing (the entry goes inert until the owner is re-resolved); everything else is kept.
+ */
+internal fun RuntimeAccountUsageLoad.shownRuntimeAccountUsage(): RuntimeAccountUsageLoad? =
+    takeUnless { it is RuntimeAccountUsageLoad.Superseded }
 
 /**
  * Whether anything in the read needs attention. Missing data, stale data, an unknown health or
@@ -77,7 +86,7 @@ internal fun RuntimeAccountUsageLoad?.offersRuntimeAccountUsage(): Boolean =
  */
 internal fun RuntimeAccountUsageLoad?.runtimeAccountUsageNeedsAttention(): Boolean =
     when (this) {
-        null, RuntimeAccountUsageLoad.Forbidden -> false
+        null, RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Superseded -> false
         is RuntimeAccountUsageLoad.Failed -> true
         is RuntimeAccountUsageLoad.Loaded ->
             when (val read = read) {
@@ -117,9 +126,10 @@ internal fun MembersAgentRuntimeUsageChip(
         if (key == null || store == null) return@LaunchedEffect
         loading = true
         val result = store.read(key, force = reloadNonce > 0)
-        load = result
+        load = result.shownRuntimeAccountUsage()
         loading = false
-        if (result is RuntimeAccountUsageLoad.Forbidden) dialogOpen = false
+        if (!load.offersRuntimeAccountUsage()) dialogOpen = false
+        if (result is RuntimeAccountUsageLoad.Superseded) access?.onIdentityChanged?.invoke()
     }
     val offered = key != null && load.offersRuntimeAccountUsage()
     val attention = offered && load.runtimeAccountUsageNeedsAttention()
@@ -171,7 +181,7 @@ private fun MembersRuntimeAccountUsageDialog(
     ) {
         when (load) {
             null -> MembersRuntimeUsageNote(stringResource(MR.strings.member_runtime_usage_reading))
-            RuntimeAccountUsageLoad.Forbidden -> Unit
+            RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Superseded -> Unit
             is RuntimeAccountUsageLoad.Failed ->
                 MembersRuntimeUsageNote(
                     text = stringResource(MR.strings.member_runtime_usage_read_failed),

@@ -63,6 +63,16 @@ class MembersAgentRuntimeUsageTest {
     }
 
     @Test
+    fun aReadForAnIdentityThatIsNoLongerSignedInShowsNothing() {
+        assertNull(RuntimeAccountUsageLoad.Superseded.shownRuntimeAccountUsage())
+        assertFalse(RuntimeAccountUsageLoad.Superseded.offersRuntimeAccountUsage())
+        assertFalse(RuntimeAccountUsageLoad.Superseded.runtimeAccountUsageNeedsAttention())
+        val loaded = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing)
+        assertEquals(loaded, loaded.shownRuntimeAccountUsage())
+        assertEquals(RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Forbidden.shownRuntimeAccountUsage())
+    }
+
+    @Test
     fun missingStaleUnknownAndUnavailableAllNeedAttentionOnlyHealthyFreshDoesNot() {
         assertFalse(loaded(stale = false, account()).runtimeAccountUsageNeedsAttention())
         assertTrue(RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing).runtimeAccountUsageNeedsAttention())
@@ -111,7 +121,8 @@ class MembersAgentRuntimeUsageTest {
     private companion object {
         // Never called in these pure tests; the access object only needs a store instance.
         val store = SharedRuntimeAccountUsageStore(
-            SlockComputersApiClient(object : SlockComputersApi {
+            currentIdentity = { null },
+            client = SlockComputersApiClient(object : SlockComputersApi {
                 override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
                 override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
                 override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")

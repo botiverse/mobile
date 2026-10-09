@@ -2642,6 +2642,16 @@ private class MemberDetailRouteProvider(
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null
 ) {
+    /** The identity the shared network client currently authenticates as (task #137 usage reads). */
+    suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? =
+        authStore.readSession()?.let { session ->
+            SharedComputersOwner(
+                environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                accountId = session.user.id.trim(),
+                sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+            )
+        }
+
     suspend fun currentAgentDetailOwner(
         expectedServerId: ServerId,
         requireCurrentServer: Boolean = false
@@ -3280,7 +3290,18 @@ private fun rememberMemberDetailRouteProvider(
         sharedStores.createAgentFormStore(storeScope)
     }
     val runtimeAccountUsageStore = remember(computersApiClient) {
-        SharedRuntimeAccountUsageStore(computersApiClient)
+        SharedRuntimeAccountUsageStore(
+            client = computersApiClient,
+            currentIdentity = {
+                authStore.readSession()?.let { session ->
+                    SharedComputersOwner(
+                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+                        accountId = session.user.id.trim(),
+                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
+                    )
+                }
+            }
+        )
     }
     val avatarNativeCache =
         remember(bridge, scope) {
@@ -3657,18 +3678,15 @@ internal fun MemberDetailPageContent(
         }
     }
 
+    // Bumped when a usage read finds the owner below is no longer the signed-in identity.
+    var runtimeAccountUsageOwnerRefresh by remember { mutableStateOf(0) }
     val runtimeAccountUsageOwner by androidx.compose.runtime.produceState<SharedComputersOwner?>(
         initialValue = null,
         activeServerId,
-        pageVisibleTick
+        pageVisibleTick,
+        runtimeAccountUsageOwnerRefresh
     ) {
-        value = provider.authStore.readSession()?.let { session ->
-            SharedComputersOwner(
-                environmentId = provider.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                accountId = session.user.id.trim(),
-                sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-            )
-        }
+        value = provider.currentRuntimeAccountUsageOwner()
     }
     // Task #137: read-only runtime account usage for the agent's Runtime Config chip. Only
     // routes that allow private agent surfaces get a server id; the server still decides
@@ -3679,7 +3697,8 @@ internal fun MemberDetailPageContent(
                 MembersRuntimeAccountUsageAccess(
                     store = store,
                     owner = runtimeAccountUsageOwner,
-                    serverId = statusLookupServerId
+                    serverId = statusLookupServerId,
+                    onIdentityChanged = { runtimeAccountUsageOwnerRefresh += 1 }
                 )
             }
         }

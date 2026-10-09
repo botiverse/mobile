@@ -112,13 +112,13 @@ class RuntimeAccountUsageTest {
 
     @Test
     fun storeMaps403ToForbiddenAndServerErrorsToRetryableFailure() = runPortableCoroutineTest<Unit> {
-        val forbidden = SharedRuntimeAccountUsageStore(SlockComputersApiClient(FakeUsageApi { status(403) }))
+        val forbidden = store(FakeUsageApi { status(403) })
         assertSame(RuntimeAccountUsageLoad.Forbidden, forbidden.read(key()))
-        val failing = SharedRuntimeAccountUsageStore(SlockComputersApiClient(FakeUsageApi { status(500) }))
+        val failing = store(FakeUsageApi { status(500) })
         val failed = assertIs<RuntimeAccountUsageLoad.Failed>(failing.read(key()))
         assertEquals("server_unavailable", failed.code)
         assertEquals(true, failed.retryable)
-        val unauthenticated = SharedRuntimeAccountUsageStore(SlockComputersApiClient(FakeUsageApi { status(401) }))
+        val unauthenticated = store(FakeUsageApi { status(401) })
         assertEquals("auth_required", assertIs<RuntimeAccountUsageLoad.Failed>(unauthenticated.read(key())).code)
     }
 
@@ -126,7 +126,7 @@ class RuntimeAccountUsageTest {
     fun storeCachesSixtySecondsPerKeyAndForceReReads() = runPortableCoroutineTest<Unit> {
         var now = 1_000L
         val api = FakeUsageApi { ok(FRESH_BODY) }
-        val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { now })
+        val store = store(api, clock = { now })
         store.read(key())
         store.read(key())
         assertEquals(1, api.calls.size)
@@ -147,7 +147,7 @@ class RuntimeAccountUsageTest {
         val api = FakeUsageApi { request ->
             if (request.contains("/m-denied/")) status(403) else ok(FRESH_BODY)
         }
-        val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { 0L })
+        val store = store(api)
         val base = key()
         store.read(base)
         val variants =
@@ -161,8 +161,10 @@ class RuntimeAccountUsageTest {
             )
         variants.forEach { variant ->
             assertNull(store.peek(variant), variant.toString())
+            signedIn = variant.owner
             store.read(variant)
         }
+        signedIn = base.owner
         // Every subject was fetched on its own; none reused the first subject's cache entry.
         assertEquals(1 + variants.size, api.calls.size)
         // A forbidden Computer does not poison (or get served) another Computer's entry.
@@ -174,7 +176,7 @@ class RuntimeAccountUsageTest {
     fun concurrentReadsOfOneKeyShareOneRequestAndOtherKeysDoNot() = runPortableCoroutineTest<Unit> {
         val gate = CompletableDeferred<Unit>()
         val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
-        val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { 0L })
+        val store = store(api)
         val first = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
         val second = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
         val other = async(start = CoroutineStart.UNDISPATCHED) { store.read(key().copy(serverId = "s2")) }
@@ -189,7 +191,7 @@ class RuntimeAccountUsageTest {
     fun cancelledReadForAnOldSubjectNeverPublishesAndNextReadRefetches() = runPortableCoroutineTest<Unit> {
         val gate = CompletableDeferred<Unit>()
         val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
-        val store = SharedRuntimeAccountUsageStore(SlockComputersApiClient(api), clock = { 0L })
+        val store = store(api)
         // The UI cancels the old subject's read when the key changes (LaunchedEffect restart).
         val old = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
         yield()
@@ -199,6 +201,54 @@ class RuntimeAccountUsageTest {
         assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(key()))
         assertEquals(2, api.calls.size)
     }
+
+    @Test
+    fun accountSwitchWhileReadingDropsTheResponseAndNeverCachesIt() = runPortableCoroutineTest<Unit> {
+        // The page stays open; the GET is sent as user-1 but the session becomes user-2 before
+        // the response arrives, so the response may be user-2's and must not be published.
+        val api = FakeUsageApi(beforeRespond = { signedIn = key().owner.copy(accountId = "user-2", sessionGeneration = "gen-9") }) {
+            ok(FRESH_BODY)
+        }
+        val store = store(api)
+        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key()))
+        assertEquals(1, api.calls.size)
+        assertNull(store.peek(key()))
+        // The old owner is refused up front from now on, without a request.
+        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key(), force = true))
+        assertEquals(1, api.calls.size)
+        // The re-resolved owner reads for itself.
+        val switched = key().copy(owner = signedIn!!)
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(switched))
+        assertEquals(2, api.calls.size)
+    }
+
+    @Test
+    fun cachedUsageIsNotServedToAnOwnerThatIsNoLongerSignedIn() = runPortableCoroutineTest<Unit> {
+        val api = FakeUsageApi { ok(FRESH_BODY) }
+        val store = store(api)
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(key()))
+        signedIn = key().owner.copy(accountId = "user-2")
+        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key()))
+        signedIn = null
+        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key()))
+        assertEquals(1, api.calls.size)
+    }
+
+    @Test
+    fun tokenRotationForTheSameAccountIsNotAnIdentityChange() = runPortableCoroutineTest<Unit> {
+        val api = FakeUsageApi(beforeRespond = { signedIn = key().owner.copy(sessionGeneration = "gen-2") }) { ok(FRESH_BODY) }
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store(api).read(key()))
+    }
+
+    /** The identity the fake session currently authenticates as. */
+    private var signedIn: SharedComputersOwner? = key().owner
+
+    private fun store(api: FakeUsageApi, clock: SlockEpochMillisSource = SlockEpochMillisSource { 0L }) =
+        SharedRuntimeAccountUsageStore(
+            client = SlockComputersApiClient(api),
+            currentIdentity = { signedIn },
+            clock = clock
+        )
 
     private fun parse(body: String): RuntimeAccountUsageRead? =
         Json.parseToJsonElement(body).toRuntimeAccountUsageRead()

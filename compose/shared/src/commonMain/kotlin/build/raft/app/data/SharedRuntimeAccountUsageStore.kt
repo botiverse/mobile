@@ -30,7 +30,19 @@ internal sealed interface RuntimeAccountUsageLoad {
     data object Forbidden : RuntimeAccountUsageLoad
 
     data class Failed(val code: String, val retryable: Boolean) : RuntimeAccountUsageLoad
+
+    /**
+     * The signed-in identity no longer matches the key's owner (before or after the request).
+     * Never cached and never shown: the caller must re-resolve its owner and read again.
+     */
+    data object Superseded : RuntimeAccountUsageLoad
 }
+
+/** Same signed-in identity (environment + account), the guard the bound transport uses after a request. */
+internal fun SharedComputersOwner.sameIdentityAs(other: SharedComputersOwner?): Boolean =
+    other != null &&
+        environmentId.trim().trimEnd('/') == other.environmentId.trim().trimEnd('/') &&
+        accountId.trim() == other.accountId.trim()
 
 /**
  * Read-only runtime account usage reads (task #137). Mirrors Web `RuntimeAccountUsageClient`
@@ -39,6 +51,8 @@ internal sealed interface RuntimeAccountUsageLoad {
  */
 internal class SharedRuntimeAccountUsageStore(
     private val client: SlockComputersApiClient,
+    /** The identity the network client will actually authenticate as right now. */
+    private val currentIdentity: suspend () -> SharedComputersOwner?,
     private val clock: SlockEpochMillisSource = SlockEpochMillisSource { Clock.System.now().toEpochMilliseconds() },
     private val cacheMillis: Long = RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS
 ) {
@@ -53,6 +67,8 @@ internal class SharedRuntimeAccountUsageStore(
         mutex.withLock { cache[key]?.takeIf { it.expiresAt > clock.nowEpochMillis() }?.value }
 
     suspend fun read(key: RuntimeAccountUsageKey, force: Boolean = false): RuntimeAccountUsageLoad {
+        // Not even a cached value is served to an owner that is no longer the signed-in identity.
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
         while (true) {
             val (deferred, owner) = mutex.withLock {
                 if (!force) {
@@ -87,7 +103,9 @@ internal class SharedRuntimeAccountUsageStore(
                 mutex.withLock {
                     // The result is stored under its own key only; it can never be published
                     // for a different identity/server/Computer/provider.
-                    cache[key] = Cached(result, clock.nowEpochMillis() + cacheMillis)
+                    if (result !is RuntimeAccountUsageLoad.Superseded) {
+                        cache[key] = Cached(result, clock.nowEpochMillis() + cacheMillis)
+                    }
                     if (inFlight[key] === deferred) inFlight.remove(key)
                 }
             }
@@ -101,8 +119,14 @@ internal class SharedRuntimeAccountUsageStore(
         mutex.withLock { cache.clear() }
     }
 
-    private suspend fun fetch(key: RuntimeAccountUsageKey): RuntimeAccountUsageLoad =
-        when (val result = client.runtimeAccountUsage(ServerId(key.serverId), key.machineId, key.provider)) {
+    private suspend fun fetch(key: RuntimeAccountUsageKey): RuntimeAccountUsageLoad {
+        // The GET authenticates with whatever session is current, so the key's owner must be that
+        // session both when the request starts and when its response arrives; otherwise the
+        // response may belong to another account and is dropped.
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
+        val result = client.runtimeAccountUsage(ServerId(key.serverId), key.machineId, key.provider)
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
+        return when (result) {
             is DataResult.Content -> RuntimeAccountUsageLoad.Loaded(result.data)
             is DataResult.NoPermission ->
                 if (result.blocker.code == "server_forbidden") {
@@ -113,6 +137,7 @@ internal class SharedRuntimeAccountUsageStore(
             is DataResult.Error -> RuntimeAccountUsageLoad.Failed(result.error.code, result.error.retryable)
             is DataResult.Empty -> RuntimeAccountUsageLoad.Failed("runtime_account_usage_empty", retryable = true)
         }
+    }
 }
 
 internal const val RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS: Long = 60_000L
