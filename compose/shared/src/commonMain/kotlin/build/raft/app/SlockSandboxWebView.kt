@@ -287,8 +287,15 @@ internal class SlockSandboxWebViewEvent : Event() {
             val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@register
             val kind = parsed.optString("kind", "").trim()
             val payload = parsed.optJSONObject("payload") ?: return@register
-            if (!kind.matches(Regex("^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*)*$"))) return@register
-            handler(kind, payload)
+            val acceptedKind = when (kind) {
+                "ready", "close", "auth-required", "integration-unavailable" -> kind
+                "feedback:ready" -> "ready"
+                "feedback:close" -> "close"
+                "feedback:auth-required" -> "auth-required"
+                "feedback:integration-unavailable" -> "integration-unavailable"
+                else -> null
+            } ?: return@register
+            handler(acceptedKind, payload)
         }
     }
 
