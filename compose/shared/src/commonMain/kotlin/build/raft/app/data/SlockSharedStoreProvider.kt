@@ -363,6 +363,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
     val networkClient: SlockNetworkClient,
     val networkTransportController: SlockNetworkTransportController,
+    private val networkReachabilityGates: SlockHostReachabilityGates,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -665,6 +666,9 @@ internal class SlockSharedStoreProvider private constructor(
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
         ).start()
         KuiklyHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
+            // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
+            // again; stop short-circuiting requests at once instead of waiting for the next probe.
+            networkReachabilityGates.onNetworkAvailable()
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
@@ -1795,6 +1799,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
             val networkRequestScheduler = SlockRequestScheduler()
             val networkExecutor = createPlatformSlockHttpExecutor(networkWarningLogger)
+            val networkReachabilityGates = SlockHostReachabilityGates()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -1818,7 +1823,8 @@ internal class SlockSharedStoreProvider private constructor(
                     terminalAuthLossReporter = terminalAuthLossReporter,
                     requestScheduler = networkRequestScheduler,
                     platformFileResolver = platformFileResolver,
-                    executor = networkExecutor
+                    executor = networkExecutor,
+                    reachabilityGates = networkReachabilityGates
                 )
             }
             val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient =
@@ -1836,7 +1842,8 @@ internal class SlockSharedStoreProvider private constructor(
                         terminalAuthLossReporter = terminalAuthLossReporter,
                         requestScheduler = networkRequestScheduler,
                         platformFileResolver = platformFileResolver,
-                        executor = networkExecutor
+                        executor = networkExecutor,
+                        reachabilityGates = networkReachabilityGates
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)
@@ -2279,6 +2286,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authRuntimeCapabilityStore = SharedAuthRuntimeCapabilityStore(),
                 networkClient = networkClient,
                 networkTransportController = networkTransportController,
+                networkReachabilityGates = networkReachabilityGates,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,

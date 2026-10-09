@@ -48,7 +48,9 @@ internal class SharedSlockNetworkClient(
     private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> },
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
-    private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
+    private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger),
+    // Task #150: shared across every client built on the same executor, like the scheduler.
+    private val reachabilityGates: SlockHostReachabilityGates = SlockHostReachabilityGates()
 ) : SlockNetworkClient, AuthorityBoundSlockNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
@@ -156,6 +158,20 @@ internal class SharedSlockNetworkClient(
         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
             return routeEnvironmentChangedResponse()
         }
+        val gate = reachabilityGates.forBaseUrl(requestBaseUrl)
+        val probe =
+            when (val admission = gate.admit()) {
+                is SlockHostReachabilityGate.Admission.Blocked -> {
+                    warningLogger(
+                        "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
+                            "code=0 durationMs=0 result=network_error" +
+                            admission.response.transportDiagnosticsLogSuffix()
+                    )
+                    return admission.response
+                }
+                is SlockHostReachabilityGate.Admission.Proceed -> admission.probe
+            }
+        var recorded = false
         return try {
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
@@ -217,6 +233,8 @@ internal class SharedSlockNetworkClient(
                 } else {
                     warningLogger(endpointDiagnostic)
                 }
+                gate.record(response, probe)
+                recorded = true
                 response
             }
         } catch (timeout: SlockRequestTimeoutException) {
@@ -228,6 +246,9 @@ internal class SharedSlockNetworkClient(
                 durationMs = startedAt.elapsedNow().inWholeMilliseconds,
                 warningLogger = warningLogger
             )
+        } finally {
+            // Cancelled, timed out or thrown: a probe that never reported must not keep the gate shut.
+            if (!recorded) gate.abandon(probe)
         }
     }
 
