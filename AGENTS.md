@@ -264,8 +264,8 @@ an applicable workflow. Concurrent local Gradle/Konan jobs compete for limited
 CPU and memory and can slow down the owner's active work and other agents.
 
 Keep local validation lightweight by default: source inspection,
-`git diff --check`, YAML/static checks, and similarly cheap commands. Push a
-signed exact head and use hosted workflows for compilation and test suites.
+`git diff --check`, YAML/static checks, and similarly cheap commands. Push an
+exact head and use hosted workflows for compilation and test suites.
 Run a heavy local build only when the owner explicitly requests it or no hosted
 lane exists, and state that exception in the task thread.
 
@@ -323,28 +323,41 @@ useful) the body. They are **not required** to include a task number; the
 commit hash and the commit body are the trace. If a task number is helpful for
 filtering, include it; otherwise omit.
 
-### Signed-off commits are required (2026-07-02)
+### Agent Git identity comes from Stamp (2026-10-09)
 
-Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
-identity (Raft Mobile prefix, for example `raft-mobile-cindy@mail.build`).
-Nothing enforces it any more: no CI check, no git hook, and the guarded merge
-wrappers no longer inspect the signer.
+Agents push, open PRs, review and merge through **Stamp**
+(<https://stamp.build/llms.txt>), under their own agent identity. Do not use
+the machine's shared `gh` login or another agent's SSH key for any of these:
+a push made with another key is that agent's push, and a merge through the
+shared `gh` account cannot be attributed to anyone.
 
-In the shared canonical checkout, do not rely on repo-local
-`git config user.name/user.email`; it can be overwritten by another agent. Pass
-identity per commit:
+Setup, once per agent:
 
 ```bash
-git \
-  -c user.name="<your-name>" \
-  -c user.email="raft-mobile-<your-name>@mail.build" \
-  commit -s -m "fix(scope): describe the change"
+raft integration login --service stamp
+stamp login && stamp whoami        # principalType=agent, your own name
 ```
 
-Use the same `-c user.name=... -c user.email=...` form with
-`commit --amend -s --no-edit` to add the trailer to the previous commit. In an
-isolated private clone or worktree, local Git identity is also acceptable. See
-`docs/commit-signoff-policy.md` for the full rule and recovery commands.
+Use a checkout that pushes through Stamp:
+
+- `stamp repo clone botiverse/mobile [DIR]`, or
+- in an existing clone, add the Stamp remote **and** run `stamp repo use`:
+  `git remote add stamp ssh://git@ssh.stamp.build:443/botiverse/mobile.git`
+  then `stamp repo use .`. `repo use` alone only writes the commit identity and
+  SSH settings; an `https://github.com/...` remote keeps pushing through the
+  shared `gh` credentials and never reaches Stamp.
+
+Commit identity is whatever Stamp writes into that checkout: your name and
+`<server>+<handle>@agents.stamp.build`. No `Signed-off-by:` trailer and no
+`@mail.build` address are required, and nothing checks commit emails — the
+author field is free text. What ties a change to an agent is Stamp's push
+receipt (made with that agent's own key) and its approval / merge records.
+`repo use` sets identity per repository, so every worktree of that clone
+shares it; in a checkout shared between agents, pass `-c user.name=...
+-c user.email=...` per commit instead.
+
+`docs/commit-signoff-policy.md` (the old `@mail.build` sign-off rule) is
+superseded by this section.
 
 ### One thread, one topic
 
@@ -392,72 +405,80 @@ When adding DTOs:
 GitHub `main` is protected. Do not directly merge commits into local `main` as
 the completion path, and do not push directly to remote `main`.
 
-The canonical flow is:
+The canonical flow is (Stamp commands, run from a Stamp checkout):
 
 1. Create a topic branch or worktree from current `origin/main`.
-2. Commit with `Signed-off-by:` and the correct `@mail.build` identity.
+2. Commit with the Stamp identity of that checkout (see above).
 3. Run focused validation.
-4. Push the topic branch and open a GitHub PR to `main`.
-5. After required checks pass and at least one reviewer who is not the PR author
-   gives a clear GO bound to the exact PR head, the PR creator performs the
-   merge with
-   `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha> <message-file|->`.
-   The fourth argument is required: a file holding the squash commit message,
-   or `-` to read it from stdin.
-   The GO may be recorded in Raft or a PR comment; a formal GitHub approving
-   review is not required.
+4. Push the branch through Stamp and keep the receipt ID it prints, then open
+   the PR from that receipt:
+
+   ```bash
+   git push stamp HEAD:refs/heads/agent/<branch>        # or `origin` in a stamp-cloned checkout
+   stamp pr create --receipt <ID> --base main --title "..." --body-file PR.md
+   ```
+
+   When referring to the PR, give the Stamp page first
+   (`https://stamp.build/github/botiverse/mobile/pull/<N>`); github.com does not
+   show Stamp's review state or receipts.
+5. Review and merge. A reviewer who is not the PR author reads the PR at its
+   exact head and approves it in Stamp:
+
+   ```bash
+   stamp pr review <N> --repo botiverse/mobile
+   stamp pr approve <N> --repo botiverse/mobile --head <HEAD_SHA> --base <BASE_SHA>
+   ```
+
+   That approval is the GO. It is recorded by Stamp (published on the head as
+   the `stamp/approval` status), not as a GitHub review, and it counts only for
+   that exact head. A GO given only in Raft or a PR comment should be turned
+   into a Stamp approval before merging. Never approve your own PR.
+
+   The PR author merges through Stamp, either directly or by registering
+   auto-merge, which lands the PR once that head is approved and ready:
+
+   ```bash
+   stamp pr merge <N> --repo botiverse/mobile --head <HEAD_SHA> --base <BASE_SHA> --method squash
+   stamp pr merge <N> --repo botiverse/mobile --head <HEAD_SHA> --base <BASE_SHA> --auto --method squash
+   ```
+
+   `--base` is the PR's recorded base SHA (`stamp pr view` prints it), not the
+   tip of `main`; `main` moving ahead does not void an approval. Stamp refuses a
+   PR whose head or base moved (`PR_HEAD_MOVED` / `PR_BASE_MOVED`) and names
+   the current values. Do not merge with the GitHub Merge button, `gh pr merge`
+   or the shared `gh` account.
 
    Owner/product acceptance is **not** a merge gate by default, and neither is
    any further authorisation from the person who requested the work. Require it
    only when the current task explicitly names it as a gate, or a current live
-   hold assigns that decision to the owner or another accountable seat.
+   hold assigns that decision to the owner or another accountable seat. When
+   such a gate exists, do not register `--auto` until it is cleared.
 
    For an ordinary PR carrying no other task-declared gate and no other current
-   in-scope live hold, the two conditions above are the whole gate set and the
-   creator may merge. That default waives nothing else: any other current
-   in-scope live hold — runtime, release, security, or one assigned to a
-   different accountable seat — still applies on its own terms and is not
-   displaced by this paragraph.
+   in-scope live hold, a Stamp approval on the exact head plus a `READY`
+   verdict is the whole gate set and the creator may merge. That default waives
+   nothing else: any other current in-scope live hold — runtime, release,
+   security, or one assigned to a different accountable seat — still applies on
+   its own terms and is not displaced by this paragraph.
 
    A creator who prefers to wait anyway may do so, but should say plainly that
    it is their own choice and name what they are waiting for — otherwise a
    finished PR stalls with everyone assuming someone else will move it.
-   Do not use the GitHub Merge button or `gh pr merge --merge`; the guarded
-   wrappers are what produce the merge receipt and the reviewed-head anchor.
 
-   When the head changes after a GO, revalidate as follows. A GO always names
-   the exact head it was given on; these rules only decide whether it carries
-   to a new one.
+   `READY` is not "every test ran". mobile's CI plans jobs by changed path
+   (`scripts/ci/plan_test_tier.sh`), and Stamp, like GitHub, counts a skipped
+   check as satisfied unless a job in the same workflow run failed or was
+   cancelled. In the PR and the task thread, name the checks that ran and the
+   ones that were skipped or not run (for example, iOS compile for ordinary
+   `commonMain` changes runs only in the nightly `Test` schedule).
 
-   a. The GO carries automatically, with no reviewer action, when a command
-      proves the change itself is unaltered. Run the check and record the two
-      values in the PR:
-
-      - Rebase onto a newer base only:
-        `git diff <old-base> <old-head> | git patch-id --stable` equals
-        `git diff <new-base> <new-head> | git patch-id --stable`.
-        Compute both on the same machine with the same git; patch-id values
-        are not comparable across git versions.
-      - Commit message or `Signed-off-by` edits only:
-        `git rev-parse <old-head>^{tree}` equals
-        `git rev-parse <new-head>^{tree}`.
-      - Documentation only:
-        `git diff --name-only <old-head> <new-head>` lists only `*.md` paths.
-
-   b. For any other change, the GO does not lapse on its own. The reviewer who
-      gave it decides whether it carries, and says so on the new head. This is
-      an explicit confirmation, not a silent carry-over, but it does not
-      require a fresh line-by-line review — the common case is a reviewer
-      confirming their own requested change was applied as asked.
-
-   c. If that reviewer is unavailable, or declines to carry the GO, a fresh GO
-      on the new exact head is required, from any reviewer who is not the PR
-      author.
-
-   Under (b) the binding between the reviewed head and the merged head rests on
-   the reviewer's judgement rather than on a command. That is a deliberate
-   trade, made to remove the re-review round that a reviewer's own requested
-   change used to trigger.
+   A new push voids the approval and any auto-merge registration. The reviewer
+   reviews and approves the new head, and the author registers auto-merge
+   again. For a pure rebase onto a newer base, the reviewer may approve without
+   a fresh line-by-line read after checking that
+   `git diff <old-base> <old-head> | git patch-id --stable` equals
+   `git diff <new-base> <new-head> | git patch-id --stable` (same machine, same
+   git).
 6. After the PR is merged, sync local checkouts by fetching and resetting or
    fast-forwarding clean local branches as appropriate. Do not reset a dirty
    shared checkout; identify/move the dirty work first.
