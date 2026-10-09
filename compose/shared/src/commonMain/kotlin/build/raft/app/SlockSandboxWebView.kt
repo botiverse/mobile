@@ -19,6 +19,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
     private var appliedEphemeral: Boolean? = null
     private var appliedInjectedJavaScript: String? = null
     private var appliedAllowedNavigationSchemes: String? = null
+    private var appliedHostEventsEnabled: Boolean? = null
     private var boundController: SlockWebViewController? = null
 
     override fun createAttr(): SlockSandboxWebViewAttr = SlockSandboxWebViewAttr()
@@ -36,6 +37,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         ephemeral: Boolean,
         injectedJavaScript: String,
         allowedNavigationSchemes: String,
+        hostEventsEnabled: Boolean = false,
         force: Boolean = false
     ) {
         if (
@@ -47,7 +49,8 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             appliedCacheEnabled == cacheEnabled &&
             appliedEphemeral == ephemeral &&
             appliedInjectedJavaScript == injectedJavaScript &&
-            appliedAllowedNavigationSchemes == allowedNavigationSchemes
+            appliedAllowedNavigationSchemes == allowedNavigationSchemes &&
+            appliedHostEventsEnabled == hostEventsEnabled
         ) {
             return
         }
@@ -59,6 +62,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         appliedEphemeral = ephemeral
         appliedInjectedJavaScript = injectedJavaScript
         appliedAllowedNavigationSchemes = allowedNavigationSchemes
+        appliedHostEventsEnabled = hostEventsEnabled
         getViewAttr().run {
             allowScripts(allowScripts)
             allowNavigation(allowNavigation)
@@ -67,6 +71,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             ephemeral(ephemeral)
             injectedJavaScript(injectedJavaScript)
             allowedNavigationSchemes(allowedNavigationSchemes)
+            hostEventsEnabled(hostEventsEnabled)
             src(url)
         }
     }
@@ -130,6 +135,11 @@ internal class SlockSandboxWebViewAttr : Attr() {
 
     fun allowedNavigationSchemes(value: String): SlockSandboxWebViewAttr {
         "allowedNavigationSchemes" with value
+        return this
+    }
+
+    fun hostEventsEnabled(value: Boolean): SlockSandboxWebViewAttr {
+        "hostEventsEnabled" with value
         return this
     }
 
@@ -270,6 +280,18 @@ internal class SlockSandboxWebViewEvent : Event() {
         }
     }
 
+    fun hostMessage(handler: (String, JSONObject) -> Unit) {
+        register(EVENT_HOST_MESSAGE) { params ->
+            val raw = params.optStringValue("message", "")
+            if (raw.isBlank()) return@register
+            val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@register
+            val kind = parsed.optString("kind", "").trim()
+            val payload = parsed.optJSONObject("payload") ?: return@register
+            if (!kind.matches(Regex("^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*)+$"))) return@register
+            handler(kind, payload)
+        }
+    }
+
     companion object {
         const val EVENT_LOAD_COMMIT = "loadCommit"
         const val EVENT_LOAD_SUCCESS = "loadSuccess"
@@ -277,6 +299,7 @@ internal class SlockSandboxWebViewEvent : Event() {
         const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         const val EVENT_URL_CHANGE = "urlChange"
         const val EVENT_NAVIGATION_STATE_CHANGE = "navigationStateChange"
+        const val EVENT_HOST_MESSAGE = "hostMessage"
     }
 }
 
@@ -291,6 +314,7 @@ internal fun SlockSandboxWebView(
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
+    hostEventsEnabled: Boolean = false,
     onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
@@ -298,7 +322,8 @@ internal fun SlockSandboxWebView(
     onUrlChange: (String) -> Unit = {},
     controller: SlockWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
-    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {}
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
     val allowedNavigationSchemesValue = allowedNavigationSchemes.toSlockWebViewAllowedNavigationSchemesValue()
     val updateAttrs =
@@ -310,7 +335,8 @@ internal fun SlockSandboxWebView(
             cacheEnabled,
             ephemeral,
             injectedJavaScript,
-            allowedNavigationSchemesValue
+            allowedNavigationSchemesValue,
+            hostEventsEnabled
         ) {
             { view: SlockSandboxWebViewNode ->
                 view.applyWebViewAttrs(
@@ -321,7 +347,8 @@ internal fun SlockSandboxWebView(
                     cacheEnabled = cacheEnabled,
                     ephemeral = ephemeral,
                     injectedJavaScript = injectedJavaScript,
-                    allowedNavigationSchemes = allowedNavigationSchemesValue
+                    allowedNavigationSchemes = allowedNavigationSchemesValue,
+                    hostEventsEnabled = hostEventsEnabled
                 )
             }
         }
@@ -336,6 +363,7 @@ internal fun SlockSandboxWebView(
                 navigationBlocked(onNavigationBlocked)
                 urlChange(onUrlChange)
                 navigationStateChange(onNavigationStateChange)
+                hostMessage(onHostMessage)
             }
             applyWebViewAttrs(
                 url = url,
@@ -346,6 +374,7 @@ internal fun SlockSandboxWebView(
                 ephemeral = ephemeral,
                 injectedJavaScript = injectedJavaScript,
                 allowedNavigationSchemes = allowedNavigationSchemesValue,
+                hostEventsEnabled = hostEventsEnabled,
                 force = true
             )
             bindController(controller)
@@ -358,6 +387,7 @@ internal fun SlockSandboxWebView(
                 navigationBlocked(onNavigationBlocked)
                 urlChange(onUrlChange)
                 navigationStateChange(onNavigationStateChange)
+                hostMessage(onHostMessage)
             }
             updateAttrs(view)
             view.bindController(controller)
@@ -394,6 +424,7 @@ internal fun SlockSandboxWebView(
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
+        hostEventsEnabled = hostEventsEnabled,
         onLoadCommit = onLoadCommit,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
@@ -416,6 +447,7 @@ internal fun SlockWebView(
     cacheEnabled: Boolean = true,
     ephemeral: Boolean = false,
     injectedJavaScript: String = "",
+    hostEventsEnabled: Boolean = false,
     onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
@@ -423,7 +455,8 @@ internal fun SlockWebView(
     onUrlChange: (String) -> Unit = {},
     controller: SlockWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
-    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {}
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
     SlockSandboxWebView(
         url = url,
@@ -441,7 +474,8 @@ internal fun SlockWebView(
         onUrlChange = onUrlChange,
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,
-        onNavigationStateChange = onNavigationStateChange
+        onNavigationStateChange = onNavigationStateChange,
+        onHostMessage = onHostMessage
     )
 }
 

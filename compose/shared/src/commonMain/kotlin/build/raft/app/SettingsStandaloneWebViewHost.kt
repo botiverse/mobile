@@ -172,6 +172,25 @@ private fun SettingsWebViewScreen() {
                 iconName = SlockLucideIconName.Link2,
                 spec = settingsMarketplaceWebViewSpec,
             )
+        SettingsWebViewSurface.Feedback ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_feedback_title),
+                iconName = SlockLucideIconName.MessageSquarePlus,
+                spec = settingsFeedbackWebViewSpec,
+                onHostMessage = { kind, _ ->
+                    when (kind) {
+                        "feedback:close" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        "feedback:auth-required" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        "feedback:integration-unavailable" -> {
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                            pager.openSettingsHandsFeedbackPage(
+                                pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                            )
+                        }
+                    }
+                },
+            )
         SettingsWebViewSurface.Administration ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -223,6 +242,7 @@ internal data class StandaloneSettingsWebViewSpec(
     val headerFollowsDocumentTitle: Boolean = false,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     val bottomContentPadding: Dp = 0.dp,
+    val hostEventsEnabled: Boolean = false,
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
 )
 
@@ -239,6 +259,7 @@ internal fun StandaloneSettingsWebViewPage(
     iconName: SlockLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
     isComputerDetail: Boolean = false,
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
 ) {
     SettingsWebViewPageScaffold(
         pager = pager,
@@ -253,6 +274,7 @@ internal fun StandaloneSettingsWebViewPage(
             controller = controller,
             onNavigationStateChange = onNavigationStateChange,
             isComputerDetail = isComputerDetail,
+            onHostMessage = onHostMessage,
         )
     }
 }
@@ -410,6 +432,7 @@ private fun StandaloneSettingsWebViewBody(
     controller: SlockWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     isComputerDetail: Boolean = false,
+    onHostMessage: (String, JSONObject) -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
@@ -536,6 +559,7 @@ internal fun StandaloneSettingsWebViewContent(
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     accessTokenSyncLogger: (String) -> Unit = {},
 ) {
     val session = authSnapshot.session
@@ -560,6 +584,7 @@ internal fun StandaloneSettingsWebViewContent(
         url = webUrl,
         modifier = modifier,
         allowedNavigationSchemes = spec.allowedNavigationSchemes,
+        hostEventsEnabled = spec.hostEventsEnabled,
         bottomContentPadding = spec.bottomContentPadding,
         injectedJavaScript = injectedJavaScript,
         controller = controller,
@@ -569,6 +594,7 @@ internal fun StandaloneSettingsWebViewContent(
         filterStaleUrlCallbacks = spec.surface == SettingsWebViewSurface.Computers,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
+        onHostMessage = onHostMessage,
         onDocumentReadyChange = { documentReady = it },
     )
 
@@ -606,6 +632,7 @@ internal fun SettingsWebViewContent(
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
@@ -688,6 +715,7 @@ internal fun SettingsWebViewContent(
                         onLoadFailure(reason)
                     },
                     onNavigationBlocked = onNavigationBlocked,
+                    onHostMessage = onHostMessage,
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             navigationState = state
@@ -797,13 +825,41 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     surface: SettingsWebViewSurface,
 ): String {
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
+    val clientKind = if (surface == SettingsWebViewSurface.Feedback) feedbackClientKindJavaScript() else ""
     return """
         (function() {
           try {
             $writes;
+            $clientKind
           } catch (error) {
             console.error("slock_mobile_${surface.diagnosticsName}_injected_js_error", error && (error.stack || error.message || error));
           }
         })();
     """.trimIndent()
 }
+
+internal fun feedbackClientKindJavaScript(): String = """
+(function() {
+  var header = "X-Raft-Client-Kind";
+  var kind = "android";
+  var originalFetch = window.fetch;
+  if (originalFetch && !originalFetch.__raftAndroidClientKind) {
+    var wrappedFetch = function(input, init) {
+      init = init || {};
+      var headers = new Headers(init.headers || (input && input.headers) || {});
+      headers.set(header, kind);
+      init.headers = headers;
+      return originalFetch.call(this, input, init);
+    };
+    wrappedFetch.__raftAndroidClientKind = true;
+    window.fetch = wrappedFetch;
+  }
+  var originalOpen = XMLHttpRequest.prototype.open;
+  var originalSend = XMLHttpRequest.prototype.send;
+  if (!originalSend.__raftAndroidClientKind) {
+    XMLHttpRequest.prototype.open = function() { this.__raftClientKind = true; return originalOpen.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function() { if (this.__raftClientKind) { try { this.setRequestHeader(header, kind); } catch (_) {} } return originalSend.apply(this, arguments); };
+    XMLHttpRequest.prototype.send.__raftAndroidClientKind = true;
+  }
+})();
+""".trimIndent()
