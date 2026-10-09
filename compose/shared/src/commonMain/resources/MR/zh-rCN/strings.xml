@@ -275,7 +275,6 @@
     <string name="thread_state_no_replies">暂无回复</string>
     <string name="thread_inline_reply_count_one">1 条回复</string>
     <string name="thread_inline_reply_count_many">%1$d 条回复</string>
-    <string name="thread_inline_earlier_replies">查看更早的 %1$d 条回复</string>
     <string name="thread_inline_new_replies">%1$d 条新回复</string>
     <string name="thread_inline_draft">草稿</string>
     <string name="thread_state_no_messages">暂无消息</string>

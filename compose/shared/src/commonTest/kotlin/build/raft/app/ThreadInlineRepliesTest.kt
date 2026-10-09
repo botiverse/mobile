@@ -113,7 +113,7 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
-    fun presentationUsesAuthoritativeCountUnreadAndDraftWhileKeepingThreeRows() {
+    fun presentationUsesTotalReplyCountUnreadAndDraftWhileKeepingThreeRows() {
         val model =
             initialThreadRepliesReadModel(
                 replies = (1L..4L).map { reply("r-$it", it) },
@@ -132,7 +132,6 @@ class ThreadInlineRepliesTest {
 
         assertEquals(listOf("r-2", "r-3", "r-4"), presentation.replies.map { it.messageId })
         assertEquals(9, presentation.replyCount)
-        assertEquals(6, presentation.undisplayedReplyCount)
         assertEquals(2, presentation.unreadCount)
         assertEquals(true, presentation.hasDraft)
     }

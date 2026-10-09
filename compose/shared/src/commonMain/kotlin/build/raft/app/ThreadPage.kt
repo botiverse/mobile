@@ -20051,10 +20051,7 @@ internal data class ThreadInlineReplyPresentation(
     val replyCount: Int,
     val unreadCount: Int,
     val hasDraft: Boolean,
-) {
-    val undisplayedReplyCount: Int
-        get() = (replyCount - replies.size).coerceAtLeast(0)
-}
+)
 
 internal fun threadInlineReplyPresentation(
     model: ThreadRepliesReadModel?,
@@ -20104,12 +20101,7 @@ private fun ThreadInlineRepliesSurface(
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val countLabel =
-        if (presentation.replyCount > build.raft.app.network.sync.InlineThreadReplyPreviewLimit) {
-            stringResource(
-                MR.strings.thread_inline_earlier_replies,
-                presentation.undisplayedReplyCount,
-            )
-        } else if (presentation.replyCount == 1) {
+        if (presentation.replyCount == 1) {
             stringResource(MR.strings.thread_inline_reply_count_one)
         } else {
             stringResource(MR.strings.thread_inline_reply_count_many, presentation.replyCount)

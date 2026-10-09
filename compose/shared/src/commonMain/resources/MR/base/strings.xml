@@ -275,7 +275,6 @@
     <string name="thread_state_no_replies">No replies yet</string>
     <string name="thread_inline_reply_count_one">1 reply</string>
     <string name="thread_inline_reply_count_many">%1$d replies</string>
-    <string name="thread_inline_earlier_replies">View %1$d earlier replies</string>
     <string name="thread_inline_new_replies">%1$d new</string>
     <string name="thread_inline_draft">Draft</string>
     <string name="thread_state_no_messages">No messages yet</string>

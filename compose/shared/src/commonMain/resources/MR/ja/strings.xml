@@ -275,7 +275,6 @@
     <string name="thread_state_no_replies">まだ返信はありません</string>
     <string name="thread_inline_reply_count_one">1 件の返信</string>
     <string name="thread_inline_reply_count_many">%1$d 件の返信</string>
-    <string name="thread_inline_earlier_replies">以前の返信 %1$d 件を表示</string>
     <string name="thread_inline_new_replies">新着 %1$d 件</string>
     <string name="thread_inline_draft">下書き</string>
     <string name="thread_state_no_messages">まだメッセージはありません</string>
