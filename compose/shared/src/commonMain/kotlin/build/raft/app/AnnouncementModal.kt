@@ -7,16 +7,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.AnnouncementItem
+import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -51,6 +54,13 @@ internal fun SharedAnnouncementModal(
         onDismiss = onDismiss,
         maxWidth = 576.dp
     ) {
+        announcement.label?.let { label ->
+            Text(
+                text = label,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -62,6 +72,23 @@ internal fun SharedAnnouncementModal(
                         style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 22.sp),
                         color = SlockColor.TextBlack
                     )
+                }
+            }
+            item {
+                announcement.image?.let { image ->
+                    val apiBase = SlockSharedStoreRegistry.currentOrNull()
+                        ?.apiEnvironmentStore?.current()?.apiBaseUrl?.trimEnd('/')
+                    val source = apiBase?.let { "$it/announcements/images/${image.assetId}" }
+                    if (source != null) {
+                        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                            SlockCachedImage(
+                                source = source,
+                                contentDescription = image.alt,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                    }
                 }
             }
             item {
@@ -97,10 +124,15 @@ internal fun SharedAnnouncementModal(
                 }
                 val isLastPage = pageIndex >= pages.lastIndex
                 SlockBrutalActionButton(
-                    label = stringResource(
-                        if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next
-                    ),
-                    onClick = { if (isLastPage) onDismiss() else pageIndex += 1 },
+                    label = announcement.cta?.takeIf { isLastPage }?.label
+                        ?: stringResource(if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next),
+                    onClick = {
+                        if (!isLastPage) pageIndex += 1
+                        else {
+                            announcement.cta?.let { onOpenUrl(it.href) }
+                            onDismiss()
+                        }
+                    },
                     leadingIcon = if (isLastPage) null else SlockLucideIconName.ChevronRight,
                     backgroundColor = SlockColor.BrandYellow
                 )

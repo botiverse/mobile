@@ -7206,6 +7206,7 @@ private fun SlockAppShellReadyContent(
                     )
                 }
                 activeAnnouncement?.let { announcement ->
+                    val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
                     SharedAnnouncementModal(
                         announcement = announcement,
                         onDismiss = {
@@ -7214,7 +7215,14 @@ private fun SlockAppShellReadyContent(
                                 announcementsClient.dismissAnnouncement(announcement.id)
                             }
                         },
-                        onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
+                        onOpenUrl = { url ->
+                            val resolved = when {
+                                url.startsWith("/") -> "$announcementWebBase$url"
+                                url.startsWith("?") -> "$announcementWebBase/$url"
+                                else -> url
+                            }
+                            linkNavigator.open(resolved)
+                        }
                     )
                 }
             }
