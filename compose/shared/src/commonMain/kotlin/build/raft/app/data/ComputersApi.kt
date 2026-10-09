@@ -735,7 +735,9 @@ private fun RuntimeFormDefinitionRefDto.toDomain(): SharedRuntimeFormDefinitionR
 private data class ComputerRuntimeSelectionCatalogDto(
     val context: String,
     val machineId: String,
-    val options: List<ComputerRuntimeSelectionOptionDto>
+    // Raw rows, decoded one by one in toDomain: a row with a missing field or a wrong JSON type is
+    // left out on its own instead of failing the whole response.
+    val options: List<JsonElement>
 )
 
 @Serializable
@@ -755,9 +757,17 @@ private fun ComputerRuntimeSelectionCatalogDto.toDomain(
     expectedMachineId: String
 ): SharedCreateAgentRuntimeCatalog? {
     if (context != "new_agent" || machineId.trim() != expectedMachineId) return null
-    // One row this client cannot read (a new status value, an inconsistent row) is left out on its
-    // own; it must not take every other runtime down with it. The first row wins a duplicate id.
-    val mapped = options.mapNotNull { it.toDomain() }.distinctBy { it.runtimeId }
+    // One row this client cannot read (missing field, wrong type, a new status value, an inconsistent
+    // row) is left out on its own; it must not take every other runtime down with it. The first row
+    // wins a duplicate id.
+    val mapped =
+        options
+            .mapNotNull { row ->
+                runCatching {
+                    runtimeFormListJson.decodeFromJsonElement(ComputerRuntimeSelectionOptionDto.serializer(), row)
+                }.getOrNull()?.toDomain()
+            }
+            .distinctBy { it.runtimeId }
     return SharedCreateAgentRuntimeCatalog(machineId = expectedMachineId, options = mapped)
 }
 

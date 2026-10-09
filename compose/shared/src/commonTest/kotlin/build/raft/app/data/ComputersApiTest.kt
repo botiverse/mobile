@@ -334,6 +334,16 @@ class ComputersApiTest {
             canonicalRuntimeOptionsBody.replace(
                 "{\"runtimeId\":\"codex\",\"capabilityStatus\":\"available\"",
                 "{\"runtimeId\":\"codex\",\"capabilityStatus\":\"needs_login\""
+            ) to listOf("builtin"),
+            // A row missing a required field: only that row is dropped.
+            canonicalRuntimeOptionsBody.replace(
+                "{\"runtimeId\":\"codex\",\"capabilityStatus\":\"available\",",
+                "{\"runtimeId\":\"codex\","
+            ) to listOf("builtin"),
+            // A row with a wrong JSON type: only that row is dropped.
+            canonicalRuntimeOptionsBody.replace(
+                "\"runtimeId\":\"codex\",\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\",\"admissionReason\":null,\"current\":false",
+                "\"runtimeId\":\"codex\",\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\",\"admissionReason\":null,\"current\":\"no\""
             ) to listOf("builtin")
         ).forEach { (body, expectedRuntimeIds) ->
             check(body != canonicalRuntimeOptionsBody)
