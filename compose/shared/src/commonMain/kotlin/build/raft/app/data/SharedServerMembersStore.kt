@@ -1687,9 +1687,16 @@ class SharedServerMembersStore internal constructor(
             )
             return authSessionRequiredResult()
         }
-        val directoryBinding = currentDirectoryOwnerBinding(ServerId(key))
-            ?.takeIf { it.matches(owner) }
-            ?: return authSessionRequiredResult()
+        val directoryBinding = currentDirectoryOwnerBinding(ServerId(key))?.takeIf { it.matches(owner) }
+        if (directoryBinding == null) {
+            // Was silent: a Retry that ends here never reached the network and left no trace.
+            logger(
+                "store_load domain=server_members serverId=$key result=error code=members_binding_missing " +
+                    "force=$force priority=${priority.name} reason=$reason " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return authSessionRequiredResult()
+        }
         if (expectedOwner != null && !directoryBinding.matches(expectedOwner)) {
             return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
         }
