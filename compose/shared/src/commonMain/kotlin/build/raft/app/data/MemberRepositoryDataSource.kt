@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.slockAvatarDiagnosticsHash
+
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
 import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
 import build.raft.app.model.ChannelId
@@ -552,6 +554,7 @@ class RealMemberRepository(
                     val mergeStartedAt = TimeSource.Monotonic.markNow()
                     val machineNames = (machineNameResult as? DataResult.Content)?.data.orEmpty()
                     val agents = (agentResult as? DataResult.Content)?.data.orEmpty().resolveComputerLabels(machineNames)
+                    logAgentsWithoutComputer(logger, serverId, agents)
                     val mergedMembers = (result.data.members + agents).distinctBy { it.memberKey }
                     val mergeMs = mergeStartedAt.elapsedNow().inWholeMilliseconds
                     logger(
@@ -1461,6 +1464,22 @@ private fun String.memberComputerIdOrNull(): String? =
 
 private const val MemberComputerBadgePrefix = "computer:"
 private const val MemberComputerIdBadgePrefix = "computer-id:"
+
+/**
+ * Task #148: names the agents whose list row reaches the members page without a computer id
+ * (hashed), so a device run can tell whether the id is lost before or after this merge.
+ */
+private fun logAgentsWithoutComputer(logger: (String) -> Unit, serverId: ServerId, agents: List<MemberProfile>) {
+    val missing = agents.filter { agent ->
+        agent.kind == MemberKind.Agent && agent.permissionBadges.none { it.memberComputerIdOrNull() != null }
+    }
+    logger(
+        "repository_agents_computer serverId=${serverId.value} agents=${agents.size} missingComputerId=${missing.size}" +
+            missing.joinToString(separator = ",", prefix = " missing=[", postfix = "]") {
+                it.id.value.slockAvatarDiagnosticsHash()
+            }
+    )
+}
 
 private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, String>): List<MemberProfile> =
     map { it.resolveComputerLabel(machineNames) }
