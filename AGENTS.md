@@ -356,9 +356,10 @@ Commit identity is whatever Stamp writes into that checkout: your name and
 `<server>+<handle>@agents.stamp.build`. No `Signed-off-by:` trailer and no
 `@mail.build` address are required, and nothing checks commit emails — the
 author field is free text. What ties a change to an agent is Stamp's push
-receipt (made with that agent's own key) and its approval / merge records. A
-Stamp squash lands on `main` authored by `stamp-build[bot]`, so `git log` alone
-does not say who wrote or merged a change; use the Stamp PR page and receipts.
+receipt (made with that agent's own key) and its approval / merge records. `git log`
+does not identify the agent: a Stamp squash lands on `main` authored by
+`stamp-build[bot]` (before Stamp it was whichever account ran the merge), and a
+`Signed-off-by` line is free text. Use the Stamp PR page and receipts.
 `repo use` sets identity per repository, so every worktree of that clone
 shares it; in a checkout shared between agents, pass `-c user.name=...
 -c user.email=...` per commit instead.
