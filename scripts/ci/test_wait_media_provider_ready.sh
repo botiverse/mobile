@@ -83,4 +83,26 @@ for mode in reboot ab-fresh; do
   [ "$ran" -eq "$expected" ] || fail "$mode: instrumentation ran $ran times, expected $expected"
 done
 
+# Runner on API 29: no readiness signal exists there; it must run the test without waiting and
+# record that explicitly instead of timing out.
+rm -rf "$work/state" "$work/run"; mkdir -p "$work/state" "$work/run"
+(cd "$work/run" && PATH="$work:$PATH" STUB_STATE="$work/state" STUB_CONTENT=throws STUB_SCAN=never \
+  STUB_BOOT=ok MEDIA_READY_TIMEOUT=3 \
+  "$here/run-public-downloads-authority.sh" 29 1 ci >"$work/run/out.txt" 2>&1) ||
+  fail "api29: must not fail on the missing readiness signal: $(cat "$work/run/out.txt")"
+grep -q 'media_ready=not_applicable api<30' "$work/run/attachment-public-downloads-api29-repeat-summary.txt" ||
+  fail "api29: readiness must be recorded as not applicable"
+[ "$(wc -l < "$work/state/instrumented")" -eq 1 ] || fail "api29: instrumentation must run once"
+
+# Runner on API 31 with no readiness signal: fails without instrumenting.
+rm -rf "$work/state" "$work/run"; mkdir -p "$work/state" "$work/run"
+set +e
+(cd "$work/run" && PATH="$work:$PATH" STUB_STATE="$work/state" STUB_CONTENT=empty_result STUB_SCAN=never \
+  STUB_BOOT=ok MEDIA_READY_TIMEOUT=3 MEDIA_READY_CALL_TIMEOUT=2 \
+  "$here/run-public-downloads-authority.sh" 31 1 ci >"$work/run/out.txt" 2>&1)
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "api31: missing readiness signal must fail the run"
+[ ! -e "$work/state/instrumented" ] || fail "api31: must not instrument without readiness"
+
 echo "ok: wait-media-provider-ready and runner failure paths"
