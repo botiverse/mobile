@@ -106,12 +106,18 @@ internal class RuntimeFormV2Loader(
         val form = response.bodyText?.let(::parseRuntimeFormV2)
             ?: return failure("runtime_form_v2_contract_mismatch")
         val sources = linkedMapOf<String, RuntimeFormV2Source>()
-        for (sourceId in form.optionSources.keys) {
+        for ((sourceId, key) in form.optionSources) {
             when (val source = fetchSource(serverId, machineId, form.runtimeId, sourceId)) {
                 is DataResult.Content -> sources[sourceId] = source.data
-                is DataResult.Error -> return source
+                // One source that fails to load (a non-2xx such as an offline 409, or a body this
+                // client cannot read) marks only its own field unavailable and retryable; the rest of
+                // the form still renders instead of the whole form falling back to v1.
+                is DataResult.Error ->
+                    // Auth / permission answers are real blockers for the whole form, not a gap in one field.
+                    if (source.error.code in RUNTIME_FORM_V2_FATAL_SOURCE_CODES) return source
+                    else sources[sourceId] = unavailableRuntimeFormV2Source(key)
+                is DataResult.Empty -> sources[sourceId] = unavailableRuntimeFormV2Source(key)
                 is DataResult.NoPermission -> return source
-                is DataResult.Empty -> return source
             }
         }
         return DataResult.Content(RuntimeFormV2Loaded(form, sources))
@@ -172,3 +178,19 @@ internal fun runtimeFormV2ServerError(body: String?): RuntimeFormV2ServerError? 
         .distinct()
     return RuntimeFormV2ServerError(root["error"].stringOrNull(), fieldKeys)
 }
+
+private val RUNTIME_FORM_V2_FATAL_SOURCE_CODES = setOf("runtime_form_v2_http_401", "runtime_form_v2_http_403")
+
+/** Stand-in for an option source that failed to load: no options, `unavailable`, retryable. */
+internal fun unavailableRuntimeFormV2Source(key: RuntimeFormV2OptionSourceKey): RuntimeFormV2Source =
+    RuntimeFormV2Source(
+        sourceId = key.sourceId,
+        kind = key.kind,
+        pointer = "/${key.key}",
+        dependsOn = key.dependsOn?.let { "/$it" },
+        options = if (key.kind == RuntimeFormV2SourceKind.Select) emptyList() else null,
+        optionsByValue = if (key.kind == RuntimeFormV2SourceKind.DependentSelect) emptyMap() else null,
+        status = "unavailable",
+        reason = null,
+        retryable = true
+    )
