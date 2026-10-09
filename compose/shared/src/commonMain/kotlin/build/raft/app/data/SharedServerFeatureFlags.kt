@@ -65,6 +65,14 @@ const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /**
+ * Task #153 DNS-over-HTTPS fallback for the curl transport (see SlockDohFallbackPolicy). Default OFF
+ * (server-unresolved evaluates false). Kept in the last-known store so a cold start during a DNS
+ * outage, when evaluate itself cannot reach the server, still uses the last value; internal builds
+ * can force it through Local Feature Overrides.
+ */
+const val MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY: String = "mobile_doh_fallback_v0"
+
+/**
  * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
  * web reads (slock `RUNTIME_FORM_V2_WEB_FLAG_KEY`), so one switch turns v2 on for every client.
  * Off, or when the v2 endpoints fail, the pinned v1 form is used unchanged.
@@ -85,6 +93,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
+    MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
 )
 
