@@ -45,10 +45,10 @@ In scope:
 Out of scope:
 
 - denial-of-service or volumetric attacks against the hosted service,
-- findings that require a compromised end-user device or the same OS user as
-  a running agent (see the isolation notes in the daemon and CLI packages),
-- misconfiguration of self-hosted deployments that deviate from the shipped
-  configuration,
+- findings that require a compromised, rooted or jailbroken end-user device,
+  or physical access to an unlocked device,
+- builds that deviate from the shipped configuration (debug builds, modified
+  endpoints or disabled platform protections),
 - reports from automated scanners without a demonstrated impact.
 
 ## Safe harbour

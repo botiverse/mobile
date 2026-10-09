@@ -6,12 +6,12 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 "vendored" means source is copied into this repository under `third_party/`.
 
 ## Vendored source (third_party/)
-| Path | Upstream | Version / commit | License | Action before publish |
-|---|---|---|---|---|
-| third_party/markdown-parser | JetBrains/markdown (via botiverse/jetbrains-markdown fork raft/0.7.5-mobile) | 0.7.5, upstream 52368fb1, fork 295290f8 | Apache-2.0 (LICENSE present) | none — README documents the six divergent files |
-| third_party/kuikly-compose-markdown | Kuikly-contrib/kuikly-compose-markdown (com.tencent.kuiklybase:markdown 0.4.0 sources) + embedded JetBrains/Saket Narayan Apache-2.0 files | 0.4.0 / 0.3.0-ohos | KuiklyUI license (Tencent) for Kuikly-authored files; Apache-2.0 for JetBrains (42 files) and Saket Narayan (6 files) | **add LICENSE (KuiklyUI text) + NOTICE listing the Apache-2.0 files; 43 of 94 .kt files carry no header — keep upstream headers, do not add Botiverse headers to third-party files** |
-| third_party/kuiklybase-platform | Tencent-TDS/KuiklyBase-platform | README only (patch catalog notes) | n/a (no code vendored) | none |
-| third_party/ktor-ohos | ktorio/ktor 2.3.7 fork notes | README + patches only | Apache-2.0 (patches derive from Ktor) | unused by the build — exclude from snapshot or delete (adjust scripts/ci/test_no_local_ktor_ci_contract.py and plan_test_tier.sh) |
+| Path | Upstream | Version / commit | License |
+| --- | --- | --- | --- |
+| third_party/markdown-parser | JetBrains/markdown (via botiverse/jetbrains-markdown fork raft/0.7.5-mobile) | 0.7.5, upstream 52368fb1, fork 295290f8 | Apache-2.0 (LICENSE present) |
+| third_party/kuikly-compose-markdown | Kuikly-contrib/kuikly-compose-markdown (com.tencent.kuiklybase:markdown 0.4.0 sources) + embedded JetBrains/Saket Narayan Apache-2.0 files | 0.4.0 / 0.3.0-ohos | KuiklyUI license (Tencent) for Kuikly-authored files; Apache-2.0 for JetBrains (42 files) and Saket Narayan (6 files) |
+| third_party/kuiklybase-platform | Tencent-TDS/KuiklyBase-platform | README only (patch catalog notes) | n/a (no code vendored) |
+| third_party/ktor-ohos | ktorio/ktor 2.3.7 fork notes (not used by the current build) | README + patches only | Apache-2.0 (patches derive from Ktor) |
 
 ## Git submodules (not vendored; referenced by URL)
 | Path | Repository | License |
@@ -60,7 +60,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | Package | Version | License |
 |---|---|---|
 | @kuikly-open/render (Botiverse-built .har) | 2.28.0-raft.9-2.0.21-ohos | KuiklyUI license |
-| @botiverse/hands | 0.3.5 | ['MIT'] |
+| @botiverse/hands | 0.3.5 | MIT |
 | @ohos/apng | ^1.0.0-rc.8 | MIT |
 | @kuiklybase/knoi | 0.0.4 | Apache-2.0 |
 | @tencent/mmkv | 2.1.0 | BSD-3-Clause |

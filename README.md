@@ -25,16 +25,13 @@ the authoritative text.
 "Raft" and the Raft logo are trademarks of Botiverse, Inc. and are not covered by
 the license.
 
-## Contributions and history
+## Contributions
 
-- This repository is a **release mirror**. Development happens in a private
-  repository; each release is exported here as one commit, and the history
-  starts at the first published snapshot.
-- We do **not** accept pull requests at this time. External pull requests are
-  closed automatically. See [CONTRIBUTING.md](CONTRIBUTING.md).
+- External pull requests are not accepted at this time. How the source is
+  published and whether contributions open up will be documented here when
+  decided.
 - Security issues: see [SECURITY.md](SECURITY.md). Please do not file them
   publicly.
-
 
 ## Third-party code
 
