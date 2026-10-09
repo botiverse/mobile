@@ -7225,12 +7225,13 @@ private fun SlockAppShellReadyContent(
                             }
                         },
                         onOpenUrl = { url ->
-                            val resolved = when {
-                                url.startsWith("/") -> "$announcementWebBase$url"
-                                url.startsWith("?") -> "$announcementWebBase/$url"
-                                else -> url
+                            if (announcementOwner == latestAnnouncementOwner) {
+                                resolveAnnouncementLink(
+                                    url,
+                                    announcementWebBase,
+                                    readySession?.servers?.firstOrNull { it.id == readyServerId }?.slug,
+                                )?.let { linkNavigator.open(it) }
                             }
-                            linkNavigator.open(resolved)
                         }
                     )
                 }

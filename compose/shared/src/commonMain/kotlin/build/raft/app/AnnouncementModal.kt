@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.AnnouncementItem
 import build.raft.app.data.SlockSharedStoreRegistry
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -39,11 +41,11 @@ internal fun SharedAnnouncementModal(
     // Server contract: `pages[]` carries the multi-page body; fall back to the
     // flattened first-page `body` when a payload predates the pages field.
     val pages =
-        remember(announcement.id) {
+        remember(announcement) {
             announcement.pages.takeIf { it.isNotEmpty() }
                 ?: listOf(build.raft.app.data.AnnouncementPageItem(title = null, body = announcement.body))
         }
-    var pageIndex by remember(announcement.id) { mutableStateOf(initialPageIndex.coerceIn(0, pages.lastIndex)) }
+    var pageIndex by remember(announcement) { mutableStateOf(initialPageIndex.coerceIn(0, pages.lastIndex)) }
     val page = pages[pageIndex.coerceIn(0, pages.lastIndex)]
     val hasMultiplePages = pages.size > 1
 
@@ -80,11 +82,14 @@ internal fun SharedAnnouncementModal(
                         ?.apiEnvironmentStore?.current()?.apiBaseUrl?.trimEnd('/')
                     val source = apiBase?.let { "$it/announcements/images/${image.assetId}" }
                     if (source != null) {
-                        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                        var failed by remember(source) { mutableStateOf(false) }
+                        Box(modifier = Modifier.fillMaxWidth().height(if (failed) 32.dp else 200.dp)) {
+                            if (failed) Text(image.alt, style = SlockType.Caption, color = SlockColor.TextMutedGray)
                             SlockCachedImage(
                                 source = source,
                                 contentDescription = image.alt,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().height(if (failed) 0.dp else 200.dp),
+                                onImageStateChange = { failed = it is AsyncImagePainter.State.Error },
                                 contentScale = ContentScale.Fit,
                             )
                         }
@@ -123,6 +128,13 @@ internal fun SharedAnnouncementModal(
                     )
                 }
                 val isLastPage = pageIndex >= pages.lastIndex
+                if (isLastPage && announcement.cta != null) {
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.announcement_action_got_it),
+                        onClick = onDismiss,
+                        backgroundColor = SlockColor.SurfaceWhite,
+                    )
+                }
                 SlockBrutalActionButton(
                     label = announcement.cta?.takeIf { isLastPage }?.label
                         ?: stringResource(if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next),
