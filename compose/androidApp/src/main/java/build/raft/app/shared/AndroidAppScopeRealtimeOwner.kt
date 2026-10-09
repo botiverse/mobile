@@ -506,10 +506,13 @@ internal object AndroidAppScopeRealtimeOwner {
             "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
         val appContext = context.applicationContext
+        // A new default network (Wi-Fi <-> cellular, a VPN switched on or off) is announced even
+        // when the app was already online: its DNS may resolve the API host again (task #150).
         emitHostNetworkStatus(
             context = appContext,
             online = appContext.isHostNetworkOnline(),
-            source = "network_available"
+            source = "network_available",
+            force = true
         )
         healthCheckRealtimeConnection(
             context = appContext,

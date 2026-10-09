@@ -363,6 +363,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
     val networkClient: SlockNetworkClient,
     val networkTransportController: SlockNetworkTransportController,
+    private val networkReachabilityGates: SlockHostReachabilityGates,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -663,6 +664,9 @@ internal class SlockSharedStoreProvider private constructor(
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
         ).start()
         KuiklyHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
+            // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
+            // again; stop short-circuiting requests at once instead of waiting for the next probe.
+            networkReachabilityGates.onNetworkAvailable()
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
@@ -2272,6 +2276,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authRuntimeCapabilityStore = SharedAuthRuntimeCapabilityStore(),
                 networkClient = networkClient,
                 networkTransportController = networkTransportController,
+                networkReachabilityGates = networkReachabilityGates,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,
