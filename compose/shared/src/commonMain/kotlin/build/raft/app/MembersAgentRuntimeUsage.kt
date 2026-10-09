@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockProgressBar
 import build.raft.app.components.SlockProgressBarTone
+import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageKey
@@ -39,6 +40,11 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Everything the agent detail needs to read runtime account usage (task #137). Provided once
@@ -52,6 +58,43 @@ internal class MembersRuntimeAccountUsageAccess(
     /** Called when a read found [owner] is no longer the signed-in identity; re-resolve it. */
     val onIdentityChanged: () -> Unit = {}
 )
+
+/**
+ * Live owner (signed-in identity) for runtime account usage reads on one page. Any auth event
+ * other than a token rotation clears the owner at once — so the chip drops a finished read of
+ * the previous identity before anything else can show it — and then re-resolves it.
+ */
+internal class MembersRuntimeAccountUsageOwnerTracker(
+    private val resolve: suspend () -> SharedComputersOwner?
+) {
+    private val mutex = Mutex()
+    private var generation = 0L
+    private val mutableOwner = MutableStateFlow<SharedComputersOwner?>(null)
+    val owner: StateFlow<SharedComputersOwner?> = mutableOwner.asStateFlow()
+
+    /** Re-reads the owner; a result that an [invalidate] overtook is dropped. */
+    suspend fun refresh() {
+        val started = mutex.withLock { generation }
+        val resolved = resolve()
+        mutex.withLock { if (generation == started) mutableOwner.value = resolved }
+    }
+
+    /** The identity may have changed: show nothing until it is re-resolved. */
+    suspend fun invalidate() {
+        mutex.withLock {
+            generation += 1
+            mutableOwner.value = null
+        }
+        refresh()
+    }
+
+    suspend fun onAuthSessionEvent(event: AuthSessionEvent) {
+        if (event.changesRuntimeAccountUsageOwner()) invalidate()
+    }
+}
+
+/** Token rotation keeps the account; every other auth event may change who is signed in. */
+internal fun AuthSessionEvent.changesRuntimeAccountUsageOwner(): Boolean = this !is AuthSessionEvent.TokensRotated
 
 internal val LocalMembersRuntimeAccountUsageAccess =
     staticCompositionLocalOf<MembersRuntimeAccountUsageAccess?> { null }

@@ -3678,27 +3678,31 @@ internal fun MemberDetailPageContent(
         }
     }
 
-    // Bumped when a usage read finds the owner below is no longer the signed-in identity.
-    var runtimeAccountUsageOwnerRefresh by remember { mutableStateOf(0) }
-    val runtimeAccountUsageOwner by androidx.compose.runtime.produceState<SharedComputersOwner?>(
-        initialValue = null,
-        activeServerId,
-        pageVisibleTick,
-        runtimeAccountUsageOwnerRefresh
-    ) {
-        value = provider.currentRuntimeAccountUsageOwner()
+    val runtimeAccountUsageOwnerTracker = remember(provider) {
+        MembersRuntimeAccountUsageOwnerTracker { provider.currentRuntimeAccountUsageOwner() }
     }
+    LaunchedEffect(runtimeAccountUsageOwnerTracker, activeServerId, pageVisibleTick) {
+        runtimeAccountUsageOwnerTracker.refresh()
+    }
+    // Live identity boundary: a sign-out / account / environment change clears a usage card that
+    // was already loaded for the previous identity, even while this page stays composed.
+    LaunchedEffect(runtimeAccountUsageOwnerTracker, provider.authStore) {
+        (provider.authStore as? build.raft.app.data.SlockAuthSessionEventSource)
+            ?.authSessionEvents
+            ?.collect { event -> runtimeAccountUsageOwnerTracker.onAuthSessionEvent(event) }
+    }
+    val runtimeAccountUsageOwner by runtimeAccountUsageOwnerTracker.owner.collectAsState()
     // Task #137: read-only runtime account usage for the agent's Runtime Config chip. Only
     // routes that allow private agent surfaces get a server id; the server still decides
     // access (403 hides the entry).
     val runtimeAccountUsageAccess =
-        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId) {
+        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker) {
             provider.runtimeAccountUsageStore?.let { store ->
                 MembersRuntimeAccountUsageAccess(
                     store = store,
                     owner = runtimeAccountUsageOwner,
                     serverId = statusLookupServerId,
-                    onIdentityChanged = { runtimeAccountUsageOwnerRefresh += 1 }
+                    onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } }
                 )
             }
         }

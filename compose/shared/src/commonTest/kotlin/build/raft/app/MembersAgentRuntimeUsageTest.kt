@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -17,9 +18,13 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 
 class MembersAgentRuntimeUsageTest {
     private val owner = SharedComputersOwner("https://api.example", "user-1", "gen-1")
@@ -97,6 +102,100 @@ class MembersAgentRuntimeUsageTest {
         assertEquals(0, window(RuntimeAccountUsageWindowStatus.Ok, 0.0).displayPercentOrNull())
         assertEquals(42, window(RuntimeAccountUsageWindowStatus.Ok, 0.42).displayPercentOrNull())
         assertEquals(100, window(RuntimeAccountUsageWindowStatus.LimitReached, 1.0).displayPercentOrNull())
+    }
+
+    @Test
+    fun finishedReadThenAccountSwitchNeverLetsTheOldCardOpen() = runPortableCoroutineTest<Unit> {
+        // Account A reads usage and the page stays composed; then the user switches to B.
+        val accountB = owner.copy(accountId = "user-2", sessionGeneration = "gen-b")
+        var signedIn: SharedComputersOwner? = owner
+        val resolveGate = CompletableDeferred<Unit>()
+        var gateResolves = false
+        val tracker = MembersRuntimeAccountUsageOwnerTracker {
+            if (gateResolves) resolveGate.await()
+            signedIn
+        }
+        val usage = SharedRuntimeAccountUsageStore(
+            client = SlockComputersApiClient(UsageOkApi()),
+            currentIdentity = { signedIn },
+            clock = { 0L }
+        )
+        tracker.refresh()
+        val keyA = membersRuntimeAccountUsageKey(access(tracker.owner.value, "s1"), "claude", "m1")!!
+        assertIs<RuntimeAccountUsageLoad.Loaded>(usage.read(keyA))
+
+        signedIn = accountB
+        gateResolves = true
+        val switching = async(start = CoroutineStart.UNDISPATCHED) {
+            tracker.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 2))
+        }
+        // Before B is even resolved the owner is gone, so the chip's key is null: the loaded A
+        // state is dropped (state is keyed on the key) and the entry is not offered.
+        assertNull(tracker.owner.value)
+        assertNull(membersRuntimeAccountUsageKey(access(tracker.owner.value, "s1"), "claude", "m1"))
+        resolveGate.complete(Unit)
+        switching.await()
+
+        val keyB = membersRuntimeAccountUsageKey(access(tracker.owner.value, "s1"), "claude", "m1")!!
+        assertEquals(accountB, keyB.owner)
+        assertNotEquals(keyA, keyB)
+        // B never sees A's cached usage, and A's key is refused outright now.
+        assertNull(usage.peek(keyB))
+        assertEquals(RuntimeAccountUsageLoad.Superseded, usage.read(keyA))
+    }
+
+    @Test
+    fun tokenRotationKeepsTheOwnerAndOtherAuthEventsReResolveIt() = runPortableCoroutineTest<Unit> {
+        var signedIn: SharedComputersOwner? = owner
+        val tracker = MembersRuntimeAccountUsageOwnerTracker { signedIn }
+        tracker.refresh()
+        assertFalse(AuthSessionEvent.TokensRotated(generation = 1).changesRuntimeAccountUsageOwner())
+        signedIn = owner.copy(sessionGeneration = "gen-2")
+        tracker.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 1))
+        assertEquals(owner, tracker.owner.value)
+        assertTrue(AuthSessionEvent.BindingMetadataChanged(generation = 2).changesRuntimeAccountUsageOwner())
+        signedIn = null
+        tracker.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
+        assertNull(tracker.owner.value)
+    }
+
+    @Test
+    fun aRefreshOvertakenByAnInvalidateNeverPublishesTheOldOwner() = runPortableCoroutineTest<Unit> {
+        var signedIn: SharedComputersOwner? = owner
+        val firstResolve = CompletableDeferred<Unit>()
+        var calls = 0
+        val tracker = MembersRuntimeAccountUsageOwnerTracker {
+            calls += 1
+            val seen = signedIn
+            if (calls == 1) firstResolve.await()
+            seen
+        }
+        val stale = async(start = CoroutineStart.UNDISPATCHED) { tracker.refresh() }
+        signedIn = owner.copy(accountId = "user-2")
+        tracker.invalidate()
+        assertEquals("user-2", tracker.owner.value?.accountId)
+        firstResolve.complete(Unit)
+        stale.await()
+        assertEquals("user-2", tracker.owner.value?.accountId)
+    }
+
+    private class UsageOkApi : SlockComputersApi {
+        override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"state":"fresh","snapshot":{"provider":"claude","accounts":[{"accountKey":"a","health":"ok","windows":[]}]}}"""
+            )
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
+            error("unused")
+        override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse =
+            error("unused")
     }
 
     private fun access(owner: SharedComputersOwner?, serverId: String?) =
