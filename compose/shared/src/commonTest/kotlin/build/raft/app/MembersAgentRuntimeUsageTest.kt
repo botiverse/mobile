@@ -68,6 +68,17 @@ class MembersAgentRuntimeUsageTest {
     }
 
     @Test
+    fun diagnosticsLabelsCarryOnlyTheLoadShape() {
+        assertEquals("none", (null as RuntimeAccountUsageLoad?).diagnosticsLabel())
+        assertEquals("forbidden", RuntimeAccountUsageLoad.Forbidden.diagnosticsLabel())
+        assertEquals("superseded", RuntimeAccountUsageLoad.Superseded.diagnosticsLabel())
+        assertEquals("failed:server_unavailable", RuntimeAccountUsageLoad.Failed("server_unavailable", true).diagnosticsLabel())
+        assertEquals("missing", RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing).diagnosticsLabel())
+        assertEquals("stale", loaded(stale = true, account()).diagnosticsLabel())
+        assertEquals("fresh", loaded(stale = false, account()).diagnosticsLabel())
+    }
+
+    @Test
     fun aReadForAnIdentityThatIsNoLongerSignedInShowsNothing() {
         assertNull(RuntimeAccountUsageLoad.Superseded.shownRuntimeAccountUsage())
         assertFalse(RuntimeAccountUsageLoad.Superseded.offersRuntimeAccountUsage())
