@@ -8,8 +8,8 @@
 # (run 37855699822) overlapped MediaProvider's first-boot database creation/migration, which is
 # when the single CI run executes. Why the grant is not honoured there is still under
 # investigation. Before the test, wait-media-provider-ready.sh requires an explicit readiness
-# signal (a verified scan_volume Result, else the logged boot scan) within a deadline; a
-# readiness timeout fails the run. This narrows coverage of
+# signal (MediaProvider's logged completed scan) within a deadline; a readiness timeout fails the
+# run. Applies on API 30+ only: API 29 has no such signal, so it runs as before. This narrows coverage of
 # the boot phase on purpose; the cross-UID and byte assertions are unchanged and not retried.
 #
 # Usage: run-public-downloads-authority.sh <api-level> [repeat] [mode]
@@ -85,6 +85,13 @@ for i in $(seq 1 "$repeat"); do
       ;;
   esac
   ready="media_ready=skipped"
+  if [ "$wait_media" = true ] && [ "$api" -lt 30 ]; then
+    # API 29 MediaProvider has neither a scan_volume call (it throws) nor the
+    # "Scanned external_primary" completion log, and the denial has only been seen on API 31.
+    # Keep the original behaviour there, recorded explicitly rather than as a silent skip.
+    wait_media=false
+    ready="media_ready=not_applicable api<30"
+  fi
   if [ "$wait_media" = true ]; then
     if ! ready="$(wait_for_media_ready)"; then
       # Never test on an unready MediaProvider: a timeout is a failed run, not a skip.
@@ -113,8 +120,9 @@ grep -E "MediaProvider|MediaUpgradeReceiver|has no access|ExternalReadProbe" \
   "$logcat_file" | tail -n 400 > "attachment-public-downloads-api${api}-logcat-focus.txt" || true
 {
   # Boot/reboot failures are reported separately and never count as experiment samples.
-  samples="$(grep '^iteration=' "$summary_file" | grep -v ' boot=' || true)"
+  samples="$(grep '^iteration=' "$summary_file" | grep -v ' boot=' | grep -v 'not_applicable' || true)"
   echo "boot_failures=$(grep -c ' boot=' "$summary_file")"
+  echo "readiness_not_applicable_failures=$(grep -c 'not_applicable.*rc=[1-9]' "$summary_file") of $(grep -c 'not_applicable' "$summary_file")"
   echo "control_failures=$(grep -c 'wait=false .*rc=[1-9]' <<<"$samples") of $(grep -c 'wait=false' <<<"$samples")"
   echo "wait_failures=$(grep -c 'wait=true .*rc=[1-9]' <<<"$samples") of $(grep -c 'wait=true' <<<"$samples")"
 } | tee -a "$summary_file"
