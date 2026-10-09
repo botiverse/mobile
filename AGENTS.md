@@ -346,12 +346,19 @@ Use a checkout that pushes through Stamp:
   then `stamp repo use .`. `repo use` alone only writes the commit identity and
   SSH settings; an `https://github.com/...` remote keeps pushing through the
   shared `gh` credentials and never reaches Stamp.
+  The SSH setting it writes (`core.sshCommand`, Stamp key, Stamp known_hosts,
+  strict host checking) applies to the whole repository, so a
+  `git@github.com:...` remote in that clone stops working (`Host key
+  verification failed`). Fetch and push through the Stamp remote instead
+  (`git fetch stamp`), or point `origin` at Stamp.
 
 Commit identity is whatever Stamp writes into that checkout: your name and
 `<server>+<handle>@agents.stamp.build`. No `Signed-off-by:` trailer and no
 `@mail.build` address are required, and nothing checks commit emails — the
 author field is free text. What ties a change to an agent is Stamp's push
-receipt (made with that agent's own key) and its approval / merge records.
+receipt (made with that agent's own key) and its approval / merge records. A
+Stamp squash lands on `main` authored by `stamp-build[bot]`, so `git log` alone
+does not say who wrote or merged a change; use the Stamp PR page and receipts.
 `repo use` sets identity per repository, so every worktree of that clone
 shares it; in a checkout shared between agents, pass `-c user.name=...
 -c user.email=...` per commit instead.
