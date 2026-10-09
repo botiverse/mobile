@@ -1989,13 +1989,7 @@ internal fun MembersPageContent(
             scope = scope,
             logger = { message -> bridge.log("members_$message") },
             ownerProvider = {
-                authStore.readSession()?.let { session ->
-                    SharedComputersOwner(
-                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                        accountId = session.user.id.trim(),
-                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                    )
-                }
+                sharedStores.computersOwner(storeScope)
             }
         )
     }
@@ -2640,17 +2634,11 @@ private class MemberDetailRouteProvider(
     val sharedHomeStore: SharedHomeStore?,
     val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null
+    val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null,
+    val computersOwner: suspend () -> SharedComputersOwner? = { null }
 ) {
     /** The identity the shared network client currently authenticates as (task #137 usage reads). */
-    suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? =
-        authStore.readSession()?.let { session ->
-            SharedComputersOwner(
-                environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                accountId = session.user.id.trim(),
-                sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-            )
-        }
+    suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? = computersOwner()
 
     suspend fun currentAgentDetailOwner(
         expectedServerId: ServerId,
@@ -3263,13 +3251,7 @@ private fun rememberMemberDetailRouteProvider(
             scope = scope,
             logger = { message -> bridge.log("member_detail_$message") },
             ownerProvider = {
-                authStore.readSession()?.let { session ->
-                    SharedComputersOwner(
-                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                        accountId = session.user.id.trim(),
-                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                    )
-                }
+                sharedStores.computersOwner(storeScope)
             }
         )
     }
@@ -3293,13 +3275,7 @@ private fun rememberMemberDetailRouteProvider(
         SharedRuntimeAccountUsageStore(
             client = computersApiClient,
             currentIdentity = {
-                authStore.readSession()?.let { session ->
-                    SharedComputersOwner(
-                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                        accountId = session.user.id.trim(),
-                        sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                    )
-                }
+                sharedStores.computersOwner(storeScope)
             }
         )
     }
@@ -3334,6 +3310,7 @@ private fun rememberMemberDetailRouteProvider(
         runtimeAccountUsageStore
     ) {
         MemberDetailRouteProvider(
+            computersOwner = { sharedStores.computersOwner(storeScope) },
             bridge = bridge,
             reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,

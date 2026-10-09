@@ -420,6 +420,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellComputersStores = SlockShellScopedStoreCache<SharedComputersStore>()
     private val shellCreateAgentFormStores = SlockShellScopedStoreCache<SharedCreateAgentFormStore>()
     private val shellCreateAgentFormOwnerJobs = SlockShellScopedStoreCache<Job>()
+    private val shellAuthLoginGenerations = SlockShellScopedStoreCache<SharedAuthLoginGeneration>()
+    private val shellAuthLoginGenerationJobs = SlockShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val shellConversationForwardHistories = SlockShellScopedStoreCache<SharedConversationForwardHistory>()
     private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
@@ -1085,32 +1087,38 @@ internal class SlockSharedStoreProvider private constructor(
      * must observe the same owner-fenced SharedComputersStore rather than creating
      * route-local copies of the machine directory.
      */
+    /** Moves on login / session clear only, never on a token refresh; key client caches on it, not on tokens. */
+    internal fun authLoginGeneration(scope: SlockShellStoreScope): SharedAuthLoginGeneration =
+        shellAuthLoginGenerations.getOrPut(scope) {
+            SharedAuthLoginGeneration().also { generation ->
+                (authStore(scope) as? SlockAuthSessionEventSource)?.let { events ->
+                    shellAuthLoginGenerationJobs.getOrPut(scope) {
+                        threadSendScope.launch { events.authSessionEvents.collect(generation::onAuthSessionEvent) }
+                    }
+                }
+            }
+        }
+
+    /** The computers cache owner for this shell's current session. */
+    internal suspend fun computersOwner(scope: SlockShellStoreScope): SharedComputersOwner? =
+        authStore(scope).readSession()?.let { session ->
+            sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
+        }
+
     fun computersStore(scope: SlockShellStoreScope): SharedComputersStore =
         shellComputersStores.getOrPut(scope) {
-            val shellAuthStore = authStore(scope)
             SharedComputersStore(
                 computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockComputers", "shell_computers"),
-                ownerProvider = {
-                    shellAuthStore.readSession()?.let { session ->
-                        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
-                        val accountId = session.user.id.trim()
-                        if (environmentId.isBlank() || accountId.isBlank()) null
-                        else SharedComputersOwner(
-                            environmentId = environmentId,
-                            accountId = accountId,
-                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                        )
-                    }
-                }
+                ownerProvider = { computersOwner(scope) }
             )
         }
 
     fun createAgentFormStore(scope: SlockShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {
             val shellAuthStore = authStore(scope)
-            val loginGeneration = SharedCreateAgentFormLoginGeneration()
+            val loginGeneration = authLoginGeneration(scope)
             val formLogger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
             SharedCreateAgentFormStore(
                 computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient(scope))),
@@ -1560,6 +1568,8 @@ internal class SlockSharedStoreProvider private constructor(
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
+        shellAuthLoginGenerationJobs.remove(scope)?.cancel()
+        shellAuthLoginGenerations.remove(scope)
         shellCreateAgentFormStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellConversationForwardHistories.remove(scope)?.release()

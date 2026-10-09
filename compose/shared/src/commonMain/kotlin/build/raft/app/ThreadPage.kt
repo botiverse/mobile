@@ -3995,13 +3995,7 @@ private fun ThreadPageScreen(
                 scope = routeScope,
                 logger = { message -> bridge.log("thread_$message") },
                 ownerProvider = {
-                    authStore.readSession()?.let { session ->
-                        SharedComputersOwner(
-                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                            accountId = session.user.id.trim(),
-                            sessionGeneration = session.accessToken.hashCode().toUInt().toString(16)
-                        )
-                    }
+                    sharedStores.computersOwner(storeScope)
                 }
             )
         }

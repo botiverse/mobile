@@ -3,8 +3,6 @@ package build.raft.app.data
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.model.ServerId
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -38,25 +36,6 @@ internal data class SharedCreateAgentFormOwner(
     val accountId: String,
     val sessionGeneration: String
 )
-
-/**
- * The create form's session generation: moves when someone logs in or the session is cleared, never on a
- * silent token refresh. Keying it on the access token made every refresh look like a new session, which
- * wiped the cached runtime list mid-form, reset the chosen runtime to the first one and dropped a typed
- * API key (HuaTuo, #raft-mobile-reconcile cf5e3b7d, task #147).
- */
-internal class SharedCreateAgentFormLoginGeneration {
-    private val lock = SynchronizedObject()
-    private var value = 0L
-
-    fun current(): String = synchronized(lock) { value.toString(16) }
-
-    fun onAuthSessionEvent(event: AuthSessionEvent) {
-        if (event is AuthSessionEvent.Authenticated || event is AuthSessionEvent.Cleared) {
-            synchronized(lock) { value += 1 }
-        }
-    }
-}
 
 internal fun sharedCreateAgentFormOwner(
     session: StoredAuthSession,

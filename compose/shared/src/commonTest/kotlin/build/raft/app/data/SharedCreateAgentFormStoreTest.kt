@@ -236,7 +236,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun silentTokenRefreshKeepsTheFormSessionAndANewLoginStartsANewOne() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val generation = SharedCreateAgentFormLoginGeneration()
+        val generation = SharedAuthLoginGeneration()
         var session = formSession(user = "account-1", accessToken = "access-1")
         val store = SharedCreateAgentFormStore(
             SlockComputersApiClient(api),
@@ -276,7 +276,7 @@ class SharedCreateAgentFormStoreTest {
         assertEquals(null, sharedCreateAgentFormOwner(formSession(user = " ", accessToken = "access-1"), "https://api.example.test", "1"))
         assertEquals(null, sharedCreateAgentFormOwner(session, " ", "1"))
 
-        val generation = SharedCreateAgentFormLoginGeneration()
+        val generation = SharedAuthLoginGeneration()
         val start = generation.current()
         generation.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 1))
         generation.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
