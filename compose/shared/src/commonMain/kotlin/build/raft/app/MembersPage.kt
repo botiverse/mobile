@@ -2092,6 +2092,26 @@ internal fun MembersPageContent(
             merged.values.toList()
         }
     val currentAgentCount = localMembers.count { it.kind == MemberKind.Agent }
+    // Task #148: which agent rows reach the list without a computer id, and from where (store vs
+    // the row added right after creating an agent), so a device run can locate where the id is lost.
+    val agentsWithoutComputer =
+        remember(localMembers) {
+            val storeIds = serverMembersEntry.members.mapTo(HashSet()) { it.id.value.trim() }
+            localMembers
+                .filter { it.kind == MemberKind.Agent && it.membersComputerId == null }
+                .map { agent ->
+                    val source = if (agent.id.value.trim() in storeIds) "store" else "optimistic"
+                    "${agent.id.value.slockAvatarDiagnosticsHash()}:$source:badges=${agent.permissionBadges.size}"
+                }
+        }
+    LaunchedEffect(agentsWithoutComputer, serverMembersEntry.status) {
+        if (agentsWithoutComputer.isNotEmpty()) {
+            bridge.log(
+                "members_agents_without_computer status=${serverMembersEntry.status} " +
+                    "count=${agentsWithoutComputer.size} rows=${agentsWithoutComputer.joinToString(",")}"
+            )
+        }
+    }
     LaunchedEffect(serverId) {
         optimisticMembers = emptyList()
     }
