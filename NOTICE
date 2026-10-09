@@ -1,0 +1,12 @@
+Raft Mobile
+Copyright 2026 Botiverse, Inc.
+
+This product includes software developed by third parties. See THIRD_PARTY_NOTICES.md
+for the list of components and their licenses. In particular:
+
+- KuiklyUI and Kuikly-derived components — Copyright (C) 2025 Tencent. Licensed under the
+  License Terms of KuiklyUI (third_party/kuikly-compose-markdown/LICENSE).
+- JetBrains Markdown — Copyright 2016-2021 JetBrains s.r.o. Licensed under the Apache License 2.0
+  (third_party/markdown-parser/LICENSE).
+- Portions of the markdown renderer — Copyright 2023 Saket Narayan. Apache License 2.0.
+- Stately, SQLiter (Touchlab) and SQLDelight (Cash App) forks — Apache License 2.0.

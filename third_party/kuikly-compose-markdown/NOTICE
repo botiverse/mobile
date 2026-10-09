@@ -1,0 +1,61 @@
+Kuikly Compose Markdown (vendored fork)
+Copyright (C) 2025 Tencent. Licensed under the License Terms of KuiklyUI (see LICENSE in this directory).
+
+This directory also contains files under the Apache License, Version 2.0:
+
+Copyright 2016-2021 JetBrains s.r.o. —
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/ImmutableCollection.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/ImmutableList.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/ImmutableMap.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/ImmutableSet.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/adapters/ReadOnlyCollectionAdapters.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/extensionsmap.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/AbstractListIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/AbstractPersistentList.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/BufferIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/PersistentVector.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/PersistentVectorBuilder.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/PersistentVectorIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/PersistentVectorMutableIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/SmallPersistentVector.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/TrieIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableList/Utils.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMap.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMapBuilder.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMapBuilderContentIterators.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMapBuilderContentViews.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMapContentIterators.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/PersistentHashMapContentViews.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableMap/TrieNode.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableSet/PersistentHashSet.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableSet/PersistentHashSetBuilder.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableSet/PersistentHashSetIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableSet/PersistentHashSetMutableIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/immutableSet/TrieNode.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMap.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMapBuilder.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMapBuilderContentIterators.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMapBuilderContentViews.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMapContentIterators.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedMap/PersistentOrderedMapContentViews.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedSet/PersistentOrderedSet.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedSet/PersistentOrderedSetBuilder.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedSet/PersistentOrderedSetIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/implementations/persistentOrderedSet/PersistentOrderedSetMutableIterator.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/EndOfChain.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/ForEachOneBit.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/ListImplementation.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/MapImplementation.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/MutabilityOwnership.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/MutableCounter.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/utils/internal/commonFunctions.kt
+
+Copyright 2023 Saket Narayan —
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/ExtendedSpanPainter.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/ExtendedSpans.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/RoundedCornerSpanPainter.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/SquigglyUnderlineSpanPainter.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/internal/ColorSerializers.kt
+  src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/extendedspans/internal/Lists.kt
+
+Upstream: https://github.com/Kuikly-contrib/kuikly-compose-markdown (com.tencent.kuiklybase:markdown 0.4.0). Local change: the bundled kotlinx.collections.immutable classes are shaded to com.tencent.kuiklybase.markdown.shaded.immutable (see README.md).
