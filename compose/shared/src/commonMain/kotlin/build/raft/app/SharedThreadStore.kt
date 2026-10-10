@@ -132,6 +132,7 @@ import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.network.sync.toThreadMessageItem
 import build.raft.app.model.messageStreamChannelId
+import build.raft.app.model.providerLabel
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
 import build.raft.app.model.threadIdentity
@@ -12864,8 +12865,12 @@ internal fun KuiklyThreadMessageItem.toMessage(
         authorKind.strictMemberKindOrNull(
             source = "thread_item_author",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.Projected,
+            contract = MemberKindWireContract.ProjectedMessageAuthor,
         ) ?: return null
+    if (authorMemberKind == MemberKind.External && externalAuthor == null) {
+        diagnostics("projection_value_rejected source=thread_item_author field=externalAuthor value=missing messageId=$id")
+        return null
+    }
     val resolvedMessageType = messageType.strictMessageTypeOrNull("thread_item_message", diagnostics) ?: return null
     val hasTaskProjection = taskId != null || taskNumber != null || taskStatus != null
     val resolvedTaskStatus =
@@ -12917,6 +12922,7 @@ internal fun KuiklyThreadMessageItem.toMessage(
         attachments = attachments.map { attachment -> attachment.toAttachment() },
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
+        externalAuthor = if (authorMemberKind == MemberKind.External) externalAuthor else null,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
@@ -12959,12 +12965,25 @@ private fun KuiklyThreadMessageItem.toMemberProfile(kind: MemberKind): MemberPro
     val cleanMembershipStatus =
         senderMembershipStatus?.takeIf { it.isNotBlank() }
             ?: if (authorKind.equals("agent", ignoreCase = true) && cleanAuthorDeletedAt != null) "deleted" else null
+    val effectiveDescription =
+        if (kind == MemberKind.External) {
+            externalAuthor?.providerLabel() ?: authorDescription
+        } else {
+            authorDescription
+        }
+    val effectiveAvatarUrl =
+        if (kind == MemberKind.External) {
+            externalAuthor?.avatarUrl ?: avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        } else {
+            avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        }
     return MemberProfile(
         id = MemberId(authorId),
         displayName = authorName,
         handle = authorName.removePrefix("@"),
         kind = kind,
-        avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
+        description = effectiveDescription,
+        avatarUrl = effectiveAvatarUrl,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
         presence = Presence.Offline,

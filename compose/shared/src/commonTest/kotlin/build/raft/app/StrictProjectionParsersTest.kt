@@ -92,8 +92,28 @@ class StrictProjectionParsersTest {
             MemberKind.System,
             "system".parsedMemberKindOrNull(MemberKindWireContract.Projected),
         )
-        listOf("user", "member").forEach { wire ->
+        listOf("user", "member", "external").forEach { wire ->
             assertNull(wire.parsedMemberKindOrNull(MemberKindWireContract.Projected), wire)
+        }
+
+        assertEquals(
+            MemberKind.Human,
+            "human".parsedMemberKindOrNull(MemberKindWireContract.ProjectedMessageAuthor),
+        )
+        assertEquals(
+            MemberKind.Agent,
+            "agent".parsedMemberKindOrNull(MemberKindWireContract.ProjectedMessageAuthor),
+        )
+        assertEquals(
+            MemberKind.System,
+            "system".parsedMemberKindOrNull(MemberKindWireContract.ProjectedMessageAuthor),
+        )
+        assertEquals(
+            MemberKind.External,
+            "external".parsedMemberKindOrNull(MemberKindWireContract.ProjectedMessageAuthor),
+        )
+        listOf("user", "member", "unknown").forEach { wire ->
+            assertNull(wire.parsedMemberKindOrNull(MemberKindWireContract.ProjectedMessageAuthor), wire)
         }
     }
 

@@ -94,6 +94,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.InboxItemKind
@@ -17731,5 +17732,157 @@ class SharedThreadStoreTest {
         private fun String.jsonEscaped(): String =
             replace("\\", "\\\\")
                 .replace("\"", "\\\"")
+
+        private fun externalSlackMessageItem(
+            id: String = "slack-root-1",
+            body: String = "Slack root content",
+            provider: String = "slack",
+            externalName: String = "Alice in Slack",
+            externalAvatar: String = "https://slack.example.com/alice.png",
+            externalAuthor: ExternalMessageAuthor? = ExternalMessageAuthor(
+                provider = provider,
+                displayName = externalName,
+                actorKind = "user",
+                avatarUrl = externalAvatar
+            ),
+            authorKind: String = "external",
+        ): KuiklyThreadMessageItem =
+            KuiklyThreadMessageItem(
+                id = id,
+                authorId = "unknown",
+                authorName = externalName,
+                authorDescription = provider,
+                authorKind = authorKind,
+                avatarWireValue = externalAvatar,
+                externalAuthor = externalAuthor,
+                body = body,
+                messageType = "Chat",
+            )
+    }
+
+    @Test
+    fun externalSlackRootMessageConvertsToMessageAndBackPreservingAttribution() {
+        val slackItem = externalSlackMessageItem()
+
+        val convertedMessage = slackItem.toMessage(
+            threadId = ThreadId("channel-slack"),
+            channelId = ChannelId("channel-slack"),
+            currentUserId = "my-user-id",
+        )
+
+        assertNotNull(convertedMessage)
+        assertEquals("slack-root-1", convertedMessage.id.value)
+        assertEquals("Slack root content", convertedMessage.body)
+        assertEquals(MemberKind.External, convertedMessage.author.kind)
+        assertEquals("Alice in Slack", convertedMessage.author.displayName)
+        assertEquals("Slack", convertedMessage.author.description)
+        assertEquals("https://slack.example.com/alice.png", convertedMessage.author.avatarUrl)
+        assertNotNull(convertedMessage.externalAuthor)
+        assertEquals("slack", convertedMessage.externalAuthor?.provider)
+        assertEquals("Alice in Slack", convertedMessage.externalAuthor?.displayName)
+        assertEquals("https://slack.example.com/alice.png", convertedMessage.externalAuthor?.avatarUrl)
+
+        val roundTripItem = convertedMessage.toKuiklyThreadMessageItem("my-user-id")
+        assertEquals("slack-root-1", roundTripItem.id)
+        assertEquals("external", roundTripItem.authorKind)
+        assertEquals("Alice in Slack", roundTripItem.authorName)
+        assertEquals("Slack", roundTripItem.authorDescription)
+        assertEquals("https://slack.example.com/alice.png", roundTripItem.avatarWireValue)
+        assertEquals(convertedMessage.externalAuthor, roundTripItem.externalAuthor)
+    }
+
+    @Test
+    fun externalMessageFailsClosedWhenMissingExternalAuthor() {
+        val invalidSlackItem = externalSlackMessageItem(externalAuthor = null)
+        val logs = mutableListOf<String>()
+
+        val convertedMessage = invalidSlackItem.toMessage(
+            threadId = ThreadId("channel-slack"),
+            channelId = ChannelId("channel-slack"),
+            diagnostics = logs::add
+        )
+
+        assertNull(convertedMessage)
+        assertTrue(
+            logs.any { it.contains("projection_value_rejected") && it.contains("field=externalAuthor") },
+            "Expected failure diagnostic for missing externalAuthor, got: $logs"
+        )
+    }
+
+    @Test
+    fun rememberReplyParentCandidateSucceedsForSlackBridgeExternalRootMessage() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val environmentId = "https://prod.example.test"
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() },
+                    environmentProvider = { environmentId },
+                )
+            )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val slackRootItem = externalSlackMessageItem(id = "slack-root-99")
+
+        val accepted = dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-1",
+            parentChannelId = "channel-slack",
+            parentMessage = slackRootItem,
+            threadChannelId = "thread-slack-root-99"
+        )
+
+        assertTrue(accepted, "rememberReplyParentCandidate should accept external Slack root message with valid externalAuthor")
+
+        val cachedMessage = messageStore.getScoped(
+            requireNotNull(provenance.messageStoreScopeId),
+            ChannelId("channel-slack"),
+            MessageId("slack-root-99")
+        )
+        assertNotNull(cachedMessage)
+        assertEquals(MemberKind.External, cachedMessage.author.kind)
+        assertEquals("Alice in Slack", cachedMessage.author.displayName)
+        assertEquals("Slack", cachedMessage.author.description)
+        assertEquals("https://slack.example.com/alice.png", cachedMessage.author.avatarUrl)
+        assertEquals("slack", cachedMessage.externalAuthor?.provider)
+    }
+
+    @Test
+    fun rememberReplyParentCandidateFailsClosedForExternalRootMessageMissingExternalAuthor() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val environmentId = "https://prod.example.test"
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore,
+                cacheEnvironmentIdProvider = { environmentId },
+                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
+                    sessionProvider = { sampleSession() },
+                    environmentProvider = { environmentId },
+                )
+            )
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val invalidSlackRootItem = externalSlackMessageItem(id = "slack-root-bad", externalAuthor = null)
+
+        val accepted = dataSource.rememberReplyParentCandidate(
+            provenance = provenance,
+            serverId = "server-1",
+            parentChannelId = "channel-slack",
+            parentMessage = invalidSlackRootItem,
+            threadChannelId = "thread-slack-root-bad"
+        )
+
+        assertFalse(accepted, "rememberReplyParentCandidate must fail-closed if external root message lacks externalAuthor")
+        assertNull(
+            messageStore.getScoped(
+                requireNotNull(provenance.messageStoreScopeId),
+                ChannelId("channel-slack"),
+                MessageId("slack-root-bad")
+            )
+        )
     }
 }
