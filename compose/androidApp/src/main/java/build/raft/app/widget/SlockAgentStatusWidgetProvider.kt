@@ -23,7 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.DateFormat
@@ -65,7 +64,6 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
         private const val TAG = "SlockAgentWidget"
         private const val MAX_AGENT_ROWS = 3
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val avatarHttpClient = OkHttpClient()
 
         fun refreshWidget(context: Context, appWidgetId: Int) {
             val appContext = context.applicationContext
@@ -262,7 +260,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 .joinToString(" ") { token -> token.replaceFirstChar { char -> char.uppercase() } }
                 .ifBlank { this }
 
-        private fun AgentWidgetSummary.toWidgetRow(context: Context): SlockAgentWidgetRow {
+        private suspend fun AgentWidgetSummary.toWidgetRow(context: Context): SlockAgentWidgetRow {
             val tone =
                 when (status) {
                     AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Online -> SlockAgentWidgetTone.Active
@@ -276,7 +274,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 detail = detail,
                 avatarLabel = name.take(1).uppercase().ifBlank { "A" },
                 statusTone = tone,
-                avatarImagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it, avatarHttpClient) }
+                avatarImagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it) }
             )
         }
 

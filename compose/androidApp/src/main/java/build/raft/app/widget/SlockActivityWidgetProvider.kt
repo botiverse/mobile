@@ -39,7 +39,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import java.text.DateFormat
 import java.util.Date
 
@@ -79,7 +78,6 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private const val TAG = "SlockStatusWidget"
         private const val MAX_HOME_ROWS = 3
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val avatarHttpClient = OkHttpClient()
 
         fun refreshWidget(context: Context, appWidgetId: Int) {
             val appContext = context.applicationContext
@@ -332,7 +330,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private fun Int.displayCount(): String =
             if (this > 99) "99+" else this.coerceAtLeast(0).toString()
 
-        private fun build.raft.app.data.HomeSnapshot.toWidgetRows(
+        private suspend fun build.raft.app.data.HomeSnapshot.toWidgetRows(
             context: Context,
             membersById: Map<String, MemberProfile>
         ): List<SlockWidgetHomeRow> =
@@ -351,7 +349,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     )
                 }
 
-        private fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): SlockWidgetHomeRow {
+        private suspend fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): SlockWidgetHomeRow {
             val title = name.ifBlank { "Conversation" }
             val detail =
                 lastMessagePreview?.takeIf { it.isNotBlank() }
@@ -363,7 +361,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                         else -> "Channel"
                     }
             val avatarWireValue = member?.avatarWireValueForRenderedAvatar()
-            val imagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it, avatarHttpClient) }
+            val imagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it) }
             return SlockWidgetHomeRow(
                 title = title,
                 detail = detail,

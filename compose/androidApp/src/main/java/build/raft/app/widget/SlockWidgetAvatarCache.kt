@@ -5,37 +5,46 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import build.raft.app.network.SharedBinaryDownloader
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.security.MessageDigest
 import kotlin.math.roundToInt
 
-internal fun Context.cacheSlockWidgetAvatarPath(wireValue: String, httpClient: OkHttpClient): String? {
+/**
+ * Task #155: remote avatars download through NetworkKMM (SharedBinaryDownloader, the app's image
+ * path), so widgets get the same curl TLS trust and DNS-over-HTTPS fallback as the rest of the app.
+ */
+internal suspend fun Context.cacheSlockWidgetAvatarPath(wireValue: String): String? {
     val normalized = wireValue.trim().takeIf { it.isNotBlank() } ?: return null
     val directory = File(cacheDir, "slock-widget-avatars").also { it.mkdirs() }
     val file = File(directory, "${normalized.sha256()}.png")
     if (file.isFile && file.length() > 0L) return file.absolutePath
     return when {
         normalized.startsWith("http://") || normalized.startsWith("https://") ->
-            cacheRemoteAvatar(normalized, file, httpClient)
+            cacheRemoteAvatar(normalized, file)
         normalized.startsWith("pixel:") || normalized.startsWith("random:") ->
             cachePixelAvatar(normalized, file)
         else -> null
     }
 }
 
-private fun cacheRemoteAvatar(url: String, file: File, httpClient: OkHttpClient): String? =
-    runCatching {
-        val request = Request.Builder().url(url).get().build()
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@runCatching null
-            val bytes = response.body?.bytes() ?: return@runCatching null
-            if (bytes.isEmpty()) return@runCatching null
+private suspend fun cacheRemoteAvatar(url: String, file: File): String? =
+    try {
+        // fetchBytes throws on a non-2xx status or a transport failure: no avatar, the widget
+        // keeps its letter placeholder.
+        val bytes = SharedBinaryDownloader.fetchBytes(url).bytes
+        if (bytes.isEmpty()) {
+            null
+        } else {
             file.writeBytes(bytes)
             file.absolutePath
         }
-    }.getOrNull()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        null
+    }
 
 private fun cachePixelAvatar(wireValue: String, file: File): String? =
     runCatching {
