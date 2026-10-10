@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-RELEASE="${KUIKLY_RELEASE_VERSION:-2.28.0-raft.9}"
+RELEASE="${KUIKLY_RELEASE_VERSION:-2.28.0-raft.11}"
 REGISTRY="${RAFT_ARTIFACTS_MAVEN_URL:-https://maven.artifacts.botiverse.dev}"
 CLOSURE="${KUIKLY_RELEASE_CLOSURE:-${REPO_ROOT}/compose/gradle/kuikly-release-closure.json}"
 

@@ -3,7 +3,7 @@ PODS:
   - MMKV (2.4.0):
     - MMKVCore (~> 2.4.0)
   - MMKVCore (2.4.0)
-  - OpenKuiklyIOSRender (2.28.0-raft.9-2.1.21)
+  - OpenKuiklyIOSRender (2.28.0-raft.11-2.1.21)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
@@ -17,7 +17,7 @@ PODS:
 DEPENDENCIES:
   - Hands (from `https://github.com/oranix-io/hands.git`, tag `ios-v0.2.1`)
   - MMKV (~> 2.4.0)
-  - OpenKuiklyIOSRender (from `../build/kuikly/core-render-ios-2.28.0-raft.9-2.1.21.podspec.json`)
+  - OpenKuiklyIOSRender (from `../build/kuikly/core-render-ios-2.28.0-raft.11-2.1.21.podspec.json`)
   - SDWebImage
   - SDWebImageSVGCoder
   - shared (from `../shared`)
@@ -37,7 +37,7 @@ EXTERNAL SOURCES:
     :git: https://github.com/oranix-io/hands.git
     :tag: ios-v0.2.1
   OpenKuiklyIOSRender:
-    :podspec: "../build/kuikly/core-render-ios-2.28.0-raft.9-2.1.21.podspec.json"
+    :podspec: "../build/kuikly/core-render-ios-2.28.0-raft.11-2.1.21.podspec.json"
   shared:
     :path: "../shared"
 
@@ -50,13 +50,13 @@ SPEC CHECKSUMS:
   Hands: 1f35d80a99c9b752f816ed1100a7c4410281134d
   MMKV: 86859fdfa2b0b21db1fd6e48788474a6416a2c77
   MMKVCore: 3d16ce9f7d411e135020915fde98a056859a1efa
-  OpenKuiklyIOSRender: 47a1e401fcb07355a72487f4f70f6d26e395a464
+  OpenKuiklyIOSRender: 0b6a6487f33697f0d6a5e3c8ad34540232fb55bd
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   SDWebImageSVGCoder: 8e10c8f6cc879c7dfb317b284e13dd589379f01c
   shared: c50d06c498509e13368a0b5f1da48e09108cfe09
   Socket.IO-Client-Swift: 3614bea82ba005df1c2ff01154f4004993e05ad7
   Starscream: 19b5533ddb925208db698f0ac508a100b884a1b9
 
-PODFILE CHECKSUM: 363dac83e3e5646e00bdf7565f3217347b8bd3bf
+PODFILE CHECKSUM: 9df24898538686fd7a8fb3dc9a335a62885089b0
 
 COCOAPODS: 1.17.0
