@@ -18,6 +18,7 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { admitSlockOhosPreparedBatch } from '../kuikly/SlockOhosDiagnosticsQueue';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
+import { SlockOhosRealtimeDohPolicySink } from '../kuikly/SlockOhosRealtimeDoh';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { completeSlockOhosAppLoginCallback } from '../kuikly/SlockOhosAppLogin';
@@ -61,6 +62,7 @@ const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
 const SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE = 'slockOhosImageTransportPolicy';
+const SLOCK_REALTIME_DOH_POLICY_SERVICE = 'slockOhosRealtimeDohPolicy';
 const SLOCK_NETWORK_APP_IDENTITY_SERVICE = 'slockOhosNetworkAppIdentity';
 
 class SlockOhosImageTransportPolicySink {
@@ -312,6 +314,10 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE,
       new SlockOhosImageTransportPolicySink()
+    );
+    registerSingleServiceProvider(
+      SLOCK_REALTIME_DOH_POLICY_SERVICE,
+      new SlockOhosRealtimeDohPolicySink()
     );
     registerSingleServiceProvider(
       SLOCK_NETWORK_APP_IDENTITY_SERVICE,

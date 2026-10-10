@@ -14,3 +14,6 @@ internal actual fun slockApplyPlatformHttp3Preference(
     enabled: Boolean,
     generation: Long
 ): Boolean = true
+
+// Task #153: no platform transport outside NetworkKMM needs the DoH provider list here.
+internal actual fun slockPublishPlatformDohProviders(providerNames: List<String>): Boolean = true

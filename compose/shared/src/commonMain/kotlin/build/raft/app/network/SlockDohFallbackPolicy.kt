@@ -16,9 +16,20 @@ import kotlinx.atomicfu.locks.synchronized
  * internal Android builds can force it through Local Feature Overrides. NetworkKMM only ever falls back to the built-in
  * providers after the system resolver failed; it never replaces a successful system resolution.
  */
+/**
+ * Hands the active DoH provider names (in order; empty = off) to platform transports outside
+ * NetworkKMM. OHOS: the ArkTS realtime socket (`@ohos.net.webSocket`). Android reads
+ * [slockActiveDohEndpoints] directly; iOS realtime has no DoH path.
+ */
+internal expect fun slockPublishPlatformDohProviders(providerNames: List<String>): Boolean
+
+private fun applyDohProvidersEverywhere(providers: List<NetworkCurlDohFallbackProvider>) {
+    VBTransportCurl.setDohFallbackProviders(providers)
+    runCatching { slockPublishPlatformDohProviders(providers.map { it.name.lowercase() }) }
+}
+
 internal class SlockDohFallbackPolicy(
-    private val applyProviders: (List<NetworkCurlDohFallbackProvider>) -> Unit =
-        VBTransportCurl::setDohFallbackProviders,
+    private val applyProviders: (List<NetworkCurlDohFallbackProvider>) -> Unit = ::applyDohProvidersEverywhere,
 ) {
     private val lock = SynchronizedObject()
     private var isEnabledForServer: (String) -> Boolean = { false }

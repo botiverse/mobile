@@ -1,6 +1,7 @@
 import webSocket from '@ohos.net.webSocket';
 import util from '@ohos.util';
 import { KRAny, KRRecord } from '@kuikly-open/render';
+import { prepareRealtimeDnsRule, SlockOhosRealtimeDnsRule } from './SlockOhosRealtimeDoh';
 
 const SOCKET_IO_PATH = '/socket.io/';
 const ENGINE_IO_OPEN = '0';
@@ -106,6 +107,8 @@ export class OhosSocketIoClient {
   private reconnectAttempt: number = 0;
   private manualDisconnect: boolean = false;
   private readonly decoder: util.TextDecoder = new util.TextDecoder('utf-8');
+  // Task #153: a connect may first wait for the DoH lookup; a later connect/disconnect wins.
+  private openAttempt: number = 0;
 
   setListener(listener: OhosSocketIoListener): void {
     this.listener = listener;
@@ -154,11 +157,28 @@ export class OhosSocketIoClient {
   }
 
   private openSocket(params: OhosSocketIoConnectParams): void {
+    const attempt = ++this.openAttempt;
+    const url = this.socketIoWebSocketUrl(params.socketUrl);
+    prepareRealtimeDnsRule(this.hostOf(url)).then((rule: SlockOhosRealtimeDnsRule | undefined) => {
+      if (attempt !== this.openAttempt || this.manualDisconnect) {
+        rule?.release();
+        return;
+      }
+      this.openSocketWithRule(params, url, rule);
+    }).catch(() => {
+      if (attempt === this.openAttempt && !this.manualDisconnect) {
+        this.openSocketWithRule(params, url, undefined);
+      }
+    });
+  }
+
+  private openSocketWithRule(params: OhosSocketIoConnectParams, url: string, rule: SlockOhosRealtimeDnsRule | undefined): void {
     const socket = webSocket.createWebSocket();
     this.socket = socket;
     this.connected = false;
 
     socket.on('open', () => {
+      rule?.release();
       console.info('[OhosSocketIo] websocket_open');
     });
     socket.on('message', (_error, data) => {
@@ -168,6 +188,7 @@ export class OhosSocketIoClient {
       this.handleFrame(this.frameToString(data), params);
     });
     socket.on('close', (_error, closeResult) => {
+      rule?.release();
       if (this.socket !== socket) {
         return;
       }
@@ -180,6 +201,7 @@ export class OhosSocketIoClient {
       }
     });
     socket.on('error', (error) => {
+      rule?.release();
       if (this.socket !== socket) {
         return;
       }
@@ -196,7 +218,8 @@ export class OhosSocketIoClient {
     const options: WebSocketConnectOptions = {
       header: headers,
     };
-    socket.connect(this.socketIoWebSocketUrl(params.socketUrl), options).catch((error: Error) => {
+    socket.connect(url, options).catch((error: Error) => {
+      rule?.release();
       if (this.socket !== socket) {
         return;
       }
@@ -209,6 +232,7 @@ export class OhosSocketIoClient {
   }
 
   private disconnectSocket(reason: string): void {
+    this.openAttempt += 1;
     const socket = this.socket;
     this.socket = undefined;
     this.connected = false;
@@ -321,6 +345,13 @@ export class OhosSocketIoClient {
       return data;
     }
     return this.decoder.decodeWithStream(new Uint8Array(data));
+  }
+
+  private hostOf(url: string): string {
+    const afterScheme = url.indexOf('://') >= 0 ? url.substring(url.indexOf('://') + 3) : url;
+    const authority = afterScheme.split('/')[0].split('?')[0];
+    const withoutUser = authority.indexOf('@') >= 0 ? authority.substring(authority.lastIndexOf('@') + 1) : authority;
+    return withoutUser.startsWith('[') ? '' : withoutUser.split(':')[0];
   }
 
   private socketIoWebSocketUrl(socketUrl: string): string {

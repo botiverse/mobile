@@ -2,6 +2,7 @@ import { parseSlockOhosAppLoginCallback, prepareSlockOhosAppLogin, SLOCK_OHOS_AP
 import { describe, beforeAll, beforeEach, afterEach, afterAll, it, expect } from '@ohos/hypium';
 import { ApplicationStateChangeCallback } from '@kit.AbilityKit';
 import { decodeOhosSocketIoFrame } from '../main/ets/kuikly/OhosSocketIoClient';
+import { parseDohJsonAnswers, SlockOhosRealtimeDohPolicySink } from '../main/ets/kuikly/SlockOhosRealtimeDoh';
 import {
   admitSlockOhosPreparedBatch,
   canSlockOhosDrain,
@@ -483,6 +484,17 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('realtimeDohParsesOnlyIpv4AnswersAndKeepsTheClosedProviderTable', 0, () => {
+      const body = '{"Status":0,"Answer":[{"type":5,"data":"api.example.cdn."},{"type":1,"data":"104.18.26.14"},{"type":1,"data":"not-an-ip"},{"type":28,"data":"2606:4700::6812:1a0e"}]}';
+      const ips = parseDohJsonAnswers(body);
+      expect(ips.length).assertEqual(1);
+      expect(ips[0]).assertEqual('104.18.26.14');
+      expect(parseDohJsonAnswers('{"Status":3,"Answer":[{"type":1,"data":"1.2.3.4"}]}').length).assertEqual(0);
+      expect(parseDohJsonAnswers('not json').length).assertEqual(0);
+      // Unknown provider names are dropped; empty turns it off.
+      expect(new SlockOhosRealtimeDohPolicySink().setDohProviders('alidns,evil,cloudflare')).assertTrue();
+      expect(new SlockOhosRealtimeDohPolicySink().setDohProviders('')).assertTrue();
+    });
     it('appLoginIsSeparateFromOAuthAndRejectsAmbiguousCallbacks', 0, () => {
       const preparation = prepareSlockOhosAppLogin();
       expect(preparation.returnUri).assertEqual(SLOCK_OHOS_APP_LOGIN_URI);

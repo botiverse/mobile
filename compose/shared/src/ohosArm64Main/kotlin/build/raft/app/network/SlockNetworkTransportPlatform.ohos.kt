@@ -4,6 +4,7 @@ import com.tencent.tmm.knoi.annotation.ServiceConsumer
 import com.tencent.tmm.knoi.service.KNOI
 
 private const val SlockOhosImageTransportPolicyService = "slockOhosImageTransportPolicy"
+private const val SlockOhosRealtimeDohPolicyService = "slockOhosRealtimeDohPolicy"
 
 @ServiceConsumer(name = SlockOhosImageTransportPolicyService)
 interface SlockOhosImageTransportPolicySink {
@@ -27,4 +28,17 @@ internal actual fun slockApplyPlatformHttp3Preference(
     runCatching {
         KNOI.get<SlockOhosImageTransportPolicySink>(SlockOhosImageTransportPolicyService)
             .setHttp3Enabled(enabled)
+    }.getOrDefault(false)
+
+@ServiceConsumer(name = SlockOhosRealtimeDohPolicyService)
+interface SlockOhosRealtimeDohPolicySink {
+    /** Comma-separated provider names in order ("alidns,cloudflare"); empty = off. */
+    fun setDohProviders(providerNames: String): Boolean
+}
+
+// Task #153: the ArkTS realtime socket (@ohos.net.webSocket) applies the same DoH switch.
+internal actual fun slockPublishPlatformDohProviders(providerNames: List<String>): Boolean =
+    runCatching {
+        KNOI.get<SlockOhosRealtimeDohPolicySink>(SlockOhosRealtimeDohPolicyService)
+            .setDohProviders(providerNames.joinToString(","))
     }.getOrDefault(false)
