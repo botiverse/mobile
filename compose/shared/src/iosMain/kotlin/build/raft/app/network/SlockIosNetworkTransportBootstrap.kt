@@ -24,6 +24,9 @@ fun installIosSlockNetworkTransportAtStartup(caBundlePath: String): String {
             )
         )
     val native = VBTransportCurl.nativeStatus
+    // Task #154: the realtime host can carry Socket.IO over curl with this bundle; Settings shows its switch.
+    rememberIosCurlCaBundlePath(if (status.configured) caBundlePath else null)
+    if (status.configured && native.linked) SlockCurlSocketIoPolicy.markPlatformSupported()
     return "networkkmm_curl_bootstrap platform=ios configured=${status.configured} " +
         "failureReason=${status.failureReason} nativeLinked=${native.linked} " +
         "http3FeatureAvailable=${native.http3FeatureAvailable} caVersion=${NetworkCurlCaBundleManifest.VERSION} " +
