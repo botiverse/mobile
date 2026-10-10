@@ -18244,6 +18244,17 @@ private fun SharedMembersScreen(
                         selectedLocalServerId = ServerId(serverId),
                         payload = renderMembersPayload,
                         refreshing = refreshing,
+                        // Pull-to-refresh was never wired here (the default no-op): the gesture showed but
+                        // nothing reloaded and the spinner never turned. A pull now runs the same forced
+                        // reload as Retry (members) and refreshes the computer list too.
+                        onRefresh = {
+                            onForegroundActivity("pull_refresh")
+                            slockLogger("SlockMembersPage")("members_pull_refresh serverId=$serverId")
+                            refreshing = true
+                            membersRetryForce = true
+                            membersRetryNonce += 1
+                            retryMachines()
+                        },
                         paneLayout = paneLayout,
                         onAddHuman = {
                             onForegroundActivity("add_human")
