@@ -46,6 +46,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.SlockCurlSocketIoPolicy
 import build.raft.app.network.SlockDohFallbackPolicy
 import build.raft.app.network.SlockNetworkTransportController
 import build.raft.app.network.installSlockNetworkTransportController
@@ -1678,6 +1679,12 @@ internal class SlockSharedStoreProvider private constructor(
                     storageName = "shared preference"
                 )
             val sharedPreferenceStore = sharedPreferenceStoreBinding.store
+            // Task #154: the Settings switch's explicit choice (absent = follow the server flag). Read live at
+            // each connect/reconnect, so a toggle applies from the next connection.
+            val realtimeTransportPreferenceStore = KeyValueRealtimeTransportPreferenceStore(sharedPreferenceStore)
+            SlockCurlSocketIoPolicy.bindUserChoice {
+                realtimeTransportPreferenceStore.readCurlSocketIoUserChoiceSync()
+            }
             bridge.logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=sharedPreference " +
@@ -2000,7 +2007,11 @@ internal class SlockSharedStoreProvider private constructor(
                     // builds can ForceOn/ForceOff the whole offline-cache line on one binary. Not entitled
                     // (release, or the page never opened) => the registry returns the server value unchanged.
                     diagnosticOverride = { serverId, key, serverEffective ->
-                        if (key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY && key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
+                        if (
+                            key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY &&
+                                key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY &&
+                                key != MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY
+                        ) {
                             serverEffective
                         } else {
                             val auth = presenceAuthContext.value
@@ -2051,6 +2062,10 @@ internal class SlockSharedStoreProvider private constructor(
             dohFallbackPolicy.bind { serverId ->
                 serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
             }?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
+            // Task #154: the platform realtime transport reads this at each connect and reconnect.
+            SlockCurlSocketIoPolicy.bindServerFlag { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY)
+            }
             val currentGrantMessageShadowCommitLane =
                 CurrentGrantMessageShadowCommitLane(
                     strictReader = SqlDelightStrictMessageScopeSnapshotReader(database),

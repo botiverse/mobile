@@ -1649,6 +1649,8 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controls the conversation forward gesture. After returning to Home, swipe left from the right edge to reopen the most recent channel or direct message.</string>
     <string name="settings_mobile_home_server_avatar">Workspace avatar in Home header</string>
     <string name="settings_mobile_home_server_avatar_detail">Show the current workspace avatar beside its name in the Home header. Turn this off to keep the existing compact title badge.</string>
+    <string name="settings_mobile_realtime_curl_socketio">Realtime over new network stack (curl)</string>
+    <string name="settings_mobile_realtime_curl_socketio_detail">Takes effect on the next connection or reconnect. Until you change it, this follows the server default.</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row.</string>
     <string name="settings_mobile_status_enabled">Enabled</string>

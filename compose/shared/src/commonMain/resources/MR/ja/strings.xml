@@ -1642,6 +1642,8 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">ベータ。会話の「進む」ジェスチャーを設定します。会話からホームに戻った後、画面右端から左へスワイプすると、直前のチャンネルまたはDMを再度開けます。</string>
     <string name="settings_mobile_home_server_avatar">ホームヘッダーのワークスペースアバター</string>
     <string name="settings_mobile_home_server_avatar_detail">ホームヘッダーで、名前の横に現在のワークスペースのアバターを表示します。オフにすると、既存のコンパクトなタイトルバッジを維持します。</string>
+    <string name="settings_mobile_realtime_curl_socketio">リアルタイム接続に新しいネットワークスタック（curl）を使用</string>
+    <string name="settings_mobile_realtime_curl_socketio_detail">次回の接続または再接続から適用されます。変更するまではサーバーの既定値に従います。</string>
     <string name="settings_badge_beta">ベータ</string>
     <string name="settings_mobile_compact_detail">同じ送信者からの連続するメッセージで、繰り返されるアバターを非表示にします。行を長押しするとメッセージの時刻が表示されます。</string>
     <string name="settings_mobile_status_enabled">有効</string>

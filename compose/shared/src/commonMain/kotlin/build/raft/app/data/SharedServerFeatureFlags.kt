@@ -74,6 +74,14 @@ const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transpor
 const val MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY: String = "mobile_doh_fallback_v0"
 
 /**
+ * Task #154: realtime (Socket.IO) over NetworkKMM's curl client instead of the platform Socket.IO
+ * library. Default OFF (an ordinary flag: no decision reads off); read per server at each connect
+ * and reconnect (see SlockCurlSocketIoPolicy), so turning it on or off takes effect on the next
+ * connection. Internal Android builds can force it through Local Feature Overrides.
+ */
+const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_v0"
+
+/**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
  * the server can push it off). For these keys "no decision" reads ON: no evaluation yet, an evaluate
  * failure or malformed body, no stored last-known value, the key missing from the response, or the
@@ -107,6 +115,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
+    MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
 )
 
