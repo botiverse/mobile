@@ -304,6 +304,25 @@ internal fun DataResult<SharedSettingsUpdateCheckSnapshot>.toAppUpdateResultProj
             )
     }
 
+/**
+ * The "current → latest" pair shown by the updater. A build of the same version (1.13.0 build 1 →
+ * 1.13.0 build 8) used to read "1.13.0 → 1.13.0" and looked like a bug (artin 2026-10-10), so when
+ * the version names match and both builds are known and differ, each side gets its build number:
+ * "1.13.0 (11300001) → 1.13.0 (11300008)". Different versions keep the plain names.
+ */
+internal fun appUpdateVersionLabels(
+    currentLabel: String,
+    currentCode: Long,
+    latestLabel: String,
+    latestCode: Long,
+): Pair<String, String> {
+    val sameName = currentLabel.isNotBlank() && currentLabel.trim() == latestLabel.trim()
+    if (!sameName || currentCode <= 0L || latestCode <= 0L || currentCode == latestCode) {
+        return currentLabel to latestLabel
+    }
+    return "$currentLabel ($currentCode)" to "$latestLabel ($latestCode)"
+}
+
 @Composable
 internal fun AppUpdateSummary(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
@@ -315,8 +334,15 @@ internal fun AppUpdateSummary(
     onAction: () -> Unit,
     progress: SharedUpdateDownloadProgress? = null
 ) {
-    val currentVersion = snapshot?.currentVersionLabel.orEmpty().ifBlank { "-" }
-    val latestVersion = snapshot?.latestVersionLabel.orEmpty().ifBlank { "-" }
+    val versionLabels =
+        appUpdateVersionLabels(
+            currentLabel = snapshot?.currentVersionLabel.orEmpty(),
+            currentCode = snapshot?.currentVersionCode ?: 0L,
+            latestLabel = snapshot?.latestVersionLabel.orEmpty(),
+            latestCode = snapshot?.latestVersionCode ?: 0L,
+        )
+    val currentVersion = versionLabels.first.ifBlank { "-" }
+    val latestVersion = versionLabels.second.ifBlank { "-" }
     val actionLabel =
         appUpdatePrimaryActionLabel(
             snapshot = snapshot,
