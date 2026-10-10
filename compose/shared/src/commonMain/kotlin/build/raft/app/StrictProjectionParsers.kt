@@ -18,6 +18,8 @@ internal enum class MemberKindWireContract {
     AgentCreator,
     /** Client-normalized Thread/cache projection: human | agent | system. */
     Projected,
+    /** Client-normalized Thread message author projection: human | agent | system | external. */
+    ProjectedMessageAuthor,
 }
 
 internal fun String?.parsedMemberKindOrNull(
@@ -62,6 +64,14 @@ internal fun String?.parsedMemberKindOrNull(
                 "agent" -> MemberKind.Agent
                 "human" -> MemberKind.Human
                 "system" -> MemberKind.System
+                else -> null
+            }
+        MemberKindWireContract.ProjectedMessageAuthor ->
+            when (this?.trim()?.lowercase()) {
+                "agent" -> MemberKind.Agent
+                "human" -> MemberKind.Human
+                "system" -> MemberKind.System
+                "external" -> MemberKind.External
                 else -> null
             }
     }
