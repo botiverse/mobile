@@ -24167,7 +24167,9 @@ private fun AppShellCachedHomePreviewContent(
         bottomTabs = emptyList(),
         onBottomTabSelected = {},
         showBottomTabs = false,
-        interactionLocked = true
+        // Shown only while the stored session is read (Restoring → Ready(CachedRestorePending) is
+        // local); no blocking overlay here either.
+        interactionLocked = false
     ) {
         SharedHomeScreen(
             bridge = bridge,
