@@ -10,14 +10,17 @@ import kotlin.test.assertTrue
 class SlockDohFallbackPolicyTest {
     private val applied = mutableListOf<List<NetworkCurlDohFallbackProvider>>()
     private val disabledServers = mutableSetOf<String>()
-    private val policy = SlockDohFallbackPolicy(applyProviders = { applied += it })
+    private var zoneId: String? = "Asia/Shanghai"
+    private val policy = SlockDohFallbackPolicy(applyProviders = { applied += it }, systemZoneId = { zoneId })
     private val off = emptyList<NetworkCurlDohFallbackProvider>()
+    private val aliFirst = listOf(NetworkCurlDohFallbackProvider.ALIDNS, NetworkCurlDohFallbackProvider.CLOUDFLARE)
+    private val cloudflareFirst = listOf(NetworkCurlDohFallbackProvider.CLOUDFLARE, NetworkCurlDohFallbackProvider.ALIDNS)
 
     @Test
     fun onBeforeAnyServerIsSelected() {
         val line = policy.bind { it !in disabledServers }
-        assertEquals(listOf(SlockDohFallbackPolicy.PROVIDERS), applied, "binding publishes the on state once")
-        assertTrue(line!!.contains("enabled=true providers=alidns,cloudflare"))
+        assertEquals(listOf(aliFirst), applied, "binding publishes the on state once")
+        assertTrue(line!!.contains("enabled=true zone=Asia/Shanghai providers=alidns,cloudflare"))
     }
 
     @Test
@@ -29,7 +32,7 @@ class SlockDohFallbackPolicyTest {
 
         // Any active server that still has it on turns it back on.
         policy.updateActiveSelection("shell-2", "server-b")
-        assertEquals(SlockDohFallbackPolicy.PROVIDERS, applied.last())
+        assertEquals(aliFirst, applied.last())
 
         policy.updateActiveSelection("shell-2", null)
         assertEquals(off, applied.last())
@@ -51,13 +54,46 @@ class SlockDohFallbackPolicyTest {
 
         disabledServers -= "server-a"
         policy.reevaluate("override")
-        assertEquals(SlockDohFallbackPolicy.PROVIDERS, applied.last())
+        assertEquals(aliFirst, applied.last())
     }
 
     @Test
     fun aFailingFlagReadIsNoDecisionAndStaysOn() {
         policy.bind { error("store unavailable") }
         policy.updateActiveSelection("shell-1", "server-a")
-        assertEquals(listOf(SlockDohFallbackPolicy.PROVIDERS), applied)
+        assertEquals(listOf(aliFirst), applied)
+    }
+
+    @Test
+    fun providerOrderFollowsTheSystemTimeZone() {
+        assertEquals(aliFirst, SlockDohFallbackPolicy.providersFor("Asia/Shanghai"))
+        assertEquals(aliFirst, SlockDohFallbackPolicy.providersFor("Asia/Urumqi"))
+        assertEquals(cloudflareFirst, SlockDohFallbackPolicy.providersFor("America/Los_Angeles"))
+        assertEquals(cloudflareFirst, SlockDohFallbackPolicy.providersFor("Europe/Berlin"))
+        assertEquals(cloudflareFirst, SlockDohFallbackPolicy.providersFor("Asia/Hong_Kong"))
+        assertEquals(cloudflareFirst, SlockDohFallbackPolicy.providersFor("Asia/Tokyo"))
+        // Unknown: keep the previous default.
+        assertEquals(aliFirst, SlockDohFallbackPolicy.providersFor(null))
+        assertEquals(aliFirst, SlockDohFallbackPolicy.providersFor(""))
+    }
+
+    @Test
+    fun anOverseasDeviceTriesCloudflareFirstAndAZoneChangeRepublishes() {
+        zoneId = "America/New_York"
+        val line = policy.bind { true }
+        assertEquals(listOf(cloudflareFirst), applied)
+        assertTrue(line!!.contains("providers=cloudflare,alidns"))
+
+        zoneId = "Asia/Shanghai"
+        policy.reevaluate("evaluation")
+        assertEquals(aliFirst, applied.last())
+        assertNull(policy.reevaluate("evaluation"), "same order is not republished")
+    }
+
+    @Test
+    fun aFailingZoneReadKeepsAliDnsFirst() {
+        val failing = SlockDohFallbackPolicy(applyProviders = { applied += it }, systemZoneId = { error("no zone") })
+        failing.bind { true }
+        assertEquals(listOf(aliFirst), applied)
     }
 }
