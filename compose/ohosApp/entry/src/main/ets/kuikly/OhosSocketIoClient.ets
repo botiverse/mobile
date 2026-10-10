@@ -23,6 +23,23 @@ export interface OhosSocketIoListener {
   onDisconnected?: (reason: string) => void;
   onEvent?: (eventName: string, payload: KRAny) => void;
   onConnectError?: (message: string) => void;
+  /** Task #154: the curl stack could not open a session at all; the runtime falls back to webSocket. */
+  onTransportUnavailable?: (reason: string) => void;
+}
+
+/**
+ * Task #154: the realtime socket surface both stacks implement. OhosSocketIoClient is the
+ * @ohos.net.webSocket client; OhosCurlSocketIoClient runs the connection over NetworkKMM's curl
+ * Socket.IO client through KNOI.
+ */
+export interface OhosRealtimeSocket {
+  setListener(listener: OhosSocketIoListener): void;
+  isConnected(): boolean;
+  connect(params: OhosSocketIoConnectParams): void;
+  disconnect(reason: string): void;
+  suspend(reason: string): void;
+  resume(): void;
+  emit(eventName: string, payload: KRAny): boolean;
 }
 
 export interface OhosSocketIoDecodedFrame {
@@ -97,7 +114,7 @@ interface WebSocketCloseOptions {
   reason: string;
 }
 
-export class OhosSocketIoClient {
+export class OhosSocketIoClient implements OhosRealtimeSocket {
   private socket?: webSocket.WebSocket;
   private connectParams?: OhosSocketIoConnectParams;
   private listener: OhosSocketIoListener = {};

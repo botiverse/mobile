@@ -2,6 +2,7 @@ package build.raft.app.network
 
 import com.tencent.tmm.knoi.annotation.KNExport
 import com.tencent.tmm.knoi.annotation.ServiceConsumer
+import com.tencent.kmm.network.export.VBTransportCurl
 import com.tencent.tmm.knoi.service.KNOI
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -44,17 +45,23 @@ private object OhosCurlSocketIoSessions {
 
 private val headersJson = Json { ignoreUnknownKeys = true }
 
+// NetworkSocketIoFactory.isSupported is a compile-time true on ohosArm64; the native library must
+// also be linked into this build.
+private val ohosCurlSocketIoAvailable: Boolean
+    get() = slockCurlSocketIoSupported && runCatching { VBTransportCurl.nativeStatus.linked }.getOrDefault(false)
+
 /** Called once at startup: shows the Settings switch when this build has the curl Socket.IO client. */
 @KNExport
 fun slockOhosCurlSocketIoInstall(): Boolean {
-    if (slockCurlSocketIoSupported) SlockCurlSocketIoPolicy.markPlatformSupported()
-    return slockCurlSocketIoSupported
+    val available = ohosCurlSocketIoAvailable
+    if (available) SlockCurlSocketIoPolicy.markPlatformSupported()
+    return available
 }
 
 /** The per-connect decision (Settings switch, else the mobile_curl_socketio_v0 flag) and availability. */
 @KNExport
 fun slockOhosCurlSocketIoEnabledFor(serverId: String): Boolean =
-    slockCurlSocketIoSupported && SlockCurlSocketIoPolicy.isEnabledFor(serverId)
+    SlockCurlSocketIoPolicy.isEnabledFor(serverId) && ohosCurlSocketIoAvailable
 
 /** Opens and starts a session; returns its handle, or "" when it could not be created or started. */
 @KNExport

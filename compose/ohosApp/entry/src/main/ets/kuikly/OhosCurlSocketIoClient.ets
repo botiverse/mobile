@@ -1,23 +1,8 @@
 import { invoke } from '@kuiklybase/knoi';
 import { KRAny } from '@kuikly-open/render';
-import { OhosSocketIoConnectParams, OhosSocketIoListener } from './OhosSocketIoClient';
+import { OhosRealtimeSocket, OhosSocketIoConnectParams, OhosSocketIoListener } from './OhosSocketIoClient';
 
 export const SLOCK_OHOS_CURL_SOCKET_IO_OBSERVER_SERVICE = 'slockOhosCurlSocketIoObserver';
-
-/**
- * Task #154: the realtime socket surface both stacks implement. OhosSocketIoClient is the
- * @ohos.net.webSocket client; OhosCurlSocketIoClient runs the connection over NetworkKMM's curl
- * Socket.IO client through KNOI.
- */
-export interface OhosRealtimeSocket {
-  setListener(listener: OhosSocketIoListener): void;
-  isConnected(): boolean;
-  connect(params: OhosSocketIoConnectParams): void;
-  disconnect(reason: string): void;
-  suspend(reason: string): void;
-  resume(): void;
-  emit(eventName: string, payload: KRAny): boolean;
-}
 
 /** Whether this server's next connection should use curl (Settings switch, else the server flag). */
 export function slockOhosCurlSocketIoEnabledFor(serverId: string): boolean {
@@ -139,7 +124,9 @@ export class OhosCurlSocketIoClient implements OhosRealtimeSocket {
       console.error(`[OhosCurlSocketIo] open_failed ${String(error)}`);
     }
     if (handle.length === 0) {
-      this.listener.onConnectError?.('curl_socket_io_unavailable');
+      // Not an auth problem: let the runtime fall back to the webSocket client for this connection
+      // instead of reporting a connect error (which would refresh auth and pick curl again).
+      this.listener.onTransportUnavailable?.('curl_socket_io_open_failed');
       return;
     }
     this.handle = handle;

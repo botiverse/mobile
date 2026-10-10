@@ -2,8 +2,8 @@ import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { registerSingleServiceProvider } from '@kuiklybase/knoi';
 import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
-import { OhosSocketIoClient, OhosSocketIoConnectParams } from './OhosSocketIoClient';
-import { OhosCurlSocketIoClient, OhosRealtimeSocket, slockOhosCurlSocketIoEnabledFor } from './OhosCurlSocketIoClient';
+import { OhosRealtimeSocket, OhosSocketIoClient, OhosSocketIoConnectParams } from './OhosSocketIoClient';
+import { OhosCurlSocketIoClient, slockOhosCurlSocketIoEnabledFor } from './OhosCurlSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 import slockOhosRealtimeKnoiBridge from './SlockOhosRealtimeKnoiBridge';
@@ -207,15 +207,32 @@ class SlockOhosRealtimeRuntime {
   }
 
   private selectSocket(serverId: string): void {
-    const useCurl = slockOhosCurlSocketIoEnabledFor(serverId);
+    this.useSocket(slockOhosCurlSocketIoEnabledFor(serverId), serverId);
+  }
+
+  private useSocket(useCurl: boolean, serverId: string): void {
     if (useCurl === this.socketIoIsCurl) {
       return;
     }
     // Leave the old stack before the other one connects; its late callbacks fail isCurrent().
     this.socketIo.disconnect('transport_switch');
-    this.socketIo = useCurl ? new OhosCurlSocketIoClient() : new OhosSocketIoClient();
+    if (useCurl) {
+      this.socketIo = new OhosCurlSocketIoClient();
+    } else {
+      this.socketIo = new OhosSocketIoClient();
+    }
     this.socketIoIsCurl = useCurl;
     console.info(`[SlockOhosRealtime] transport_select stack=${useCurl ? 'curl' : 'ohos_websocket'} serverId=${serverId}`);
+  }
+
+  /** Task #154: curl could not open a session; this connection goes over the webSocket client. */
+  private fallBackToWebSocket(capturedGeneration: number, reason: string): void {
+    const params = this.connectParams;
+    if (params === undefined) return;
+    console.warn(`[SlockOhosRealtime] curl_socket_io_unavailable reason=${reason} serverId=${this.serverId} fallback=ohos_websocket`);
+    this.useSocket(false, this.serverId);
+    this.installSocketListener(capturedGeneration);
+    this.socketIo.connect(this.socketConnectParams(params));
   }
 
   private installSocketListener(capturedGeneration: number): void {
@@ -244,6 +261,10 @@ class SlockOhosRealtimeRuntime {
       onEvent: (eventName, payload) => {
         if (!this.isCurrent(capturedGeneration)) return;
         this.handleSocketIoEvent(eventName, payload);
+      },
+      onTransportUnavailable: (reason: string) => {
+        if (!this.isCurrent(capturedGeneration)) return;
+        this.fallBackToWebSocket(capturedGeneration, reason);
       }
     });
   }
