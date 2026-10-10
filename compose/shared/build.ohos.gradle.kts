@@ -202,6 +202,7 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11-ohos")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11-ohos")
                 implementation("build.raft.mermaid:mermaid-kuikly:0.1.11-ohos")
+                implementation("build.raft.mermaid:mermaid-kuikly-compose:0.1.12-compose-raft11-test-ohos")
             }
         }
         val ohosArm64Test by getting {
