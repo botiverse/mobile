@@ -321,14 +321,18 @@ private const val HOME_UNREAD_ENRICHMENT_BUDGET_MS = 3_000L
 internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification(): SharedHomeNotification? {
     if (!supported || !updateAvailable || latestVersionCode <= 0L) return null
     if (currentVersionCode > 0L && latestVersionCode <= currentVersionCode) return null
-    val currentVersion = currentVersionLabel.ifBlank { "current build" }
+    // Same version name, different build: name the current build too, or the notice reads
+    // "1.13.0 … 1.13.0 (11300008)" without saying what changed.
+    val sameVersionName = currentVersionLabel.isNotBlank() && currentVersionLabel.trim() == latestVersionLabel.trim()
+    val currentBuildSuffix = if (sameVersionName && currentVersionCode > 0L) " ($currentVersionCode)" else ""
+    val currentVersion = currentVersionLabel.ifBlank { "current build" } + currentBuildSuffix
     val latestVersion =
         latestVersionLabel
             .takeIf { it.isNotBlank() }
             ?.let { "$it ($latestVersionCode)" }
             ?: "version code $latestVersionCode"
     val localizedCurrentVersion =
-        currentVersionLabel.ifBlank { currentVersionCode.takeIf { it > 0L }?.toString() ?: "—" }
+        currentVersionLabel.ifBlank { currentVersionCode.takeIf { it > 0L }?.toString() ?: "—" } + currentBuildSuffix
     val localizedLatestVersion =
         latestVersionLabel
             .takeIf { it.isNotBlank() }

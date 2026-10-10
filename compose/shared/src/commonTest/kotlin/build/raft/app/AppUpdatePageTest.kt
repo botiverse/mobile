@@ -459,4 +459,19 @@ class AppUpdatePageTest {
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.ReadyToInstall)))
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.Installed)))
     }
+
+    @Test
+    fun sameVersionNameShowsTheBuildOnBothSides() {
+        assertEquals(
+            "1.13.0 (11300001)" to "1.13.0 (11300008)",
+            appUpdateVersionLabels("1.13.0", 11_300_001L, "1.13.0", 11_300_008L),
+        )
+        // Different versions keep the plain names.
+        assertEquals("1.13.0" to "1.13.1", appUpdateVersionLabels("1.13.0", 11_300_008L, "1.13.1", 11_301_001L))
+        // Unknown build on either side, or the very same build: nothing to add.
+        assertEquals("1.13.0" to "1.13.0", appUpdateVersionLabels("1.13.0", 0L, "1.13.0", 11_300_008L))
+        assertEquals("1.13.0" to "1.13.0", appUpdateVersionLabels("1.13.0", 11_300_008L, "1.13.0", 11_300_008L))
+        // Unknown names stay blank (the page shows "-"), never "- (1)".
+        assertEquals("" to "", appUpdateVersionLabels("", 1L, "", 2L))
+    }
 }
