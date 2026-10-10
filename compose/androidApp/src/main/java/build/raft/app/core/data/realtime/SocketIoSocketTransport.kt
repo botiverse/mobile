@@ -12,13 +12,18 @@ import io.socket.emitter.Emitter
 import io.socket.engineio.client.transports.WebSocket
 import org.json.JSONObject
 
-class SocketIoSocketTransport(
-    private val socketUrl: String = SocketIoRealtimeClient.DEFAULT_SOCKET_URL
+class SocketIoSocketTransport internal constructor(
+    private val socketUrl: String,
+    // Task #154: shared with CurlSocketIoSocketTransport under SelectableRealtimeSocketTransport.
+    private val generationFence: RealtimeSocketGenerationFence,
 ) : RealtimeSocketTransport {
+    constructor(
+        socketUrl: String = SocketIoRealtimeClient.DEFAULT_SOCKET_URL
+    ) : this(socketUrl, RealtimeSocketGenerationFence())
+
     private val listeners =
         mutableMapOf<String, MutableSet<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
     private val boundListeners = mutableMapOf<BoundEvent, Emitter.Listener>()
-    private val generationFence = RealtimeSocketGenerationFence()
     private var socket: Socket? = null
 
     override fun <T> linearize(block: () -> T): T = generationFence.linearize(block)

@@ -9,6 +9,7 @@ import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.network.SlockCurlSocketIoPolicy
 import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -454,6 +455,8 @@ sealed interface SharedSettingsIntent {
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewDesignSettingsEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
+    /** Task #154: stores the user's explicit realtime curl Socket.IO choice (no longer follows the server). */
+    data class SetRealtimeCurlSocketIoEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -586,7 +589,8 @@ class SharedSettingsDataSource(
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
-    private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null
+    private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null,
+    private val realtimeTransportPreferenceStore: RealtimeTransportPreferenceStore? = null
 ) {
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -1238,6 +1242,36 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setRealtimeCurlSocketIoEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val store =
+            realtimeTransportPreferenceStore
+                ?: return DataResult.Error(ScreenError("settings_realtime_curl_socketio_unavailable", retryable = false))
+        store.saveCurlSocketIoUserChoice(enabled)
+        diagnosticsLogger?.invoke("realtime_curl_socketio_user_choice enabled=$enabled")
+        return loadMobilePreferences()
+    }
+
+    /**
+     * Task #154: the switch shows the effective value, i.e. SlockCurlSocketIoPolicy.isEnabledFor(currentServerId):
+     * the user's explicit choice when there is one, otherwise the server flag for the selected server.
+     * The choice is read from this data source's own store so the row reflects a save immediately.
+     */
+    private suspend fun SettingsMobileSnapshot.withRealtimeCurlSocketIoPreference(): SettingsMobileSnapshot {
+        val store = realtimeTransportPreferenceStore ?: return this
+        if (!SlockCurlSocketIoPolicy.platformSupported) return this
+        val serverId = sessionStore.readSession()?.currentServerId?.trim()?.takeIf(String::isNotEmpty)
+        val enabled = store.readCurlSocketIoUserChoiceSync() ?: SlockCurlSocketIoPolicy.serverDefaultFor(serverId)
+        return copy(
+            realtimeCurlSocketIo =
+                SettingsMobileToggleSnapshot(
+                    enabled = enabled,
+                    available = true,
+                    statusLabel = if (enabled) "Enabled" else "Off",
+                    detail = "Takes effect on the next connection or reconnect. Until changed, follows the server default."
+                )
+        )
+    }
+
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
@@ -1618,7 +1652,7 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
-        )
+        ).withRealtimeCurlSocketIoPreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -2464,6 +2498,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setHomeServerAvatarEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
+            }
+            is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_REALTIME_CURL_SOCKETIO, inProgress = true)
+                    )
+                dataSource.setRealtimeCurlSocketIoEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_REALTIME_CURL_SOCKETIO)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -3590,6 +3632,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetServerDrawerEnabled,
             is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
+            is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -3790,6 +3833,7 @@ internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
 internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
+internal const val MOBILE_ACTION_REALTIME_CURL_SOCKETIO = "realtimeCurlSocketIo"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"

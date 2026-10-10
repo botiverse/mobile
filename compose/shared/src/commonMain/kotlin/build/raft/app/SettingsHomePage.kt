@@ -83,6 +83,7 @@ import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
+import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -8039,6 +8040,9 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
                     },
+                    onRealtimeCurlSocketIoChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(enabled))
+                    },
                     diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
@@ -9317,6 +9321,7 @@ private fun SettingsMobileContent(
     onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
+    onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
@@ -9432,6 +9437,15 @@ private fun SettingsMobileContent(
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
                 )
+            }
+            if (snapshot.realtimeCurlSocketIo.available) {
+                item {
+                    SettingsRealtimeCurlSocketIoCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onRealtimeCurlSocketIoChange = onRealtimeCurlSocketIoChange
+                    )
+                }
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -9641,6 +9655,52 @@ private fun SettingsHomeServerAvatarCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+/** Task #154: realtime over NetworkKMM's curl Socket.IO client; shows the effective value. */
+@Composable
+private fun SettingsRealtimeCurlSocketIoCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onRealtimeCurlSocketIoChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.inProgress
+    val preference = snapshot.realtimeCurlSocketIo
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Activity,
+        title = stringResource(MR.strings.settings_mobile_realtime_curl_socketio)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onRealtimeCurlSocketIoChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_realtime_curl_socketio_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

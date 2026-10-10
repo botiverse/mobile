@@ -5,6 +5,9 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.realtime.CurlSocketIoSocketTransport
+import build.raft.app.core.data.realtime.RealtimeSocketGenerationFence
+import build.raft.app.core.data.realtime.SelectableRealtimeSocketTransport
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.core.data.realtime.SocketIoSocketTransport
@@ -28,6 +31,9 @@ import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeHostContext
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.ChannelId
+import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
+import build.raft.app.network.SlockAndroidCurlSocketIo
+import build.raft.app.network.SlockCurlSocketIoPolicy
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
@@ -139,9 +145,20 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             val sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
+            // Task #154: the Settings switch / `mobile_curl_socketio_v0` pick the Socket.IO stack per connect.
+            SlockCurlSocketIoPolicy.bindUserChoice { readCurlSocketIoUserChoice(appContext) }
+            val socketFence = RealtimeSocketGenerationFence()
+            val transport =
+                SelectableRealtimeSocketTransport(
+                    legacy = SocketIoSocketTransport(socketUrl, socketFence),
+                    curl = CurlSocketIoSocketTransport(socketUrl = socketUrl, generationFence = socketFence),
+                    fence = socketFence,
+                    useCurl = { connection -> useCurlSocketIo(connection.serverId.value) },
+                    logger = { message -> SlockAppLog.d(LOG_TAG, message) }
+                )
             val client =
                 SocketIoRealtimeClient(
-                    transport = SocketIoSocketTransport(socketUrl = socketUrl),
+                    transport = transport,
                     logger = { message ->
                         SlockAppLog.d(LOG_TAG, message)
                     }
@@ -264,6 +281,29 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 preferenceEnabled = preferenceEnabled,
                 isAppInForeground = isAppInForeground
             )
+
+        private fun useCurlSocketIo(serverId: String): Boolean {
+            if (!SlockCurlSocketIoPolicy.isEnabledFor(serverId)) return false
+            val unavailable = SlockAndroidCurlSocketIo.unavailableReason() ?: return true
+            SlockAppLog.w(LOG_TAG, "curl_socket_io_selected_but_unavailable reason=$unavailable serverId=$serverId")
+            return false
+        }
+
+        /** The Settings switch as stored by the Kuikly local preference store; null = follow the server. */
+        private fun readCurlSocketIoUserChoice(context: Context): Boolean? =
+            runCatching {
+                AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
+                val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+                SlockCurlSocketIoPolicy.parseUserChoice(
+                    store.decodeString(
+                        AndroidRealtimeKeepAliveController.localPreferenceKey(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY),
+                        null
+                    ) ?: store.decodeString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, null)
+                )
+            }.getOrElse { error ->
+                SlockAppLog.w(LOG_TAG, "curl_socket_io_preference_failed message=${error.message.orEmpty()}")
+                null
+            }
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
             runCatching {
