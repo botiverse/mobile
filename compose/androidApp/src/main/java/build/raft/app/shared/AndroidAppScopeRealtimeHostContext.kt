@@ -154,7 +154,9 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     curl = CurlSocketIoSocketTransport(socketUrl = socketUrl, generationFence = socketFence),
                     fence = socketFence,
                     useCurl = { connection -> useCurlSocketIo(connection.serverId.value) },
-                    logger = { message -> SlockAppLog.d(LOG_TAG, message) }
+                    // One line per connect (`transport_select stack=…`): recorded in release builds too,
+                    // where debug/info lines are dropped, so device checks can see which stack connected.
+                    logger = { message -> SlockAppLog.w(LOG_TAG, message) }
                 )
             val client =
                 SocketIoRealtimeClient(
