@@ -47,6 +47,50 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun defaultOnKeyReadsOnWithoutAnExplicitServerDecision() = runBlocking {
+        val doh = MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
+        // Unresolved (no evaluation yet, no stored value) and no server at all: ON.
+        val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        assertTrue(idle.isEnabled(server, doh))
+        assertTrue(idle.isEnabled(null, doh))
+        // Ordinary keys keep reading OFF without a decision.
+        assertFalse(idle.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+
+        // Key absent from the response: ON.
+        idle.prefetch(server)
+        assertTrue(idle.isEnabled(server, doh))
+
+        // No flag row on the server (`missing_flag`): ON.
+        val missing =
+            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"missing_flag"}]}""")))
+        missing.prefetch(server)
+        assertTrue(missing.isEnabled(server, doh))
+
+        // Evaluate failed or the body is malformed: still no decision, ON.
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 503, bodyText = null)))
+        failed.prefetch(server)
+        assertTrue(failed.isEnabled(server, doh))
+        val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")))
+        malformed.prefetch(server)
+        assertTrue(malformed.isEnabled(server, doh))
+    }
+
+    @Test
+    fun defaultOnKeyFollowsAnExplicitServerDecision() = runBlocking {
+        val doh = MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
+        for (reason in listOf("kill_switch", "flag_disabled", "default", "platform_rule")) {
+            val flags =
+                SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")))
+            flags.prefetch(server)
+            assertFalse(flags.isEnabled(server, doh), "explicit off ($reason) turns it off")
+        }
+        val on =
+            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":true,"reason":"default"}]}""")))
+        on.prefetch(server)
+        assertTrue(on.isEnabled(server, doh))
+    }
+
+    @Test
     fun diagnosticOverrideHookReceivesServerValueAndDecidesBothReadShapes() = runBlocking {
         val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v1","enabled":false}]}"""))
         val seen = mutableListOf<Triple<ServerId?, String, Boolean>>()

@@ -65,12 +65,25 @@ const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /**
- * Task #153 DNS-over-HTTPS fallback for the curl transport (see SlockDohFallbackPolicy). Default OFF
- * (server-unresolved evaluates false). Kept in the last-known store so a cold start during a DNS
- * outage, when evaluate itself cannot reach the server, still uses the last value; internal builds
- * can force it through Local Feature Overrides.
+ * Task #153 DNS-over-HTTPS fallback for the curl transport (see SlockDohFallbackPolicy). Default ON
+ * (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); the server turns it off with an explicit
+ * decision such as a kill switch. Kept in the last-known store so a cold start during a DNS outage,
+ * when evaluate itself cannot reach the server, still honours the last explicit decision; internal
+ * Android builds can also force it through Local Feature Overrides.
  */
 const val MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY: String = "mobile_doh_fallback_v0"
+
+/**
+ * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
+ * the server can push it off). For these keys "no decision" reads ON: no evaluation yet, an evaluate
+ * failure or malformed body, no stored last-known value, the key missing from the response, or the
+ * server reporting `missing_flag` (no flag row exists). Every other server reason (`kill_switch`,
+ * `flag_disabled`, any rule, `default`) is an explicit decision and is followed as sent.
+ */
+val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> = setOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
+
+/** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
+private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
 
 /**
  * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
@@ -212,6 +225,7 @@ class SharedServerFeatureFlags(
      * online evaluation for the server yet; every accepted evaluation overwrites it.
      */
     private val lastKnown: ServerFeatureFlagLastKnownStore? = null,
+    private val clientDefaultOnKeys: Set<String> = SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS,
     // Kept last so existing trailing-lambda constructions keep binding here.
     private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
@@ -245,8 +259,9 @@ class SharedServerFeatureFlags(
      */
     private fun serverEffective(serverId: ServerId?, key: String): Boolean {
         val online = serverId?.let { snapshots[it.value] }
-        if (online != null || serverId == null) return online?.isEnabled(key) == true
-        val stored = lastKnown?.read(serverId, key) ?: return false
+        if (online != null) return online.isEnabled(key)
+        if (serverId == null) return key in clientDefaultOnKeys
+        val stored = lastKnown?.read(serverId, key) ?: return key in clientDefaultOnKeys
         logLastKnownUse(serverId, key, stored)
         return stored
     }
@@ -392,12 +407,17 @@ class SharedServerFeatureFlags(
             diagnosticsLogger?.invoke("feature_flags evaluate malformed body server=${serverId.value}")
             return snapshotFor(serverId)
         }
-        val values = keys.associateWith { false }.toMutableMap()
+        val values = keys.associateWith { it in clientDefaultOnKeys }.toMutableMap()
         val variants = linkedMapOf<String, String>()
         val observedEvaluations = linkedMapOf<String, FeatureFlagEvaluation>()
         for (evaluation in decoded.evaluations) {
             if (values.containsKey(evaluation.key)) {
-                values[evaluation.key] = evaluation.enabled
+                values[evaluation.key] =
+                    if (evaluation.key in clientDefaultOnKeys && evaluation.reason == FEATURE_FLAG_REASON_MISSING_FLAG) {
+                        true
+                    } else {
+                        evaluation.enabled
+                    }
                 evaluation.variant
                     ?.trim()
                     ?.takeIf { evaluation.enabled && it.isNotEmpty() }
