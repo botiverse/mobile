@@ -1,5 +1,6 @@
 import Foundation
 import SocketIO
+import Starscream
 import UIKit
 import shared
 
@@ -286,6 +287,10 @@ final class SlockIosRealtimeHost: NSObject {
                 .log(false),
                 .compress,
                 .forceWebsockets(true),
+                // Without a pinner Starscream's TCPTransport (Socket.IO's default custom engine)
+                // completes the TLS verify block with `true` for any certificate. FoundationSecurity
+                // evaluates the chain with SecPolicyCreateSSL(true, host) + SecTrustEvaluateWithError.
+                .security(FoundationSecurity()),
                 .reconnects(true),
                 .reconnectAttempts(-1),
                 .reconnectWait(1),
