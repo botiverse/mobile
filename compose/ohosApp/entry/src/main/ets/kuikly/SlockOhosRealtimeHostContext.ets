@@ -3,6 +3,7 @@ import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { registerSingleServiceProvider } from '@kuiklybase/knoi';
 import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
 import { OhosSocketIoClient, OhosSocketIoConnectParams } from './OhosSocketIoClient';
+import { OhosCurlSocketIoClient, OhosRealtimeSocket, slockOhosCurlSocketIoEnabledFor } from './OhosCurlSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 import slockOhosRealtimeKnoiBridge from './SlockOhosRealtimeKnoiBridge';
@@ -42,7 +43,9 @@ export interface SlockOhosRealtimeSharedIngress {
 }
 
 class SlockOhosRealtimeRuntime {
-  private readonly socketIo: OhosSocketIoClient = new OhosSocketIoClient();
+  // Task #154: picked per connect (Settings switch, else mobile_curl_socketio_v0); see selectSocket().
+  private socketIo: OhosRealtimeSocket = new OhosSocketIoClient();
+  private socketIoIsCurl: boolean = false;
   private readonly joinedChannels: Set<string> = new Set();
   private connectParams?: RealtimeConnectParams;
   private watchdogTimer?: number;
@@ -104,6 +107,7 @@ class SlockOhosRealtimeRuntime {
     this.lastInboundEventAtMillis = undefined;
     this.generation += 1;
     const capturedGeneration = this.generation;
+    this.selectSocket(params.serverId);
     this.installSocketListener(capturedGeneration);
     this.connectInFlight = true;
     this.socketIo.connect(this.socketConnectParams(this.connectParams));
@@ -200,6 +204,18 @@ class SlockOhosRealtimeRuntime {
     if (decision.shouldEmit) {
       this.emitRoomCommand(decision.eventName, decision.payload);
     }
+  }
+
+  private selectSocket(serverId: string): void {
+    const useCurl = slockOhosCurlSocketIoEnabledFor(serverId);
+    if (useCurl === this.socketIoIsCurl) {
+      return;
+    }
+    // Leave the old stack before the other one connects; its late callbacks fail isCurrent().
+    this.socketIo.disconnect('transport_switch');
+    this.socketIo = useCurl ? new OhosCurlSocketIoClient() : new OhosSocketIoClient();
+    this.socketIoIsCurl = useCurl;
+    console.info(`[SlockOhosRealtime] transport_select stack=${useCurl ? 'curl' : 'ohos_websocket'} serverId=${serverId}`);
   }
 
   private installSocketListener(capturedGeneration: number): void {

@@ -27,6 +27,10 @@ import {
   SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
   slockOhosAttachmentDownloadSink
 } from '../kuikly/SlockOhosAttachmentDownloadSink';
+import {
+  SLOCK_OHOS_CURL_SOCKET_IO_OBSERVER_SERVICE,
+  slockOhosCurlSocketIoObserver
+} from '../kuikly/OhosCurlSocketIoClient';
 import { Hands } from '@botiverse/hands';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
@@ -309,6 +313,16 @@ export default class EntryAbility extends UIAbility {
       SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
       slockOhosAttachmentDownloadSink
     );
+    // Task #154: curl Socket.IO session callbacks; the install call shows the Settings switch on OHOS.
+    registerSingleServiceProvider(
+      SLOCK_OHOS_CURL_SOCKET_IO_OBSERVER_SERVICE,
+      slockOhosCurlSocketIoObserver
+    );
+    try {
+      invoke<boolean>('slockOhosCurlSocketIoInstall');
+    } catch (error) {
+      hilog.warn(0x0000, 'SlockKnoi', 'curl_socket_io_install_failed %{public}s', String(error));
+    }
     registerSingleServiceProvider(
       SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE,
       new SlockOhosImageTransportPolicySink()
