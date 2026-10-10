@@ -51,6 +51,9 @@ final class SlockIosRealtimeHost: NSObject {
         let roomEngine = SlockRealtimeAppScopeEngine()
         var manager: SocketManager?
         var socket: SocketIOClient?
+        // Task #154: set instead of manager/socket when this connection runs over NetworkKMM curl.
+        var curlSession: SlockCurlSocketIoSession?
+        var curlListener: CurlSocketListener?
         var connectParams: ConnectParams?
         var state: State = .disconnected
         var joinedChannels: Set<String> = []
@@ -281,6 +284,14 @@ final class SlockIosRealtimeHost: NSObject {
         nextGeneration += 1
         runtime.generation = nextGeneration
         let generation = runtime.generation
+        // Task #154: the Settings switch (else the mobile_curl_socketio_v0 flag) picks the stack per connect.
+        if SlockIosCurlSocketIoKt.slockIosCurlSocketIoEnabledFor(serverId: params.serverId) {
+            if let reason = SlockIosCurlSocketIoKt.slockIosCurlSocketIoUnavailableReason() {
+                record("warn", "curl_socket_io_selected_but_unavailable reason=\(reason) serverId=\(params.serverId)")
+            } else if openCurlSocketLocked(runtime: runtime, params: params, generation: generation) {
+                return
+            }
+        }
         let manager = SocketManager(
             socketURL: url,
             config: [
@@ -314,20 +325,93 @@ final class SlockIosRealtimeHost: NSObject {
         ])
     }
 
+    /// Task #154: the same connection over NetworkKMM's curl Socket.IO client (pinned CA bundle, DoH
+    /// fallback only after a system-resolver failure). It reconnects by itself with backoff, so nothing
+    /// here schedules reconnects; its callbacks feed the same handlers as the Swift library's.
+    private func openCurlSocketLocked(runtime: Runtime, params: ConnectParams, generation: UInt64) -> Bool {
+        let listener = CurlSocketListener(host: self, serverId: params.serverId, generation: generation)
+        let auth = jsonString([
+            "token": params.accessToken,
+            "serverId": params.serverId,
+            "clientKind": "mobile",
+        ])
+        guard let session = SlockIosCurlSocketIoKt.slockIosCreateCurlSocketIoSession(
+            serverUrl: params.socketUrl,
+            authJson: auth,
+            headers: [
+                "Authorization": "Bearer \(params.accessToken)",
+                "X-Server-Id": params.serverId,
+            ],
+            listener: listener
+        ) else {
+            record("warn", "curl_socket_io_create_failed serverId=\(params.serverId)")
+            return false
+        }
+        runtime.curlSession = session
+        runtime.curlListener = listener
+        record("info", "connect_start transport=curl_socketio serverId=\(params.serverId) generation=\(generation)")
+        if !session.start() {
+            record("warn", "curl_socket_io_start_failed serverId=\(params.serverId) generation=\(generation)")
+        }
+        return true
+    }
+
+    fileprivate func handleCurlState(serverId: String, generation: UInt64, state: SlockCurlSocketIoState, code: Int32, detail: String) {
+        queue.async { [weak self] in
+            guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
+            switch state {
+            case .connected:
+                self.markConnectedLocked(runtime: runtime, transport: "curl_socketio", generation: generation)
+            case .connecting, .reconnecting:
+                if runtime.state != .connected { runtime.state = .connecting }
+            case .disconnected:
+                // "closed" is the final state after our own close; only a dropped connection matters.
+                guard detail == "transport_closed" else { return }
+                runtime.state = .disconnected
+                self.record("warn", "curl_socketio_disconnected serverId=\(serverId) generation=\(generation) curlCode=\(code)")
+            case .error:
+                if detail == "binary_frame_unsupported" {
+                    self.record("warn", "curl_socketio_error serverId=\(serverId) generation=\(generation) reason=binary_frame_unsupported")
+                    return
+                }
+                // "websocket_connect" (could not open the WebSocket) or a server CONNECT_ERROR payload.
+                runtime.state = .disconnected
+                let reason = detail == "websocket_connect" ? "websocket_connect curlCode=\(code)" : "connect_error"
+                self.record("warn", "curl_socketio_error serverId=\(serverId) generation=\(generation) reason=\(reason)")
+                self.requestAuthRefresh(runtime: runtime, reason: "connect_error")
+            default:
+                return
+            }
+        }
+    }
+
+    fileprivate func handleCurlEvent(serverId: String, generation: UInt64, eventName: String, payloadJson: String) {
+        guard Self.serverWireEvents.contains(eventName) else { return }
+        queue.async { [weak self] in
+            guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
+            // An event without arguments arrives as "null"; the Swift library path hands over "{}" then.
+            self.handleSocketEvent(runtime: runtime, eventName: eventName, rawPayload: payloadJson == "null" ? "{}" : payloadJson)
+        }
+    }
+
+    private func markConnectedLocked(runtime: Runtime, transport: String, generation: UInt64) {
+        runtime.state = .connected
+        nextPresenceTransportEpoch += 1
+        runtime.presenceTransportEpoch = nextPresenceTransportEpoch
+        record(
+            "info",
+            "\(transport)_connected serverId=\(runtime.serverId) generation=\(generation) " +
+                "presenceEpoch=\(runtime.presenceTransportEpoch)"
+        )
+        postPresenceTransportConnected(runtime: runtime)
+        rejoinChannels(runtime: runtime, reason: "connect")
+    }
+
     private func installSocketHandlers(_ socket: SocketIOClient, serverId: String, generation: UInt64) {
         socket.on(clientEvent: .connect) { [weak self] _, _ in
             self?.queue.async {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                runtime.state = .connected
-                self.nextPresenceTransportEpoch += 1
-                runtime.presenceTransportEpoch = self.nextPresenceTransportEpoch
-                self.record(
-                    "info",
-                    "socket_io_connected serverId=\(serverId) generation=\(generation) " +
-                        "presenceEpoch=\(runtime.presenceTransportEpoch)"
-                )
-                self.postPresenceTransportConnected(runtime: runtime)
-                self.rejoinChannels(runtime: runtime, reason: "connect")
+                self.markConnectedLocked(runtime: runtime, transport: "socket_io", generation: generation)
             }
         }
         socket.on(clientEvent: .disconnect) { [weak self] data, _ in
@@ -362,13 +446,13 @@ final class SlockIosRealtimeHost: NSObject {
             socket.on(eventName) { [weak self] data, _ in
                 self?.queue.async {
                     guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                    self.handleSocketEvent(runtime: runtime, eventName: eventName, data: data)
+                    self.handleSocketEvent(runtime: runtime, eventName: eventName, rawPayload: self.jsonString(data.first ?? [:]))
                 }
             }
         }
     }
 
-    private func handleSocketEvent(runtime: Runtime, eventName: String, data: [Any]) {
+    private func handleSocketEvent(runtime: Runtime, eventName: String, rawPayload: String) {
         if eventName == GeneratedRealtimeContract.SocketEvent.roomsJoined {
             log(
                 "rooms_joined serverId=\(runtime.serverId) joinedRooms=\(runtime.joinedChannels.count) " +
@@ -384,7 +468,6 @@ final class SlockIosRealtimeHost: NSObject {
             return
         }
         guard let params = runtime.connectParams else { return }
-        let rawPayload = jsonString(data.first ?? [:])
         let gate = payloadServerGate(connectionServerId: params.serverId, rawPayload: rawPayload)
         guard gate.accept else {
             log(
@@ -475,11 +558,19 @@ final class SlockIosRealtimeHost: NSObject {
     }
 
     private func emit(runtime: Runtime, eventName: String, payload: [String: Any]) {
-        guard runtime.state == .connected, let socket = runtime.socket else {
+        guard runtime.state == .connected else {
             log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
             return
         }
-        socket.emit(eventName, payload)
+        if let curl = runtime.curlSession {
+            if !curl.emit(eventName: eventName, payloadJson: jsonString(payload)) {
+                log("emit_dropped transport=curl_socketio serverId=\(runtime.serverId) eventName=\(eventName)")
+            }
+        } else if let socket = runtime.socket {
+            socket.emit(eventName, payload)
+        } else {
+            log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
+        }
     }
 
     private func rejoinChannels(runtime: Runtime, reason: String) {
@@ -520,6 +611,12 @@ final class SlockIosRealtimeHost: NSObject {
         runtime.socket?.disconnect()
         runtime.socket = nil
         runtime.manager = nil
+        if let curl = runtime.curlSession {
+            // close() joins the native connection thread; keep it off the host queue.
+            DispatchQueue.global(qos: .utility).async { curl.close() }
+        }
+        runtime.curlSession = nil
+        runtime.curlListener = nil
         runtime.state = .disconnected
         runtime.authRefreshInFlight = false
         if !keepSession {
@@ -790,4 +887,26 @@ final class SlockIosRealtimeHost: NSObject {
         "pinned:updated",
         "notification:push",
     ]
+}
+
+/// Task #154: forwards a curl Socket.IO session's callbacks (native thread) to the host, which hops
+/// onto its queue and drops callbacks of a replaced connection by generation.
+final class CurlSocketListener: NSObject, SlockCurlSocketIoListener {
+    private weak var host: SlockIosRealtimeHost?
+    private let serverId: String
+    private let generation: UInt64
+
+    fileprivate init(host: SlockIosRealtimeHost, serverId: String, generation: UInt64) {
+        self.host = host
+        self.serverId = serverId
+        self.generation = generation
+    }
+
+    func onState(state: SlockCurlSocketIoState, code: Int32, detail: String) {
+        host?.handleCurlState(serverId: serverId, generation: generation, state: state, code: code, detail: detail)
+    }
+
+    func onEvent(eventName: String, payloadJson: String) {
+        host?.handleCurlEvent(serverId: serverId, generation: generation, eventName: eventName, payloadJson: payloadJson)
+    }
 }
