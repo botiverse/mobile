@@ -2,15 +2,16 @@ package build.raft.app
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Hands feedback 078f6bb3 (LX, 2026-10-10): on the shell Members tab the pull-to-refresh gesture
- * showed but nothing reloaded and the spinner never turned, because SharedMembersScreen passed
- * `refreshing` to MembersRouteContent but no `onRefresh`, so the default no-op ran.
+ * Hands feedback 078f6bb3 (LX, 2026-10-10): on the shell Members tab a pull only called onRetry(),
+ * which bumps the parent's refresh key through a tab lambda that need not recompose, so the local
+ * load often never re-ran and the refresh indicator hung or never turned.
  *
- * Production-wiring check: the shell's MembersRouteContent call wires `onRefresh` to the same forced
- * reload as Retry (members + computer list), and the reload always ends the refreshing state.
+ * Production-wiring check: the shell's MembersRouteContent call has exactly one `onRefresh`, wired to
+ * the local forced reload (members + computer list), and the reload always ends the refreshing state.
  */
 class SharedMembersPullRefreshContractTest {
     private val source =
@@ -22,9 +23,11 @@ class SharedMembersPullRefreshContractTest {
 
     @Test
     fun pullToRefreshIsWiredToTheForcedReload() {
-        val call = membersScreen.substring(membersScreen.indexOf("MembersRouteContent("))
-        val onRefresh = call.substring(call.indexOf("onRefresh = {"), call.indexOf("paneLayout = paneLayout"))
-        assertTrue(call.indexOf("onRefresh = {") in 0 until call.indexOf("paneLayout = paneLayout"), "onRefresh is passed")
+        val callStart = membersScreen.indexOf("MembersRouteContent(")
+        val call = membersScreen.substring(callStart, membersScreen.indexOf("\n                    )", callStart))
+        assertEquals(1, Regex("""\bonRefresh = \{""").findAll(call).count(), "exactly one onRefresh is passed")
+        val onRefreshStart = call.indexOf("onRefresh = {")
+        val onRefresh = call.substring(onRefreshStart, call.indexOf("\n                        }", onRefreshStart))
         assertTrue("refreshing = true" in onRefresh, "the spinner starts at once")
         assertTrue("membersRetryForce = true" in onRefresh, "the pull forces the members reload")
         assertTrue("membersRetryNonce += 1" in onRefresh, "the pull re-runs the members load")

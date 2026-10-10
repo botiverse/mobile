@@ -18244,17 +18244,6 @@ private fun SharedMembersScreen(
                         selectedLocalServerId = ServerId(serverId),
                         payload = renderMembersPayload,
                         refreshing = refreshing,
-                        // Pull-to-refresh was never wired here (the default no-op): the gesture showed but
-                        // nothing reloaded and the spinner never turned. A pull now runs the same forced
-                        // reload as Retry (members) and refreshes the computer list too.
-                        onRefresh = {
-                            onForegroundActivity("pull_refresh")
-                            slockLogger("SlockMembersPage")("members_pull_refresh serverId=$serverId")
-                            refreshing = true
-                            membersRetryForce = true
-                            membersRetryNonce += 1
-                            retryMachines()
-                        },
                         paneLayout = paneLayout,
                         onAddHuman = {
                             onForegroundActivity("add_human")
@@ -18354,8 +18343,18 @@ private fun SharedMembersScreen(
                         // Task #409: persist per-machine collapse under the session user id.
                         currentUserId = current.currentUserId,
                         agentGroupCollapseStore = membersAgentGroupCollapseStore,
+                        // A pull used to call only onRetry(), which bumps the parent's refresh key; that key
+                        // reaches this screen through a tab content lambda that need not recompose, so the
+                        // load often never re-ran and `refreshing` never went true -> false (the indicator
+                        // hung or never turned). A pull now drives the local forced reload like Retry does
+                        // (members) and refreshes the computer list; the load always clears `refreshing`.
                         onRefresh = {
                             onForegroundActivity("refresh")
+                            slockLogger("SlockMembersPage")("members_pull_refresh serverId=$serverId")
+                            refreshing = true
+                            membersRetryForce = true
+                            membersRetryNonce += 1
+                            retryMachines()
                             onRetry()
                         }
                     )
