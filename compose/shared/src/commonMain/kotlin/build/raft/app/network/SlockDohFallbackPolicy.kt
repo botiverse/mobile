@@ -7,12 +7,13 @@ import kotlinx.atomicfu.locks.synchronized
 
 /**
  * Task #153: process-wide DNS-over-HTTPS fallback for the curl transport, gated by the
- * `mobile_doh_fallback_v0` server flag (default off).
+ * `mobile_doh_fallback_v0` server flag. Default ON (artin 2026-10-10); the server turns it off.
  *
- * DoH is on while any active server selection has the flag enabled. [isEnabledForServer] is the
- * feature-flag store's read, so before an online evaluation lands (a cold start during a DNS
- * outage, exactly when DoH matters) the stored last-known value decides, and internal builds can
- * force it through Local Feature Overrides. NetworkKMM only ever falls back to the built-in
+ * DoH is on while any active server selection has the flag enabled, and also while no server is
+ * selected yet (sign-in and the first requests of a cold start). [isEnabledForServer] is the
+ * feature-flag store's read: before an online evaluation lands (a cold start during a DNS outage,
+ * exactly when DoH matters) the stored last-known value decides, no decision at all reads ON, and
+ * internal Android builds can force it through Local Feature Overrides. NetworkKMM only ever falls back to the built-in
  * providers after the system resolver failed; it never replaces a successful system resolution.
  */
 internal class SlockDohFallbackPolicy(
@@ -42,8 +43,10 @@ internal class SlockDohFallbackPolicy(
 
     /** Re-reads the flag for every active server; returns a log line when the setting changed. */
     fun reevaluate(source: String): String? = synchronized(lock) {
-        val enabled = activeServerByScope.values.toSet().any { serverId ->
-            runCatching { isEnabledForServer(serverId) }.getOrDefault(false)
+        val activeServers = activeServerByScope.values.toSet()
+        // A failing read is "no decision": the flag is default-on.
+        val enabled = activeServers.isEmpty() || activeServers.any { serverId ->
+            runCatching { isEnabledForServer(serverId) }.getOrDefault(true)
         }
         if (applied == enabled) return@synchronized null
         applyProviders(if (enabled) PROVIDERS else emptyList())
