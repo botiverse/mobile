@@ -25,7 +25,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | Component | Version | License |
 |---|---|---|
 | com.tencent.kuikly-open:core / compose / core-render-android / core-annotations / core-ksp (Botiverse-built fork on maven.artifacts.botiverse.dev) | 2.28.0-raft.9-2.1.21 (Android) · 2.28.0-raft.9-2.0.21-ohos (OHOS) | KuiklyUI license — MIT-style grant; prohibits derivative work for dynamic code loading / live update without Tencent consent (Raft Mobile adds none) |
-| com.tencent.kuiklybase:network | 0.1.0-raft.41 | Apache-2.0 |
+| com.tencent.kuiklybase:network | 0.1.0-raft.42 | Apache-2.0 |
 | com.tencent.kuiklybase:resource-core | 0.1.0-raft.4 | Apache-2.0 |
 | build.raft.kuiklybase:datetime | 0.1.0-raft.0 | Apache-2.0 |
 | build.raft.mermaid:mermaid-core / mermaid-kuikly / mermaid-layout-api / mermaid-layout-simple | 0.1.11 | Apache-2.0 |
