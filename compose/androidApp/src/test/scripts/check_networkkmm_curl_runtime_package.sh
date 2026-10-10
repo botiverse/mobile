@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# network-android-curl-runtime:0.1.0-raft.44, published from
-# botiverse/KuiklyBase-components@56dff7c99c849b7d150420831fb6eae2b82a30a0.
-readonly EXPECTED_ARM64_SHA256='f78f737ea821f5ecd17e919e0f79c1cb11a2094a15cdbe74aa918c58585ad9a7'
-readonly EXPECTED_X86_64_SHA256='0110fe4cc44fa99169dc5ca5c6c5cf4dc48c33bff1af64f734626510d1339c31'
+# network-android-curl-runtime:0.1.0-raft.45, published from
+# botiverse/KuiklyBase-components@440422ee67b9059d4faae8721ac52769dbaafb97.
+readonly EXPECTED_ARM64_SHA256='5d029e01194b9aa2c9afe1a63b76d6e97c387d5c0f80fad2dcaabd07a6780797'
+readonly EXPECTED_X86_64_SHA256='ac690247b116d0221a178ed8730330426806e361020f96037a0362836684a397'
 readonly EXPECTED_CA_SHA256='86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c'
 
 sha256_stream() {

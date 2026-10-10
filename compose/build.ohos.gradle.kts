@@ -12,7 +12,7 @@ plugins {
     id("com.tencent.kuiklybase.knoi.plugin").version("0.0.4").apply(false)
     // Syncs libpbcurlwrapper/libopenssl/libc++_shared runtime .so files for the
     // NetworkKMM OHOS transport (task #6): ./gradlew copyNetworkOhosRuntimeLibs
-    id("com.tencent.kuiklybase.network.ohos-runtime").version("0.1.0-raft.44-ohos")
+    id("com.tencent.kuiklybase.network.ohos-runtime").version("0.1.0-raft.45-ohos")
 }
 
 networkOhosRuntime {
