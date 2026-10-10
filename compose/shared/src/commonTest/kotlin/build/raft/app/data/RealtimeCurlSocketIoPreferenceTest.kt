@@ -58,7 +58,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun savingWritesTheExplicitChoiceAsTrueFalseStrings() = runBlocking {
+    fun savingWritesTheExplicitChoiceAsTrueFalseStrings(): Unit = runBlocking {
         val keyValues = InMemorySlockKeyValueStore()
         val preferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
 
@@ -72,7 +72,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun mobileSnapshotShowsServerFlagForCurrentServerWhenNoChoiceExists() = runBlocking {
+    fun mobileSnapshotShowsServerFlagForCurrentServerWhenNoChoiceExists(): Unit = runBlocking {
         val keyValues = InMemorySlockKeyValueStore()
         var serverFlag = true
         SlockCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
@@ -89,7 +89,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun togglingStoresExplicitChoiceThatServerFlagNoLongerOverrides() = runBlocking {
+    fun togglingStoresExplicitChoiceThatServerFlagNoLongerOverrides(): Unit = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val keyValues = InMemorySlockKeyValueStore()
         var serverFlag = true
@@ -125,7 +125,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun rowIsUnavailableWithoutPreferenceStore() = runBlocking {
+    fun rowIsUnavailableWithoutPreferenceStore(): Unit = runBlocking {
         val dataSource = SharedSettingsDataSource(sessionStore = InMemorySlockAuthSessionStore(sampleSession()))
 
         val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
@@ -134,7 +134,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun rowIsHiddenWhereNoPlatformHostCanUseCurl() = runBlocking {
+    fun rowIsHiddenWhereNoPlatformHostCanUseCurl(): Unit = runBlocking {
         SlockCurlSocketIoPolicy.resetForTest()
         val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(
             dataSource(InMemorySlockKeyValueStore()).loadMobilePreferences()
