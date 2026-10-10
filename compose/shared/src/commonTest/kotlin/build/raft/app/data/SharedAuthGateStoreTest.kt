@@ -320,7 +320,7 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
-    fun silentRefreshCancellingCachedRestoreClosesPendingPhase() = runBlocking {
+    fun silentRefreshDuringCachedRestoreJoinsItAndClosesPendingPhase() = runBlocking {
         val scope = authGateDispatchTestScope()
         val cachedSession = storedSession(selectedServerId = "server-1")
         val restoreStarted = CompletableDeferred<Unit>()
@@ -350,6 +350,44 @@ class SharedAuthGateStoreTest {
                 (state as? SharedAuthGateState.Ready)?.phase == SharedAuthReadyPhase.CachedRestoreCompleted
             }
         assertEquals(cachedSession, (finalState as SharedAuthGateState.Ready).session)
+        scope.cancel()
+    }
+
+    @Test
+    fun silentRefreshDoesNotRestartARestoreThatIsStillRunning() = runBlocking {
+        // Hands 79db9fe6: the restore's own token refresh reported a same-account session change,
+        // the gate cancelled the restore and ran it again from the top (a second auth/me + /servers).
+        val scope = authGateDispatchTestScope()
+        val cachedSession = storedSession(selectedServerId = "server-1")
+        var restoreCalls = 0
+        val restoreStarted = CompletableDeferred<Unit>()
+        val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
+        val store =
+            SharedAuthGateStore(
+                restoreSession = {
+                    restoreCalls += 1
+                    restoreStarted.complete(Unit)
+                    restoreResult.await()
+                },
+                cachedSession = { cachedSession },
+                scope = scope
+            )
+
+        store.dispatch(SharedAuthGateIntent.Restore)
+        restoreStarted.await()
+        store.dispatch(SharedAuthGateIntent.RefreshSilently)
+        store.dispatch(SharedAuthGateIntent.RefreshSilently)
+        restoreResult.complete(SharedAuthResult.Success(cachedSession))
+        val finalState =
+            store.awaitState { state ->
+                (state as? SharedAuthGateState.Ready)?.phase == SharedAuthReadyPhase.CachedRestoreCompleted
+            }
+        assertEquals(cachedSession, (finalState as SharedAuthGateState.Ready).session)
+        assertEquals(1, restoreCalls, "the running restore lands the result; it is not cancelled and redone")
+
+        // Once nothing is running, a silent refresh runs again.
+        store.dispatch(SharedAuthGateIntent.RefreshSilently)
+        store.awaitState { restoreCalls == 2 }
         scope.cancel()
     }
 

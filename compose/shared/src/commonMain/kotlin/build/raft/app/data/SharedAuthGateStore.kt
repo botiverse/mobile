@@ -32,7 +32,14 @@ class SharedAuthGateStore(
                     }
             }
             SharedAuthGateIntent.RefreshSilently -> {
-                restoreJob?.cancel()
+                // A same-account session change (typically the token rotation done by the restore that is
+                // running) must not cancel that restore and start over: the running one re-reads the latest
+                // session and already lands the result. Restarting doubled every request of a cold start
+                // (Hands 79db9fe6: a second auth/me + /servers after the refresh).
+                if (restoreJob?.isActive == true) {
+                    diagnosticsLogger("auth_gate_refresh_silently_joined reason=restore_in_flight")
+                    return
+                }
                 restoreJob =
                     scope.launch {
                         refreshSilently()

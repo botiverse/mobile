@@ -1344,6 +1344,26 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun restoreSessionDoesNotWaitForASlowServerListPastItsBudget() = runBlocking {
+        // Hands 79db9fe6: /servers answered nothing for 30 s and the whole restore waited for it.
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(onServersRequest = { kotlinx.coroutines.awaitCancellation() }),
+                sessionStore = store,
+                diagnosticsLogger = { logs += it }
+            ).apply { restoreServerListBudgetMillis = 50 }
+
+        val result = kotlinx.coroutines.withTimeout(5_000) { source.restoreSession() }
+
+        assertTrue(result is SharedAuthResult.Success, "the confirmed user is enough to finish the restore")
+        assertEquals(listOf("server-1"), result.data.servers.map { it.id }, "the cached server list stands")
+        assertEquals("server-1", result.data.currentServerId)
+        assertTrue(logs.any { "auth_restore_server_list result=budget_exceeded" in it })
+    }
+
+    @Test
     fun restoreSessionKeepsCachedSessionWhenCurrentUserThrows() = runBlocking {
         val store = InMemorySlockAuthSessionStore(storedSession())
         val source =

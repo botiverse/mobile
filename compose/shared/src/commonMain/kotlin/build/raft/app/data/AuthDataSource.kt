@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
 
@@ -33,6 +34,9 @@ class SharedAuthDataSource(
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
     private var avatarCacheEnvironmentId: () -> String = { "" }
+
+    /** See [RESTORE_SERVER_LIST_BUDGET_MILLIS]; tests shorten it. */
+    internal var restoreServerListBudgetMillis: Long = RESTORE_SERVER_LIST_BUDGET_MILLIS
 
     internal fun withAvatarCacheRuntime(
         runtime: SlockAvatarCacheRuntime?,
@@ -1621,12 +1625,24 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
-        val servers =
-            when (val response = api.servers(session.bearer())) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> session.servers
+        // The server list is metadata on top of a user the server just confirmed. A slow /servers or
+        // /servers/order used to hold the restore -- and the Home refresh and input it gates -- for the
+        // full 30 s request timeout (Hands 79db9fe6). Past restoreServerListBudgetMillis the cached
+        // list stands, exactly as when /servers fails; the next restore refreshes it.
+        val orderedServers =
+            withTimeoutOrNull(restoreServerListBudgetMillis) {
+                val servers =
+                    when (val response = api.servers(session.bearer())) {
+                        is AuthApiResult.Success -> response.data
+                        is AuthApiResult.Failure -> session.servers
+                    }
+                servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
+            } ?: session.servers.also {
+                diagnosticsLogger(
+                    "auth_restore_server_list result=budget_exceeded budgetMs=$restoreServerListBudgetMillis " +
+                        "fallback=cached servers=${it.size}"
+                )
             }
-        val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
         // Compute the fetched metadata (user + servers + validated selection). This is token-free;
         // its tokens are the captured `session`'s and are deliberately NOT persisted below.
         val metadata = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
@@ -2779,3 +2795,6 @@ data class AuthAppLoginStartResponse(val requestId: String, val loginUrl: String
 private data class AuthAppLoginStartBody(val returnUri: String, val codeChallenge: String)
 @Serializable
 private data class AuthAppLoginCompleteBody(val code: String, val codeVerifier: String)
+
+/** How long a session restore waits for /servers + /servers/order before keeping the cached list. */
+internal const val RESTORE_SERVER_LIST_BUDGET_MILLIS: Long = 4_000L
