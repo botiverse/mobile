@@ -823,6 +823,7 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.gson)
     implementation(handsAndroidSdkCoordinate)
     add(handsNativeSymbols.name, "$handsAndroidSdkCoordinate:native-symbols@zip")

@@ -35,7 +35,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | androidx.* (core-ktx 1.10.1, core-splashscreen 1.0.1, webkit 1.14.0, lifecycle-runtime-ktx 2.6.1, window 1.3.0, metrics-performance 1.0.0, activity-compose 1.8.0, compose BOM 2024.12.01 / runtime 1.8.3 / ui / material / material3, recyclerview 1.3.2, credentials 1.6.0 (+ play-services-auth), media3 1.6.1, profileinstaller 1.4.1) | as listed | Apache-2.0 |
 | com.google.android.libraries.identity.googleid:googleid | 1.2.0 | **Android Software Development Kit License** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
 | com.google.firebase:firebase-bom / firebase-messaging | 34.15.0 / 25.0.1 | Apache-2.0 (BOM itself declares none) |
-| com.squareup.okhttp3:okhttp | 4.12.0 | Apache-2.0 |
+| com.squareup.okhttp3:okhttp / okhttp-dnsoverhttps | 4.12.0 | Apache-2.0 |
 | com.google.code.gson:gson | 2.11.0 | Apache-2.0 |
 | io.socket:socket.io-client | 2.1.2 | MIT |
 | app.cash.sqldelight:runtime / android-driver / native-driver / sqlite-driver / coroutines-extensions | 2.1.0 | Apache-2.0 |

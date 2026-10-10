@@ -36,6 +36,9 @@ class SocketIoSocketTransport(
                     transports = arrayOf(WebSocket.NAME)
                     reconnection = true
                     this.auth = auth
+                    // Task #153: DoH fallback when the system resolver cannot resolve the host.
+                    callFactory = slockRealtimeOkHttpClient
+                    webSocketFactory = slockRealtimeOkHttpClient
                 }
             )
             listeners.forEach { (eventName, eventListeners) ->
