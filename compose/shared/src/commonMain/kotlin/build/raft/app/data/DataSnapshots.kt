@@ -1577,9 +1577,9 @@ data class SettingsMobileSnapshot(
         ),
     val homeServerAvatar: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
-            enabled = false,
+            enabled = DEFAULT_HOME_SERVER_AVATAR_ENABLED,
             available = true,
-            statusLabel = "Off",
+            statusLabel = if (DEFAULT_HOME_SERVER_AVATAR_ENABLED) "Enabled" else "Off",
             detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
     /** Task #154: effective value (user choice, else the current server's flag); see SlockCurlSocketIoPolicy. */
