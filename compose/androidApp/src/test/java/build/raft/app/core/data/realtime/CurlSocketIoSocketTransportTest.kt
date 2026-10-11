@@ -42,6 +42,7 @@ class CurlSocketIoSocketTransportTest {
 
     private val sessions = mutableListOf<FakeSession>()
     private val delivered = mutableListOf<Triple<String, String, Any?>>()
+    private val lifecycle = mutableListOf<String>()
 
     private fun transport(available: Boolean = true): CurlSocketIoSocketTransport =
         CurlSocketIoSocketTransport(
@@ -51,6 +52,7 @@ class CurlSocketIoSocketTransportTest {
             },
             closeExecutor = { it.run() },
             logger = {},
+            lifecycleLogger = { lifecycle += it },
         ).also { transport ->
             listOf(
                 RealtimeSocketEvents.Connect,
@@ -88,6 +90,29 @@ class CurlSocketIoSocketTransportTest {
         assertEquals("t1", auth.getString("token"))
         assertEquals("s1", auth.getString("serverId"))
         assertEquals(1, session.started)
+    }
+
+    @Test
+    fun `connection lifecycle is logged for release diagnostics`() {
+        // Hands a9971638: no realtime events for 10 minutes on the curl stack and no release log of why.
+        val transport = transport()
+        transport.connect(mapOf("token" to "t", "serverId" to "s1"), context("s1"))
+        val native = sessions.single().listener
+
+        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
+        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onEvent(RealtimeSocketEvents.MessageNew, """{"serverId":"s1","id":"m1"}""")
+        native.onEvent(RealtimeSocketEvents.MessageNew, """{"serverId":"s1","id":"m2"}""")
+        native.onState(SlockCurlSocketIoState.Disconnected, 0, "transport_closed")
+
+        assertTrue(lifecycle.first().startsWith("transport_connect_start stack=curl serverId=s1 hasToken=true"))
+        assertTrue(lifecycle.any { it.startsWith("transport_state stack=curl state=Connected") })
+        assertEquals(1, lifecycle.count { it.startsWith("transport_first_event stack=curl eventName=message:new") })
+        assertTrue(
+            lifecycle.any {
+                it.startsWith("transport_state stack=curl state=Disconnected") && it.endsWith("eventsSinceConnect=2")
+            }
+        )
     }
 
     @Test

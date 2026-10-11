@@ -1746,6 +1746,16 @@ internal fun appShellAuthoritativeHomeStartAllowed(
     return setupAdmissionAllowsHome && ready.phase != SharedAuthReadyPhase.CachedRestorePending
 }
 
+/**
+ * Hands 79db9fe6 / e486495b (artin): a tap on a channel in the identity-bound cached Home opens it
+ * while the session and server admission are still being confirmed in the background; it used to
+ * be dropped (`home_open_conversation_drop reason=home_authority_pending`) until the restore ended.
+ */
+internal fun appShellHomeConversationOpenAllowed(
+    authoritativeHomeStartAllowed: Boolean,
+    cachedRestoreUsable: Boolean
+): Boolean = authoritativeHomeStartAllowed || cachedRestoreUsable
+
 internal fun appShellCanRenderCachedHomePreview(
     readySession: StoredAuthSession?,
     readyPhase: SharedAuthReadyPhase?,
@@ -2171,6 +2181,11 @@ private fun SlockAppShellReadyContent(
     // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
     var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
     var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
+    // More keeps selectedTab at "more" while rendering its destination inline.
+    val tasksSurfaceActive =
+        selectedTab == "tasks" ||
+            (selectedTab == SlockSlackNavTabs.More &&
+                slackNavMoreDestination == SlockSlackNavMoreDestination.Tasks)
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
@@ -3867,6 +3882,7 @@ private fun SlockAppShellReadyContent(
     }
     val latestReadySession by rememberUpdatedState(readySession)
     val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
+    val latestCachedRestoreUsable by rememberUpdatedState(cachedRestoreUsable)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
         val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
         if (renderedHomeServerId != targetServerId) return@LaunchedEffect
@@ -4502,12 +4518,22 @@ private fun SlockAppShellReadyContent(
         recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null
     ) {
-        if (!latestAuthoritativeHomeStartAllowed) {
+        if (
+            !appShellHomeConversationOpenAllowed(
+                authoritativeHomeStartAllowed = latestAuthoritativeHomeStartAllowed,
+                cachedRestoreUsable = latestCachedRestoreUsable
+            )
+        ) {
             bridge.logWarn(
                 "home_open_conversation_drop reason=home_authority_pending " +
                     "threadId=${conversation.threadId.value} source=$source"
             )
             return
+        }
+        if (!latestAuthoritativeHomeStartAllowed) {
+            bridge.log(
+                "home_open_conversation_during_cached_restore threadId=${conversation.threadId.value} source=$source"
+            )
         }
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
@@ -4989,8 +5015,8 @@ private fun SlockAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(tasksRoute, selectedTab, authoritativeHomeStartAllowed) {
-        if (selectedTab == "tasks" && authoritativeHomeStartAllowed) {
+    LaunchedEffect(tasksRoute, selectedTab, slackNavMoreDestination, tasksSurfaceActive, authoritativeHomeStartAllowed) {
+        if (tasksSurfaceActive && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
                 phase = "tasks_screen_enter",
@@ -5006,16 +5032,16 @@ private fun SlockAppShellReadyContent(
             tasksRoute.start()
         }
     }
-    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return@LaunchedEffect
-        if (selectedTab == "tasks") {
+        if (tasksSurfaceActive) {
             appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
-    LaunchedEffect(selectedTab, tasksState.loadState, tasksState.refreshing) {
-        if (selectedTab != "tasks") {
+    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
+        if (!tasksSurfaceActive) {
             tasksFirstRenderLoggedKey = null
             return@LaunchedEffect
         }
