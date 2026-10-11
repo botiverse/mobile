@@ -5,6 +5,11 @@ import build.raft.app.network.SlockCurlSocketIoPolicy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
+/**
+ * Task #470 (artin 2026-10-11): the workspace avatar in the Home header is on by default. Only a user
+ * who has no stored choice gets it; an explicit "off" is kept.
+ */
+internal const val DEFAULT_HOME_SERVER_AVATAR_ENABLED = true
 
 enum class AppLocale(
     val storageKey: String,
@@ -243,7 +248,7 @@ data class ChatLayoutPreferenceSnapshot(
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = DEFAULT_SERVER_DRAWER_ENABLED,
     val newDesignSettingsEnabled: Boolean = false,
-    val homeServerAvatarEnabled: Boolean = false,
+    val homeServerAvatarEnabled: Boolean = DEFAULT_HOME_SERVER_AVATAR_ENABLED,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val translationTargetLanguage: String = TranslationTargetLanguages.Browser,
     val supportedTranslationModes: List<TranslationModePreference> =
@@ -480,7 +485,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readHomeServerAvatarEnabledSync(): Boolean =
-        store.getBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, false)
+        store.getBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, DEFAULT_HOME_SERVER_AVATAR_ENABLED)
 
     override suspend fun readHomeServerAvatarEnabled(): Boolean =
         readHomeServerAvatarEnabledSync()

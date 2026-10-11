@@ -141,7 +141,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
         assertEquals(true, snapshot.newDesignSettingsEnabled)
-        assertEquals(false, snapshot.homeServerAvatarEnabled)
+        assertEquals(true, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
@@ -261,21 +261,22 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun homeServerAvatarPreferenceDefaultsOffAndResetReturnsToOff() = runBlocking {
+    fun homeServerAvatarPreferenceDefaultsOnAndKeepsAnExplicitOff() = runBlocking {
+        // Task #470: on for anyone without a stored choice; a user who turned it off stays off.
         val key = "mobile:home_server_avatar_enabled"
         val store = InMemorySlockKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
 
-        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
+        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
 
-        store.putString(key, "legacy-unknown")
+        preferenceStore.saveHomeServerAvatarEnabled(false)
         assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
 
         preferenceStore.saveHomeServerAvatarEnabled(true)
         assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
 
         store.putString(key, null)
-        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
+        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
     }
 
     @Test

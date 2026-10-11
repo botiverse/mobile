@@ -141,6 +141,7 @@ import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
+import build.raft.app.data.DEFAULT_HOME_SERVER_AVATAR_ENABLED
 import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
@@ -2919,7 +2920,7 @@ private fun SlockAppShellReadyContent(
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
-    var homeServerAvatarEnabled by remember { mutableStateOf(false) }
+    var homeServerAvatarEnabled by remember { mutableStateOf(DEFAULT_HOME_SERVER_AVATAR_ENABLED) }
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
