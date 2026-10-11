@@ -99,6 +99,5 @@ internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024
 
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f
 
-// Interactive edge-back claims roughly the first 20-24pt from the left edge;
-// TabPager must not compete there (task #232, Jony's iOS boundary).
-internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 24f
+/** TabPager releases first-page rightward drags to native full-screen back. */
+internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 1_000_000f

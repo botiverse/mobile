@@ -11,6 +11,7 @@
 typedef struct {
     size_t navigationStackCount;
     bool interactivePopDisabled;
+    bool allowsFullScreen;
     bool transitioning;
     double maxAllowedInitialDistance;
     double touchLocationX;
@@ -34,12 +35,13 @@ static inline double SlockInteractivePopEdgeWidth(double maxAllowedInitialDistan
 
 /**
  * Pure policy for whether a touch starts an edge back swipe. Only touches inside the
- * leading-edge strip qualify; content-area swipes never pop.
+ * leading-edge strip qualify unless the page explicitly allows full-screen admission.
  */
 static inline bool SlockInteractivePopTouchBeginsInEdgeZone(SlockInteractivePopTouchAdmission input) {
     if (input.navigationStackCount <= 1 || input.interactivePopDisabled || input.transitioning) {
         return false;
     }
+    if (input.allowsFullScreen) return true;
     double edgeWidth = SlockInteractivePopEdgeWidth(input.maxAllowedInitialDistance);
     double distanceToLeadingEdge = input.isLeftToRight ? input.touchLocationX : input.viewWidth - input.touchLocationX;
     return distanceToLeadingEdge >= 0.0 && distanceToLeadingEdge <= edgeWidth;

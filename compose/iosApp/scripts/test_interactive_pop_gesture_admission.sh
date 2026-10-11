@@ -16,6 +16,7 @@ static SlockInteractivePopTouchAdmission edgeTouch(void) {
     return (SlockInteractivePopTouchAdmission) {
         .navigationStackCount = 2,
         .interactivePopDisabled = false,
+        .allowsFullScreen = false,
         .transitioning = false,
         .maxAllowedInitialDistance = 0.0,
         .touchLocationX = 10.0,
@@ -47,6 +48,8 @@ int main(void) {
     assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
     touch = edgeTouch(); touch.touchLocationX = 195.0;
     assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.allowsFullScreen = true; touch.touchLocationX = 195.0;
+    assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
 
     // A page-specific limit replaces the default strip width
     touch = edgeTouch(); touch.maxAllowedInitialDistance = 60.0; touch.touchLocationX = 55.0;
