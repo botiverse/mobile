@@ -71,7 +71,7 @@ internal class ThreadListViewport(
         get() =
             if (reverse) {
                 val info = layoutInfo
-                topVisibleItem(info)?.let { (info.viewportStartOffset - it.offset).coerceAtLeast(0) } ?: 0
+                topVisibleItem(info)?.let { (-it.offset).coerceAtLeast(0) } ?: 0
             } else {
                 raw.firstVisibleItemScrollOffset
             }
@@ -81,8 +81,9 @@ internal class ThreadListViewport(
         if (reverse) -raw.scrollBy(-value) else raw.scrollBy(value)
 
     /**
-     * Forward semantics: row [index]'s top ends up [scrollOffset] px above the viewport top. Reversed,
-     * that needs the row's measured size, so a row that is not laid out is first brought on screen.
+     * Forward semantics, as `LazyListState.scrollToItem`: afterwards row [index] has `offset == -scrollOffset`,
+     * measured from the content start after the top padding. Reversed, that needs the row's measured size,
+     * so a row that is not laid out is first brought on screen.
      */
     suspend fun scrollToItem(index: Int, scrollOffset: Int = 0) {
         if (!reverse) {
@@ -95,9 +96,8 @@ internal class ThreadListViewport(
             raw.scrollToItem(reversedThreadListIndex(index, count))
             awaitVisible(index)
         }
-        val info = layoutInfo
-        val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
-        val delta = item.offset - (info.viewportStartOffset - scrollOffset)
+        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+        val delta = forwardScrollToItemDelta(itemOffset = item.offset, scrollOffset = scrollOffset)
         if (delta != 0) scrollBy(delta.toFloat())
     }
 
@@ -123,6 +123,9 @@ internal class ThreadListViewport(
 private const val ThreadListViewportSettleFrames = 6
 private const val ThreadListViewportSettleFrameMs = 16L
 
+/** Forward `scrollBy` that brings a row at [itemOffset] to `offset == -scrollOffset`. */
+internal fun forwardScrollToItemDelta(itemOffset: Int, scrollOffset: Int): Int = itemOffset + scrollOffset
+
 /** Physical index of forward index [index] (and back: the mapping is its own inverse). */
 internal fun reversedThreadListIndex(index: Int, count: Int): Int = count - 1 - index
 
@@ -138,9 +141,13 @@ internal fun reversedThreadListItemOffset(
     rawAfterContentPadding: Int,
 ): Int = layoutSize - rawBeforeContentPadding - rawAfterContentPadding - rawOffset - size
 
-private fun topVisibleItem(info: LazyListLayoutInfo): LazyListItemInfo? =
+/**
+ * The forward first visible item: like Compose, rows lying wholly inside the top content padding are
+ * skipped (offsets are measured from the content start after that padding).
+ */
+internal fun topVisibleItem(info: LazyListLayoutInfo): LazyListItemInfo? =
     info.visibleItemsInfo
-        .filter { it.offset + it.size > info.viewportStartOffset }
+        .filter { it.offset + it.size > 0 }
         .minByOrNull { it.index }
 
 /**
