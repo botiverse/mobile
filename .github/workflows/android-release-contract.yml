@@ -8,6 +8,8 @@ on:
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
       - "scripts/*android*hands*"
+      - "scripts/*android*aab*"
+      - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
       - "scripts/ci/kuikly_release_manifest_gate.py"
       - "scripts/ci/verify_kuikly_release_manifest.sh"
@@ -30,6 +32,8 @@ on:
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
       - "scripts/*android*hands*"
+      - "scripts/*android*aab*"
+      - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
       - "scripts/ci/kuikly_release_manifest_gate.py"
       - "scripts/ci/verify_kuikly_release_manifest.sh"
@@ -52,10 +56,21 @@ jobs:
   android-release-contract:
     name: Android Hands release contract
     runs-on: blacksmith-4vcpu-ubuntu-2204
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Verify AAB signing and repair inputs
+        run: |
+          python3 scripts/test_android_aab_signing.py
+          python3 scripts/test_download_android_aab_repair.py
 
       - name: Validate workflow contract
         run: scripts/test_android_hands_release_contract.sh
