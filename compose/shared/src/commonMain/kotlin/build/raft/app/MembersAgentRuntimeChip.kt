@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -38,6 +40,7 @@ internal fun MembersAgentRuntimeChip(
     label: String,
     kind: MembersAgentRuntimeChipKind,
     modifier: Modifier = Modifier,
+    statusColor: Color? = null,
     textStyle: TextStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
         .withSlockFontWeight(FontWeight.Bold)
 ) {
@@ -54,12 +57,20 @@ internal fun MembersAgentRuntimeChip(
             .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            style = textStyle,
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = textStyle,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            statusColor?.let { color ->
+                SlockStatusIndicator(color = color, size = SlockStatusIndicatorTokens.InlineSize)
+            }
+        }
     }
 }
