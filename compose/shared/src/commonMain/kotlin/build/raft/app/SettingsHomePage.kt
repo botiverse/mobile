@@ -3259,6 +3259,20 @@ private fun SlockAppShellReadyContent(
             pageVisible = pageVisible,
             state = homeState
         )
+    // artin 2026-10-10 (Hands 79db9fe6): once the identity-bound cached Home can be shown, the
+    // user may leave Home (open a channel, switch tab) while the session and server setup
+    // admission are still being confirmed in the background; the admission screen only takes over
+    // again if admission ends Blocked/Failed or the cache no longer matches the account.
+    val cachedRestoreUsable =
+        appShellCanRenderCachedHomePreview(
+            readySession = homePreviewSession,
+            readyPhase = readyAuthPhase,
+            featureDecision = setupAdmissionFeatureDecision,
+            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
+            setupAdmissionState = setupAdmissionHost?.state,
+            readyServerId = homePreviewServerId,
+            state = homeState
+        )
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     fun rejectPendingAdaptiveDetailOpens(
@@ -4397,7 +4411,7 @@ private fun SlockAppShellReadyContent(
         is SharedAuthGateState.Ready -> Unit
     }
 
-    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome && !cachedHomePreview) {
+    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome && !cachedRestoreUsable) {
         setupAdmissionHost.content()
         return
     }
@@ -6004,7 +6018,10 @@ private fun SlockAppShellReadyContent(
             onBottomTabSelected = onAppShellTabSelected,
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
-            interactionLocked = cachedHomePreview,
+            // artin 2026-10-10 (Hands 79db9fe6): the cached Home is usable at once while the
+            // session and server list refresh in the background; a failed restore or an expired
+            // session still goes to its prompt / sign-in. No blocking overlay.
+            interactionLocked = false,
             modalHostState = appShellModalHostState,
             leadingNavigation =
                 if (navRailActive) {
@@ -24150,7 +24167,9 @@ private fun AppShellCachedHomePreviewContent(
         bottomTabs = emptyList(),
         onBottomTabSelected = {},
         showBottomTabs = false,
-        interactionLocked = true
+        // Shown only while the stored session is read (Restoring → Ready(CachedRestorePending) is
+        // local); no blocking overlay here either.
+        interactionLocked = false
     ) {
         SharedHomeScreen(
             bridge = bridge,
