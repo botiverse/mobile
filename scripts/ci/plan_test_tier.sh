@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name>" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|full]" >&2
   echo "       plan_test_tier.sh --self-test" >&2
   exit 2
 }
@@ -32,16 +32,13 @@ mark_all_platforms() {
 
 # Task #26 option A (artin 2026-08-09): main pushes keep the iOS compile only
 # when the push can plausibly affect iOS: iOS-specific source or CI-control
-# paths. Ordinary commonMain pushes fall back to the
-# nightly iOS readback instead of recompiling iOS on every push. Unknown
-# changed paths stay fail-closed (classify already marked all platforms and
-# this function keeps them).
-# Task #26 (artin 2026-08-09, 2026-09-07): ordinary PR and main pushes keep the
-# expensive (macOS) iOS compile only when the change can plausibly affect iOS:
-# iOS-specific source or CI-control paths. Ordinary commonMain changes fall
-# back to nightly/release readbacks (or explicit full-ci PRs) instead of
-# recompiling iOS on every commit push. Unknown changed paths stay fail-closed
-# (classify already marked all platforms and this function keeps them).
+# paths. Ordinary commonMain pushes fall back to the nightly iOS readback
+# instead of recompiling iOS on every push. Unknown changed paths stay
+# fail-closed (classify already marked all platforms and this function keeps
+# them).
+# Task #37 (artin 2026-10-09): this gate is no longer consulted for pull
+# requests — ordinary PRs never compile iOS at all (see emit_plan); it remains
+# the main-push path gate. Explicit full-ci PRs are the PR-side escape hatch.
 change_keeps_ios() {
   local changed_paths_file="$1"
   local path
@@ -164,6 +161,7 @@ emit_plan() {
   local changed_paths_file="$2"
   local full_ci="$3"
   local ref_name="$4"
+  local dispatch_scope="${5:-}"
   run_android=false
   run_ios=false
   run_ohos=false
@@ -192,16 +190,24 @@ emit_plan() {
         attachment_api_levels="[31]"
         reason="pull-request-full-ci"
       else
-        # Task #26 Agent-era CI downshift (artin 2026-09-07): ordinary PR
-        # pushes downshift the expensive (macOS) iOS compile. Ordinary commonMain
-        # PRs run Linux fast gates only; full iOS host build runs on explicit
-        # full-ci PRs, PRs with iOS-specific changes, or post-merge readbacks.
-        if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
-          run_ios=false
-          case "$reason" in
-            pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
-          esac
-        fi
+        # Task #37 (artin 2026-10-09): iOS compile runs only on the trunk
+        # evidence chain (main/release pushes + nightly). Ordinary PRs never
+        # compile iOS, including PRs that touch iOS-specific paths; an iOS
+        # regression is caught by the main push readback (~12 min) and handled
+        # fix-forward. The full-ci label remains the explicit escape hatch.
+        # Fail-closed exception: an unavailable diff still selects every
+        # platform, because "we don't know what changed" must not silently
+        # skip coverage.
+        case "$reason" in
+          pull-request-diff-unavailable-fail-closed)
+            ;;
+          *)
+            run_ios=false
+            case "$reason" in
+              pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
+            esac
+            ;;
+        esac
       fi
       ;;
     merge_group)
@@ -247,14 +253,44 @@ emit_plan() {
           ;;
       esac
       ;;
-    schedule|workflow_dispatch)
+    schedule)
       mark_all_platforms
-      # Task #26 closure: nightly/manual keep the full device suite, the
+      # Task #26 closure: nightly keeps the full device suite, the
       # canonical-final readback, and all three attachment API legs.
       run_device_suite=true
       run_canonical_final=true
       attachment_api_levels="[29,31,34]"
-      reason="${event_name}-full-readback"
+      reason="schedule-full-readback"
+      ;;
+    workflow_dispatch)
+      # Task #37 (artin 2026-10-09): manual dispatch defaults to the
+      # PR-equivalent tier instead of an unconditional full readback. A
+      # dispatch has no trustworthy PR diff, so the pr tier is a fixed set:
+      # Linux gates + Android/OHOS compile, no iOS, no device suite. scope=full
+      # keeps the deliberate full readback. An empty/unknown scope is rejected
+      # so the choice is always explicit in the workflow input.
+      case "$dispatch_scope" in
+        pr)
+          run_android=true
+          run_ios=false
+          run_ohos=true
+          run_device_suite=false
+          run_canonical_final=false
+          attachment_api_levels="[]"
+          reason="workflow_dispatch-pr-tier"
+          ;;
+        full)
+          mark_all_platforms
+          run_device_suite=true
+          run_canonical_final=true
+          attachment_api_levels="[29,31,34]"
+          reason="workflow_dispatch-full-readback"
+          ;;
+        *)
+          echo "workflow_dispatch scope must be pr or full, got: '${dispatch_scope}'" >&2
+          return 1
+          ;;
+      esac
       ;;
     *)
       echo "unsupported Test workflow event: $event_name" >&2
@@ -295,9 +331,10 @@ self_test() {
     local full_ci="$3"
     local ref_name="$4"
     local paths="$5"
+    local dispatch_scope="${6:-}"
     printf '%s' "$paths" > "$work/paths"
     local actual
-    actual="$(emit_plan "$event_name" "$work/paths" "$full_ci" "$ref_name")"
+    actual="$(emit_plan "$event_name" "$work/paths" "$full_ci" "$ref_name" "$dispatch_scope")"
     if test "$actual" != "$expected"; then
       printf 'expected plan:\n%s\nactual plan:\n%s\n' "$expected" "$actual" >&2
       return 1
@@ -307,9 +344,7 @@ self_test() {
   local ds=false; local cf=false; local att='[]'
   local none=$'run_android=false\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
   local android=$'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local ios=$'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
   local ohos=$'run_android=false\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local native=$'run_android=false\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
   local all=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
   local full_ci_pr=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[31]'
   local nightly=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=true\nattachment_api_levels=[29,31,34]'
@@ -318,30 +353,33 @@ self_test() {
     pull_request false feature $'docs/readme.md\n'
   assert_plan "$android"$'\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  assert_plan "$ios"$'\nreason=pull-request-paths:ios' \
-    pull_request false feature $'compose/iosApp/iosApp/Example.swift\n'
   assert_plan "$ohos"$'\nreason=pull-request-paths:ohos' \
     pull_request false feature $'compose/ohosApp/entry/src/main/ets/Example.ets\n'
-  assert_plan "$native"$'\nreason=pull-request-paths:ios,ohos' \
-    pull_request false feature $'compose/shared/src/nativeMain/kotlin/Example.kt\n'
   # Task #26 Agent-era CI downshift: ordinary PR pushes (commonMain catch-all)
-  # no longer compile iOS; explicit full-ci PR or nightly readback covers them.
+  # compile Android/OHOS only; explicit full-ci PR or nightly readback covers iOS.
   assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\n'
   assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/gradle/libs.versions.toml\n'
   assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'scripts/test_process_network_lifecycle_source_contract.mjs\n'
-  # PR pushes that touch iOS-specific paths keep the iOS compile.
-  assert_plan "$all"$'\nreason=pull-request-paths:android,ios,ohos' \
+  # Task #37 (artin 2026-10-09): ordinary PRs never compile iOS, including PRs
+  # that touch iOS-specific paths. iOS breakage surfaces on the main push
+  # readback; the full-ci label is the explicit escape hatch.
+  assert_plan "$none"$'\nreason=pull-request-paths:none' \
+    pull_request false feature $'compose/iosApp/iosApp/Example.swift\n'
+  assert_plan "$ohos"$'\nreason=pull-request-paths:ohos' \
+    pull_request false feature $'compose/shared/src/nativeMain/kotlin/Example.kt\n'
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$ios"$'\nreason=pull-request-paths:ios' \
+  assert_plan "$none"$'\nreason=pull-request-paths:none' \
     pull_request false feature $'compose/shared/src/iosMain/kotlin/Example.kt\n'
-  assert_plan "$all"$'\nreason=pull-request-ci-control' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-ci-control' \
     pull_request false feature $'.github/workflows/test.yml\n'
+  # Fail-closed exception: an unavailable diff still selects every platform.
   assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \
     pull_request false feature "$UNKNOWN_PATH_SENTINEL"$'\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ios' \
+  assert_plan "$android"$'\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
   assert_plan "$full_ci_pr"$'\nreason=pull-request-full-ci' \
     pull_request true feature $'docs/readme.md\n'
@@ -368,9 +406,22 @@ self_test() {
     push false release-1.9.0 $'docs/readme.md\n'
   assert_plan "$nightly"$'\nreason=schedule-full-readback' \
     schedule false main ''
-  # Task #26 closure: manual dispatch keeps the full device suite too.
+  # Task #37 (artin 2026-10-09): manual dispatch defaults to the PR-equivalent
+  # tier; scope=full keeps the deliberate full readback; the scope is mandatory
+  # and validated.
+  local pr_tier=$'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  assert_plan "$pr_tier"$'\nreason=workflow_dispatch-pr-tier' \
+    workflow_dispatch false main '' pr
   assert_plan "$nightly"$'\nreason=workflow_dispatch-full-readback' \
-    workflow_dispatch false main ''
+    workflow_dispatch false main '' full
+  if emit_plan workflow_dispatch "$work/paths" false main >/dev/null 2>&1; then
+    echo "dispatch without scope unexpectedly passed" >&2
+    return 1
+  fi
+  if emit_plan workflow_dispatch "$work/paths" false main bogus >/dev/null 2>&1; then
+    echo "invalid dispatch scope unexpectedly passed" >&2
+    return 1
+  fi
   if emit_plan pull_request "$work/paths" maybe feature >/dev/null 2>&1; then
     echo "invalid full-ci flag unexpectedly passed" >&2
     return 1
@@ -392,5 +443,5 @@ if test "${1:-}" = --self-test; then
   exit 0
 fi
 
-test "$#" -eq 4 || usage
-emit_plan "$1" "$2" "$3" "$4"
+test "$#" -ge 4 && test "$#" -le 5 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}"
