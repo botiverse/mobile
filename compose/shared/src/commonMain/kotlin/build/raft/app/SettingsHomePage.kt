@@ -2179,6 +2179,11 @@ private fun SlockAppShellReadyContent(
     // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
     var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
     var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
+    // More keeps selectedTab at "more" while rendering its destination inline.
+    val tasksSurfaceActive =
+        selectedTab == "tasks" ||
+            (selectedTab == SlockSlackNavTabs.More &&
+                slackNavMoreDestination == SlockSlackNavMoreDestination.Tasks)
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
@@ -5008,8 +5013,8 @@ private fun SlockAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(tasksRoute, selectedTab, authoritativeHomeStartAllowed) {
-        if (selectedTab == "tasks" && authoritativeHomeStartAllowed) {
+    LaunchedEffect(tasksRoute, selectedTab, slackNavMoreDestination, tasksSurfaceActive, authoritativeHomeStartAllowed) {
+        if (tasksSurfaceActive && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
                 phase = "tasks_screen_enter",
@@ -5025,16 +5030,16 @@ private fun SlockAppShellReadyContent(
             tasksRoute.start()
         }
     }
-    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return@LaunchedEffect
-        if (selectedTab == "tasks") {
+        if (tasksSurfaceActive) {
             appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
-    LaunchedEffect(selectedTab, tasksState.loadState, tasksState.refreshing) {
-        if (selectedTab != "tasks") {
+    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
+        if (!tasksSurfaceActive) {
             tasksFirstRenderLoggedKey = null
             return@LaunchedEffect
         }
