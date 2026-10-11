@@ -59,6 +59,13 @@ class MembersAgentRuntimeUsageTest {
     }
 
     @Test
+    fun runtimeUsageStatusDotMatchesWebHealthSemantics() {
+        assertNull(membersRuntimeUsageStatusColor(offered = false, attention = false))
+        assertEquals(SlockColor.AccentLime, membersRuntimeUsageStatusColor(offered = true, attention = false))
+        assertEquals(SlockColor.AccentOrange, membersRuntimeUsageStatusColor(offered = true, attention = true))
+    }
+
+    @Test
     fun entryIsOfferedOnlyAfterANon403Read() {
         assertFalse(null.offersRuntimeAccountUsage())
         assertFalse(RuntimeAccountUsageLoad.Forbidden.offersRuntimeAccountUsage())
