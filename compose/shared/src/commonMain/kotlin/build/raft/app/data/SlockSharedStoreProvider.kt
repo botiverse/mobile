@@ -47,6 +47,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.SlockCurlSocketIoPolicy
+import build.raft.app.network.SlockHttp3Policy
 import build.raft.app.network.SlockDohFallbackPolicy
 import build.raft.app.network.SlockNetworkTransportController
 import build.raft.app.network.installSlockNetworkTransportController
@@ -1685,6 +1686,10 @@ internal class SlockSharedStoreProvider private constructor(
             SlockCurlSocketIoPolicy.bindUserChoice {
                 realtimeTransportPreferenceStore.readCurlSocketIoUserChoiceSync()
             }
+            // Task #3: the HTTP/3 switch's explicit choice (absent = follow the server-sent transport
+            // variant). Bound before the transport controller exists so its first snapshot honours it.
+            val http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore)
+            SlockHttp3Policy.bindUserChoice { http3PreferenceStore.readHttp3UserChoiceSync() }
             bridge.logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=sharedPreference " +

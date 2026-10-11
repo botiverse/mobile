@@ -4,6 +4,7 @@ import com.tencent.kmm.network.export.NetworkCurlConfigurationFailureReason
 import com.tencent.kmm.network.export.NetworkCurlNativeStatus
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.service.NetworkTransportEngine
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,6 +58,66 @@ class SlockNetworkTransportControllerTest {
 
         controller.applyRemoteEvaluation("production", 3L, "server-a", true, "curl_h3")
         assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+    }
+
+    @AfterTest
+    fun resetHttp3Policy() {
+        SlockHttp3Policy.resetForTest()
+    }
+
+    // Task #3: the Settings switch overrides the server-sent default in both directions, and an
+    // unset switch keeps following whatever the server sends.
+    @Test
+    fun http3UserChoiceOverridesTheServerVariant() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+
+        var choice: Boolean? = null
+        SlockHttp3Policy.bindUserChoice { choice }
+
+        // Server says curl_h2; the user turns HTTP/3 on.
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
+        choice = true
+        controller.onHttp3UserChoiceChanged()
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+
+        // Server says curl_h3; the user turns HTTP/3 off, and curl stays the engine.
+        controller.applyRemoteEvaluation("production", 2L, "server-a", true, "curl_h3")
+        choice = false
+        controller.onHttp3UserChoiceChanged()
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+
+        // Switch back to unset: follows the server again (still curl_h3).
+        choice = null
+        controller.onHttp3UserChoiceChanged()
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+    }
+
+    @Test
+    fun http3UserChoiceOnKtorVariantRequestsCurlBecauseHttp3ImpliesCurl() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        SlockHttp3Policy.bindUserChoice { true }
+
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "ktor")
+        controller.onHttp3UserChoiceChanged()
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+    }
+
+    @Test
+    fun http3UserChoiceStillYieldsToHttp1OnlyRequests() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        SlockHttp3Policy.bindUserChoice { true }
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
+        controller.onHttp3UserChoiceChanged()
+
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
+        controller.selectionFor(request)
+        assertEquals(false, request.curlHttp3EnabledOverride)
     }
 
     @Test
@@ -204,7 +265,6 @@ class SlockNetworkTransportControllerTest {
     private fun policy(curlRequired: Boolean): SlockNetworkTransportPlatformPolicy =
         SlockNetworkTransportPlatformPolicy(
             platformLabel = if (curlRequired) "OHOS" else "Android",
-            defaultHttp3Enabled = false,
             curlRequired = curlRequired,
             appOwnedTrustRequired = !curlRequired,
             readyDetail = "ready"
