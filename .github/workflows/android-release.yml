@@ -108,6 +108,11 @@ on:
         value: ${{ jobs.build_android_release.outputs.verified_v31 }}
   workflow_dispatch:
     inputs:
+      aab_signing_repair:
+        description: 'Signing only, no build: JSON with hands_build_id, source_run_id, aab_sha256, apk_sha256; also set source_sha'
+        required: false
+        type: string
+        default: ""
       source_sha:
         description: "Immutable source commit to check out; empty uses the selected workflow ref"
         required: false
@@ -215,6 +220,7 @@ permissions:
 
 jobs:
   resolve:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.aab_signing_repair == '' }}
     name: Resolve release parameters
     runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
@@ -324,6 +330,9 @@ jobs:
             .github/gradle-cache-epoch \
             .github/gradle-cache-quarantine \
             scripts/upload_android_hands_artifacts.sh \
+            scripts/sign_android_aab.sh \
+            scripts/verify_android_aab.sh \
+            scripts/VerifyAndroidAab.java \
             scripts/sign_android_apk_with_rotation.sh \
             scripts/verify_android_apk_with_rotation.sh \
             scripts/verify_android_dex_packaging.py \
@@ -587,7 +596,6 @@ jobs:
           echo "min_sdk=${MIN_SDK}" >> "$GITHUB_OUTPUT"
           echo "target_sdk=${TARGET_SDK}" >> "$GITHUB_OUTPUT"
           echo "signer_cert_sha256_json=${SIGNERS_JSON}" >> "$GITHUB_OUTPUT"
-          echo "upload_key_cert_sha256=$(printf '%s' "${SIGNERS_JSON}" | jq -er '.[-1]')" >> "$GITHUB_OUTPUT"
           echo "verified_v2=${V2}" >> "$GITHUB_OUTPUT"
           echo "verified_v3=${V3}" >> "$GITHUB_OUTPUT"
           echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
@@ -603,6 +611,30 @@ jobs:
           [ -n "$AAB" ] || { echo "No AAB found under $AAB_DIR" >&2; exit 1; }
           echo "aab_path=$AAB" >> "$GITHUB_OUTPUT"
 
+      - name: Sign and verify AAB
+        if: ${{ inputs.upload_android_artifacts }}
+        id: sign-aab
+        env:
+          UPLOAD_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
+          SLOCK_UPLOAD_KEYSTORE_PASS: ${{ secrets.SLOCK_ROTATED_KEYSTORE_PASS }}
+          SLOCK_UPLOAD_KEY_ALIAS: ${{ secrets.SLOCK_ROTATED_KEY_ALIAS }}
+          SLOCK_UPLOAD_KEY_PASS: ${{ secrets.SLOCK_ROTATED_KEY_PASS }}
+          EXPECTED_UPLOAD_CERT_SHA256: 5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1
+          INPUT_AAB: ${{ steps.locate-aab.outputs.aab_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          SLOCK_UPLOAD_KEYSTORE_FILE="$(mktemp "$RUNNER_TEMP/aab-upload-key.XXXXXX")"
+          export SLOCK_UPLOAD_KEYSTORE_FILE
+          trap 'rm -f "$SLOCK_UPLOAD_KEYSTORE_FILE"' EXIT
+          printf '%s' "$UPLOAD_KEYSTORE_FILE_B64" | base64 -d > "$SLOCK_UPLOAD_KEYSTORE_FILE"
+          mkdir -p signed-aab
+          scripts/sign_android_aab.sh "$INPUT_AAB" signed-aab/androidApp-release.aab \
+            "$EXPECTED_UPLOAD_CERT_SHA256" signed-aab/aab-signature.json
+          echo "aab_path=signed-aab/androidApp-release.aab" >> "$GITHUB_OUTPUT"
+          echo "upload_key_cert_sha256=$(jq -er .upload_key_cert_sha256 signed-aab/aab-signature.json)" >> "$GITHUB_OUTPUT"
+
       - name: Upload immutable AAB + APK to Hands
         if: ${{ inputs.upload_android_artifacts }}
         id: hands-artifacts
@@ -616,14 +648,23 @@ jobs:
           PACKAGE_NAME: ${{ steps.verify.outputs.package_id }}
           VERSION_NAME: ${{ steps.resolve.outputs.version_name }}
           VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
-          UPLOAD_KEY_CERT_SHA256: ${{ steps.verify.outputs.upload_key_cert_sha256 }}
-          AAB_PATH: ${{ steps.locate-aab.outputs.aab_path }}
+          UPLOAD_KEY_CERT_SHA256: ${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}
+          AAB_PATH: ${{ steps.sign-aab.outputs.aab_path }}
           APK_PATH: ${{ steps.sign.outputs.apk_path }}
         shell: bash
         run: |
           set -euo pipefail
           scripts/upload_android_hands_artifacts.sh | tee hands-artifacts-upload.log
           awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed AAB and verification receipt
+        if: ${{ inputs.upload_android_artifacts }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.artifact_name }}-aab
+          path: signed-aab/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload APK as workflow artifact
         id: upload-apk
@@ -893,3 +934,111 @@ jobs:
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  sign_existing_aab:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.aab_signing_repair != '' }}
+    permissions:
+      contents: read
+      actions: read
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    timeout-minutes: 15
+    environment: production
+    env:
+      EXPECTED_UPLOAD_CERT_SHA256: 5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1
+    steps:
+      - name: Checkout signing implementation
+        uses: actions/checkout@v5
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Validate repair identity inputs
+        env:
+          REPAIR_INPUT: ${{ inputs.aab_signing_repair }}
+          PRODUCT_SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          python3 - <<'PYINPUT'
+          import json, os, re
+          value = json.loads(os.environ['REPAIR_INPUT'])
+          fields = {'hands_build_id': ('SOURCE_HANDS_BUILD_ID', r'[A-Za-z0-9-]+'),
+                    'source_run_id': ('SOURCE_RUN_ID', r'[1-9][0-9]*'),
+                    'aab_sha256': ('INPUT_AAB_SHA256', r'[0-9a-f]{64}'),
+                    'apk_sha256': ('INPUT_APK_SHA256', r'[0-9a-f]{64}')}
+          if set(value) != set(fields):
+              raise SystemExit('Repair JSON must have exactly the four documented fields')
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['PRODUCT_SOURCE_SHA']):
+              raise SystemExit('Repair requires the original full source_sha')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for key, (name, pattern) in fields.items():
+                  if not isinstance(value[key], str) or not re.fullmatch(pattern, value[key]):
+                      raise SystemExit('Invalid repair field: ' + key)
+                  output.write(name + '=' + value[key] + '\n')
+          PYINPUT
+      - name: Verify original source run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          mkdir -p repair
+          gh api "repos/$SOURCE_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          jq -e --arg repo "$SOURCE_REPOSITORY" '
+            .repository.full_name == $repo and .status == "completed" and .conclusion == "success" and
+            .path == ".github/workflows/android-release.yml"
+          ' "$RUNNER_TEMP/source-run.json" >/dev/null
+          jq '{id,html_url,head_sha,path,status,conclusion}' "$RUNNER_TEMP/source-run.json" > repair/source-run.json
+      - name: Download exact sealed AAB and APK
+        env:
+          HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
+          HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
+          HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_COMMIT_SHA: ${{ inputs.source_sha }}
+        run: python3 scripts/download_android_aab_repair.py repair
+      - name: Sign AAB and verify unchanged application payload
+        env:
+          UPLOAD_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
+          SLOCK_UPLOAD_KEYSTORE_PASS: ${{ secrets.SLOCK_ROTATED_KEYSTORE_PASS }}
+          SLOCK_UPLOAD_KEY_ALIAS: ${{ secrets.SLOCK_ROTATED_KEY_ALIAS }}
+          SLOCK_UPLOAD_KEY_PASS: ${{ secrets.SLOCK_ROTATED_KEY_PASS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          SLOCK_UPLOAD_KEYSTORE_FILE="$(mktemp "$RUNNER_TEMP/aab-upload-key.XXXXXX")"
+          export SLOCK_UPLOAD_KEYSTORE_FILE
+          trap 'rm -f "$SLOCK_UPLOAD_KEYSTORE_FILE"' EXIT
+          printf '%s' "$UPLOAD_KEYSTORE_FILE_B64" | base64 -d > "$SLOCK_UPLOAD_KEYSTORE_FILE"
+          scripts/sign_android_aab.sh repair/original.aab repair/androidApp-release.aab \
+            "$EXPECTED_UPLOAD_CERT_SHA256" repair/aab-signature.json
+      - name: Record signing-only provenance
+        env:
+          SIGNING_RUN_ID: ${{ github.run_id }}
+          SIGNING_WORKFLOW_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$INPUT_APK_SHA256" repair/original.apk | sha256sum --check
+          jq -n --slurpfile source repair/source-receipt.json --slurpfile aab repair/aab-signature.json \
+            --arg run "$SIGNING_RUN_ID" --arg sha "$SIGNING_WORKFLOW_SHA" \
+            '{schema:"raft.android-aab-repair.v1",source:$source[0],aab:$aab[0],signing:{ci_run_id:$run,workflow_sha:$sha},rebuilt:false,apk_unchanged:true,play_acceptance:"NOT_CHECKED"}' \
+            > repair/repair-provenance.json
+          # Evidence only: Hands cannot replace a sealed bundle at the same
+          # versionCode. Publication needs a higher versionCode and normal build.
+      - name: Upload signed repair and evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-aab-sign-repair-${{ github.run_id }}
+          path: |
+            repair/androidApp-release.aab
+            repair/original.apk
+            repair/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Summary
+        run: |
+          echo 'Signed existing AAB; application payload and original APK unchanged. Store acceptance has not been checked.' >> "$GITHUB_STEP_SUMMARY"
