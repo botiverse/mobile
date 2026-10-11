@@ -48,7 +48,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyReadsOnWithoutAnExplicitServerDecision() = runBlocking {
-        val doh = MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
+        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) {
         // Unresolved (no evaluation yet, no stored value) and no server at all: ON.
         val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
         assertTrue(idle.isEnabled(server, doh))
@@ -73,11 +73,12 @@ class SharedServerFeatureFlagsTest {
         val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")))
         malformed.prefetch(server)
         assertTrue(malformed.isEnabled(server, doh))
+        }
     }
 
     @Test
     fun defaultOnKeyFollowsAnExplicitServerDecision() = runBlocking {
-        val doh = MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
+        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) {
         for (reason in listOf("kill_switch", "flag_disabled", "default", "platform_rule")) {
             val flags =
                 SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")))
@@ -88,6 +89,7 @@ class SharedServerFeatureFlagsTest {
             SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":true,"reason":"default"}]}""")))
         on.prefetch(server)
         assertTrue(on.isEnabled(server, doh))
+        }
     }
 
     @Test
@@ -103,12 +105,11 @@ class SharedServerFeatureFlagsTest {
                 },
             )
 
-        // Before any resolve: the raw snapshot is Unresolved (OFF) but the hook decides ON for its key only.
+        // Before any resolve there is no server decision: the default-on key reads ON (and the hook keeps it ON).
         assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         assertTrue(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
-        assertEquals(Triple<ServerId?, String, Boolean>(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false), seen[0])
-        assertEquals(Triple<ServerId?, String, Boolean>(null, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false), seen[1])
+        assertEquals(Triple<ServerId?, String, Boolean>(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, true), seen[0])
 
         // After resolve the hook still sees the true server value (explicit OFF) and the raw snapshot is untouched.
         flags.prefetch(server)
@@ -548,16 +549,16 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(FakeApi(ok("{}")))
         // no prefetch yet
         assertFalse(flags.snapshotFor(server).resolved)
-        assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(null, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(null, READ_RECEIPTS_FEATURE_FLAG_KEY))
     }
 
     @Test
     fun failedFetchLeavesFlagsOffNeverThrows() = runBlocking {
         val flags = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
         val snapshot = flags.prefetch(server)
-        assertFalse(snapshot.resolved) // failed -> stays Unresolved, flags default off (feature stays dark)
-        assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(snapshot.resolved) // failed -> stays Unresolved, ordinary flags default off (feature stays dark)
+        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
     }
 
     @Test
