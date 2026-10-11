@@ -13,7 +13,10 @@ for script in \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
   scripts/finalize_android_hands_release.sh \
-  scripts/prepare_android_hands_symbols.sh; do
+  scripts/prepare_android_hands_symbols.sh \
+  scripts/sign_android_aab.sh \
+  scripts/verify_android_aab.sh \
+  scripts/upload_android_hands_artifacts.sh; do
   bash -n "${script}"
 done
 
@@ -132,6 +135,22 @@ ruby -e '
   unless stage_run.include?("scripts/verify_android_elf_alignment.py")
     raise "release workflow does not stage the 16 KB ELF verifier"
   end
+
+  aab_sign_index = release_steps.index { |step| step["id"] == "sign-aab" }
+  upload_index = release_steps.index { |step| step["id"] == "hands-artifacts" }
+  raise "AAB is uploaded before signing" unless aab_sign_index && aab_sign_index < upload_index
+  %w[scripts/sign_android_aab.sh scripts/verify_android_aab.sh scripts/VerifyAndroidAab.java].each do |path|
+    raise "immutable checkout loses AAB signing implementation" unless stage_run.include?(path)
+  end
+  upload_env = release_steps.fetch(upload_index).fetch("env")
+  raise "uploader bypasses signed AAB" unless upload_env.fetch("AAB_PATH") == "${{ steps.sign-aab.outputs.aab_path }}"
+  raise "upload pin is not derived from verified AAB" unless upload_env.fetch("UPLOAD_KEY_CERT_SHA256") == "${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}"
+  raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)
+  repair = jobs.fetch("sign_existing_aab")
+  raise "repair is not dispatch-only" unless repair.fetch("if").include?("github.event_name == " + 39.chr + "workflow_dispatch" + 39.chr)
+  repair_runs = repair.fetch("steps").map { |step| step.fetch("run", "") }.join("\n")
+  raise "repair runs a build or publishes" if repair_runs.match?(/gradlew|upload_android_hands_artifacts|hands publish/)
+  raise "repair lacks source/run provenance" unless repair_runs.include?("signing:") && repair_runs.include?("workflow_sha:") && repair_runs.include?("rebuilt:false")
 
   release_verify = release_steps.fetch(verify_index).fetch("run")
   unless release_verify.include?("scripts/verify_android_apk_with_rotation.sh")
@@ -326,7 +345,10 @@ for canonical_path in \
   scripts/release_android_hands_github.sh \
   scripts/publish_android_hands_release.sh \
   scripts/finalize_android_hands_release.sh \
-  scripts/prepare_android_hands_symbols.sh; do
+  scripts/prepare_android_hands_symbols.sh \
+  scripts/sign_android_aab.sh \
+  scripts/verify_android_aab.sh \
+  scripts/upload_android_hands_artifacts.sh; do
   [ -e "${canonical_path}" ] || fail "missing canonical Hands path: ${canonical_path}"
 done
 

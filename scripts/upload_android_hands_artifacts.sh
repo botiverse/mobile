@@ -12,10 +12,18 @@ set -euo pipefail
 : "${VERSION_CODE:?VERSION_CODE is required}"
 : "${AAB_PATH:?AAB_PATH is required}"
 : "${APK_PATH:?APK_PATH is required}"
+: "${UPLOAD_KEY_CERT_SHA256:?UPLOAD_KEY_CERT_SHA256 is required}"
 
 [[ "$SOURCE_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'invalid source commit' >&2; exit 2; }
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo 'invalid version code' >&2; exit 2; }
 for f in "$AAB_PATH" "$APK_PATH"; do [[ -f "$f" ]] || { echo "missing artifact: $f" >&2; exit 2; }; done
+
+# Reject unsigned, tampered, partially signed or wrong-key bundles before the
+# first network request. The metadata pin must describe the actual AAB signer.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+verify_receipt="$(mktemp -t raft-upload-aab-verification-XXXXXX)"
+trap 'rm -f "$verify_receipt"' EXIT
+"$script_dir/verify_android_aab.sh" "$AAB_PATH" "$UPLOAD_KEY_CERT_SHA256" "$verify_receipt"
 
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 size() { wc -c < "$1" | tr -d '[:space:]'; }
