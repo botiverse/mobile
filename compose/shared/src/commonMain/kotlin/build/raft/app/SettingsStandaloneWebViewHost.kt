@@ -488,6 +488,7 @@ private fun StandaloneSettingsWebViewBody(
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,
         webBaseUrl = webBaseUrl,
+        apiOrigin = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/').removeSuffix("/api"),
         spec = spec,
         controller = controller,
         accessTokenSyncLogger = bridge::log,
@@ -545,6 +546,7 @@ private fun StandaloneSettingsWebViewBody(
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_failure reason=$reason")
         },
         onNavigationStateChange = onNavigationStateChange,
+        onHostMessage = onHostMessage,
     )
 }
 
@@ -552,6 +554,7 @@ private fun StandaloneSettingsWebViewBody(
 internal fun StandaloneSettingsWebViewContent(
     authSnapshot: SettingsWebViewAuthSnapshot,
     webBaseUrl: String?,
+    apiOrigin: String,
     spec: StandaloneSettingsWebViewSpec,
     modifier: Modifier = Modifier,
     controller: SlockWebViewController = rememberSlockWebViewController(),
@@ -569,7 +572,6 @@ internal fun StandaloneSettingsWebViewContent(
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-    val apiOrigin = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
     val injectedJavaScript =
         remember(spec.surface, session, hostAuthBinding, apiOrigin) {
             standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, apiOrigin)
@@ -620,6 +622,7 @@ internal fun StandaloneSettingsWebViewContent(
 internal fun SettingsWebViewContent(
     url: String,
     modifier: Modifier = Modifier,
+    hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
@@ -696,6 +699,7 @@ internal fun SettingsWebViewContent(
                     cacheEnabled = true,
                     ephemeral = false,
                     injectedJavaScript = injectedJavaScript,
+                    hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
                     onLoadCommit = {
                         loadError = null
