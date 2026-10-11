@@ -2,7 +2,7 @@
 type: improved
 area: members
 platforms: android, ios, ohos
-pull_request: pending
+pull_request: 2945
 rollout: standard
 ---
 ## zh-CN
