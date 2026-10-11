@@ -4,6 +4,7 @@
 Wire contracts: hands worker/src/routes/android_release_artifacts.ts bundleResponse
 and worker/src/routes/builds.ts handleDownloadBuildAsset (presign=1).
 """
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -22,6 +23,31 @@ class ContractError(ValueError):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+USER_AGENT = 'raft-mobile-release/1.0'
+HTTP_STAGES = {'app_list', 'sealed_bundle', 'aab_presign', 'apk_presign', 'aab_download', 'apk_download'}
+
+
+@contextmanager
+def open_response(opener, url, stage, *, token=None, timeout=60):
+    if stage not in HTTP_STAGES:
+        raise ContractError('Invalid HTTP stage')
+    # Hands edge rejects urllib's generic default before the API auth layer.
+    # Identify this actual release client on both API and presigned-storage reads.
+    headers = {'User-Agent': USER_AGENT}
+    if token is not None:
+        headers.update({'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            yield response
+    except urllib.error.HTTPError as error:
+        # HTTPError contains URLs, reason strings and response bodies. Only this
+        # fixed operation label and numeric status are safe for CI logs.
+        raise ContractError(f'{stage} HTTP {error.code}') from None
+    except urllib.error.URLError:
+        raise ContractError(f'{stage} NETWORK_ERROR') from None
 
 
 def require(value, pattern, label):
@@ -61,14 +87,13 @@ def main():
     token = env['HANDS_BEARER_TOKEN']
     opener = urllib.request.build_opener(NoRedirect)
 
-    def api(path):
-        request = urllib.request.Request(origin + path, headers={'Authorization': 'Bearer ' + token})
-        with opener.open(request, timeout=60) as response:
+    def api(path, stage):
+        with open_response(opener, origin + path, stage, token=token) as response:
             return json.load(response)
 
     app_id = env.get('HANDS_ANDROID_APP_ID')
     if not app_id:
-        matches = [a['id'] for a in api('/api/apps')['apps'] if a.get('slug') == 'raft-android']
+        matches = [a['id'] for a in api('/api/apps', 'app_list')['apps'] if a.get('slug') == 'raft-android']
         if len(matches) != 1:
             raise ContractError('Cannot uniquely resolve raft-android app')
         app_id = matches[0]
@@ -81,11 +106,12 @@ def main():
         'aab_sha256': require(env['INPUT_AAB_SHA256'], r'[0-9a-f]{64}', 'AAB SHA'),
         'apk_sha256': require(env['INPUT_APK_SHA256'], r'[0-9a-f]{64}', 'APK SHA'),
     }
-    receipt = api(f"/api/apps/{app_id}/android-release-artifacts/{expected['build_id']}")
+    receipt = api(f"/api/apps/{app_id}/android-release-artifacts/{expected['build_id']}", 'sealed_bundle')
     artifacts = validate_receipt(receipt, expected)
     safe_artifacts = []
     for item in artifacts:
-        link = api(f"/api/apps/{app_id}/builds/{expected['build_id']}/assets/{item['asset_id']}/download?presign=1")
+        link = api(f"/api/apps/{app_id}/builds/{expected['build_id']}/assets/{item['asset_id']}/download?presign=1",
+                   item['kind'] + '_presign')
         if link.get('asset_id') != item['asset_id'] or link.get('size_bytes') != item['size_bytes']:
             raise ContractError('Download identity mismatch')
         url = link['download_url']
@@ -96,7 +122,7 @@ def main():
         size = 0
         # Presign requests are authenticated above. Storage requests get no
         # bearer token, even when hosted outside the Hands origin.
-        with opener.open(url, timeout=120) as response, path.open('wb') as target:
+        with open_response(opener, url, item['kind'] + '_download', timeout=120) as response, path.open('wb') as target:
             while chunk := response.read(1024 * 1024):
                 size += len(chunk)
                 if size > item['size_bytes']:

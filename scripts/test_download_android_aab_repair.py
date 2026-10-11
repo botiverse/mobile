@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Receipt rejection tests against the inspected Hands bundleResponse wire shape."""
 import copy
+import io
 import unittest
-from download_android_aab_repair import validate_receipt
+from unittest.mock import Mock
+import urllib.error
+from download_android_aab_repair import ContractError, USER_AGENT, open_response, validate_receipt
 
 
 class SealedInputContract(unittest.TestCase):
@@ -36,6 +39,49 @@ class SealedInputContract(unittest.TestCase):
                 target[keys[-1]] = value
                 with self.assertRaises(ValueError):
                     validate_receipt(receipt, self.expected)
+
+
+class HttpTransportContract(unittest.TestCase):
+    def test_api_identifies_client_and_preserves_existing_bearer(self):
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(b'{}')
+        with open_response(opener, 'https://hands.example/api/apps', 'app_list', token='test-token'):
+            pass
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'), USER_AGENT)
+        self.assertEqual(request.get_header('Authorization'), 'Bearer test-token')
+        self.assertEqual(request.get_header('Accept'), 'application/json')
+
+    def test_storage_identifies_client_without_forwarding_bearer(self):
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(b'bundle bytes')
+        with open_response(opener, 'https://storage.example/object?signature=test-secret',
+                           'aab_download', timeout=120):
+            pass
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'), USER_AGENT)
+        self.assertIsNone(request.get_header('Authorization'))
+        self.assertEqual(opener.open.call_args.kwargs['timeout'], 120)
+
+    def test_http_failure_reports_only_stage_and_numeric_status(self):
+        for stage, status in [('app_list', 401), ('sealed_bundle', 403), ('aab_download', 403)]:
+            with self.subTest(stage=stage, status=status):
+                opener = Mock()
+                opener.open.side_effect = urllib.error.HTTPError(
+                    'https://storage.example/object?signature=secret', status,
+                    'sensitive reason', {}, io.BytesIO(b'sensitive response body'))
+                with self.assertRaises(ContractError) as result:
+                    with open_response(opener, 'https://storage.example/object?signature=secret', stage):
+                        pass
+                self.assertEqual(str(result.exception), f'{stage} HTTP {status}')
+
+    def test_network_failure_does_not_echo_url_or_reason(self):
+        opener = Mock()
+        opener.open.side_effect = urllib.error.URLError('sensitive URL or reason')
+        with self.assertRaises(ContractError) as result:
+            with open_response(opener, 'https://storage.example/object?signature=secret', 'apk_download'):
+                pass
+        self.assertEqual(str(result.exception), 'apk_download NETWORK_ERROR')
 
 
 if __name__ == '__main__':
