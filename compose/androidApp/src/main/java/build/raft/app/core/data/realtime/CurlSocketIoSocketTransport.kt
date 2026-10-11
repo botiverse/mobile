@@ -46,6 +46,12 @@ internal class CurlSocketIoSocketTransport(
     private val logger: (String) -> Unit = { message ->
         build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", message)
     },
+    // Hands a9971638 (artin, 11301003): on the curl stack no realtime event reached the app for
+    // 10 minutes and nothing in the release log said why. Connection lifecycle lines (a handful per
+    // connection) are release-visible; per-emit noise stays on [logger].
+    private val lifecycleLogger: (String) -> Unit = { message ->
+        build.raft.app.core.data.diagnostics.SlockAppLog.w("SlockRealtime", message)
+    },
 ) : RealtimeSocketTransport {
     private val listeners =
         mutableMapOf<String, MutableSet<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
@@ -54,7 +60,7 @@ internal class CurlSocketIoSocketTransport(
     override fun <T> linearize(block: () -> T): T = generationFence.linearize(block)
 
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
-        logger(
+        lifecycleLogger(
             "transport_connect_start stack=curl serverId=${auth["serverId"].orEmpty()} " +
                 "hasToken=${auth["token"].isNullOrBlank().not()}"
         )
@@ -63,21 +69,21 @@ internal class CurlSocketIoSocketTransport(
             val lifecycle = ConnectionLifecycle(generation)
             val created = sessionFactory(socketUrl, JSONObject(auth).toString(), lifecycle)
             if (created == null) {
-                logger("transport_connect_unavailable stack=curl")
+                lifecycleLogger("transport_connect_unavailable stack=curl")
                 lifecycle.deliver(RealtimeSocketEvents.ConnectError, "curl_socket_io_unavailable")
                 return@replace
             }
             // Publish before start(): a callback may re-enter connect() and replace this session.
             session = created
             if (!created.start()) {
-                logger("transport_connect_start_failed stack=curl")
+                lifecycleLogger("transport_connect_start_failed stack=curl")
             }
         }
     }
 
     override fun disconnect() {
         generationFence.clear {
-            logger("transport_disconnect stack=curl")
+            lifecycleLogger("transport_disconnect stack=curl")
             retireSession()
         }
     }
@@ -88,7 +94,7 @@ internal class CurlSocketIoSocketTransport(
             val wire = realtimeSocketIoWirePayload(eventName, payload)
             val payloadJson = if (wire is String) JSONObject.quote(wire) else wire.toString()
             if (session?.emit(eventName, payloadJson) == false) {
-                logger("transport_emit_dropped stack=curl eventName=$eventName")
+                lifecycleLogger("transport_emit_dropped stack=curl eventName=$eventName")
             }
         }
     }
@@ -117,8 +123,15 @@ internal class CurlSocketIoSocketTransport(
         // Touched only inside runIfCurrent (fence lock), and only from this session's native thread.
         private var reconnecting = false
         private var attempts = 0
+        // Events received since the last Connected; reported on the first one and on disconnect.
+        private var eventsSinceConnect = 0
 
         override fun onState(state: SlockCurlSocketIoState, code: Int, detail: String) {
+            lifecycleLogger(
+                "transport_state stack=curl state=${state.name} code=$code " +
+                    "detail=${detail.take(LIFECYCLE_DETAIL_MAX_CHARS)} eventsSinceConnect=$eventsSinceConnect"
+            )
+            if (state == SlockCurlSocketIoState.Connected) eventsSinceConnect = 0
             generationFence.runIfCurrent(generation) {
                 when (state) {
                     SlockCurlSocketIoState.Reconnecting -> reconnecting = true
@@ -157,6 +170,10 @@ internal class CurlSocketIoSocketTransport(
         }
 
         override fun onEvent(eventName: String, payloadJson: String) {
+            eventsSinceConnect += 1
+            if (eventsSinceConnect == 1) {
+                lifecycleLogger("transport_first_event stack=curl eventName=$eventName")
+            }
             generationFence.runIfCurrent(generation) {
                 deliverLocked(eventName, decodeSocketIoPayload(payloadJson))
             }
@@ -176,6 +193,7 @@ internal class CurlSocketIoSocketTransport(
         const val NATIVE_DETAIL_TRANSPORT_CLOSED = "transport_closed"
         const val NATIVE_DETAIL_WEBSOCKET_CONNECT = "websocket_connect"
         const val NATIVE_DETAIL_BINARY_FRAME = "binary_frame_unsupported"
+        const val LIFECYCLE_DETAIL_MAX_CHARS = 160
 
         val DefaultCloseExecutor: Executor by lazy {
             Executors.newSingleThreadExecutor { runnable ->
