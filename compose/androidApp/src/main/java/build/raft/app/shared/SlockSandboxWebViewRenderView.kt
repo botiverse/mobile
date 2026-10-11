@@ -846,9 +846,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         val originRule = documentStartScriptOriginRule(targetUrl) ?: return
         runCatching {
             val listener = object : WebViewCompat.WebMessageListener {
-                override fun onPostMessage(view: WebView, message: WebMessageCompat?, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
+                override fun onPostMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
                     if (!isMainFrame || sourceOrigin.toString() != originRule) return
-                    val raw = message?.data ?: return
+                    val raw = message.data ?: return
                     hostMessageCallback?.invoke(mapOf("message" to raw))
                 }
             }
