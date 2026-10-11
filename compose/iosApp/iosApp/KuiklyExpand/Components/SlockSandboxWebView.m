@@ -12,6 +12,9 @@ static NSString *const SlockSandboxWebViewCacheEnabledProp = @"cacheEnabled";
 static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
 static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
 static NSString *const SlockSandboxWebViewAllowedNavigationSchemesProp = @"allowedNavigationSchemes";
+static NSString *const SlockSandboxWebViewHostEventsEnabledProp = @"hostEventsEnabled";
+static NSString *const SlockSandboxWebViewHostMessageProp = @"hostMessage";
+static NSString *const SlockSandboxWebViewHostMessageName = @"raftHostPort";
 static NSString *const SlockSandboxWebViewNavigationCommandMethod = @"navigationCommand";
 static NSString *const SlockSandboxWebViewLoadCommitProp = @"loadCommit";
 static NSString *const SlockSandboxWebViewLoadSuccessProp = @"loadSuccess";
@@ -34,7 +37,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     return keyPaths;
 }
 
-@interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate>
+@interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler>
 
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, copy) NSString *src;
@@ -62,6 +65,8 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 @property (nonatomic, copy) KuiklyRenderCallback navigationBlockedCallback;
 @property (nonatomic, copy) KuiklyRenderCallback urlChangeCallback;
 @property (nonatomic, copy) KuiklyRenderCallback navigationStateChangeCallback;
+@property (nonatomic, copy) KuiklyRenderCallback hostMessageCallback;
+@property (nonatomic, assign) BOOL hostEventsEnabled;
 
 @end
 
@@ -77,6 +82,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         _domStorageEnabled = NO;
         _cacheEnabled = NO;
         _ephemeral = YES;
+        _hostEventsEnabled = NO;
         _injectedJavaScript = @"";
         _allowedNavigationSchemes = [NSSet set];
         _currentURL = @"";
@@ -104,6 +110,11 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         [self updateCacheEnabled:[self boolFromValue:propValue defaultValue:NO]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewEphemeralProp]) {
         [self updateEphemeral:[self boolFromValue:propValue defaultValue:YES]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewHostEventsEnabledProp]) {
+        self.hostEventsEnabled = [self boolFromValue:propValue defaultValue:NO];
+        [self rebuildWebView];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewHostMessageProp]) {
+        self.hostMessageCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewInjectedJavaScriptProp]) {
         [self updateInjectedJavaScript:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewAllowedNavigationSchemesProp]) {
@@ -177,6 +188,15 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     _navigationBlockedCallback = nil;
     _urlChangeCallback = nil;
     _navigationStateChangeCallback = nil;
+    _hostMessageCallback = nil;
+}
+
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (![message.name isEqualToString:SlockSandboxWebViewHostMessageName] || !self.hostEventsEnabled || !self.hostMessageCallback) return;
+    if (![message.body isKindOfClass:NSString.class]) return;
+    self.hostMessageCallback(@{ @"message" : message.body });
 }
 
 #pragma mark - WKNavigationDelegate
@@ -297,6 +317,10 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     configuration.websiteDataStore =
         self.ephemeral ? [WKWebsiteDataStore nonPersistentDataStore] : [WKWebsiteDataStore defaultDataStore];
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
+    if (self.hostEventsEnabled) {
+        [userContentController addScriptMessageHandler:self name:SlockSandboxWebViewHostMessageName];
+        NSString *bridge = @"(function(){var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.raftHostPort;if(!h)return;Object.defineProperty(window,\"RaftHost\",{value:Object.freeze({version:\"raft-host-v1\",capabilities:[\"raft-feedback-v1\",\"diagnostics-upload-v1\"],emit:function(k,p){if(typeof k===\"string\")h.postMessage(JSON.stringify({kind:k,payload:(p&&typeof p===\"object\"&&!Array.isArray(p))?p:{}}));},diagnostics:{start:function(r,b){this._send(\"diagnostics:start\",{requestId:r,binding:b});},cancel:function(r,b){this._send(\"diagnostics:cancel\",{requestId:r,binding:b});},_send:function(k,p){h.postMessage(JSON.stringify({kind:k,payload:p||{}}));}}}),writable:false,configurable:false});})();";
+        [userContentController addUserScript:[[WKUserScript alloc] initWithSource:bridge injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
     if (self.allowScripts && self.injectedJavaScript.length > 0) {
         WKUserScript *script =
             [[WKUserScript alloc] initWithSource:self.injectedJavaScript

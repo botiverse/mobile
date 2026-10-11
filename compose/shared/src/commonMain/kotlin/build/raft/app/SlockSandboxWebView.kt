@@ -293,6 +293,8 @@ internal class SlockSandboxWebViewEvent : Event() {
                 "feedback:close" -> "close"
                 "feedback:auth-required" -> "auth-required"
                 "feedback:integration-unavailable" -> "integration-unavailable"
+                FeedbackDiagnosticsBridge.START_KIND -> FeedbackDiagnosticsBridge.START_KIND
+                FeedbackDiagnosticsBridge.CANCEL_KIND -> FeedbackDiagnosticsBridge.CANCEL_KIND
                 else -> null
             } ?: return@register
             handler(acceptedKind, payload)
