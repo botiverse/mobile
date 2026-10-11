@@ -14,6 +14,13 @@ on:
       - "release-*"
   workflow_dispatch:
     inputs:
+      scope:
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android/OHOS compile, no iOS, no device suite); full = deliberate full readback (all platforms + device suite + canonical-final)."
+        type: choice
+        options:
+          - pr
+          - full
+        default: pr
       ohos_receipt_specimen:
         description: "Task #91: force a controlled nonzero OHOS shared-compile exit to prove the resource-receipt artifact still uploads on RED. Does not affect normal runs."
         type: boolean
@@ -138,6 +145,7 @@ jobs:
           PUSH_HEAD_SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          DISPATCH_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || '' }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -178,7 +186,7 @@ jobs:
               write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
               ;;
           esac
-          scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" \
+          scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
             | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test gitlink carry-in gate

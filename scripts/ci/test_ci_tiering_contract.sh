@@ -129,6 +129,14 @@ raise "main push diff is not directly path-scoped" unless plan_script.include?('
 raise "renames can hide the removed platform path" unless plan_script.include?("--no-renames")
 raise "unavailable diffs do not fail closed" unless plan_script.include?("__CI_CHANGED_PATHS_UNKNOWN__")
 
+# Task #37 (artin 2026-10-09): manual dispatch defaults to the PR-equivalent
+# tier; scope=full is the explicit opt-in for a full readback.
+dispatch = events.fetch("workflow_dispatch")
+scope = dispatch.fetch("inputs").fetch("scope")
+raise "dispatch scope must default to the pr tier" unless scope.fetch("default") == "pr"
+raise "dispatch scope must be an explicit pr/full choice" unless scope.fetch("options") == %w[pr full]
+raise "dispatch scope input is not wired to the planner" unless plan_script.include?('"$DISPATCH_SCOPE"')
+
 plan = JSON.parse(File.read(".github/rulesets/mobile-main-merge-queue.json"))
 raise "ruleset plan schema drifted" unless plan.fetch("schema") == "botiverse-mobile-merge-queue-plan/v1"
 raise "wrong ruleset target" unless plan.fetch("repository") == "botiverse/mobile" && plan.fetch("ruleset_id") == 18_537_125
