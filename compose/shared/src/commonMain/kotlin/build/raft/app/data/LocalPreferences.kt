@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
 import build.raft.app.network.SlockCurlSocketIoPolicy
+import build.raft.app.network.HTTP3_PREFERENCE_KEY
+import build.raft.app.network.SlockHttp3Policy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
@@ -880,6 +882,27 @@ class KeyValueRealtimeTransportPreferenceStore(
 
     override suspend fun saveCurlSocketIoUserChoice(enabled: Boolean) {
         store.putBoolean(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, enabled)
+    }
+}
+
+/**
+ * Task #3: the Settings switch "Enable HTTP/3". Three states under [HTTP3_PREFERENCE_KEY]: absent =
+ * follow the server-sent transport variant, "true" / "false" = the user's explicit choice.
+ */
+interface Http3PreferenceStore {
+    /** The user's explicit choice, or null while the switch follows the server variant. */
+    fun readHttp3UserChoiceSync(): Boolean?
+    suspend fun saveHttp3UserChoice(enabled: Boolean)
+}
+
+class KeyValueHttp3PreferenceStore(
+    private val store: SharedPreferenceStore
+) : Http3PreferenceStore {
+    override fun readHttp3UserChoiceSync(): Boolean? =
+        SlockHttp3Policy.parseUserChoice(store.getString(HTTP3_PREFERENCE_KEY))
+
+    override suspend fun saveHttp3UserChoice(enabled: Boolean) {
+        store.putBoolean(HTTP3_PREFERENCE_KEY, enabled)
     }
 }
 

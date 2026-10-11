@@ -13,7 +13,6 @@ interface SlockOhosImageTransportPolicySink {
 internal actual fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransportPlatformPolicy =
     SlockNetworkTransportPlatformPolicy(
         platformLabel = "OHOS",
-        defaultHttp3Enabled = false,
         curlRequired = true,
         appOwnedTrustRequired = false,
         readyDetail =

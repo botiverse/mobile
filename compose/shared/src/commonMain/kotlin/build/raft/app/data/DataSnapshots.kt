@@ -1590,6 +1590,14 @@ data class SettingsMobileSnapshot(
             statusLabel = "Unsupported",
             detail = "Realtime over the new network stack (curl) is not available on this platform."
         ),
+    /** Task #3: effective value (user choice, else the server-sent transport variant); see SlockHttp3Policy. */
+    val http3: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "HTTP/3 is not available on this build."
+        ),
     val linkOpenMode: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(
             selectedKey = LinkOpenMode.Default.storageKey,

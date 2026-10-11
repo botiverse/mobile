@@ -18,7 +18,6 @@ import kotlinx.atomicfu.locks.synchronized
 
 internal data class SlockNetworkTransportPlatformPolicy(
     val platformLabel: String,
-    val defaultHttp3Enabled: Boolean,
     /** OHOS has no Ktor delegate; off means curl with H3 not requested. */
     val curlRequired: Boolean,
     val appOwnedTrustRequired: Boolean,
@@ -213,15 +212,36 @@ internal class SlockNetworkTransportController(
         }
     }
 
-    private fun transportIntent(policy: RemoteTransportPolicy): TransportIntent =
-        when (policy.variant) {
+    // Task #3: the server variant supplies the HTTP/3 default (curl_h3 asks for it); the
+    // Settings switch, when the user has touched it, overrides that bit. HTTP/3 always implies
+    // curl, so a user turning it on also requests the curl engine where the platform allows it.
+    private fun transportIntent(policy: RemoteTransportPolicy): TransportIntent {
+        val serverRequestsHttp3 = policy.variant == SlockRemoteTransportVariant.CurlH3
+        val http3 = SlockHttp3Policy.resolve(serverRequestsHttp3)
+        return when (policy.variant) {
             SlockRemoteTransportVariant.Ktor ->
-                TransportIntent(curlRequested = platformPolicy.curlRequired, http3Requested = false)
-            SlockRemoteTransportVariant.CurlH2 ->
-                TransportIntent(curlRequested = true, http3Requested = false)
+                TransportIntent(curlRequested = platformPolicy.curlRequired || http3, http3Requested = http3)
+            SlockRemoteTransportVariant.CurlH2,
             SlockRemoteTransportVariant.CurlH3 ->
-                TransportIntent(curlRequested = true, http3Requested = true)
+                TransportIntent(curlRequested = true, http3Requested = http3)
         }
+    }
+
+    /**
+     * Task #3: called after the user flips the HTTP/3 switch. The choice is read live through
+     * [SlockHttp3Policy], so this only advances the generation and republishes the platform
+     * policy; the remote state is unchanged.
+     */
+    fun onHttp3UserChoiceChanged(): String? = synchronized(platformPolicyPublicationLock) {
+        val nextGeneration = policyGeneration.value + 1L
+        val targetSnapshot = snapshot(transportIntent(remotePolicyLocked()), nextGeneration)
+        if (!publishPlatformPolicyLocked(targetSnapshot, force = true)) {
+            return@synchronized "network_transport_http3_choice applied=false"
+        }
+        policyGeneration.value = nextGeneration
+        "network_transport_http3_choice applied=true requested=${targetSnapshot.requestedHttp3Enabled} " +
+            "effective=${targetSnapshot.effectiveHttp3Enabled} generation=$nextGeneration"
+    }
 
     private fun publishPlatformPolicyLocked(
         snapshot: NetworkTransportPreferenceSnapshot,
@@ -366,10 +386,13 @@ internal fun slockNetworkClientConfig(
                 controller.selectionFor(request)
             } else {
                 val policy = slockNetworkTransportPlatformPolicy()
-                request.setCurlHttp3Enabled(policy.defaultHttp3Enabled)
+                // Task #3: before the controller exists there is no server variant yet, so only an
+                // explicit user choice can turn HTTP/3 on; the old per-platform default is gone.
+                val http3 = SlockHttp3Policy.resolve(serverRequestsHttp3 = false)
+                request.setCurlHttp3Enabled(http3)
                 NetworkEngineSelection(
                     requestedEngine =
-                        if (policy.curlRequired || policy.defaultHttp3Enabled) {
+                        if (policy.curlRequired || http3) {
                             NetworkTransportEngine.CURL
                         } else {
                             NetworkTransportEngine.KTOR

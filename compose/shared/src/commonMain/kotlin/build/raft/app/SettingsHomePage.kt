@@ -84,6 +84,7 @@ import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
+import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -8060,6 +8061,9 @@ private fun SettingsNativeDetailPageContent(
                     onRealtimeCurlSocketIoChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(enabled))
                     },
+                    onHttp3Change = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
+                    },
                     diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
@@ -9339,6 +9343,7 @@ private fun SettingsMobileContent(
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
     onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
+    onHttp3Change: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
@@ -9461,6 +9466,15 @@ private fun SettingsMobileContent(
                         snapshot = snapshot,
                         actionState = actionState,
                         onRealtimeCurlSocketIoChange = onRealtimeCurlSocketIoChange
+                    )
+                }
+            }
+            if (snapshot.http3.available) {
+                item {
+                    SettingsHttp3Card(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onHttp3Change = onHttp3Change
                     )
                 }
             }
@@ -9718,6 +9732,51 @@ private fun SettingsRealtimeCurlSocketIoCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsHttp3Card(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onHttp3Change: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
+    val preference = snapshot.http3
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Globe,
+        title = stringResource(MR.strings.settings_mobile_http3)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onHttp3Change(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_http3_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
