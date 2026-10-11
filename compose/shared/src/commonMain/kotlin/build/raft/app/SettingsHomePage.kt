@@ -85,6 +85,7 @@ import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
 import build.raft.app.data.MOBILE_ACTION_HTTP3
+import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -8065,6 +8066,9 @@ private fun SettingsNativeDetailPageContent(
                     onHttp3Change = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
                     },
+                    onThreadReverseLayoutChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
+                    },
                     diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
@@ -9345,6 +9349,7 @@ private fun SettingsMobileContent(
     onHomeServerAvatarChange: (Boolean) -> Unit,
     onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
     onHttp3Change: (Boolean) -> Unit = {},
+    onThreadReverseLayoutChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
@@ -9391,6 +9396,15 @@ private fun SettingsMobileContent(
                     actionState = actionState,
                     onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
                 )
+            }
+            if (snapshot.threadReverseLayout.available) {
+                item {
+                    SettingsThreadReverseLayoutCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onThreadReverseLayoutChange = onThreadReverseLayoutChange
+                    )
+                }
             }
             item {
                 SettingsThreadUnreadJumpCard(
@@ -9733,6 +9747,51 @@ private fun SettingsRealtimeCurlSocketIoCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsThreadReverseLayoutCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onThreadReverseLayoutChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.inProgress
+    val preference = snapshot.threadReverseLayout
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.MessageSquare,
+        title = stringResource(MR.strings.settings_mobile_thread_reverse_layout)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onThreadReverseLayoutChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_thread_reverse_layout_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

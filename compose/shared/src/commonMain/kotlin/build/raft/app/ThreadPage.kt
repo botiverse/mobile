@@ -6927,6 +6927,11 @@ private fun SharedThreadRouteContentContent(
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
         }
+    // The Settings switch for the bottom-up list; null while it follows the flag default.
+    val chatLayoutReverseLayoutStore =
+        remember(pager) {
+            build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore(slockSharedPreferenceStore())
+        }
     val actionCardSuccessLabels =
         mapOf(
             "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
@@ -7207,6 +7212,9 @@ private fun SharedThreadRouteContentContent(
     // flipping the layout under a live list would re-map every index.
     val threadReverseLayoutEnabled =
         remember(threadInstanceKey, markdownLightGateInputs != null) {
+            threadReverseLayoutEffective(
+                userChoice = chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync()
+            ) {
             markdownLightGateInputs?.let { gateInputs ->
                 resolveThreadReverseLayoutEnabled(
                     registry = ProcessDiagnosticFeatureFlagOverrides.registry,
@@ -7221,6 +7229,7 @@ private fun SharedThreadRouteContentContent(
                     serverId = gateInputs.serverId
                 )
             } ?: false
+            }
         }
 
     // Read-only evidence of the per-open decision (QA asked for one on every platform).

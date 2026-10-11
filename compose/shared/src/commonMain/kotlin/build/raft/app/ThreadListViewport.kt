@@ -39,6 +39,13 @@ internal fun resolveThreadReverseLayoutEnabled(
             ),
     ).finalEffective
 
+/**
+ * The layout a thread opens with: the user's Settings choice when there is one, otherwise the
+ * default above (artin 2026-10-11: the switch lives in Settings, the flag only sets its default).
+ */
+internal fun threadReverseLayoutEffective(userChoice: Boolean?, followedDefault: () -> Boolean): Boolean =
+    userChoice ?: followedDefault()
+
 /** The value the local override falls back to: on in every alpha build, else the server flag. */
 internal fun threadReverseLayoutDefault(serverEffective: Boolean, buildType: String?): Boolean =
     serverEffective || buildType?.trim().equals(THREAD_REVERSE_LAYOUT_DEFAULT_ON_BUILD_TYPE, ignoreCase = true)

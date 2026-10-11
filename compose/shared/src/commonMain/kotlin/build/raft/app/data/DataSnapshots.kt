@@ -1590,6 +1590,14 @@ data class SettingsMobileSnapshot(
             statusLabel = "Unsupported",
             detail = "Realtime over the new network stack (curl) is not available on this platform."
         ),
+    /** Bottom-up thread list: effective value (user choice, else the flag default); see ThreadReverseLayoutPreferenceStore. */
+    val threadReverseLayout: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "The bottom-up message list is not available on this build."
+        ),
     /** Task #3: effective value (user choice, else the server-sent transport variant); see SlockHttp3Policy. */
     val http3: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
