@@ -972,10 +972,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             (function(){'use strict';
               var port = null;
               try { port = window.raftHostPort; } catch (_) {}
-              Object.defineProperty(window, 'RaftHost', { value: Object.freeze({ version: 'raft-host-v1', capabilities: ['raft-feedback-v1','diagnostics-upload-v1'], emit: function(kind, payload) {
+              Object.defineProperty(window, 'RaftHost', { value: Object.freeze({ version: 'raft-host-v1', capabilities: ['raft-feedback-v1'], emit: function(kind, payload) {
                 if (typeof kind !== 'string' || !port) return;
                 try { port.postMessage(JSON.stringify({kind: kind, payload: (payload && typeof payload === 'object' && !Array.isArray(payload)) ? payload : {}})); } catch (_) {}
-              }, diagnostics: Object.freeze({ start: function(requestId, binding) { this._send('diagnostics:start', {requestId: requestId, binding: binding}); }, cancel: function(requestId, binding) { this._send('diagnostics:cancel', {requestId: requestId, binding: binding}); }, _send: function(kind, payload) { if (!port) return; try { port.postMessage(JSON.stringify({kind: kind, payload: payload || {}})); } catch (_) {} } })) , writable: false, configurable: false });
+              } }), writable: false, configurable: false });
             })();
         """
 

@@ -11,11 +11,11 @@ This applies to Android WebView, iOS WKWebView, and OHOS ArkWeb. A host without 
 Retain `raft-feedback-v1`. Add optional `diagnostics-upload-v1` capability. The page invokes:
 
 ```text
-diagnostics.start({requestId, binding})
-diagnostics.cancel({requestId, binding})
+window.RaftFeedback.diagnostics.start({requestId}, binding)
+window.RaftFeedback.diagnostics.cancel({requestId}, binding)
 ```
 
-`binding` is opaque to the page and echoed by the host. A request is admitted only for the active account/session generation, WebView generation, and request ID.
+`binding` is the object `{accountId, sessionGeneration, webViewGeneration}` and is echoed by the host. A request is admitted only for the active account/session generation, WebView generation, and request ID.
 
 The host dispatches a DOM `raft:feedback-diagnostics` event with:
 
@@ -23,7 +23,7 @@ The host dispatches a DOM `raft:feedback-diagnostics` event with:
 { requestId, binding, type: "progress"|"done"|"failed", ... }
 ```
 
-`progress` carries `sent` and `total` (`total=0` means indeterminate); `done` carries one-time `ref`; `failed` carries a fixed reason: `cancelled`, `timeout`, `generation`, `network`, `invalid`, or `unknown`.
+`progress` carries monotonic integer `sent` and positive integer `total` (at most 200 MiB); `done` carries `ref`; `failed` carries `generate_failed`, `too_large`, or `upload_failed`. Preparation has no byte progress event. Cancellation invalidates the request; it does not create a ticket.
 
 The page ignores duplicate, stale, late, or mismatched events. Native origin/main-frame checks remain mandatory.
 
@@ -51,6 +51,23 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 - A `done` reference is one-time; late completion after cancel/close/account switch cannot create a second ticket.
 - Shared contract plus Android, iOS, and OHOS compile checks pass. Runtime staging preupload → create-ticket evidence is required separately per platform.
 
-## Staging server contract (bdf237d1)
+## Staging server contract (f6d3e804, deploy 38157412327)
 
-The staging endpoint accepts a `diagnostics` JSON field containing `r2_key`, `filename`, `content_type: application/zip`, and `size`, plus `X-Raft-Client-Kind: android|ios|ohos`. Local validation failure returns `400 feedback_diagnostics_invalid` without calling Hands; the WebView may remove diagnostics and retry with a new submission ID. A Hands reference rejection remains ordinary `400 feedback_invalid`; preserve the same submission ID, reference, and content.
+The staging endpoint accepts a `diagnostics` JSON field containing `r2_key`, `filename`, `content_type: application/zip`, and `size`, plus `X-Raft-Client-Kind: android|ios|ohos`. Local validation failure returns `400 feedback_diagnostics_invalid` without calling Hands; the WebView may remove diagnostics and retry with a new submission ID. Only diagnostic-bearing Hands 400 with exact `presigned_invalid`, `presigned_not_found`, or `presigned_size_mismatch` maps to `feedback_diagnostics_rejected`. The user may then remove diagnostics and use a new submission ID. Other failures retain the original ID/reference/content; 409 remains `feedback_submission_conflict`.
+
+## Exact Web implementation and current native gap
+
+Contract source: Web PR #9493, head `d51b62e451e1c627d448da27f1af23c3c7935198`,
+`packages/web/src/feedback/standalone/{host,diagnostics}.ts`.
+The optional capability and methods belong to `RaftFeedback`, not `RaftHost`.
+The native branch does not yet have a diagnostics upload implementation. Do not
+advertise `diagnostics-upload-v1` until start/cancel, lifecycle fencing, native
+preupload and terminal events are implemented together. The legacy feedback
+flow remains available without that capability.
+
+Remaining work: shared request/binding validation and lifecycle state; native
+archive/preupload/progress/cancel on all three hosts; OHOS host messaging;
+platform-specific bootstrap session metadata; compile and real staging receipts.
+Node tests execute the actual Android/iOS host scripts plus shared bootstrap to
+check legacy event delivery and capability absence. They do not establish native
+compile, upload support, or three-platform runtime acceptance.

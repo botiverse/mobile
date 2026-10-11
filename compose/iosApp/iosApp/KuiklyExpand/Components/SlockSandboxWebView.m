@@ -195,6 +195,16 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 - (void)userContentController:(WKUserContentController *)userContentController
       didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.name isEqualToString:SlockSandboxWebViewHostMessageName] || !self.hostEventsEnabled || !self.hostMessageCallback) return;
+    if (userContentController != self.webView.configuration.userContentController || !message.frameInfo.isMainFrame) return;
+    NSURL *expectedURL = [NSURL URLWithString:self.src];
+    WKSecurityOrigin *origin = message.frameInfo.securityOrigin;
+    NSString *scheme = expectedURL.scheme.lowercaseString;
+    if (!([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"])) return;
+    NSInteger defaultPort = [scheme isEqualToString:@"https"] ? 443 : 80;
+    NSInteger expectedPort = expectedURL.port ? expectedURL.port.integerValue : defaultPort;
+    NSInteger actualPort = origin.port > 0 ? origin.port : defaultPort;
+    if (![origin.protocol.lowercaseString isEqualToString:scheme] ||
+        ![origin.host.lowercaseString isEqualToString:expectedURL.host.lowercaseString] || actualPort != expectedPort) return;
     if (![message.body isKindOfClass:NSString.class]) return;
     self.hostMessageCallback(@{ @"message" : message.body });
 }
@@ -319,8 +329,10 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
     if (self.hostEventsEnabled) {
         [userContentController addScriptMessageHandler:self name:SlockSandboxWebViewHostMessageName];
-        NSString *bridge = @"(function(){var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.raftHostPort;if(!h)return;Object.defineProperty(window,\"RaftHost\",{value:Object.freeze({version:\"raft-host-v1\",capabilities:[\"raft-feedback-v1\",\"diagnostics-upload-v1\"],emit:function(k,p){if(typeof k===\"string\")h.postMessage(JSON.stringify({kind:k,payload:(p&&typeof p===\"object\"&&!Array.isArray(p))?p:{}}));},diagnostics:{start:function(r,b){this._send(\"diagnostics:start\",{requestId:r,binding:b});},cancel:function(r,b){this._send(\"diagnostics:cancel\",{requestId:r,binding:b});},_send:function(k,p){h.postMessage(JSON.stringify({kind:k,payload:p||{}}));}}}),writable:false,configurable:false});})();";
+        // Diagnostics capability is installed only when a native uploader exists.
+        NSString *bridge = @"(function(){var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.raftHostPort;if(!h)return;Object.defineProperty(window,\"raftHostPort\",{value:{postMessage:function(m){h.postMessage(m);}},writable:false,configurable:false});Object.defineProperty(window,\"RaftHost\",{value:Object.freeze({version:\"raft-host-v1\",capabilities:[\"raft-feedback-v1\"],emit:function(k,p){if(typeof k===\"string\")h.postMessage(JSON.stringify({kind:k,payload:(p&&typeof p===\"object\"&&!Array.isArray(p))?p:{}}));}}),writable:false,configurable:false});})();";
         [userContentController addUserScript:[[WKUserScript alloc] initWithSource:bridge injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
+    }
     if (self.allowScripts && self.injectedJavaScript.length > 0) {
         WKUserScript *script =
             [[WKUserScript alloc] initWithSource:self.injectedJavaScript
