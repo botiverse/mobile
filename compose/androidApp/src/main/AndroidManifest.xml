@@ -51,7 +51,6 @@
         <activity
             android:name=".shared.SlockAppShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
-            android:documentLaunchMode="never"
             android:exported="false"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Slock.AppShellStarting"

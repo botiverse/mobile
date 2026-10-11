@@ -8,8 +8,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
@@ -163,7 +165,13 @@ private fun AuthChooseServerPageContent() {
                                 sourceDocumentShell = sourceDocumentShell,
                                 selectedServerId = readySession.selectedServerId,
                                 multiShellHostEnabled = multiShellHostEnabled,
-                                suppressRestoreLanding = true
+                                suppressRestoreLanding = true,
+                                routeOwner = AuthenticatedRouteOwner(
+                                    environmentId =
+                                        sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                                    accountId = readySession.user.id,
+                                    serverId = readySession.selectedServerId.orEmpty()
+                                ).normalizedOrNull()
                             )
                     )
                 },

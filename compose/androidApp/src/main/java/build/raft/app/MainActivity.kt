@@ -1,16 +1,17 @@
 package build.raft.app
 
+import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
-import build.raft.app.shared.resolveAndroidShellLaunchTarget
-import build.raft.app.shared.taskLaunchPlan
-import build.raft.app.shared.withAndroidShellLaunchTarget
+import build.raft.app.shared.currentAndroidShellRouteOwner
+import build.raft.app.shared.withAndroidShellRouteOwner
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
@@ -191,12 +192,10 @@ class MainActivity : ComponentActivity() {
         pageData: JSONObject,
         launchIntent: Intent? = intent
     ) {
-        val target = resolveAndroidShellLaunchTarget(pageData)
-        val taskLaunch = target.taskLaunchPlan(launchIntent.shouldClearTaskForSharedShell())
         SlockKuiklyActivity.startAppShell(
             this,
-            pageData = pageData.withAndroidShellLaunchTarget(target),
-            clearTask = taskLaunch.clearTask,
+            pageData = pageData,
+            clearTask = launchIntent.shouldClearTaskForSharedShell(),
         )
         finish()
     }
@@ -416,7 +415,21 @@ class MainActivity : ComponentActivity() {
             PostLoginDestination.AppShell ->
                 SlockKuiklyActivity.startAppShell(
                     this,
-                    pageData = postLoginAppShellPageData(),
+                    pageData =
+                        postLoginAppShellPageData(
+                            owner =
+                                AndroidShellRouteOwner(
+                                        environmentId =
+                                            AndroidApiServerEnvironmentStore(applicationContext)
+                                                .current()
+                                                .apiBaseUrl,
+                                        accountId = session.user.id,
+                                        serverId =
+                                            session.currentServerId
+                                                ?: session.selectedServerId.orEmpty(),
+                                    )
+                                    .normalizedOrNull()
+                        ),
                     clearTask = true
                 )
             PostLoginDestination.ChooseServer ->
@@ -451,7 +464,10 @@ class MainActivity : ComponentActivity() {
     private fun openSettingsAccountAfterMobileOAuthLink() {
         SlockKuiklyActivity.startAppShell(
             this,
-            pageData = settingsAccountAppShellPageData(),
+            pageData =
+                settingsAccountAppShellPageData(
+                    owner = currentAndroidShellRouteOwner(this)
+                ),
             clearTask = true
         )
         finish()
@@ -470,17 +486,19 @@ internal fun postLoginDestination(selectedServerId: String?): PostLoginDestinati
         PostLoginDestination.AppShell
     }
 
-internal fun postLoginAppShellPageData(): JSONObject =
+internal fun postLoginAppShellPageData(owner: AndroidShellRouteOwner? = null): JSONObject =
     JSONObject()
         .put("slockSuppressRestoreLanding", true)
         .put("slockAuthGateInstanceId", System.nanoTime().toString())
+        .let { base -> owner?.let { base.withAndroidShellRouteOwner(it) } ?: base }
 
-internal fun settingsAccountAppShellPageData(): JSONObject =
+internal fun settingsAccountAppShellPageData(owner: AndroidShellRouteOwner? = null): JSONObject =
     JSONObject()
         .put("slockSuppressRestoreLanding", true)
         .put("slockAuthGateInstanceId", System.nanoTime().toString())
         .put("slockInitialTab", "settings")
         .put("slockInitialSettingsDestination", "account")
+        .let { base -> owner?.let { base.withAndroidShellRouteOwner(it) } ?: base }
 
 internal fun mobileOAuthLoginErrorPageData(message: String): JSONObject =
     JSONObject()

@@ -28,7 +28,7 @@ class AndroidShellTaskReuseConnectedTest {
         )
 
         assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, activityInfo.launchMode)
-        assertEquals(ActivityInfo.DOCUMENT_LAUNCH_NEVER, activityInfo.documentLaunchMode)
+        assertEquals(ActivityInfo.DOCUMENT_LAUNCH_NONE, activityInfo.documentLaunchMode)
     }
 
     @Test
