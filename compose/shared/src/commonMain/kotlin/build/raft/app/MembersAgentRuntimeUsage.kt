@@ -159,6 +159,13 @@ internal fun RuntimeAccountUsageLoad?.runtimeAccountUsageNeedsAttention(): Boole
             }
     }
 
+/** Maps the usage read state to the Web-aligned inline status dot. */
+internal fun membersRuntimeUsageStatusColor(
+    offered: Boolean,
+    attention: Boolean
+): Color? =
+    if (!offered) null else if (attention) SlockColor.AccentOrange else SlockColor.AccentLime
+
 /**
  * Runtime chip of the agent's Runtime Config section. For runtimes that report account usage
  * (Claude, Codex, Kimi, Grok) it reads usage once while this section is composed, and becomes
@@ -193,12 +200,14 @@ internal fun MembersAgentRuntimeUsageChip(
     }
     val offered = key != null && load.offersRuntimeAccountUsage()
     val attention = offered && load.runtimeAccountUsageNeedsAttention()
+    val statusColor = membersRuntimeUsageStatusColor(offered, attention)
     // The click handler is always attached and the modifier chain never changes shape (Kuikly
     // keeps stale native props when a modifier is removed); whether a tap opens the card is
     // decided inside the handler.
     MembersAgentRuntimeChip(
-        label = if (offered) "$label ›" else label,
+        label = label,
         kind = MembersAgentRuntimeChipKind.Runtime,
+        statusColor = statusColor,
         modifier = Modifier.clickable {
             access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
             if (offered) dialogOpen = true
@@ -369,7 +378,7 @@ private fun MembersRuntimeUsageWindowRow(
                 )
             }
             window.resetsAt?.let { resetsAt ->
-                val resetLabel = slockAbsoluteTimestampLabel(resetsAt, timeContext) ?: resetsAt
+                val resetLabel = slockRelativeTimestampLabel(resetsAt, timeContext)
                 Text(
                     text = stringResource(MR.strings.member_runtime_usage_resets_at, resetLabel),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
