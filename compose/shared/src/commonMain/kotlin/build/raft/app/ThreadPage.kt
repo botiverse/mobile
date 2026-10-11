@@ -224,6 +224,7 @@ import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
+import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
@@ -7214,6 +7215,7 @@ private fun SharedThreadRouteContentContent(
                             ServerId(gateInputs.serverId),
                             MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
                         ),
+                    buildType = currentFeatureFlagClientContext().buildType,
                     environmentId = gateInputs.environmentId,
                     accountId = gateInputs.accountId,
                     serverId = gateInputs.serverId

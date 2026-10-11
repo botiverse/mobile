@@ -103,4 +103,14 @@ class ThreadListViewportTest {
         assertEquals(990, latest.offset)
         assertEquals(30, latest.offset + latest.size - info.viewportEndOffset, "30px past the bottom, forward-measured")
     }
+
+    @Test
+    fun alphaBuildsDefaultOnAndReleaseBuildsFollowTheServer() {
+        assertEquals(true, threadReverseLayoutDefault(serverEffective = false, buildType = "alpha"))
+        assertEquals(true, threadReverseLayoutDefault(serverEffective = false, buildType = " Alpha "))
+        assertEquals(false, threadReverseLayoutDefault(serverEffective = false, buildType = "release"))
+        assertEquals(false, threadReverseLayoutDefault(serverEffective = false, buildType = "debug"))
+        assertEquals(false, threadReverseLayoutDefault(serverEffective = false, buildType = null), "unknown build: off")
+        assertEquals(true, threadReverseLayoutDefault(serverEffective = true, buildType = "release"))
+    }
 }
