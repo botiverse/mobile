@@ -472,3 +472,51 @@ validation.
 - If a fix PR accidentally targets `main`, do not merge it and then merge
   `main` into the release branch. Retarget or recreate the PR from the release
   branch so the stabilization diff remains explicit.
+
+
+## AAB upload signing and signing-only repair
+
+`bundleRelease` does not sign this repository's AAB. The release workflow signs
+it with the existing `SLOCK_ROTATED_*` keystore secrets before immutable Hands
+upload. `scripts/verify_android_aab.sh` verifies every application entry, checks
+the certificate SHA-256, and runs `jarsigner -verify -strict` using the pinned
+public leaf as its trust anchor. The uploader repeats this admission check before
+its first network request. The AAB receipt, rather than the APK rotation lineage,
+supplies `upload_key_cert_sha256`.
+
+The expected key is the currently declared upload/rotated key
+`5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1`.
+A valid signature with this key does not prove that Google Play accepts it;
+confirm the Play upload certificate or retain the store's actual upload receipt.
+
+For an already sealed unsigned AAB, dispatch the existing `android-release.yml`
+from a reviewed signing-workflow ref with the original product `source_sha` and
+`aab_signing_repair` set to JSON containing exactly four string fields:
+
+```json
+{
+  "hands_build_id": "<original immutable Hands build ID>",
+  "source_run_id": "<original successful Android release run ID>",
+  "aab_sha256": "<independently checked original AAB SHA-256>",
+  "apk_sha256": "<independently checked original APK SHA-256>"
+}
+```
+
+This mode skips the normal resolve, Gradle build and draft jobs. It checks the
+original GitHub run and sealed Hands receipt, downloads with the existing Hands
+secret, verifies both input hashes and sizes, and signs only the AAB. The helper
+compares every non-signature ZIP entry with the original AAB. The unchanged APK,
+signed AAB and provenance JSON are uploaded as a new GitHub artifact. The receipt
+keeps original app source/run separate from the signing workflow SHA/run and
+records `rebuilt: false`. It never alters the original sealed build, creates a
+Hands draft, or publishes to Google Play. Use the new bytes in a new immutable
+build when the release owner proceeds with publication.
+
+Focused validation (JDK 17+, Python 3, no Gradle):
+
+```bash
+python3 scripts/test_android_aab_signing.py
+python3 scripts/test_download_android_aab_repair.py
+python3 scripts/test_upload_android_hands_artifacts.py
+scripts/test_android_hands_release_contract.sh
+```
