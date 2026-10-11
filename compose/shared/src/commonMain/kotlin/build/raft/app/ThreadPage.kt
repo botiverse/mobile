@@ -21102,6 +21102,22 @@ private fun ThreadMessagesListContent(
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
+        // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
+        // with the raw list position at that moment: reversed lists left the pill on after a local send
+        // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
+        val backToBottomPillInputs =
+            "visible=$shouldShowBackToBottomButton reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
+                "canScrollForward=${listState.canScrollForward} " +
+                "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
+                "tailMissing=${renderPayload.canLoadMoreAfter} kbd=$pendingKeyboardBottomAnchor " +
+                "scrolling=${listState.isScrollInProgress}"
+        LaunchedEffect(threadInstanceKey, backToBottomPillInputs) {
+            diagnosticsLogger(
+                "thread_back_to_bottom_pill $backToBottomPillInputs " +
+                    "rawFirst=${listState.raw.firstVisibleItemIndex}:${listState.raw.firstVisibleItemScrollOffset} " +
+                    listState.threadViewportGeometryDiagnostics(latestItemIndex)
+            )
+        }
         if (
             !shareSelectionCaptureActive &&
             (!newerPageCycleActive || backToBottomInteractionGuardActive) &&
