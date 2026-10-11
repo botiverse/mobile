@@ -88,7 +88,10 @@ const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_
  * server reporting `missing_flag` (no flag row exists). Every other server reason (`kill_switch`,
  * `flag_disabled`, any rule, `default`) is an explicit decision and is followed as sent.
  */
-val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> = setOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
+// sync_core_messages_v1 joined on 2026-10-11: artin wants offline cache on by default (an offline cold
+// start or a server without the flag row used to read it as off).
+val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
+    setOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
 private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
