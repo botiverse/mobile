@@ -1746,6 +1746,16 @@ internal fun appShellAuthoritativeHomeStartAllowed(
     return setupAdmissionAllowsHome && ready.phase != SharedAuthReadyPhase.CachedRestorePending
 }
 
+/**
+ * Hands 79db9fe6 / e486495b (artin): a tap on a channel in the identity-bound cached Home opens it
+ * while the session and server admission are still being confirmed in the background; it used to
+ * be dropped (`home_open_conversation_drop reason=home_authority_pending`) until the restore ended.
+ */
+internal fun appShellHomeConversationOpenAllowed(
+    authoritativeHomeStartAllowed: Boolean,
+    cachedRestoreUsable: Boolean
+): Boolean = authoritativeHomeStartAllowed || cachedRestoreUsable
+
 internal fun appShellCanRenderCachedHomePreview(
     readySession: StoredAuthSession?,
     readyPhase: SharedAuthReadyPhase?,
@@ -3867,6 +3877,7 @@ private fun SlockAppShellReadyContent(
     }
     val latestReadySession by rememberUpdatedState(readySession)
     val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
+    val latestCachedRestoreUsable by rememberUpdatedState(cachedRestoreUsable)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
         val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
         if (renderedHomeServerId != targetServerId) return@LaunchedEffect
@@ -4502,12 +4513,22 @@ private fun SlockAppShellReadyContent(
         recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null
     ) {
-        if (!latestAuthoritativeHomeStartAllowed) {
+        if (
+            !appShellHomeConversationOpenAllowed(
+                authoritativeHomeStartAllowed = latestAuthoritativeHomeStartAllowed,
+                cachedRestoreUsable = latestCachedRestoreUsable
+            )
+        ) {
             bridge.logWarn(
                 "home_open_conversation_drop reason=home_authority_pending " +
                     "threadId=${conversation.threadId.value} source=$source"
             )
             return
+        }
+        if (!latestAuthoritativeHomeStartAllowed) {
+            bridge.log(
+                "home_open_conversation_during_cached_restore threadId=${conversation.threadId.value} source=$source"
+            )
         }
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
