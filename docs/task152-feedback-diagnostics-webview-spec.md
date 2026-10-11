@@ -50,3 +50,7 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 - Failure never blocks ordinary feedback.
 - A `done` reference is one-time; late completion after cancel/close/account switch cannot create a second ticket.
 - Shared contract plus Android, iOS, and OHOS compile checks pass. Runtime staging preupload → create-ticket evidence is required separately per platform.
+
+## Staging server contract (bdf237d1)
+
+The staging endpoint accepts a `diagnostics` JSON field containing `r2_key`, `filename`, `content_type: application/zip`, and `size`, plus `X-Raft-Client-Kind: android|ios|ohos`. Local validation failure returns `400 feedback_diagnostics_invalid` without calling Hands; the WebView may remove diagnostics and retry with a new submission ID. A Hands reference rejection remains ordinary `400 feedback_invalid`; preserve the same submission ID, reference, and content.
