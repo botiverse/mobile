@@ -199,7 +199,7 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
         serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
         newDesignSettingsEnabled = true,
-        homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, false),
+        homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, DEFAULT_HOME_SERVER_AVATAR_ENABLED),
         translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
         translationTargetLanguage =
             optString(KEY_TRANSLATION_TARGET_LANGUAGE).ifBlank { TranslationTargetLanguages.Browser },
