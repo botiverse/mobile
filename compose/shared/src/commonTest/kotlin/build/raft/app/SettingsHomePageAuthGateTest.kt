@@ -328,4 +328,13 @@ class SettingsHomePageAuthGateTest {
                 )
         )
     }
+
+    @Test
+    fun cachedHomeConversationOpensWhileRestoreIsStillConfirming() {
+        // Hands e486495b: tapping a channel in the cached Home during CachedRestorePending did nothing.
+        assertTrue(appShellHomeConversationOpenAllowed(authoritativeHomeStartAllowed = false, cachedRestoreUsable = true))
+        assertTrue(appShellHomeConversationOpenAllowed(authoritativeHomeStartAllowed = true, cachedRestoreUsable = false))
+        // No usable cache and no confirmed authority (mismatched account, blocked admission): still dropped.
+        assertFalse(appShellHomeConversationOpenAllowed(authoritativeHomeStartAllowed = false, cachedRestoreUsable = false))
+    }
 }
