@@ -7223,6 +7223,14 @@ private fun SharedThreadRouteContentContent(
             } ?: false
         }
 
+    // Read-only evidence of the per-open decision (QA asked for one on every platform).
+    LaunchedEffect(threadInstanceKey, threadReverseLayoutEnabled) {
+        bridge.log(
+            "thread_reverse_layout threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                "enabled=$threadReverseLayoutEnabled gateReady=${markdownLightGateInputs != null} " +
+                "buildType=${currentFeatureFlagClientContext().buildType ?: "none"}"
+        )
+    }
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
