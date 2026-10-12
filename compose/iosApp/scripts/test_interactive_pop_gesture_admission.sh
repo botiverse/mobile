@@ -3,8 +3,15 @@ set -euo pipefail
 
 IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/SlockInteractivePopGestureAdmission.h"
+NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.m"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
+
+# Keep the expanded all-pages contract and native horizontal-scroll exclusion
+# visible to this focused admission check; the C policy test alone cannot see
+# Objective-C touch routing.
+grep -Fq 'renderViewController.fd_interactivePopAllowsFullScreen = YES;' "$NAVIGATION_SOURCE"
+grep -Fq 'SlockInteractivePopHorizontalScrollConflict' "$NAVIGATION_SOURCE"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
