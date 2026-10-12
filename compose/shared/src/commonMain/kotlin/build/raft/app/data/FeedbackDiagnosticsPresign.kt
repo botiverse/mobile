@@ -61,6 +61,14 @@ data class FeedbackDiagnosticsPresignedUpload(
     val expiresAt: Long,
 )
 
+/** Signed archive uploads must remain HTTPS and may not contain header-injection characters. */
+fun isValidFeedbackDiagnosticsUploadUrl(value: String): Boolean =
+    value.startsWith("https://") &&
+        value.length > "https://".length &&
+        value.removePrefix("https://")
+            .substringBefore('/').substringBefore('?').substringBefore('#').isNotBlank() &&
+        value.none { it.code < 0x20 || it.code == 0x7f || it.isWhitespace() }
+
 /**
  * Build the exact Hands presign request body.  Keep this in shared code so every platform uses
  * the same wire fields and validation before handing the body to its native HTTP transport.
@@ -118,6 +126,9 @@ fun parseSharedFeedbackDiagnosticsPresignResponse(
     }
     require(upload.uploadUrl.isNotBlank()) {
         "feedback diagnostics presign response upload URL is missing"
+    }
+    require(isValidFeedbackDiagnosticsUploadUrl(upload.uploadUrl)) {
+        "feedback diagnostics presign response upload URL is invalid"
     }
     require(upload.expiresAt > 0L) {
         "feedback diagnostics presign response expiry is invalid"

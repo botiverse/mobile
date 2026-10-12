@@ -1,6 +1,7 @@
 package build.raft.app
 
 import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /** Identity carried by every feedback diagnostics request and event. */
 data class FeedbackDiagnosticsBinding(

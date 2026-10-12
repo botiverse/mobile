@@ -58,6 +58,20 @@ class FeedbackDiagnosticsPresignTest {
     }
 
     @Test
+    fun responseParserRejectsNonHttpsUploadUrls() {
+        assertFailsWith<IllegalArgumentException> {
+            parseSharedFeedbackDiagnosticsPresignResponse(
+                """{"uploads":[{"attachment_id":"a","r2_key":"k","upload_url":"http://u","expires_at":1}]}""",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parseSharedFeedbackDiagnosticsPresignResponse(
+                """{"uploads":[{"attachment_id":"a","r2_key":"k","upload_url":"https://u\n","expires_at":1}]}""",
+            )
+        }
+    }
+
+    @Test
     fun requestBuilderRejectsUnsupportedArchives() {
         assertFailsWith<IllegalArgumentException> {
             encodeSharedFeedbackDiagnosticsPresignRequest("diag.zip", "application/octet-stream", 4L)

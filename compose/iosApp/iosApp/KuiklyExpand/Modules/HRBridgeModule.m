@@ -3201,9 +3201,20 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
         configuration.timeoutIntervalForRequest = 30.0;
         configuration.timeoutIntervalForResource = 600.0;
+        // Install and start the session while holding the same lock used by cancel(). This
+        // closes the archive-generation → NSURLSession creation gap: cancellation cannot see a
+        // nil session, delete the archive, and then have this block resurrect a presign request.
+        [self.lock lock];
+        if (self.cancelled) {
+            [self.lock unlock];
+            [[NSFileManager defaultManager] removeItemAtPath:archive[@"path"] error:nil];
+            [self.session invalidateAndCancel];
+            return;
+        }
         self.session = [NSURLSession sessionWithConfiguration:configuration delegate:self delegateQueue:nil];
         self.presignTask = [self.session dataTaskWithRequest:request];
         [self.presignTask resume];
+        [self.lock unlock];
     });
 }
 
@@ -3248,11 +3259,25 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
             [self emitFailure:@"upload_failed"];
             return;
         }
-        NSMutableURLRequest *put = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:uploadURL]];
+        NSURL *uploadURLValue = [NSURL URLWithString:uploadURL];
+        if (!uploadURLValue || ![uploadURLValue.scheme.lowercaseString isEqualToString:@"https"] ||
+            uploadURLValue.host.length == 0 ||
+            [uploadURL rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
+            [uploadURL rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+            [self emitFailure:@"upload_failed"];
+            return;
+        }
+        NSMutableURLRequest *put = [NSMutableURLRequest requestWithURL:uploadURLValue];
         put.HTTPMethod = @"PUT";
         [put setValue:SlockFeedbackDiagnosticsContentType forHTTPHeaderField:@"Content-Type"];
+        [self.lock lock];
+        if (self.cancelled || self.session != session) {
+            [self.lock unlock];
+            return;
+        }
         self.uploadTask = [self.session uploadTaskWithRequest:put fromFile:[NSURL fileURLWithPath:self.archivePath]];
         [self.uploadTask resume];
+        [self.lock unlock];
         return;
     }
     if (task == self.uploadTask) {

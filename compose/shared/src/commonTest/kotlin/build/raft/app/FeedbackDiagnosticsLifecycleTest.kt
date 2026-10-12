@@ -10,6 +10,13 @@ class FeedbackDiagnosticsLifecycleTest {
     private val binding = FeedbackDiagnosticsBinding("account-1", 4L, 9L)
 
     @Test
+    fun requestIdsUseTheNativeAsciiGrammar() {
+        assertTrue(FeedbackDiagnosticsBridge.validRequestId("request-1._:"))
+        assertFalse(FeedbackDiagnosticsBridge.validRequestId("café"))
+        assertFalse(FeedbackDiagnosticsBridge.validRequestId("request id"))
+    }
+
+    @Test
     fun staleAndDuplicateRequestsAreRejected() {
         val lifecycle = FeedbackDiagnosticsLifecycle()
         assertTrue(lifecycle.start("request-1", binding))

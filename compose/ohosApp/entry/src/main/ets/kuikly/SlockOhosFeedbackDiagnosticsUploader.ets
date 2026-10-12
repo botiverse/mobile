@@ -88,7 +88,6 @@ export class SlockOhosFeedbackDiagnosticsUploader {
     archivePath: string,
     onProgress: (progress: SlockOhosFeedbackDiagnosticsProgress) => void,
   ): Promise<SlockOhosFeedbackDiagnosticsReference> {
-    this.cancelled = false;
     const stat = fs.statSync(archivePath);
     const size = Number(stat.size);
     const fileName = archivePath.slice(archivePath.lastIndexOf('/') + 1);
