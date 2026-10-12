@@ -947,6 +947,35 @@ internal class BridgeModule : Module() {
         }
 
     /**
+     * Keeps a native settings capability callback alive until the host marks the response
+     * terminal. Used only for fenced, progress-bearing operations such as feedback diagnostics.
+     */
+    internal fun settingsCapabilityStream(
+        command: JSONObject,
+        onEvent: (JSONObject?) -> Unit,
+    ): () -> Unit {
+        var callbackRef: CallbackRef? = null
+        var terminalBeforeRegistration = false
+        val result =
+            toNative(
+                keepCallbackAlive = true,
+                methodName = "settingsCapability",
+                param = command.toString(),
+                callback = { payload ->
+                    onEvent(payload)
+                    if (payload?.optBoolean("terminal", false) == true) {
+                        callbackRef?.let { removeCallback(it) }
+                            ?: run { terminalBeforeRegistration = true }
+                    }
+                },
+                syncCall = false,
+            )
+        callbackRef = result.callbackRef
+        if (terminalBeforeRegistration) callbackRef?.let { removeCallback(it) }
+        return { callbackRef?.let { removeCallback(it) } }
+    }
+
+    /**
      * One versioned avatar-cache capability shared by every host. Commands contain only the
      * remote transport URL plus opaque cache identities/policy state; native paths and bytes never
      * return through this bridge.

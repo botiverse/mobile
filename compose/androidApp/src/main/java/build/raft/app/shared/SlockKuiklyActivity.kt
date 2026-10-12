@@ -78,6 +78,10 @@ import build.raft.app.R
 import build.raft.app.MainActivity
 import build.raft.app.BuildConfig
 import build.raft.app.data.SlockDesktopShortcutContract
+import build.raft.app.FeedbackDiagnosticsBinding
+import build.raft.app.FeedbackDiagnosticsFailureReason
+import build.raft.app.FeedbackDiagnosticsLifecycle
+import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.SlockHostStrings
 import build.raft.app.releaseSlockShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
@@ -103,6 +107,7 @@ import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
 import build.raft.app.data.SlockInProcessNotifyModule
+import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
@@ -185,11 +190,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import okhttp3.OkHttpClient
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -798,7 +807,6 @@ open class SlockKuiklyActivity :
     private var screenCaptureObserver: ScreenCaptureObserver? = null
     private var screenshotFeedbackActionView: View? = null
     private var screenshotFeedbackSubmissionActive = false
-
     private val pageName: String
         get() = resolvedPageName(intent)
 
@@ -4257,6 +4265,20 @@ internal class SlockKuiklyBridgeModule(
 ) : KuiklyRenderBaseModule() {
     private val threadImageCompressionOperations = ConcurrentHashMap<String, ThreadImageCompressionOperation>()
     private val threadImageCompressionMainHandler = Handler(Looper.getMainLooper())
+    private val feedbackDiagnosticsLifecycle = FeedbackDiagnosticsLifecycle()
+    private val feedbackDiagnosticsUploads = ConcurrentHashMap<String, FeedbackDiagnosticsUpload>()
+    private val feedbackDiagnosticsHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.MINUTES).build()
+    }
+
+    private data class FeedbackDiagnosticsUpload(
+        val requestId: String,
+        val binding: FeedbackDiagnosticsBinding,
+        val uploader: HandsDiagnosticsPreupload,
+        @Volatile var job: Job? = null,
+        @Volatile var authMonitorJob: Job? = null,
+    )
+
     /**
      * Native callbacks can already be queued on the main handler when the renderer tears down
      * this module.  Keep a separate lifecycle fence for those preflight failures (which do not
@@ -4314,6 +4336,7 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "closePage" -> {
+                cancelFeedbackDiagnosticsUploads()
                 val hostActivity = activity
                 if (hostActivity is SlockKuiklyActivity) {
                     hostActivity.closeKuiklyHostPage()
@@ -4427,6 +4450,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     override fun onDestroy() {
+        cancelFeedbackDiagnosticsUploads()
         threadImageCompressionDestroyed.set(true)
         threadImageCompressionOperations.values.toList().forEach { operation ->
             cancelThreadImageCompression(operation)
@@ -4437,6 +4461,21 @@ internal class SlockKuiklyBridgeModule(
         }
         threadImageCompressionOperations.clear()
         super.onDestroy()
+    }
+
+    /**
+     * Page close and renderer teardown invalidate every in-flight diagnostics request before the
+     * WebView can be reused.  The uploader call is cancelled first, then the shared ledger is
+     * invalidated so a queued progress/done callback cannot create a stale reference.
+     */
+    private fun cancelFeedbackDiagnosticsUploads() {
+        feedbackDiagnosticsUploads.values.toList().forEach { operation ->
+            feedbackDiagnosticsLifecycle.cancel(operation.requestId, operation.binding)
+            operation.uploader.cancel()
+            operation.job?.cancel()
+            operation.authMonitorJob?.cancel()
+        }
+        feedbackDiagnosticsUploads.clear()
     }
 
     private fun compressThreadImage(params: String?, callback: KuiklyRenderCallback?) {
@@ -5520,6 +5559,14 @@ internal class SlockKuiklyBridgeModule(
                                 }
                 callback?.invoke(result)
             }
+            return
+        }
+        if (action == "feedbackDiagnosticsStart") {
+            startFeedbackDiagnosticsUpload(request, callback)
+            return
+        }
+        if (action == "feedbackDiagnosticsCancel") {
+            cancelFeedbackDiagnosticsUpload(request, callback)
             return
         }
         if (action == "sendFeedback" || action == "submitFeedback") {
@@ -6920,6 +6967,246 @@ internal class SlockKuiklyBridgeModule(
             )
         }
     }
+
+    private fun startFeedbackDiagnosticsUpload(
+        request: JSONObject,
+        callback: KuiklyRenderCallback?,
+    ) {
+        val requestId = request.optString("requestId").trim()
+        val binding =
+            FeedbackDiagnosticsBinding(
+                accountId = request.optString("accountId").trim(),
+                sessionGeneration = request.optLong("sessionGeneration", -1L),
+                webViewGeneration = request.optLong("webViewGeneration", -1L),
+            )
+        // A replacement WebView/session can race a stale page's callback. Retire the old
+        // transport before admitting the new binding so the single-request ledger remains
+        // available to the replacement generation.
+        feedbackDiagnosticsUploads.values.firstOrNull { it.binding != binding }?.let { stale ->
+            cancelFeedbackDiagnosticsOperation(stale)
+        }
+        if (!feedbackDiagnosticsLifecycle.start(requestId, binding)) {
+            callback?.invoke(
+                feedbackDiagnosticsEventPayload(
+                    requestId,
+                    binding,
+                    type = "failed",
+                    reason = FeedbackDiagnosticsFailureReason.GenerateFailed,
+                    terminal = true,
+                )
+            )
+            return
+        }
+        val uploader =
+            HandsDiagnosticsPreupload(
+                baseUrl = BuildConfig.HANDS_BASE_URL,
+                appSlug = BuildConfig.HANDS_APP_SLUG,
+                clientKey = BuildConfig.HANDS_CLIENT_KEY,
+                httpClient = feedbackDiagnosticsHttpClient,
+            )
+        val operation = FeedbackDiagnosticsUpload(requestId, binding, uploader)
+        feedbackDiagnosticsUploads[requestId] = operation
+        monitorFeedbackDiagnosticsAuth(operation)
+        val hostActivity = activity as? ComponentActivity
+        if (hostActivity == null) {
+            cancelFeedbackDiagnosticsOperation(operation)
+            callback?.invoke(
+                feedbackDiagnosticsEventPayload(
+                    requestId,
+                    binding,
+                    type = "failed",
+                    reason = FeedbackDiagnosticsFailureReason.GenerateFailed,
+                    terminal = true,
+                )
+            )
+            return
+        }
+        operation.job = hostActivity.lifecycleScope.launch {
+            try {
+                val archive = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
+                val archiveSize = archive.length()
+                if (!feedbackDiagnosticsLifecycle.beginUpload(requestId, binding, archiveSize)) {
+                    if (archiveSize !in 1L..FeedbackDiagnosticsLifecycle.MAX_BYTES) {
+                        feedbackDiagnosticsLifecycle.failed(
+                            requestId,
+                            binding,
+                            FeedbackDiagnosticsFailureReason.TooLarge,
+                        )?.let { event -> callback?.invoke(feedbackDiagnosticsEventPayload(event)) }
+                    }
+                    return@launch
+                }
+                val reference =
+                    withContext(Dispatchers.IO) {
+                        uploader.upload(archive) { sent, total ->
+                            hostActivity.runOnUiThread {
+                                if (feedbackDiagnosticsLifecycle.phase(requestId, binding) == null) return@runOnUiThread
+                                feedbackDiagnosticsLifecycle.progress(requestId, binding, sent, total)?.let { event ->
+                                    callback?.invoke(feedbackDiagnosticsEventPayload(event))
+                                }
+                            }
+                        }
+                    }
+                feedbackDiagnosticsLifecycle.done(requestId, binding, reference)?.let { event ->
+                    callback?.invoke(feedbackDiagnosticsEventPayload(event))
+                }
+            } catch (_: CancellationException) {
+                // Cancellation invalidates the ledger; never emit a late failed/done event.
+            } catch (error: Throwable) {
+                val reason =
+                    when {
+                        error is IllegalArgumentException && error.message.orEmpty().contains("size") ->
+                            FeedbackDiagnosticsFailureReason.TooLarge
+                        feedbackDiagnosticsLifecycle.phase(requestId, binding) ==
+                                build.raft.app.FeedbackDiagnosticsRequestPhase.Preparing ->
+                            FeedbackDiagnosticsFailureReason.GenerateFailed
+                        else -> FeedbackDiagnosticsFailureReason.UploadFailed
+                    }
+                feedbackDiagnosticsLifecycle.failed(requestId, binding, reason)?.let { event ->
+                    callback?.invoke(feedbackDiagnosticsEventPayload(event))
+                }
+            } finally {
+                feedbackDiagnosticsUploads.remove(requestId, operation)
+                operation.authMonitorJob?.cancel()
+            }
+        }
+    }
+
+    private fun monitorFeedbackDiagnosticsAuth(operation: FeedbackDiagnosticsUpload) {
+        val hostActivity = activity as? ComponentActivity ?: return
+        val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+        operation.authMonitorJob = hostActivity.lifecycleScope.launch {
+            val initialAccount = withContext(Dispatchers.IO) { authStore.readSession()?.user?.id }
+            if (initialAccount != operation.binding.accountId) {
+                cancelFeedbackDiagnosticsOperation(operation)
+                return@launch
+            }
+            authStore.authSessionEvents.collect { event ->
+                val currentAccount = withContext(Dispatchers.IO) { authStore.readSession()?.user?.id }
+                val shouldCancel =
+                    event is AuthSessionEvent.Cleared ||
+                        event is AuthSessionEvent.Authenticated ||
+                        currentAccount != operation.binding.accountId
+                if (shouldCancel) {
+                    cancelFeedbackDiagnosticsOperation(operation)
+                    return@collect
+                }
+            }
+        }
+    }
+
+    private fun cancelFeedbackDiagnosticsUpload(
+        request: JSONObject,
+        callback: KuiklyRenderCallback?,
+    ) {
+        val requestId = request.optString("requestId").trim()
+        val binding =
+            FeedbackDiagnosticsBinding(
+                accountId = request.optString("accountId").trim(),
+                sessionGeneration = request.optLong("sessionGeneration", -1L),
+                webViewGeneration = request.optLong("webViewGeneration", -1L),
+            )
+        val operation = feedbackDiagnosticsUploads[requestId]
+        val cancelled = feedbackDiagnosticsLifecycle.cancel(requestId, binding)
+        if (cancelled && operation != null) {
+            cancelFeedbackDiagnosticsOperation(operation)
+        }
+        callback?.invoke(
+            mapOf(
+                "status" to if (cancelled) "ok" else "ignored",
+                "requestId" to requestId,
+                "binding" to feedbackDiagnosticsBindingPayload(binding),
+                "cancelled" to cancelled,
+                "terminal" to true,
+            )
+        )
+    }
+
+    private fun cancelFeedbackDiagnosticsOperation(operation: FeedbackDiagnosticsUpload) {
+        feedbackDiagnosticsLifecycle.cancel(operation.requestId, operation.binding)
+        feedbackDiagnosticsUploads.remove(operation.requestId, operation)
+        operation.uploader.cancel()
+        operation.job?.cancel()
+        operation.authMonitorJob?.cancel()
+    }
+
+    private fun feedbackDiagnosticsEventPayload(
+        event: build.raft.app.FeedbackDiagnosticsLifecycleEvent,
+    ): Map<String, Any> =
+        when (event) {
+            is build.raft.app.FeedbackDiagnosticsLifecycleEvent.Progress ->
+                feedbackDiagnosticsEventPayload(
+                    event.requestId,
+                    event.binding,
+                    type = "progress",
+                    sent = event.sent,
+                    total = event.total,
+                    terminal = false,
+                )
+            is build.raft.app.FeedbackDiagnosticsLifecycleEvent.Done ->
+                feedbackDiagnosticsEventPayload(
+                    event.requestId,
+                    event.binding,
+                    type = "done",
+                    reference = event.ref,
+                    terminal = true,
+                )
+            is build.raft.app.FeedbackDiagnosticsLifecycleEvent.Failed ->
+                feedbackDiagnosticsEventPayload(
+                    event.requestId,
+                    event.binding,
+                    type = "failed",
+                    reason = event.reason,
+                    terminal = true,
+                )
+        }
+
+    private fun feedbackDiagnosticsEventPayload(
+        requestId: String,
+        binding: FeedbackDiagnosticsBinding,
+        type: String? = null,
+        sent: Long? = null,
+        total: Long? = null,
+        reference: FeedbackDiagnosticsReference? = null,
+        reason: FeedbackDiagnosticsFailureReason? = null,
+        terminal: Boolean,
+    ): Map<String, Any> =
+        buildMap {
+            put("status", "ok")
+            put("requestId", requestId)
+            put("binding", feedbackDiagnosticsBindingPayload(binding))
+            put("terminal", terminal)
+            type?.let { put("type", it) }
+            sent?.let { put("sent", it) }
+            total?.let { put("total", it) }
+            reason?.let {
+                put(
+                    "reason",
+                    when (it) {
+                        FeedbackDiagnosticsFailureReason.GenerateFailed -> "generate_failed"
+                        FeedbackDiagnosticsFailureReason.TooLarge -> "too_large"
+                        FeedbackDiagnosticsFailureReason.UploadFailed -> "upload_failed"
+                    },
+                )
+            }
+            reference?.let {
+                put(
+                    "ref",
+                    mapOf(
+                        "r2_key" to it.r2Key,
+                        "filename" to it.filename,
+                        "content_type" to it.contentType,
+                        "size" to it.size,
+                    ),
+                )
+            }
+        }
+
+    private fun feedbackDiagnosticsBindingPayload(binding: FeedbackDiagnosticsBinding): Map<String, Any> =
+        mapOf(
+            "accountId" to binding.accountId,
+            "sessionGeneration" to binding.sessionGeneration,
+            "webViewGeneration" to binding.webViewGeneration,
+        )
 
     private fun buildHandsFeedbackShareText(
             ticketId: String,

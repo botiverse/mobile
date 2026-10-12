@@ -16,6 +16,7 @@ import kotlinx.serialization.json.Json
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
+import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.AppLocale
@@ -491,6 +492,7 @@ private fun StandaloneSettingsWebViewBody(
         apiOrigin = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/').removeSuffix("/api"),
         spec = spec,
         controller = controller,
+        bridge = bridge,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
@@ -558,6 +560,7 @@ internal fun StandaloneSettingsWebViewContent(
     spec: StandaloneSettingsWebViewSpec,
     modifier: Modifier = Modifier,
     controller: SlockWebViewController = rememberSlockWebViewController(),
+    bridge: BridgeModule? = null,
     onLoadCommit: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
@@ -572,6 +575,16 @@ internal fun StandaloneSettingsWebViewContent(
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val feedbackDiagnosticsHost =
+        remember(bridge, controller, spec.surface) {
+            bridge
+                ?.takeIf { spec.surface == SettingsWebViewSurface.Feedback }
+                ?.let { FeedbackDiagnosticsWebViewHost(it, controller) }
+        }
+    DisposableEffect(feedbackDiagnosticsHost, hostAuthBinding) {
+        feedbackDiagnosticsHost?.bind(hostAuthBinding)
+        onDispose { feedbackDiagnosticsHost?.unbind(hostAuthBinding) }
+    }
     val injectedJavaScript =
         remember(spec.surface, session, hostAuthBinding, apiOrigin) {
             standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, apiOrigin)
@@ -597,7 +610,12 @@ internal fun StandaloneSettingsWebViewContent(
         filterStaleUrlCallbacks = spec.surface == SettingsWebViewSurface.Computers,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
-        onHostMessage = onHostMessage,
+        onHostMessage = { kind, payload ->
+            val handled = feedbackDiagnosticsHost?.handle(kind, payload, hostAuthBinding) == true
+            if (kind == "close" || kind == "integration-unavailable") feedbackDiagnosticsHost?.invalidate()
+            if (!handled) onHostMessage(kind, payload)
+        },
+        onWebViewInvalidated = { feedbackDiagnosticsHost?.invalidate() },
         onDocumentReadyChange = { documentReady = it },
     )
 
@@ -637,6 +655,7 @@ internal fun SettingsWebViewContent(
     onNavigationBlocked: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    onWebViewInvalidated: () -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
@@ -682,7 +701,10 @@ internal fun SettingsWebViewContent(
             key(generationKey, reloadKey, url) {
                 val navigationOwner = remember { navigationAuthority.acquire() }
                 DisposableEffect(navigationOwner) {
-                    onDispose { navigationAuthority.release(navigationOwner) }
+                    onDispose {
+                        navigationAuthority.release(navigationOwner)
+                        onWebViewInvalidated()
+                    }
                 }
                 SlockWebView(
                     url = url,
@@ -715,14 +737,20 @@ internal fun SettingsWebViewContent(
                         if (!filterStaleUrlCallbacks || navigationAuthority.accepts(navigationOwner)) onUrlChange(changedUrl)
                     },
                     onLoadFailure = { reason ->
-                        contentVisible = false
-                        loadError = reason
-                        onLoadFailure(reason)
+                        if (navigationAuthority.accepts(navigationOwner)) {
+                            contentVisible = false
+                            loadError = reason
+                            onWebViewInvalidated()
+                            onLoadFailure(reason)
+                        }
                     },
                     onNavigationBlocked = onNavigationBlocked,
-                    onHostMessage = onHostMessage,
+                    onHostMessage = { kind, payload ->
+                        if (navigationAuthority.accepts(navigationOwner)) onHostMessage(kind, payload)
+                    },
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
+                            if (state.isLoading && !navigationState.isLoading) onWebViewInvalidated()
                             navigationState = state
                             onNavigationStateChange(
                                 SettingsWebViewNavigationUpdate(
@@ -797,6 +825,176 @@ internal fun settingsWebViewFrameIsReady(
     width: Int,
     height: Int,
 ): Boolean = positionY.isFinite() && positionY >= 0f && width > 0 && height > 0
+
+/**
+ * Owns the optional feedback diagnostics stream for one embedded WebView generation.
+ *
+ * The Web page supplies its binding on every command, but the host never trusts that value by
+ * itself: it must exactly match the currently rendered authenticated WebView binding. Native
+ * callbacks are fenced again before they are evaluated in the page, so a callback retained by a
+ * replaced WebView cannot create a ticket in the replacement page.
+ */
+private class FeedbackDiagnosticsWebViewHost(
+    private val bridge: BridgeModule,
+    private val controller: SlockWebViewController,
+) {
+    private class ActiveRequest(
+        val requestId: String,
+        val binding: FeedbackDiagnosticsBinding,
+        var removeStream: () -> Unit,
+    )
+
+    private var currentBinding: FeedbackDiagnosticsBinding? = null
+    private var active: ActiveRequest? = null
+
+    fun bind(binding: SettingsWebViewHostAuthBinding?) {
+        val next = binding?.toDiagnosticsBinding()
+        if (next == currentBinding) return
+        invalidate()
+        currentBinding = next
+    }
+
+    fun unbind(binding: SettingsWebViewHostAuthBinding?) {
+        val expected = binding?.toDiagnosticsBinding()
+        if (expected == null || expected == currentBinding) {
+            currentBinding = null
+            invalidate()
+        }
+    }
+
+    fun invalidate() {
+        val request = active ?: return
+        active = null
+        request.removeStream()
+        val removeCancellationCallback = bridge.settingsCapabilityStream(
+            feedbackDiagnosticsCommand(
+                action = "feedbackDiagnosticsCancel",
+                requestId = request.requestId,
+                binding = request.binding,
+            ),
+        ) { }
+        removeCancellationCallback()
+    }
+
+    /** Returns true when the host-owned diagnostics message was consumed. */
+    fun handle(
+        kind: String,
+        payload: JSONObject,
+        binding: SettingsWebViewHostAuthBinding?,
+    ): Boolean {
+        if (kind != FeedbackDiagnosticsBridge.START_KIND && kind != FeedbackDiagnosticsBridge.CANCEL_KIND) {
+            return false
+        }
+        val expected = binding?.toDiagnosticsBinding() ?: return true
+        if (expected != currentBinding) return true
+        val requestId = payload.optString(FeedbackDiagnosticsBridge.REQUEST_ID).trim()
+        val requested = payload.optJSONObject(FeedbackDiagnosticsBridge.BINDING)?.toDiagnosticsBinding() ?: return true
+        if (requested != expected || !FeedbackDiagnosticsBridge.validRequestId(requestId)) return true
+        return if (kind == FeedbackDiagnosticsBridge.START_KIND) {
+            start(requestId, expected)
+            true
+        } else {
+            cancel(requestId, expected)
+            true
+        }
+    }
+
+    private fun start(requestId: String, binding: FeedbackDiagnosticsBinding) {
+        if (active != null) return
+        val request = ActiveRequest(requestId, binding) {}
+        active = request
+        val cancelStream =
+            bridge.settingsCapabilityStream(
+                feedbackDiagnosticsCommand(
+                    action = "feedbackDiagnosticsStart",
+                    requestId = requestId,
+                    binding = binding,
+                ),
+            ) { event ->
+                onNativeEvent(request, event)
+            }
+        if (active === request) {
+            request.removeStream = cancelStream
+        } else {
+            // A synchronous terminal callback can race callback registration on a host. Do not
+            // retain a callback after that request has already reached a terminal state.
+            cancelStream()
+        }
+    }
+
+    private fun cancel(requestId: String, binding: FeedbackDiagnosticsBinding) {
+        val request = active ?: return
+        if (request.requestId != requestId || request.binding != binding) return
+        active = null
+        request.removeStream()
+        val removeCancellationCallback = bridge.settingsCapabilityStream(
+            feedbackDiagnosticsCommand(
+                action = "feedbackDiagnosticsCancel",
+                requestId = requestId,
+                binding = binding,
+            ),
+        ) { }
+        removeCancellationCallback()
+    }
+
+    private fun onNativeEvent(request: ActiveRequest, event: JSONObject?) {
+        if (active !== request || currentBinding != request.binding || event == null) return
+        val eventRequestId = event.optString(FeedbackDiagnosticsBridge.REQUEST_ID).trim()
+        val eventBinding = event.optJSONObject(FeedbackDiagnosticsBridge.BINDING)?.toDiagnosticsBinding()
+        if (eventRequestId != request.requestId || eventBinding != request.binding) return
+        val type = event.optString(FeedbackDiagnosticsBridge.TYPE).trim()
+        if (type != "progress" && type != "done" && type != "failed") return
+        val terminal = event.optBoolean("terminal", false)
+        if (type == "progress" && terminal) return
+
+        if (terminal) {
+            active = null
+            request.removeStream()
+        }
+        controller.evaluateJavaScript(feedbackWebViewDiagnosticsEventJavaScript(event))
+    }
+
+    private fun JSONObject.toDiagnosticsBinding(): FeedbackDiagnosticsBinding? {
+        val accountId = optString("accountId").trim()
+        val sessionGeneration = optLong("sessionGeneration", -1L)
+        val webViewGeneration = optLong("webViewGeneration", -1L)
+        return FeedbackDiagnosticsBinding(accountId, sessionGeneration, webViewGeneration)
+            .takeIf { it.isValid() }
+    }
+
+    private fun SettingsWebViewHostAuthBinding.toDiagnosticsBinding(): FeedbackDiagnosticsBinding =
+        FeedbackDiagnosticsBinding(
+            accountId = accountId,
+            sessionGeneration = sessionGeneration,
+            webViewGeneration = webViewGeneration,
+        )
+
+    private fun feedbackDiagnosticsCommand(
+        action: String,
+        requestId: String,
+        binding: FeedbackDiagnosticsBinding,
+    ): JSONObject =
+        JSONObject().apply {
+            put("action", action)
+            put(FeedbackDiagnosticsBridge.REQUEST_ID, requestId)
+            put("accountId", binding.accountId)
+            put("sessionGeneration", binding.sessionGeneration)
+            put("webViewGeneration", binding.webViewGeneration)
+        }
+}
+
+private fun feedbackWebViewDiagnosticsEventJavaScript(event: JSONObject): String {
+    val encoded = Json.encodeToString(event.toString())
+    val eventName = Json.encodeToString(FeedbackDiagnosticsBridge.EVENT)
+    return """
+        (function() {
+          try {
+            var detail = JSON.parse($encoded);
+            window.dispatchEvent(new CustomEvent($eventName, {detail: detail}));
+          } catch (_) {}
+        })();
+    """.trimIndent()
+}
 
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
