@@ -17,6 +17,15 @@ class FeedbackDiagnosticsLifecycleTest {
     }
 
     @Test
+    fun bindingRejectsControlCharactersAcrossNativeHosts() {
+        assertTrue(binding.isValid())
+        assertFalse(binding.copy(accountId = "account\u0001").isValid())
+        assertFalse(binding.copy(accountId = "account\u0000").isValid())
+        assertFalse(binding.copy(accountId = "account\n").isValid())
+        assertFalse(binding.copy(accountId = "account\r").isValid())
+    }
+
+    @Test
     fun staleAndDuplicateRequestsAreRejected() {
         val lifecycle = FeedbackDiagnosticsLifecycle()
         assertTrue(lifecycle.start("request-1", binding))

@@ -11,7 +11,7 @@ data class FeedbackDiagnosticsBinding(
 ) {
     fun isValid(): Boolean =
         accountId.length in 1..256 &&
-            accountId.none { it == '\u0000' || it == '\n' || it == '\r' } &&
+            accountId.none { it.code < 0x20 || it.code == 0x7f } &&
             sessionGeneration >= 0L &&
             webViewGeneration >= 0L
 }

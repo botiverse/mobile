@@ -63,7 +63,20 @@ function validArchiveName(value: string): boolean {
 }
 
 function validHttpsUrl(value: string): boolean {
-  return value.startsWith('https://') && !/[\r\n]/.test(value);
+  const prefix = 'https://';
+  if (!value.startsWith(prefix) || value.length <= prefix.length) return false;
+  const authorityAndPath = value.slice(prefix.length);
+  let authorityEnd = authorityAndPath.length;
+  const slash = authorityAndPath.indexOf('/');
+  const query = authorityAndPath.indexOf('?');
+  const fragment = authorityAndPath.indexOf('#');
+  if (slash >= 0 && slash < authorityEnd) authorityEnd = slash;
+  if (query >= 0 && query < authorityEnd) authorityEnd = query;
+  if (fragment >= 0 && fragment < authorityEnd) authorityEnd = fragment;
+  if (authorityEnd <= 0) return false;
+  // Keep this in lockstep with shared isValidFeedbackDiagnosticsUploadUrl(): no control,
+  // DEL, or whitespace characters may reach NetworkKit from a presigned response.
+  return !/[\u0000-\u001f\u007f]/.test(value) && !/\s/.test(value);
 }
 
 /**

@@ -3831,8 +3831,9 @@ static BOOL SlockFeedbackDiagnosticsValidRequest(NSString *requestId, NSDictiona
     NSString *account = SlockBridgeString(binding[@"accountId"]);
     long long sessionGeneration = [binding[@"sessionGeneration"] longLongValue];
     long long webViewGeneration = [binding[@"webViewGeneration"] longLongValue];
+    NSCharacterSet *accountControlCharacters = NSCharacterSet.controlCharacterSet;
     return account.length > 0 && account.length <= 256 &&
-        [account rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet].location == NSNotFound &&
+        [account rangeOfCharacterFromSet:accountControlCharacters].location == NSNotFound &&
         sessionGeneration >= 0 && webViewGeneration >= 0;
 }
 

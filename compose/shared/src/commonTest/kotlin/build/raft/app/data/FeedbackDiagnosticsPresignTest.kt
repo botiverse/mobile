@@ -69,6 +69,16 @@ class FeedbackDiagnosticsPresignTest {
                 """{"uploads":[{"attachment_id":"a","r2_key":"k","upload_url":"https://u\n","expires_at":1}]}""",
             )
         }
+        assertFailsWith<IllegalArgumentException> {
+            parseSharedFeedbackDiagnosticsPresignResponse(
+                """{"uploads":[{"attachment_id":"a","r2_key":"k","upload_url":"https://","expires_at":1}]}""",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parseSharedFeedbackDiagnosticsPresignResponse(
+                """{"uploads":[{"attachment_id":"a","r2_key":"k","upload_url":"https://u\t","expires_at":1}]}""",
+            )
+        }
     }
 
     @Test
