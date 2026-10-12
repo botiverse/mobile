@@ -2896,7 +2896,7 @@ open class SlockKuiklyActivity :
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             } else if (!documentShellId.isNullOrBlank()) {
-                starter.data = Uri.parse("raft-shell://window/${Uri.encode(documentShellId)}")
+                starter.data = Uri.parse(documentShellId)
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS)
             } else if (context !is Activity) {
                 starter.addFlags(

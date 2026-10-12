@@ -11,11 +11,14 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import android.net.Uri
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SystemUnreadNotificationRequest
 import build.raft.app.data.conversationKindWireValue
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.systemUnreadNotificationServerGate
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -180,18 +183,35 @@ internal object AndroidUnreadNotificationPoster {
     }
 
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
-        val pageData = SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
-        val target = resolveAndroidShellLaunchTarget(pageData)
+        val appContext = context.applicationContext
+        val basePageData =
+            SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+        val multiShellHostEnabled =
+            runCatching {
+                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                    .readMultiShellHostEnabledSync()
+            }.getOrDefault(false)
+        val pageData =
+            basePageData.apply {
+                put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                currentAndroidShellRouteOwner(appContext)?.let { withAndroidShellRouteOwner(it) }
+            }
+        val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
         val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
-        return Intent(context.applicationContext, SlockAppShellActivity::class.java)
+        return Intent(appContext, slockAppShellHostActivityClass(target))
             .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
             .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(resolvedPageData).text)
             .apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
+                if (target.documentShell) {
+                    data = Uri.parse(target.shellInstanceId)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS)
+                } else {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
             }
     }
 

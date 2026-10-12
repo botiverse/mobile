@@ -1,5 +1,8 @@
 package build.raft.app.shared
 
+import build.raft.app.SLOCK_ROUTE_ACCOUNT_ID
+import build.raft.app.SLOCK_ROUTE_ENVIRONMENT_ID
+import build.raft.app.SLOCK_ROUTE_SERVER_ID
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -80,15 +83,27 @@ class AndroidShellWindowContractTest {
 
     @Test
     fun pageDataRoundTripPreservesEnabledDocumentIdentity() {
+        val owner =
+            AndroidShellRouteOwner(
+                environmentId = "https://api.test/",
+                accountId = "user-1",
+                serverId = "server-a",
+            ).normalizedOrNull()!!
+        val canonical = owner.shellCanonicalUri()
         val source = JSONObject().put("slockNotificationMessageId", "message-1")
-        val target = AndroidShellLaunchTarget("shell-a", "server-a", documentShell = true)
+        val target =
+            AndroidShellLaunchTarget(canonical, "server-a", documentShell = true, routeOwner = owner)
 
         val enriched = source.withAndroidShellLaunchTarget(target)
         val restored = androidShellLaunchTargetFromPageData(enriched)
 
-        assertEquals("shell-a", restored?.shellInstanceId)
+        assertEquals(canonical, restored?.shellInstanceId)
         assertEquals("server-a", restored?.serverId)
         assertTrue(restored?.documentShell ?: false)
+        assertEquals(owner, restored?.routeOwner)
+        assertEquals("https://api.test", enriched.getString(SLOCK_ROUTE_ENVIRONMENT_ID))
+        assertEquals("user-1", enriched.getString(SLOCK_ROUTE_ACCOUNT_ID))
+        assertEquals("server-a", enriched.getString(SLOCK_ROUTE_SERVER_ID))
         assertTrue(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
         assertEquals("message-1", enriched.getString("slockNotificationMessageId"))
     }
@@ -184,37 +199,74 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
-    fun enabledExplicitDocumentRouteUsesDeterministicServerShell() {
+    fun enabledExplicitDocumentRouteUsesCanonicalOwnerShell() {
+        val owner =
+            AndroidShellRouteOwner(
+                environmentId = "https://api.test/",
+                accountId = "user-1",
+                serverId = "server-b",
+            ).normalizedOrNull()!!
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                .withAndroidShellRouteOwner(owner)
+
+        val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled = true)
+        val taskLaunch = target.taskLaunchPlan(requestedTaskClear = true)
+
+        val canonical = owner.shellCanonicalUri()
+        assertEquals("slock://shell/https%3A%2F%2Fapi.test/user-1/server-b", canonical)
+        assertEquals(canonical, target.shellInstanceId)
+        assertEquals("server-b", target.serverId)
+        assertEquals(owner, target.routeOwner)
+        assertTrue(target.documentShell)
+        assertFalse(taskLaunch.clearTask)
+        assertEquals(canonical, taskLaunch.documentShellId)
+        assertFalse(shouldUseGlobalHostDisplayMetrics(target))
+    }
+
+    @Test
+    fun explicitDocumentRouteWithoutRouteOwnerFallsBackToDefaultShell() {
         val pageData =
             JSONObject()
                 .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
                 .put(ANDROID_DOCUMENT_SHELL_KEY, true)
 
         val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled = true)
-        val taskLaunch = target.taskLaunchPlan(requestedTaskClear = true)
 
-        assertEquals("server-shell:server-b", target.shellInstanceId)
+        assertEquals("android-default-app-shell", target.shellInstanceId)
         assertEquals("server-b", target.serverId)
-        assertTrue(target.documentShell)
-        assertFalse(taskLaunch.clearTask)
-        assertEquals("server-shell:server-b", taskLaunch.documentShellId)
-        assertFalse(shouldUseGlobalHostDisplayMetrics(target))
+        assertFalse(target.documentShell)
     }
 
     @Test
-    fun enabledDocumentRouteReusesRegisteredServerShell() {
+    fun enabledDocumentRouteReusesRegisteredOwnerShell() {
+        val owner =
+            AndroidShellRouteOwner(
+                environmentId = "https://api.test",
+                accountId = "user-1",
+                serverId = "server-b",
+            ).normalizedOrNull()!!
         AndroidShellWindowRegistry.register(
-            AndroidShellLaunchTarget("server-shell:existing", "server-b", documentShell = true)
+            AndroidShellLaunchTarget(
+                shellInstanceId = owner.shellCanonicalUri(),
+                serverId = "server-b",
+                documentShell = true,
+                routeOwner = owner,
+            )
         )
         val target =
             resolveAndroidShellLaunchTarget(
                 JSONObject()
                     .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
-                    .put(ANDROID_DOCUMENT_SHELL_KEY, true),
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                    .withAndroidShellRouteOwner(owner),
                 multiShellHostEnabled = true
             )
 
-        assertEquals("server-shell:existing", target.shellInstanceId)
+        assertEquals(owner.shellCanonicalUri(), target.shellInstanceId)
+        assertEquals(owner, target.routeOwner)
         assertTrue(target.documentShell)
     }
 

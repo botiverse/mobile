@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.AuthAuthorityChangedMessage
 import build.raft.app.data.AuthSessionEvent
@@ -13,6 +14,7 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
@@ -4036,6 +4038,32 @@ class SlockAppShellTest {
 
     @Test
     fun enabledMultiShellCrossServerSelectionRequestsNewDocumentShell() {
+        val routeOwner =
+            AuthenticatedRouteOwner(
+                environmentId = "https://api.test/",
+                accountId = "user-1",
+                serverId = "server-b",
+            ).normalizedOrNull()
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("android-default-app-shell", "server-a"),
+                selectedServerId = "server-b",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true,
+                routeOwner = routeOwner
+            )
+
+        assertEquals("server-b", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("slockShellInstanceId"))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals("https://api.test", pageData.optString("slockRouteEnvironmentId"))
+        assertEquals("user-1", pageData.optString("slockRouteAccountId"))
+        assertEquals("server-b", pageData.optString("slockRouteServerId"))
+        assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
+    }
+
+    @Test
+    fun enabledMultiShellCrossServerSelectionWithoutOwnerKeepsSourceShell() {
         val pageData =
             appShellPageDataForServerSelection(
                 sourceStoreScope = SlockShellStoreScope.create("android-default-app-shell", "server-a"),
@@ -4045,8 +4073,9 @@ class SlockAppShellTest {
             )
 
         assertEquals("server-b", pageData.optString(SLOCK_SHELL_SERVER_ID))
-        assertEquals("", pageData.optString("slockShellInstanceId"))
-        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals("android-default-app-shell", pageData.optString("slockShellInstanceId"))
+        assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals("", pageData.optString("slockRouteEnvironmentId"))
         assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
     }
 

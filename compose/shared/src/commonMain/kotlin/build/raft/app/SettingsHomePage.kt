@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
@@ -17364,7 +17365,8 @@ internal fun appShellPageDataForServerSelection(
     sourceDocumentShell: Boolean = false,
     selectedServerId: String?,
     multiShellHostEnabled: Boolean = false,
-    suppressRestoreLanding: Boolean = false
+    suppressRestoreLanding: Boolean = false,
+    routeOwner: AuthenticatedRouteOwner? = null
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
     val opensDocumentShell =
@@ -17378,8 +17380,9 @@ internal fun appShellPageDataForServerSelection(
         suppressRestoreLanding = suppressRestoreLanding
     ).apply {
         normalizedServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-        if (opensDocumentShell) {
+        if (opensDocumentShell && routeOwner != null) {
             put(SLOCK_DOCUMENT_SHELL, true)
+            withAuthenticatedRouteOwner(routeOwner)
         } else {
             put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
             put(SLOCK_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)

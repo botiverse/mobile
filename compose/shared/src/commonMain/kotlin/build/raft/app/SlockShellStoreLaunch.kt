@@ -12,9 +12,9 @@ internal const val SLOCK_SHELL_INSTANCE_ID = "slockShellInstanceId"
 internal const val SLOCK_SHELL_SERVER_ID = "slockShellServerId"
 private const val LEGACY_SLOCK_SHELL_SERVER_ID = "serverId"
 internal const val SLOCK_DOCUMENT_SHELL = "slockDocumentShell"
-internal const val SLOCK_ROUTE_ENVIRONMENT_ID = "slockRouteEnvironmentId"
-internal const val SLOCK_ROUTE_ACCOUNT_ID = "slockRouteAccountId"
-internal const val SLOCK_ROUTE_SERVER_ID = "slockRouteServerId"
+const val SLOCK_ROUTE_ENVIRONMENT_ID = "slockRouteEnvironmentId"
+const val SLOCK_ROUTE_ACCOUNT_ID = "slockRouteAccountId"
+const val SLOCK_ROUTE_SERVER_ID = "slockRouteServerId"
 
 internal fun appLifecycleEventTargetsShell(
     eventShellInstanceId: String,
