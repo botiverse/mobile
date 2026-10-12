@@ -29,6 +29,16 @@ interface SlockOhosFeedbackDiagnosticsPresignedUpload {
   expires_at: number;
 }
 
+interface SlockOhosFeedbackDiagnosticsPresignFile {
+  filename: string;
+  content_type: string;
+  size: number;
+}
+
+interface SlockOhosFeedbackDiagnosticsPresignBody {
+  files: SlockOhosFeedbackDiagnosticsPresignFile[];
+}
+
 function resultText(result: string | ArrayBuffer | Object): string {
   if (typeof result === 'string') return result;
   if (result instanceof ArrayBuffer) {
@@ -120,6 +130,12 @@ export class SlockOhosFeedbackDiagnosticsUploader {
     const client = http.createHttp();
     this.request = client;
     try {
+      const files: SlockOhosFeedbackDiagnosticsPresignFile[] = [{
+        filename: fileName,
+        content_type: SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_CONTENT_TYPE,
+        size: size,
+      }];
+      const body: SlockOhosFeedbackDiagnosticsPresignBody = { files: files };
       const response = await client.request(
         `${SLOCK_OHOS_HANDS_BASE_URL}/public/v2/apps/${SLOCK_OHOS_HANDS_APP_SLUG}/feedback/presign`,
         {
@@ -129,9 +145,7 @@ export class SlockOhosFeedbackDiagnosticsUploader {
             'Content-Type': 'application/json',
             'X-Hands-Client-Key': SLOCK_OHOS_HANDS_CLIENT_KEY,
           },
-          extraData: JSON.stringify({
-            files: [{ filename: fileName, content_type: SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_CONTENT_TYPE, size: size }],
-          }),
+          extraData: JSON.stringify(body),
           expectDataType: http.HttpDataType.STRING,
           connectTimeout: SLOCK_OHOS_HANDS_REQUEST_TIMEOUT_MS,
           readTimeout: SLOCK_OHOS_HANDS_REQUEST_TIMEOUT_MS,

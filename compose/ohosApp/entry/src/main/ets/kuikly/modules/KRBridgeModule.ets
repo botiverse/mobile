@@ -86,6 +86,13 @@ interface OhosPickedThreadAttachmentPayload {
   source: string;
 }
 
+interface SlockOhosFeedbackDiagnosticsEventReference {
+  r2_key: string;
+  filename: string;
+  content_type: string;
+  size: number;
+}
+
 interface OhosPickedThreadAttachmentReadResult {
   files: Array<OhosPickedThreadAttachment>;
   errors: Array<Record<string, Object>>;
@@ -686,12 +693,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (reason.length > 0) result['reason'] = reason;
     if (sent !== undefined) result['sent'] = sent;
     if (total !== undefined) result['total'] = total;
-    if (reference !== undefined) result['ref'] = {
-      'r2_key': reference.r2_key,
-      'filename': reference.filename,
-      'content_type': reference.content_type,
-      'size': reference.size,
-    };
+    if (reference !== undefined) {
+      const referencePayload: SlockOhosFeedbackDiagnosticsEventReference = {
+        r2_key: reference.r2_key,
+        filename: reference.filename,
+        content_type: reference.content_type,
+        size: reference.size,
+      };
+      result['ref'] = referencePayload;
+    }
     return result;
   }
 

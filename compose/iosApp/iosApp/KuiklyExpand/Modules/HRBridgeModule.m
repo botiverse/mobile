@@ -3315,6 +3315,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 - (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
 - (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
 - (void)slock_cancelAllFeedbackDiagnosticsUploads;
+- (void)slock_destroyFeedbackDiagnosticsUploads;
 
 @end
 
@@ -3854,6 +3855,14 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 }
 
 - (void)slock_cancelAllFeedbackDiagnosticsUploads {
+    [self.slock_feedbackDiagnosticsOperationsLock lock];
+    NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
+    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
+    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    for (SlockFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
+}
+
+- (void)slock_destroyFeedbackDiagnosticsUploads {
     [self.slock_feedbackDiagnosticsOperationsLock lock];
     self.slock_feedbackDiagnosticsDestroyed = YES;
     NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
@@ -6107,7 +6116,7 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 }
 
 - (void)dealloc {
-    [self slock_cancelAllFeedbackDiagnosticsUploads];
+    [self slock_destroyFeedbackDiagnosticsUploads];
     NSArray<SlockThreadImageCompressionOperation *> *operations = @[];
     if (_slock_threadImageCompressionOperationsLock) {
         [_slock_threadImageCompressionOperationsLock lock];
