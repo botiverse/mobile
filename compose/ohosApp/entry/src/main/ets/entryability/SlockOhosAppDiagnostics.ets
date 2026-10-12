@@ -341,6 +341,14 @@ export class SlockOhosAppDiagnostics {
       await zlib.compressFiles(inputFiles, archivePath, {
         level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
       });
+    } catch (error) {
+      // Compression can leave a partial archive behind. Remove it before propagating the
+      // generation failure so cancelled/retried uploads do not accumulate unbounded temp files.
+      try {
+        if (SlockOhosAppDiagnostics.pathExists(archivePath)) fs.unlinkSync(archivePath);
+      } catch (_cleanupError) {
+      }
+      throw error;
     } finally {
       stagedLogFiles.forEach((path: string): void => {
         try {

@@ -197,6 +197,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -7023,7 +7024,9 @@ internal class SlockKuiklyBridgeModule(
         operation.job = hostActivity.lifecycleScope.launch {
             var archive: File? = null
             try {
-                val archiveFile = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
+                // Finish archive creation even if the lifecycle scope is cancelled so the path is
+                // assigned and the finally block can delete the temporary file deterministically.
+                val archiveFile = withContext(NonCancellable + Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
                 archive = archiveFile
                 val archiveSize = archiveFile.length()
                 if (!feedbackDiagnosticsLifecycle.beginUpload(requestId, binding, archiveSize)) {
@@ -7068,7 +7071,7 @@ internal class SlockKuiklyBridgeModule(
                     callback?.invoke(feedbackDiagnosticsEventPayload(event))
                 }
             } finally {
-                archive?.let { file -> withContext(Dispatchers.IO) { runCatching { file.delete() } } }
+                archive?.let { file -> withContext(NonCancellable + Dispatchers.IO) { runCatching { file.delete() } } }
                 feedbackDiagnosticsUploads.remove(requestId, operation)
                 operation.authMonitorJob?.cancel()
             }

@@ -3149,12 +3149,15 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     event[@"binding"] = [self binding];
     event[@"terminal"] = @(terminal);
     __weak typeof(self) weakSelf = self;
+    // A generation failure can finish before NSURLSession has retained its delegate. Keep the
+    // operation alive until the queued terminal callback runs, while progress remains weak.
+    SlockFeedbackDiagnosticsUploadOperation *terminalOwner = terminal ? self : nil;
     SlockBridgeRunOnMain(^{
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self) return;
-        [self.lock lock];
-        BOOL invalidated = self.cancelled;
-        [self.lock unlock];
+        SlockFeedbackDiagnosticsUploadOperation *owner = terminalOwner ?: weakSelf;
+        if (!owner) return;
+        [owner.lock lock];
+        BOOL invalidated = owner.cancelled;
+        [owner.lock unlock];
         if (!invalidated && callback) callback(event);
     });
 }
