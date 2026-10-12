@@ -71,34 +71,49 @@ internal class RuntimeFormV2Loader(
 
     private suspend fun loadCreateUnlogged(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> {
         if (machineId.isBlank() || runtimeId.isBlank()) return failure("runtime_form_v2_ref_missing")
-        val response = guarded { computers.runtimeFormV2(serverId, machineId, runtimeId) }
-            ?: return failure("runtime_form_v2_request_failed")
-        return loadFrom(response, serverId, machineId)
+        return refetchedOnceWhenStale {
+            val response = guarded { computers.runtimeFormV2(serverId, machineId, runtimeId) }
+                ?: return@refetchedOnceWhenStale failure("runtime_form_v2_request_failed")
+            loadFrom(response, serverId, machineId)
+        }
     }
 
     private suspend fun loadEditUnlogged(serverId: ServerId, machineId: String, agentId: MemberId): DataResult<RuntimeFormV2Loaded> {
         val transport = agents ?: return failure("runtime_form_v2_edit_unavailable")
         if (machineId.isBlank()) return failure("runtime_form_v2_ref_missing")
-        val response = guarded { transport.agentRuntimeFormV2(agentId) }
-            ?: return failure("runtime_form_v2_request_failed")
-        return loadFrom(response, serverId, machineId)
+        return refetchedOnceWhenStale {
+            val response = guarded { transport.agentRuntimeFormV2(agentId) }
+                ?: return@refetchedOnceWhenStale failure("runtime_form_v2_request_failed")
+            loadFrom(response, serverId, machineId)
+        }
+    }
+
+    /**
+     * The form went stale between fetching it and its sources (a server flag flip mid-load): fetch the
+     * whole form once more. Options are never merged across form builds.
+     */
+    private suspend fun refetchedOnceWhenStale(load: suspend () -> DataResult<RuntimeFormV2Loaded>): DataResult<RuntimeFormV2Loaded> {
+        val first = load()
+        return if (first.isFormRevisionStale()) load() else first
     }
 
     /**
      * Re-requests one option source (the "re-probe" action next to a select, which is also the
      * `option_source.status` retry): sent with `?refresh=1` so the server probes again instead of
      * answering from its cache; a source without the capability ignores it. The form and every
-     * other source stay as they are; a failure leaves the caller's current options in place.
+     * other source stay as they are; a failure leaves the caller's current options in place, except
+     * [RUNTIME_FORM_V2_FORM_REVISION_STALE], after which the caller must reload the whole form.
      */
     suspend fun reloadSource(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
-        sourceId: String
+        sourceId: String,
+        formRevision: String? = null
     ): DataResult<RuntimeFormV2Source> {
         val result =
             if (machineId.isBlank() || runtimeId.isBlank()) failure("runtime_form_v2_ref_missing")
-            else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true)
+            else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true, formRevision = formRevision)
         log("source_refresh", serverId, machineId, "runtimeId=$runtimeId sourceId=$sourceId", result)
         return result
     }
@@ -130,14 +145,15 @@ internal class RuntimeFormV2Loader(
             ?: return failure("runtime_form_v2_contract_mismatch")
         val sources = linkedMapOf<String, RuntimeFormV2Source>()
         for ((sourceId, key) in form.optionSources) {
-            when (val source = fetchSource(serverId, machineId, form.runtimeId, sourceId)) {
+            when (val source = fetchSource(serverId, machineId, form.runtimeId, sourceId, formRevision = form.revision)) {
                 is DataResult.Content -> sources[sourceId] = source.data
                 // One source that fails to load (a non-2xx such as an offline 409, or a body this
                 // client cannot read) marks only its own field unavailable and retryable; the rest of
                 // the form still renders instead of the whole form falling back to v1.
                 is DataResult.Error ->
-                    // Auth / permission answers are real blockers for the whole form, not a gap in one field.
-                    if (source.error.code in RUNTIME_FORM_V2_FATAL_SOURCE_CODES) return source
+                    // Auth / permission answers are real blockers for the whole form, not a gap in one field;
+                    // a stale form revision means the whole form, not this source, must be refetched.
+                    if (source.error.code in RUNTIME_FORM_V2_FATAL_SOURCE_CODES || source.isFormRevisionStale()) return source
                     else sources[sourceId] = unavailableRuntimeFormV2Source(key)
                 is DataResult.Empty -> sources[sourceId] = unavailableRuntimeFormV2Source(key)
                 is DataResult.NoPermission -> return source
@@ -151,11 +167,15 @@ internal class RuntimeFormV2Loader(
         machineId: String,
         runtimeId: String,
         sourceId: String,
-        refresh: Boolean = false
+        refresh: Boolean = false,
+        formRevision: String? = null
     ): DataResult<RuntimeFormV2Source> {
         val sourceResponse =
-            guarded { computers.runtimeFormV2OptionSource(serverId, machineId, runtimeId, sourceId, refresh) }
+            guarded { computers.runtimeFormV2OptionSource(serverId, machineId, runtimeId, sourceId, refresh, formRevision) }
                 ?: return failure("runtime_form_v2_request_failed")
+        if (sourceResponse.code == 409 && runtimeFormV2ErrorCode(sourceResponse.bodyText ?: sourceResponse.errorBodyText) == "form_revision_stale") {
+            return failure(RUNTIME_FORM_V2_FORM_REVISION_STALE)
+        }
         if (!sourceResponse.isSuccessful) return sourceResponse.httpFailure()
         val source = sourceResponse.bodyText
             ?.let { runCatching { runtimeFormV2ErrorJson.parseToJsonElement(it) }.getOrNull() }
@@ -201,6 +221,20 @@ internal fun runtimeFormV2ServerError(body: String?): RuntimeFormV2ServerError? 
         .distinct()
     return RuntimeFormV2ServerError(root["error"].stringOrNull(), fieldKeys)
 }
+
+/**
+ * An option source answered 409 `form_revision_stale` (`provider.saved_connection`): the server's form
+ * build moved on, so the whole form must be refetched.
+ */
+internal const val RUNTIME_FORM_V2_FORM_REVISION_STALE = "runtime_form_v2_form_revision_stale"
+
+internal fun DataResult<*>.isFormRevisionStale(): Boolean =
+    this is DataResult.Error && error.code == RUNTIME_FORM_V2_FORM_REVISION_STALE
+
+/** The typed `code` of a server error body, if any. */
+private fun runtimeFormV2ErrorCode(body: String?): String? =
+    (body?.takeIf { it.isNotBlank() }?.let { runCatching { runtimeFormV2ErrorJson.parseToJsonElement(it) }.getOrNull() } as? JsonObject)
+        ?.get("code").stringOrNull()
 
 private val RUNTIME_FORM_V2_FATAL_SOURCE_CODES = setOf("runtime_form_v2_http_401", "runtime_form_v2_http_403")
 

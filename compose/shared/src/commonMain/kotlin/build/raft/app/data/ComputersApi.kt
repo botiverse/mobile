@@ -75,13 +75,17 @@ interface SlockComputersApi {
         machineId: String,
         runtimeId: String
     ): HomeNetworkResponse = error("runtimeFormV2 is not implemented")
-    /** [refresh] (`option_source.status` retry): `?refresh=1`, the server bypasses any cached probe. */
+    /**
+     * [refresh] (`option_source.status` retry): `?refresh=1`, the server bypasses any cached probe.
+     * [formRevision] (`provider.saved_connection`): the form's Definition.revision, sent as `?formRevision=`.
+     */
     suspend fun runtimeFormV2OptionSource(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
         sourceId: String,
-        refresh: Boolean = false
+        refresh: Boolean = false,
+        formRevision: String? = null
     ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
     /** Read-only `GET …/runtime-account-usage/:provider` (task #137); refresh is not exposed. */
@@ -202,7 +206,8 @@ internal class SlockComputersNetworkApi(
         machineId: String,
         runtimeId: String,
         sourceId: String,
-        refresh: Boolean
+        refresh: Boolean,
+        formRevision: String?
     ): HomeNetworkResponse =
         networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
@@ -210,7 +215,10 @@ internal class SlockComputersNetworkApi(
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
                     "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
             headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag()),
-            query = if (refresh) listOf("refresh" to "1") else emptyList(),
+            query = buildList {
+                if (refresh) add("refresh" to "1")
+                formRevision?.takeIf { it.isNotEmpty() }?.let { add("formRevision" to it) }
+            },
             serverIdOverride = serverId
         )
 

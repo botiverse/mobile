@@ -23,7 +23,8 @@ class RuntimeFormV2LoaderLogTest {
             machineId: String,
             runtimeId: String,
             sourceId: String,
-            refresh: Boolean
+            refresh: Boolean,
+            formRevision: String?
         ): HomeNetworkResponse {
             sourceRefreshes += sourceId to refresh
             return HomeNetworkResponse(

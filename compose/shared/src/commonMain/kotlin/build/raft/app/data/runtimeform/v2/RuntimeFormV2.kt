@@ -1,4 +1,4 @@
-// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 3c29f0af666633d7). Do not edit.
+// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 8b82ac6e39a87e8d). Do not edit.
 // Decode with Json { ignoreUnknownKeys = true }: every type is open.
 // Enumerated strings stay String so an unknown value never fails decoding.
 package build.raft.app.data.runtimeform.v2
@@ -16,8 +16,10 @@ data class RuntimeFormV2Definition(
     val dataSchema: RuntimeFormV2DataSchema,
     val uiSchema: RuntimeFormV2UiSchema? = null,
     val optionSources: Map<String, RuntimeFormV2OptionSourceRef>? = null,
-    /** Client capabilities this form needs beyond the base v2 renderer. Absent or null means []. A client that sees an entry it does not implement, a value that is not an array, or a non-string entry must treat the whole v2 form as unavailable and fall back to its v1/legacy form; it must never render a partial v2 form. Names (frozen): `select.custom_value` (OptionSource.customValueAllowed), `choice.labels` (FieldCopy.choices), `option_source.status` (OptionSource.status/reason/retryable). A form lists a name only when it uses that feature; the server never sends those fields to a form that does not list the name. */
+    /** Client capabilities this form needs beyond the base v2 renderer. Absent or null means []. A client that sees an entry it does not implement, a value that is not an array, or a non-string entry must treat the whole v2 form as unavailable and fall back to its v1/legacy form; it must never render a partial v2 form. Names (frozen): `select.custom_value` (OptionSource.customValueAllowed), `choice.labels` (FieldCopy.choices), `option_source.status` (OptionSource.status/reason/retryable), `provider.saved_connection` (Option.connectionId/underlyingProviderId/group/unavailable: saved provider connection options in a provider source; the client must render the saved group, keep connection-owned fields (the writeOnly secret and any gateway URL/capability field) out of formValues entirely — never as empty strings — restore the direct schema's own visibility/required rules for them when the selection moves off a connection, and never submit an apiKey for a connection selection). A form lists a name only when it uses that feature; the server never sends those fields to a form that does not list the name. */
     val requiredClientCapabilities: List<String>? = null,
+    /** Opaque token identifying this exact form build (entry version + relevant server flags + scope). Sent only on the v2 form endpoints. A client that fetches option sources for this form should pass it back as ?formRevision=<token>; see OptionSource for the three outcomes. Clients that do not know it keep working: the parameter is optional. */
+    val revision: String? = null,
     val values: Map<String, JsonElement>? = null,
     /** Edit only (sent with `values`). Keyed by the pointer of a writeOnly field (e.g. `/apiKey`); the value lists the pointers of the fields the stored secret is bound to (e.g. `["/provider", "/apiUrl"]`). On edit a blank writeOnly field keeps the stored secret only while every listed field still equals its value in `values`. Comparison: both sides as strings (absent = ""), surrounding whitespace trimmed and trailing `/` characters removed, then exact. A listed field that is currently hidden by `visibility` is not compared. When a listed field differs and the secret is blank (and visible), the client must treat the secret as required and block saving, saying a new secret is needed; the server refuses that save anyway (`api_key_required` at the field). Absent: a blank writeOnly field always means keep. A secret pointer or listed pointer naming no field is ignored. Optional and advisory: no requiredClientCapabilities entry; a client that ignores it still gets the server's refusal. */
     val writeOnlyKeepRequiresUnchanged: Map<String, List<String>>? = null,
@@ -40,6 +42,8 @@ data class RuntimeFormV2FieldSchema(
     val writeOnly: Boolean? = null,
     @SerialName("x-optionSource") val optionSource: String? = null,
     @SerialName("x-optionsFrom") val optionsFrom: RuntimeFormV2OptionsFrom? = null,
+    /** capability `provider.saved_connection`. True on a field whose value a selected saved provider connection owns (the writeOnly secret, a gateway URL/capability field). While the field that offers connection options holds a connection selection, a client renders this field disabled with a placeholder, treats it as not required, and keeps it out of formValues entirely (never an empty string); moving the selection off a connection restores this field's own visibility and required rules and clears its value. Sent only to forms that declare the capability. */
+    @SerialName("x-connectionOwned") val connectionOwned: Boolean? = null,
     /** JSON Schema allows a boolean (`false`) or a value schema (`{"type": "string"}` for a key-value map); clients must accept both. */
     val additionalProperties: JsonElement? = null,
 )
@@ -103,7 +107,7 @@ data class RuntimeFormV2OptionSourceRef(
     val dependsOn: String? = null,
 )
 
-/** Response of the option-sources endpoint. select: options + defaultValue. dependent_select: per-value lists keyed by the value of dependsOn. `customValueAllowed`, `status`, `reason` and `retryable` are sent only on the v2 endpoint and only to forms that list the matching capability (`select.custom_value`, `option_source.status`); a form without the capability gets the source exactly as before. */
+/** Response of the option-sources endpoint. select: options + defaultValue. dependent_select: per-value lists keyed by the value of dependsOn. `customValueAllowed`, `status`, `reason` and `retryable` are sent only on the v2 endpoint and only to forms that list the matching capability (`select.custom_value`, `option_source.status`); a form without the capability gets the source exactly as before. Form-consistency parameter `?formRevision=<token>` (Definition.revision), optional, three outcomes: (1) absent — the source answers with the plain direct-option protocol and NEVER includes saved-connection options (Option.connectionId) or connection-keyed model maps, so pre-existing clients keep working unchanged; (2) present and matching the server's current build — the source answers within the capability range the form declared; (3) present and not matching — HTTP 409 with code `form_revision_stale` and recovery `refetch_form`; the client must refetch the whole form and must never merge new options into a stale form. The revision guards form consistency only; authorization and connection state are re-checked on every source request and again on save. */
 @Serializable
 data class RuntimeFormV2OptionSource(
     val sourceId: String,
@@ -132,6 +136,16 @@ data class RuntimeFormV2Option(
     val providerKind: String? = null,
     val supportedReasoningEfforts: List<String>? = null,
     val defaultReasoningEffort: String? = null,
+    /** capability `provider.saved_connection`. Non-empty marks this option as a saved provider connection. Hard constraint: value === "connection:" + connectionId; an option violating it is a protocol error. Sent only to forms that declare the capability, and only when the request carried a matching formRevision. Display metadata (label, underlyingProviderId, providerKind) is never trusted back: on save the server re-resolves the connection by id in the current server scope. */
+    val connectionId: String? = null,
+    /** capability `provider.saved_connection`. The connection's provider id (e.g. deepseek). Distinct from providerKind, which only carries preset/gateway semantics. */
+    val underlyingProviderId: String? = null,
+    /** capability `provider.saved_connection`. Display grouping: saved connections first ("Saved providers"), then direct/manual providers. */
+    val group: String? = null, // one of saved, direct
+    /** capability `provider.saved_connection`. Edit only: the agent's currently bound connection is not selectable right now (disabled, missing credential, retired). It stays visible, keeps the agent's stored value, and blocks save until the user picks something else — a silent rewrite never happens. */
+    val unavailable: Boolean? = null,
+    /** capability `provider.saved_connection`. Localized-safe reason key for `unavailable` (e.g. disabled, missing_credential, retired, not_found). */
+    val unavailableReason: String? = null,
 )
 
 @Serializable

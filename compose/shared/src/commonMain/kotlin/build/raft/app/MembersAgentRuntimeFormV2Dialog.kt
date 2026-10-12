@@ -55,8 +55,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     onChangeRuntime: () -> Unit,
     onSave: (RuntimeFormV2SubmitBody) -> Unit
 ) {
-    var loaded by remember(access, agentId, machineId) { mutableStateOf<RuntimeFormV2Loaded?>(null) }
-    LaunchedEffect(access, agentId, machineId) {
+    // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; then back to v1.
+    var staleReloads by remember(access, agentId, machineId) { mutableStateOf(0) }
+    var loaded by remember(access, agentId, machineId, staleReloads) { mutableStateOf<RuntimeFormV2Loaded?>(null) }
+    LaunchedEffect(access, agentId, machineId, staleReloads) {
         when (val result = access.loader.loadEdit(access.serverId, machineId, agentId)) {
             is DataResult.Content -> loaded = result.data
             else -> onLoadFailed()
@@ -69,7 +71,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     var advancedOpen by remember(form) { mutableStateOf(false) }
     // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
     val (current, sourceRefresh) =
-        rememberRuntimeFormV2SourceRefresh(access, machineId, form) { updated, sourceId ->
+        rememberRuntimeFormV2SourceRefresh(
+            access,
+            machineId,
+            form,
+            onFormStale = { if (staleReloads < 1) staleReloads += 1 else onLoadFailed() }
+        ) { updated, sourceId ->
             values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, values, sourceId)
         }
     val errors = current?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
@@ -101,7 +108,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                                 values = applyRuntimeFormV2Change(shown.form, shown.sources, values, key, value)
                                 touched = touched + key
                             },
-                            errors = errors.filterKeys { it in touched || it in errorFieldKeys },
+                            errors = runtimeFormV2ShownErrors(errors, touched + errorFieldKeys),
                             serverErrorKeys = errorFieldKeys,
                             serverMessage = null,
                             editing = true,

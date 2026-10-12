@@ -29,6 +29,9 @@ internal const val RUNTIME_FORM_V2_OPTION_SOURCE_KEY = "x-optionSource"
 /** Field schema key: choices come from the option selected in another field. */
 internal const val RUNTIME_FORM_V2_OPTIONS_FROM_KEY = "x-optionsFrom"
 
+/** Field schema key (`provider.saved_connection`): a selected saved connection owns this field's value. */
+internal const val RUNTIME_FORM_V2_CONNECTION_OWNED_KEY = "x-connectionOwned"
+
 /**
  * Form capabilities this client implements. A form that lists anything else in
  * `requiredClientCapabilities` needs behaviour this client lacks (for example
@@ -41,11 +44,14 @@ internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = setOf(
     RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE,
     // OptionSource.status/reason/retryable: a source that is not live says why, with a retry.
     RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS,
+    // Option.connectionId/group/unavailable, x-connectionOwned fields and the formRevision echo.
+    RUNTIME_FORM_V2_CAPABILITY_SAVED_CONNECTION,
 )
 
 internal const val RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS: String = "choice.labels"
 internal const val RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE: String = "select.custom_value"
 internal const val RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS: String = "option_source.status"
+internal const val RUNTIME_FORM_V2_CAPABILITY_SAVED_CONNECTION: String = "provider.saved_connection"
 
 internal enum class RuntimeFormV2FieldKind {
     Text,
@@ -97,7 +103,12 @@ internal data class RuntimeFormV2Field(
     /** Shown only when every rule matches; empty means always shown. */
     val visibleWhen: List<RuntimeFormV2VisibleWhen> = emptyList(),
     /** `choice.labels`: display copy for this field's choices, keyed by option value. */
-    val choices: Map<String, RuntimeFormV2ChoiceCopy> = emptyMap()
+    val choices: Map<String, RuntimeFormV2ChoiceCopy> = emptyMap(),
+    /**
+     * `x-connectionOwned` (`provider.saved_connection`): while a saved connection is selected this
+     * field is disabled, not required and kept out of formValues; see [runtimeFormV2ConnectionActive].
+     */
+    val connectionOwned: Boolean = false
 )
 
 internal data class RuntimeFormV2OptionSourceKey(
@@ -118,7 +129,12 @@ internal data class ParsedRuntimeFormV2(
      */
     val blockingFieldKeys: List<String>,
     /** Edit only: the agent's current values by field key (writeOnly fields absent). */
-    val values: JsonObject? = null
+    val values: JsonObject? = null,
+    /**
+     * Definition.revision: opaque token for this exact form build, echoed on every option-source
+     * request as `?formRevision=`; a 409 `form_revision_stale` means the whole form must be refetched.
+     */
+    val revision: String? = null
 )
 
 private val runtimeFormV2Json = Json { ignoreUnknownKeys = true }
@@ -184,7 +200,8 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
             dependsOn = source?.dependsOn,
             derivedFrom = derived,
             visibleWhen = visibility[key].orEmpty(),
-            choices = choiceCopy(copy["choices"])
+            choices = choiceCopy(copy["choices"]),
+            connectionOwned = schema[RUNTIME_FORM_V2_CONNECTION_OWNED_KEY].booleanOrNullStrict() == true
         )
     }
 
@@ -194,7 +211,8 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
         fields = fields,
         optionSources = optionSources,
         blockingFieldKeys = fields.filter { it.kind == RuntimeFormV2FieldKind.Unsupported && it.required }.map { it.key },
-        values = root["values"] as? JsonObject
+        values = root["values"] as? JsonObject,
+        revision = root["revision"].stringOrNull()?.takeIf { it.isNotEmpty() }
     )
 }
 

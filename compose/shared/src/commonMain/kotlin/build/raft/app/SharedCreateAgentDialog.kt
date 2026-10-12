@@ -42,6 +42,7 @@ import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.RUNTIME_FORM_V2_FORM_REVISION_STALE
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
@@ -992,6 +993,9 @@ internal fun SharedCreateAgentDialog(
         // so a runtime moving to v2 needs no app release.
         runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime.isNotBlank()
     var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
+    // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; after that it
+    // fails like any other load (v1 form, or the retry banner).
+    var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
     var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)
     }
@@ -1004,7 +1008,19 @@ internal fun SharedCreateAgentDialog(
     var v2Touched by remember(v2Loaded) { mutableStateOf(emptySet<String>()) }
     // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
     val (v2Form, v2SourceRefresh) =
-        rememberRuntimeFormV2SourceRefresh(runtimeFormV2, availableSelectedMachineId, v2Loaded) { updated, sourceId ->
+        rememberRuntimeFormV2SourceRefresh(
+            runtimeFormV2,
+            availableSelectedMachineId,
+            v2Loaded,
+            onFormStale = {
+                if (v2StaleReloads < 1) {
+                    v2StaleReloads += 1
+                    v2LoadAttempt += 1
+                } else {
+                    v2Load = RuntimeFormV2DialogLoad.Failed(RUNTIME_FORM_V2_FORM_REVISION_STALE)
+                }
+            }
+        ) { updated, sourceId ->
             v2Values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, v2Values, sourceId)
         }
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
@@ -1516,7 +1532,7 @@ internal fun SharedCreateAgentDialog(
                                             v2Values = applyRuntimeFormV2Change(current.form, current.sources, v2Values, key, value)
                                             v2Touched = v2Touched + key
                                         },
-                                        errors = v2Errors.filterKeys { it in v2Touched || it in errorFieldKeys },
+                                        errors = runtimeFormV2ShownErrors(v2Errors, v2Touched + errorFieldKeys),
                                         serverErrorKeys = errorFieldKeys,
                                         serverMessage = null,
                                         editing = false,

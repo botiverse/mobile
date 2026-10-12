@@ -50,7 +50,7 @@ class RuntimeFormRequestLanguageTest {
             executor.calls.clear()
             val computers = SlockComputersNetworkApi(network) { "zh-CN" }
             computers.runtimeFormV2(server, "machine-1", "codex")
-            computers.runtimeFormV2OptionSource(server, "machine-1", "codex", "model", refresh = true)
+            computers.runtimeFormV2OptionSource(server, "machine-1", "codex", "model", refresh = true, formRevision = "rev-1")
             SlockAgentsNetworkApi(network) { "zh-CN" }.agentRuntimeFormV2(MemberId("agent-1"))
 
             assertEquals(3, executor.calls.size)
@@ -60,6 +60,9 @@ class RuntimeFormRequestLanguageTest {
             }
             assertTrue(executor.calls.any { it.first.endsWith("/runtime-forms/v2/codex") })
             assertTrue(executor.calls.any { "/runtime-forms/v2/codex/option-sources/model" in it.first })
+            // `provider.saved_connection`: the form's revision rides along with the re-probe flag.
+            val sourceUrl = executor.calls.single { "/option-sources/model" in it.first }.first
+            assertTrue("refresh=1" in sourceUrl && "formRevision=rev-1" in sourceUrl, sourceUrl)
             assertTrue(executor.calls.any { it.first.endsWith("/agents/agent-1/runtime-form") })
         }
     }
