@@ -265,6 +265,11 @@ private fun SettingsAccountScreen() {
             avatarCacheIdentity =
                 settingsState.account.settingsAccountAvatarCacheIdentity(session.value),
             applyTopSafeArea = false,
+            // This page is hosted outside the app shell, so the account list must
+            // reserve the native navigation bar itself. Without this, the inline
+            // logout confirmation row can end under three-button navigation.
+            bottomContentPadding =
+                settingsAccountStandaloneBottomContentPadding(slockBottomSafeAreaPadding()),
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
                     SharedSettingsIntent.ChangeAccountPassword(
@@ -293,6 +298,14 @@ private fun SettingsAccountScreen() {
 internal fun shouldReloadSettingsAccountAfterMobileOAuth(
     event: com.tencent.kuikly.core.nvi.serialization.json.JSONObject?,
 ): Boolean = event?.optString("status") == "settings_account"
+
+/**
+ * Standalone account pages are outside the app-shell content inset contract.
+ * Keep their final list item above the native navigation bar while retaining the
+ * normal visual breathing room used by settings lists.
+ */
+internal fun settingsAccountStandaloneBottomContentPadding(bottomSafeArea: Dp): Dp =
+    bottomSafeArea + SlockSpacing.Lg
 
 @Composable
 private fun rememberAccountPayload(
