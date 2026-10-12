@@ -2996,6 +2996,18 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     for (NSUInteger index = 0; index < paths.count; index++) {
         if (isCancelled && isCancelled()) { success = NO; break; }
         NSString *sourcePath = SlockBridgeString(paths[index]);
+        unsigned long long sourceSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:sourcePath error:nil][NSFileSize] unsignedLongLongValue];
+        // Reject oversized inputs before mapping/allocating their bytes. The fixed ZIP headers
+        // and central directory are covered by the conservative 1 KiB allowance and the final
+        // archive-size check below remains authoritative.
+        if (sourceSize == 0 || sourceSize + offset + 1024ULL > SlockFeedbackDiagnosticsMaxBytes) {
+            if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{
+                NSLocalizedDescriptionKey : @"Diagnostics archive exceeds upload limit",
+                @"tooLarge" : @YES
+            }];
+            success = NO;
+            break;
+        }
         NSData *data = [NSData dataWithContentsOfFile:sourcePath options:NSDataReadingMappedIfSafe error:nil];
         if (!data) { success = NO; break; }
         NSString *entryName = index == 0 ? @"diagnostics-summary.txt" : SlockFeedbackDiagnosticsSafeEntryName(sourcePath, index);
