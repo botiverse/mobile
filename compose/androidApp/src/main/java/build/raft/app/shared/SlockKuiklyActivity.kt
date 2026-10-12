@@ -6973,6 +6973,9 @@ internal class SlockKuiklyBridgeModule(
         request: JSONObject,
         callback: KuiklyRenderCallback?,
     ) {
+        // A diagnostics request has no useful owner without a callback. Do not generate or
+        // upload a native archive that cannot deliver its terminal reference to the WebView.
+        if (callback == null) return
         val requestId = request.optString("requestId").trim()
         val binding =
             FeedbackDiagnosticsBinding(

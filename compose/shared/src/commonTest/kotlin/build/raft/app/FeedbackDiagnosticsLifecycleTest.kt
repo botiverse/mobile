@@ -91,6 +91,20 @@ class FeedbackDiagnosticsLifecycleTest {
                 FeedbackDiagnosticsReference("", "diag.zip", "application/zip", 12L),
             )
         )
+        assertNull(
+            lifecycle.done(
+                "request-1",
+                binding,
+                FeedbackDiagnosticsReference("r2/key\u0001", "diag.zip", "application/zip", 12L),
+            )
+        )
+        assertNull(
+            lifecycle.done(
+                "request-1",
+                binding,
+                FeedbackDiagnosticsReference("r2/key", "x".repeat(257), "application/zip", 12L),
+            )
+        )
         assertEquals(FeedbackDiagnosticsRequestPhase.Uploading, lifecycle.phase("request-1", binding))
     }
 }

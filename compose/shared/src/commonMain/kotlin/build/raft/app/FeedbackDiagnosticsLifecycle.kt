@@ -55,10 +55,18 @@ data class FeedbackDiagnosticsReference(
     val size: Long,
 ) {
     fun isValid(): Boolean =
-        r2Key.isNotBlank() &&
-            filename.isNotBlank() &&
+        r2Key.isValidDiagnosticsReferenceText(MAX_R2_KEY_LENGTH) &&
+            filename.isValidDiagnosticsReferenceText(MAX_FILENAME_LENGTH) &&
             contentType == "application/zip" &&
             size in 1..FeedbackDiagnosticsLifecycle.MAX_BYTES
+
+    private fun String.isValidDiagnosticsReferenceText(maxLength: Int): Boolean =
+        length in 1..maxLength && none { it.code < 0x20 || it.code == 0x7f }
+
+    private companion object {
+        const val MAX_R2_KEY_LENGTH = 1024
+        const val MAX_FILENAME_LENGTH = 256
+    }
 }
 
 enum class FeedbackDiagnosticsFailureReason {
