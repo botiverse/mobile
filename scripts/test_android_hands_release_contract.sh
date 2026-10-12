@@ -44,6 +44,8 @@ ruby -e '
   jni_input = inputs.fetch("jni_packaging")
   raise "release workflow does not default to the current JNI control" unless jni_input.fetch("default") == "current"
   raise "release workflow JNI choices drifted" unless jni_input.fetch("options") == %w[current legacy modern]
+  android_variant_input = inputs.fetch("android_variant")
+  raise "release workflow must expose the Play carrier" unless android_variant_input.fetch("options") == %w[release play debug]
 
   jobs = workflow.fetch("jobs")
   resolve_job = jobs.fetch("resolve")
@@ -66,7 +68,8 @@ ruby -e '
   raise "missing create_hands_draft job" unless jobs.key?("create_hands_draft")
   publish_job = jobs.fetch("create_hands_draft")
   expected_draft_gate = "github.event_name == '\''workflow_dispatch'\'' &&\n" \
-    "needs.resolve.outputs.create_hands_draft == '\''true'\''"
+    "needs.resolve.outputs.create_hands_draft == '\''true'\'' &&\n" \
+    "needs.resolve.outputs.android_variant != '\''play'\''"
   unless publish_job.fetch("if").strip == expected_draft_gate
     raise "draft job is not restricted to opted-in manual dispatches"
   end
@@ -172,6 +175,13 @@ ruby -e '
   raise "release identity output does not canonicalize lineage oldest-to-current" unless release_verify.include?("| reverse")
 
   android_gradle = File.read("compose/androidApp/build.gradle.kts")
+  raise "Android build does not define the Play carrier" unless android_gradle.include?(%q{create("play")})
+  raise "Play carrier leaves Hands APK updates enabled" unless android_gradle.include?(%q{buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")})
+  play_manifest = File.read("compose/androidApp/src/play/AndroidManifest.xml")
+  raise "Play manifest does not remove REQUEST_INSTALL_PACKAGES" unless play_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES}) && play_manifest.include?(%q{tools:node="remove"})
+  raise "Hands release manifest must retain the source permission" if File.exist?("compose/androidApp/src/release/AndroidManifest.xml") && File.read("compose/androidApp/src/release/AndroidManifest.xml").include?(%q{tools:node="remove"})
+  kuikly_activity = File.read("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt")
+  raise "Play carrier does not gate the Hands updater bridge" unless kuikly_activity.include?("BuildConfig.HANDS_APK_UPDATE_ENABLED") && kuikly_activity.include?("handsApkUpdateDisabledResponse()")
   unless android_gradle.include?("providers.gradleProperty(\"raftDexUseLegacyPackaging\")") &&
       android_gradle.include?("providers.gradleProperty(\"raftJniUseLegacyPackaging\")") &&
       android_gradle.match?(/packaging\s*\{.*?dex\s*\{.*?useLegacyPackaging\s*=\s*raftDexUseLegacyPackaging\.orNull/m) &&
