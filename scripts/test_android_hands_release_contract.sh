@@ -179,6 +179,8 @@ ruby -e '
   raise "Play carrier leaves Hands APK updates enabled" unless android_gradle.include?(%q{buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")})
   play_manifest = File.read("compose/androidApp/src/play/AndroidManifest.xml")
   raise "Play manifest does not remove REQUEST_INSTALL_PACKAGES" unless play_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES}) && play_manifest.include?(%q{tools:node="remove"})
+  main_manifest = File.read("compose/androidApp/src/main/AndroidManifest.xml")
+  raise "Hands source manifest no longer declares REQUEST_INSTALL_PACKAGES" unless main_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES})
   raise "Hands release manifest must retain the source permission" if File.exist?("compose/androidApp/src/release/AndroidManifest.xml") && File.read("compose/androidApp/src/release/AndroidManifest.xml").include?(%q{tools:node="remove"})
   kuikly_activity = File.read("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt")
   raise "Play carrier does not gate the Hands updater bridge" unless kuikly_activity.include?("BuildConfig.HANDS_APK_UPDATE_ENABLED") && kuikly_activity.include?("handsApkUpdateDisabledResponse()")
