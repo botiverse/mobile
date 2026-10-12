@@ -26,7 +26,7 @@ interface SlockOhosFeedbackDiagnosticsPresignedUpload {
   attachment_id: string;
   r2_key: string;
   upload_url: string;
-  expires_at: string;
+  expires_at: number;
 }
 
 function resultText(result: string | ArrayBuffer | Object): string {
@@ -39,6 +39,11 @@ function resultText(result: string | ArrayBuffer | Object): string {
 
 function safeString(value: Object | undefined): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function safePositiveInteger(value: Object | undefined): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function validArchiveName(value: string): boolean {
@@ -144,9 +149,9 @@ export class SlockOhosFeedbackDiagnosticsUploader {
         attachment_id: safeString(upload['attachment_id']),
         r2_key: safeString(upload['r2_key']),
         upload_url: safeString(upload['upload_url']),
-        expires_at: safeString(upload['expires_at']),
+        expires_at: safePositiveInteger(upload['expires_at']),
       };
-      if (result.attachment_id.length === 0 || result.r2_key.length === 0 || !validHttpsUrl(result.upload_url) || result.expires_at.length === 0) {
+      if (result.attachment_id.length === 0 || result.r2_key.length === 0 || !validHttpsUrl(result.upload_url) || result.expires_at <= 0) {
         throw new Error('diagnostics presign response invalid');
       }
       return result;
