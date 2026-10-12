@@ -9,6 +9,7 @@ const SLOCK_OHOS_HANDS_BASE_URL = 'https://hands.build';
 const SLOCK_OHOS_HANDS_APP_SLUG = 'raft-ohos';
 const SLOCK_OHOS_HANDS_CLIENT_KEY = 'qk_425c2f5b28aae3d46037634665b99bc72605bb6e';
 const SLOCK_OHOS_HANDS_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_MAX_R2_KEY_LENGTH = 1024;
 
 export interface SlockOhosFeedbackDiagnosticsReference {
   r2_key: string;
@@ -59,6 +60,11 @@ function safePositiveInteger(value: Object | undefined): number {
 function validArchiveName(value: string): boolean {
   return value.length > 0 && value.length <= 256 &&
     !value.includes('/') && !value.includes('\\') &&
+    !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function validReferenceText(value: string, maxLength: number): boolean {
+  return value.length > 0 && value.length <= maxLength &&
     !/[\u0000-\u001f\u007f]/.test(value);
 }
 
@@ -177,7 +183,9 @@ export class SlockOhosFeedbackDiagnosticsUploader {
         upload_url: safeString(upload['upload_url']),
         expires_at: safePositiveInteger(upload['expires_at']),
       };
-      if (result.attachment_id.length === 0 || result.r2_key.length === 0 || !validHttpsUrl(result.upload_url) || result.expires_at <= 0) {
+      if (!validReferenceText(result.attachment_id, 256) ||
+        !validReferenceText(result.r2_key, SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_MAX_R2_KEY_LENGTH) ||
+        !validHttpsUrl(result.upload_url) || result.expires_at <= 0) {
         throw new Error('diagnostics presign response invalid');
       }
       return result;

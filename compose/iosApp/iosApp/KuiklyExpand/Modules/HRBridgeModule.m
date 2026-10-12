@@ -57,6 +57,7 @@ static NSString *const SlockDiagnosticsFeedbackFilePrefix = @"raft-feedback-";
 static NSString *const SlockDiagnosticsSummaryFileName = @"raft-diagnostics-summary.txt";
 static NSString *const SlockFeedbackDiagnosticsContentType = @"application/zip";
 static unsigned long long const SlockFeedbackDiagnosticsMaxBytes = 200ULL * 1024ULL * 1024ULL;
+static NSUInteger const SlockFeedbackDiagnosticsMaxR2KeyLength = 1024;
 static NSString *const SlockHandsFeedbackBaseURL = @"https://hands.build";
 static NSString *const SlockHandsFeedbackAppSlug = @"raft-ios";
 static NSString *const SlockHandsFeedbackClientKey = @"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99";
@@ -3255,7 +3256,10 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         NSString *uploadURL = SlockBridgeString(upload[@"upload_url"]);
         self.r2Key = SlockBridgeString(upload[@"r2_key"]);
         long long expiresAt = [upload[@"expires_at"] longLongValue];
-        if (attachmentId.length == 0 || uploadURL.length == 0 || self.r2Key.length == 0 || expiresAt <= 0) {
+        if (attachmentId.length == 0 || uploadURL.length == 0 ||
+            self.r2Key.length == 0 || self.r2Key.length > SlockFeedbackDiagnosticsMaxR2KeyLength ||
+            [self.r2Key rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
+            expiresAt <= 0) {
             [self emitFailure:@"upload_failed"];
             return;
         }
