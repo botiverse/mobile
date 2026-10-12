@@ -57,6 +57,14 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
     "thread_markdown_single_paragraph_light_v0"
 
 /**
+ * Thread message list laid out bottom-up (`reverseLayout`): the newest row is item 0 and renders
+ * at the bottom from the first frame, with no scroll-to-bottom pass. On by default in alpha builds;
+ * release builds follow this server flag (default OFF). Local A/B goes through the diagnostics
+ * "Local Feature Overrides" ForceOn/ForceOff latch. Decided once per thread open.
+ */
+const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread_reverse_layout_v0"
+
+/**
  * Positive default-on flag whose backend `kill_switch` reason is persisted by Android as the emergency
  * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
  */
@@ -115,6 +123,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
     WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
+    MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,

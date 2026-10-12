@@ -1651,6 +1651,8 @@
     <string name="settings_mobile_home_server_avatar_detail">Show the current workspace avatar beside its name in the Home header. Turn this off to keep the existing compact title badge.</string>
     <string name="settings_mobile_realtime_curl_socketio">Realtime over new network stack (curl)</string>
     <string name="settings_mobile_realtime_curl_socketio_detail">Takes effect on the next connection or reconnect. Until you change it, this follows the server default.</string>
+    <string name="settings_mobile_thread_reverse_layout">Open chats at the newest message</string>
+    <string name="settings_mobile_thread_reverse_layout_detail">Chats open at the newest message, laid out from the bottom, without scrolling down first. Applies the next time you open a chat. Until you change it, this follows the server default.</string>
     <string name="settings_mobile_http3">Enable HTTP/3</string>
     <string name="settings_mobile_http3_detail">New requests try HTTP/3 and fall back to HTTP/2 when the network cannot. Until you change it, this follows the server default.</string>
     <string name="settings_badge_beta">Beta</string>

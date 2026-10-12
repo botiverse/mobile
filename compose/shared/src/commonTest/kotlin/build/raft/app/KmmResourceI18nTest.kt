@@ -874,6 +874,8 @@ class KmmResourceI18nTest {
             MR.strings.settings_mobile_single_tap_thread_detail,
             MR.strings.settings_mobile_single_tap_thread_enabled,
             MR.strings.settings_mobile_single_tap_thread_disabled,
+            MR.strings.settings_mobile_thread_reverse_layout,
+            MR.strings.settings_mobile_thread_reverse_layout_detail,
             MR.strings.settings_mobile_conversation_forward_gesture,
             MR.strings.settings_mobile_conversation_forward_gesture_detail,
             MR.strings.settings_mobile_conversation_forward_gesture_accessibility,
