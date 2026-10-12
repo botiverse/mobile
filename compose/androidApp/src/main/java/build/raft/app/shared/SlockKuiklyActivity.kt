@@ -7021,9 +7021,11 @@ internal class SlockKuiklyBridgeModule(
             return
         }
         operation.job = hostActivity.lifecycleScope.launch {
+            var archive: File? = null
             try {
-                val archive = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
-                val archiveSize = archive.length()
+                val archiveFile = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
+                archive = archiveFile
+                val archiveSize = archiveFile.length()
                 if (!feedbackDiagnosticsLifecycle.beginUpload(requestId, binding, archiveSize)) {
                     val reason =
                         if (archiveSize > FeedbackDiagnosticsLifecycle.MAX_BYTES) {
@@ -7038,7 +7040,7 @@ internal class SlockKuiklyBridgeModule(
                 }
                 val reference =
                     withContext(Dispatchers.IO) {
-                        uploader.upload(archive) { sent, total ->
+                        uploader.upload(archiveFile) { sent, total ->
                             hostActivity.runOnUiThread {
                                 if (feedbackDiagnosticsLifecycle.phase(requestId, binding) == null) return@runOnUiThread
                                 feedbackDiagnosticsLifecycle.progress(requestId, binding, sent, total)?.let { event ->
@@ -7066,6 +7068,7 @@ internal class SlockKuiklyBridgeModule(
                     callback?.invoke(feedbackDiagnosticsEventPayload(event))
                 }
             } finally {
+                archive?.let { file -> withContext(Dispatchers.IO) { runCatching { file.delete() } } }
                 feedbackDiagnosticsUploads.remove(requestId, operation)
                 operation.authMonitorJob?.cancel()
             }

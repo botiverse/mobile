@@ -509,9 +509,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     callback: KuiklyRenderCallback,
   ): Promise<void> {
     let uploadAdmitted = false;
+    let archivePath = '';
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
+      archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
       if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
       const archiveSize = Number(fs.statSync(archivePath).size);
       if (archiveSize <= 0) {
@@ -565,6 +566,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } finally {
       if (this.feedbackDiagnosticsUploads.get(operation.requestId) === operation) {
         this.feedbackDiagnosticsUploads.delete(operation.requestId);
+      }
+      if (archivePath.length > 0) {
+        try { fs.unlinkSync(archivePath); } catch (_error) { }
       }
     }
   }
