@@ -16,11 +16,30 @@ const kLoadFailure = 'loadFailure';
 const kNavigationBlocked = 'navigationBlocked';
 const kUrlChange = 'urlChange';
 const kNavigationStateChange = 'navigationStateChange';
+const kHostEventsEnabled = 'hostEventsEnabled';
+const kHostMessage = 'hostMessage';
 
 const kCommandGoBack = 'goBack';
 const kCommandGoForward = 'goForward';
 const kCommandReload = 'reload';
 const kCommandStop = 'stop';
+
+/** ArkWeb JavaScript proxy exposed only on opted-in feedback WebViews. */
+class SlockSandboxWebViewHostPort {
+  private owner: SlockSandboxWebView | null;
+
+  constructor(owner: SlockSandboxWebView) {
+    this.owner = owner;
+  }
+
+  postMessage(message: string): void {
+    this.owner?.receiveHostMessage(message);
+  }
+
+  detach(): void {
+    this.owner = null;
+  }
+}
 
 @Observed
 export class SlockSandboxWebView extends KuiklyRenderBaseView {
@@ -45,11 +64,15 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
   private lastNavigationStateKey: string = '';
   private lastSuccessfulUrl: string = '';
   private lastLoadFailureKey: string = '';
+  private hostProxyRegistered: boolean = false;
   private loadSuccessCallback: KuiklyRenderCallback | null = null;
   private loadFailureCallback: KuiklyRenderCallback | null = null;
   private navigationBlockedCallback: KuiklyRenderCallback | null = null;
   private urlChangeCallback: KuiklyRenderCallback | null = null;
   private navigationStateChangeCallback: KuiklyRenderCallback | null = null;
+  private hostMessageCallback: KuiklyRenderCallback | null = null;
+  private hostEventsEnabled: boolean = false;
+  readonly hostPort: SlockSandboxWebViewHostPort = new SlockSandboxWebViewHostPort(this);
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -102,6 +125,12 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
         this.navigationStateChangeCallback = propValue as KuiklyRenderCallback;
         this.notifyNavigationState(true);
         return true;
+      case kHostEventsEnabled:
+        this.updateHostEventsEnabled(normalizeBoolean(propValue, false));
+        return true;
+      case kHostMessage:
+        this.hostMessageCallback = propValue as KuiklyRenderCallback;
+        return true;
       default:
         return super.setProp(propKey, propValue);
     }
@@ -118,6 +147,7 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.destroyed = true;
     this.controllerAttached = false;
     this.pendingNavigationCommands = [];
+    this.unregisterHostProxy();
     try {
       this.controller.stop();
     } catch (_error) {
@@ -127,6 +157,24 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.navigationBlockedCallback = null;
     this.urlChangeCallback = null;
     this.navigationStateChangeCallback = null;
+    this.hostMessageCallback = null;
+    this.hostPort.detach();
+  }
+
+  receiveHostMessage(message: string): void {
+    if (this.destroyed || !this.controllerAttached || !this.hostEventsEnabled ||
+      typeof message !== 'string' || message.length === 0 || message.length > 64 * 1024 ||
+      !this.isTrustedHostMessageFrame()) {
+      return;
+    }
+    // The controller proxy is callable by every frame.  Keep the frame/origin gate here, at the
+    // native callback boundary, before the shared content parser sees any message.
+    try {
+      JSON.parse(message);
+    } catch (_error) {
+      return;
+    }
+    this.hostMessageCallback?.({ message });
   }
 
   isAllowedMainDocumentUrl(url: string | null | undefined): boolean {
@@ -190,6 +238,10 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     return `${this.renderRevision}:${this.src}`;
   }
 
+  isHostEventsEnabled(): boolean {
+    return this.hostEventsEnabled;
+  }
+
   isRenderKeyCurrent(renderKey: string): boolean {
     return !this.destroyed && renderKey === this.currentRenderKey();
   }
@@ -203,6 +255,7 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
       return;
     }
     this.controllerAttached = true;
+    this.registerHostProxy();
     this.executePendingNavigationCommands();
     this.notifyNavigationState(true);
   }
@@ -364,6 +417,52 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.injectedJavaScript = nextInjectedJavaScript;
   }
 
+  private updateHostEventsEnabled(nextHostEventsEnabled: boolean): void {
+    if (this.hostEventsEnabled === nextHostEventsEnabled) return;
+    if (!nextHostEventsEnabled) {
+      this.unregisterHostProxy();
+    }
+    this.hostEventsEnabled = nextHostEventsEnabled;
+    this.bumpRenderRevision();
+  }
+
+  private registerHostProxy(): void {
+    if (this.destroyed || !this.controllerAttached || !this.hostEventsEnabled || this.hostProxyRegistered) {
+      return;
+    }
+    try {
+      this.controller.registerJavaScriptProxy(this.hostPort, 'raftHostPort', ['postMessage']);
+      this.hostProxyRegistered = true;
+    } catch (_error) {
+      // The proxy is optional for WebViews that do not expose ArkWeb's registration API.  Keep
+      // the flag false so a later controller attachment can retry registration.
+      this.hostProxyRegistered = false;
+    }
+  }
+
+  private unregisterHostProxy(): void {
+    if (!this.hostProxyRegistered) return;
+    try {
+      this.controller.deleteJavaScriptRegister('raftHostPort');
+    } catch (_error) {
+    }
+    this.hostProxyRegistered = false;
+  }
+
+  private isTrustedHostMessageFrame(): boolean {
+    let frameUrl = '';
+    try {
+      frameUrl = normalizeText(this.controller.getLastJavascriptProxyCallingFrameUrl());
+    } catch (_error) {
+      return false;
+    }
+    // ArkWeb exposes the calling frame URL rather than an isMainFrame flag for registered
+    // proxies.  Requiring the current main document URL as well as its HTTP(S) origin rejects
+    // same-origin child frames and stale callbacks from a replaced document.
+    const mainDocumentUrl = this.currentUrl.length > 0 ? this.currentUrl : this.src;
+    return sameHttpOrigin(this.src, frameUrl) && sameDocumentUrl(mainDocumentUrl, frameUrl);
+  }
+
   private updateAllowedNavigationSchemes(nextAllowedNavigationSchemes: string): void {
     const normalized = normalizeNavigationSchemes(nextAllowedNavigationSchemes);
     if (sameStringSet(this.allowedNavigationSchemes, normalized)) {
@@ -487,6 +586,7 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
   }
 
   private bumpRenderRevision(): void {
+    this.unregisterHostProxy();
     this.controllerAttached = false;
     this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
     this.updateArkUI();
@@ -655,6 +755,61 @@ function sameDocumentUrl(left: string, right: string): boolean {
     leftUrl.host === rightUrl.host &&
     leftUrl.pathname === rightUrl.pathname &&
     leftUrl.search === rightUrl.search;
+}
+
+interface SlockHttpOrigin {
+  protocol: string;
+  host: string;
+  port: number;
+}
+
+/** Compare only trusted HTTP(S) origins; paths, queries and fragments are irrelevant. */
+function sameHttpOrigin(left: string, right: string): boolean {
+  const leftOrigin = parseHttpOrigin(left);
+  const rightOrigin = parseHttpOrigin(right);
+  return leftOrigin !== null && rightOrigin !== null &&
+    leftOrigin.protocol === rightOrigin.protocol &&
+    leftOrigin.host === rightOrigin.host &&
+    leftOrigin.port === rightOrigin.port;
+}
+
+function parseHttpOrigin(value: string): SlockHttpOrigin | null {
+  const parsed = parseDocumentUrl(value);
+  if (parsed === null || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    return null;
+  }
+  // Reject credentials and malformed/empty authorities.  ArkWeb's callback URL is expected to
+  // be an ordinary origin; accepting user-info here would make an attacker-controlled authority
+  // ambiguous to compare.
+  if (parsed.host.length === 0 || parsed.host.includes('@')) return null;
+  const defaultPort = parsed.protocol === 'https:' ? 443 : 80;
+  let host = parsed.host;
+  let port = defaultPort;
+  if (host.startsWith('[')) {
+    const closing = host.indexOf(']');
+    if (closing <= 1) return null;
+    const suffix = host.substring(closing + 1);
+    if (suffix.length > 0) {
+      if (!suffix.startsWith(':') || !isDecimalPort(suffix.substring(1))) return null;
+      port = Number(suffix.substring(1));
+    }
+    host = host.substring(0, closing + 1).toLowerCase();
+  } else {
+    const separator = host.lastIndexOf(':');
+    if (separator >= 0) {
+      const portText = host.substring(separator + 1);
+      if (separator === 0 || !isDecimalPort(portText)) return null;
+      port = Number(portText);
+      host = host.substring(0, separator);
+    }
+    host = host.toLowerCase();
+  }
+  if (port < 1 || port > 65535 || host.length === 0) return null;
+  return { protocol: parsed.protocol, host, port };
+}
+
+function isDecimalPort(value: string): boolean {
+  return value.length > 0 && value.length <= 5 && /^\d+$/.test(value);
 }
 
 interface SlockParsedDocumentUrl {

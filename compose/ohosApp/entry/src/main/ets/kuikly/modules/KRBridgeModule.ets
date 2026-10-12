@@ -61,6 +61,12 @@ import {
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
 import { prepareSlockOhosAppLogin } from '../SlockOhosAppLogin';
 import { prepareSlockOhosMobileOAuth } from '../SlockOhosMobileOAuth';
+import {
+  SlockOhosFeedbackDiagnosticsReference,
+  SlockOhosFeedbackDiagnosticsUploader,
+  SlockOhosFeedbackDiagnosticsProgress,
+  SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_MAX_BYTES,
+} from '../SlockOhosFeedbackDiagnosticsUploader';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -189,6 +195,21 @@ interface OhosAttachmentCacheEntry {
   mtime: number;
 }
 
+interface SlockOhosFeedbackDiagnosticsBinding {
+  accountId: string;
+  sessionGeneration: number;
+  webViewGeneration: number;
+}
+
+interface SlockOhosFeedbackDiagnosticsOperation {
+  requestId: string;
+  binding: SlockOhosFeedbackDiagnosticsBinding;
+  uploader: SlockOhosFeedbackDiagnosticsUploader;
+  cancelled: boolean;
+  progressTotal: number;
+  progressSent: number;
+}
+
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
   static readonly SHOW_ALERT = "showAlert";
@@ -239,6 +260,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private privateExportActive: boolean = false;
   private threadImageCompressionOperations: Map<string, SlockThreadImageCompressionOperation> = new Map();
   private threadImageCompressionDestroyed: boolean = false;
+  private feedbackDiagnosticsUploads: Map<string, SlockOhosFeedbackDiagnosticsOperation> = new Map();
+  private feedbackDiagnosticsDestroyed: boolean = false;
 
   syncMode(): boolean {
     return false;
@@ -251,6 +274,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.CLOSE_PAGE: {
+        this.cancelFeedbackDiagnosticsUploads();
         this.closePage();
         break;
       }
@@ -412,6 +436,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   onDestroy(): void {
+    this.feedbackDiagnosticsDestroyed = true;
+    this.cancelFeedbackDiagnosticsUploads();
     this.threadImageCompressionDestroyed = true;
     this.threadImageCompressionOperations.forEach((operation: SlockThreadImageCompressionOperation): void => {
       // Destruction is stronger than an ordinary caller cancellation: even a callback that has
@@ -428,7 +454,244 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private closePage() {
+    this.cancelFeedbackDiagnosticsUploads();
     closeOhosPage(getContext(this) as common.UIAbilityContext);
+  }
+
+  /**
+   * OHOS standalone feedback WebView diagnostics flow.  The archive, client key, presign URL and
+   * file bytes stay native; only monotonic progress and the four-field R2 reference cross the
+   * Kuikly callback.  A replacement binding retires the previous operation before its callback
+   * can deliver a stale terminal event.
+   */
+  private startFeedbackDiagnosticsUpload(
+    records: Record<string, Object>,
+    callback: KuiklyRenderCallback,
+  ): void {
+    const requestId = this.feedbackDiagnosticsString(records['requestId']);
+    const binding = this.feedbackDiagnosticsBinding(records);
+    if (!this.feedbackDiagnosticsDestroyed && this.feedbackDiagnosticsRequestIdIsValid(requestId) && binding !== null) {
+      this.feedbackDiagnosticsUploads.forEach((operation: SlockOhosFeedbackDiagnosticsOperation): void => {
+        this.cancelFeedbackDiagnosticsOperation(operation);
+      });
+      const operation: SlockOhosFeedbackDiagnosticsOperation = {
+        requestId,
+        binding,
+        uploader: new SlockOhosFeedbackDiagnosticsUploader(),
+        cancelled: false,
+        progressTotal: 0,
+        progressSent: 0,
+      };
+      this.feedbackDiagnosticsUploads.set(requestId, operation);
+      this.runFeedbackDiagnosticsUpload(operation, callback).catch((_error: Object): void => {
+        this.failFeedbackDiagnosticsUpload(operation, callback, 'upload_failed');
+      });
+      return;
+    }
+    callback(this.feedbackDiagnosticsEventPayload(
+      requestId,
+      binding ?? { accountId: '', sessionGeneration: -1, webViewGeneration: -1 },
+      'failed',
+      'generate_failed',
+      true,
+    ));
+  }
+
+  private async runFeedbackDiagnosticsUpload(
+    operation: SlockOhosFeedbackDiagnosticsOperation,
+    callback: KuiklyRenderCallback,
+  ): Promise<void> {
+    let uploadAdmitted = false;
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
+      if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
+      const archiveSize = Number(fs.statSync(archivePath).size);
+      if (archiveSize <= 0) {
+        this.failFeedbackDiagnosticsUpload(operation, callback, 'generate_failed');
+        return;
+      }
+      if (archiveSize > SLOCK_OHOS_FEEDBACK_DIAGNOSTICS_MAX_BYTES) {
+        this.failFeedbackDiagnosticsUpload(operation, callback, 'too_large');
+        return;
+      }
+      operation.progressTotal = archiveSize;
+      operation.progressSent = 0;
+      uploadAdmitted = true;
+      const reference = await operation.uploader.upload(
+        archivePath,
+        (progress: SlockOhosFeedbackDiagnosticsProgress): void => {
+          if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
+          if (!this.acceptFeedbackDiagnosticsProgress(operation, progress)) return;
+          callback(this.feedbackDiagnosticsEventPayload(
+            operation.requestId,
+            operation.binding,
+            'progress',
+            '',
+            false,
+            progress.sent,
+            progress.total,
+          ));
+        },
+      );
+      if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
+      if (operation.progressSent !== operation.progressTotal) {
+        this.failFeedbackDiagnosticsUpload(operation, callback, 'upload_failed');
+        return;
+      }
+      callback(this.feedbackDiagnosticsEventPayload(
+        operation.requestId,
+        operation.binding,
+        'done',
+        '',
+        true,
+        undefined,
+        undefined,
+        reference,
+      ));
+    } catch (error) {
+      if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
+      const message = String(error);
+      const reason = message.includes('too large') ? 'too_large' :
+        !uploadAdmitted ? 'generate_failed' : 'upload_failed';
+      this.failFeedbackDiagnosticsUpload(operation, callback, reason);
+    } finally {
+      if (this.feedbackDiagnosticsUploads.get(operation.requestId) === operation) {
+        this.feedbackDiagnosticsUploads.delete(operation.requestId);
+      }
+    }
+  }
+
+  private cancelFeedbackDiagnosticsUpload(
+    records: Record<string, Object>,
+    callback: KuiklyRenderCallback,
+  ): void {
+    const requestId = this.feedbackDiagnosticsString(records['requestId']);
+    const binding = this.feedbackDiagnosticsBinding(records);
+    const operation = requestId.length > 0 ? this.feedbackDiagnosticsUploads.get(requestId) : undefined;
+    const cancelled = operation !== undefined && binding !== null &&
+      this.feedbackDiagnosticsBindingEquals(operation.binding, binding);
+    if (cancelled && operation !== undefined) {
+      this.cancelFeedbackDiagnosticsOperation(operation);
+    }
+    callback({
+      'status': 'ok',
+      'requestId': requestId,
+      'binding': this.feedbackDiagnosticsBindingPayload(binding ?? operation?.binding ?? { accountId: '', sessionGeneration: -1, webViewGeneration: -1 }),
+      'cancelled': cancelled,
+      'terminal': true,
+    });
+  }
+
+  private cancelFeedbackDiagnosticsUploads(): void {
+    this.feedbackDiagnosticsUploads.forEach((operation: SlockOhosFeedbackDiagnosticsOperation): void => {
+      this.cancelFeedbackDiagnosticsOperation(operation);
+    });
+    this.feedbackDiagnosticsUploads.clear();
+  }
+
+  private cancelFeedbackDiagnosticsOperation(operation: SlockOhosFeedbackDiagnosticsOperation): void {
+    operation.cancelled = true;
+    operation.uploader.cancel();
+    if (this.feedbackDiagnosticsUploads.get(operation.requestId) === operation) {
+      this.feedbackDiagnosticsUploads.delete(operation.requestId);
+    }
+  }
+
+  private failFeedbackDiagnosticsUpload(
+    operation: SlockOhosFeedbackDiagnosticsOperation,
+    callback: KuiklyRenderCallback,
+    reason: string,
+  ): void {
+    if (!this.feedbackDiagnosticsOperationIsCurrent(operation)) return;
+    this.feedbackDiagnosticsUploads.delete(operation.requestId);
+    operation.cancelled = true;
+    callback(this.feedbackDiagnosticsEventPayload(operation.requestId, operation.binding, 'failed', reason, true));
+  }
+
+  private feedbackDiagnosticsOperationIsCurrent(operation: SlockOhosFeedbackDiagnosticsOperation): boolean {
+    return !this.feedbackDiagnosticsDestroyed && !operation.cancelled &&
+      this.feedbackDiagnosticsUploads.get(operation.requestId) === operation;
+  }
+
+  private feedbackDiagnosticsString(value: Object | undefined): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private feedbackDiagnosticsRequestIdIsValid(value: string): boolean {
+    return value.length > 0 && value.length <= 128 && /^[A-Za-z0-9._:-]+$/.test(value);
+  }
+
+  private feedbackDiagnosticsBinding(records: Record<string, Object>): SlockOhosFeedbackDiagnosticsBinding | null {
+    const binding: SlockOhosFeedbackDiagnosticsBinding = {
+      accountId: this.feedbackDiagnosticsString(records['accountId']),
+      sessionGeneration: Number(records['sessionGeneration'] ?? -1),
+      webViewGeneration: Number(records['webViewGeneration'] ?? -1),
+    };
+    return binding.accountId.length >= 1 && binding.accountId.length <= 256 &&
+      !/[\u0000\n\r]/.test(binding.accountId) &&
+      Number.isSafeInteger(binding.sessionGeneration) && binding.sessionGeneration >= 0 &&
+      Number.isSafeInteger(binding.webViewGeneration) && binding.webViewGeneration >= 0 ? binding : null;
+  }
+
+  private acceptFeedbackDiagnosticsProgress(
+    operation: SlockOhosFeedbackDiagnosticsOperation,
+    progress: SlockOhosFeedbackDiagnosticsProgress,
+  ): boolean {
+    // Match FeedbackDiagnosticsLifecycle.progress: a fixed archive total and monotonic bounded
+    // bytes are the only progress values allowed across the native callback boundary.
+    if (progress.total !== operation.progressTotal || !Number.isSafeInteger(progress.sent) ||
+      !Number.isSafeInteger(progress.total) || progress.sent < operation.progressSent ||
+      progress.sent < 0 || progress.sent > operation.progressTotal) {
+      return false;
+    }
+    operation.progressSent = progress.sent;
+    return true;
+  }
+
+  private feedbackDiagnosticsBindingEquals(
+    left: SlockOhosFeedbackDiagnosticsBinding,
+    right: SlockOhosFeedbackDiagnosticsBinding,
+  ): boolean {
+    return left.accountId === right.accountId && left.sessionGeneration === right.sessionGeneration &&
+      left.webViewGeneration === right.webViewGeneration;
+  }
+
+  private feedbackDiagnosticsBindingPayload(binding: SlockOhosFeedbackDiagnosticsBinding): Record<string, Object> {
+    return {
+      'accountId': binding.accountId,
+      'sessionGeneration': binding.sessionGeneration,
+      'webViewGeneration': binding.webViewGeneration,
+    };
+  }
+
+  private feedbackDiagnosticsEventPayload(
+    requestId: string,
+    binding: SlockOhosFeedbackDiagnosticsBinding,
+    type: string,
+    reason: string = '',
+    terminal: boolean = false,
+    sent?: number,
+    total?: number,
+    reference?: SlockOhosFeedbackDiagnosticsReference,
+  ): Record<string, Object> {
+    const result: Record<string, Object> = {
+      'status': 'ok',
+      'requestId': requestId,
+      'binding': this.feedbackDiagnosticsBindingPayload(binding),
+      'type': type,
+      'terminal': terminal,
+    };
+    if (reason.length > 0) result['reason'] = reason;
+    if (sent !== undefined) result['sent'] = sent;
+    if (total !== undefined) result['total'] = total;
+    if (reference !== undefined) result['ref'] = {
+      'r2_key': reference.r2_key,
+      'filename': reference.filename,
+      'content_type': reference.content_type,
+      'size': reference.size,
+    };
+    return result;
   }
 
   // TODO open new page
@@ -1536,6 +1799,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
         case "discardFeedbackDraftAttachments": {
           callback(this.discardFeedbackDraftAttachmentsCapability(records));
+          return;
+        }
+        case "feedbackDiagnosticsStart": {
+          this.startFeedbackDiagnosticsUpload(records, callback);
+          return;
+        }
+        case "feedbackDiagnosticsCancel": {
+          this.cancelFeedbackDiagnosticsUpload(records, callback);
           return;
         }
         case "requestNotificationPermission": {

@@ -17,7 +17,8 @@ const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/Sett
   .replaceAll('$sessionGeneration', '3')
   .replaceAll('$webViewGeneration', '4')
   .replaceAll('$accessToken', '"test-token"')
-  .replaceAll('$api', '"https://example.test"');
+  .replaceAll('$api', '"https://example.test"')
+  .replace('${json.encodeToString(slockFeedbackWebViewClientKind())}', '"android"');
 
 for (const [platform, script] of [['android', android], ['ios', ios]]) {
   test(`${platform}: actual host and feedback scripts deliver legacy events without advertising an absent uploader`, () => {
