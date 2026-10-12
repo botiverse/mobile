@@ -17,20 +17,19 @@ internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
 
 /**
  * Same identity rules as the markdown light path: decided on the route's reply-cache provenance.
- * Alpha builds have it on by default (artin, #proj-chat:9d4548c9 f1e2f5ec); release builds follow the
- * server flag. Local Feature Overrides ForceOn/ForceOff still win either way.
+ * The server flag reads ON unless the server explicitly turns it off (client default-on key, artin
+ * 2026-10-12). Local Feature Overrides ForceOn/ForceOff still win either way.
  */
 internal fun resolveThreadReverseLayoutEnabled(
     registry: DiagnosticFeatureFlagOverrideRegistry,
     serverEffective: Boolean,
-    buildType: String?,
     environmentId: String,
     accountId: String,
     serverId: String,
 ): Boolean =
     registry.decide(
         key = MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-        serverEffective = threadReverseLayoutDefault(serverEffective, buildType),
+        serverEffective = serverEffective,
         scope =
             DiagnosticFeatureFlagScope(
                 environmentId = environmentId.trim().trimEnd('/'),
@@ -45,12 +44,6 @@ internal fun resolveThreadReverseLayoutEnabled(
  */
 internal fun threadReverseLayoutEffective(userChoice: Boolean?, followedDefault: () -> Boolean): Boolean =
     userChoice ?: followedDefault()
-
-/** The value the local override falls back to: on in every alpha build, else the server flag. */
-internal fun threadReverseLayoutDefault(serverEffective: Boolean, buildType: String?): Boolean =
-    serverEffective || buildType?.trim().equals(THREAD_REVERSE_LAYOUT_DEFAULT_ON_BUILD_TYPE, ignoreCase = true)
-
-private const val THREAD_REVERSE_LAYOUT_DEFAULT_ON_BUILD_TYPE = "alpha"
 
 /**
  * The thread message list seen in forward (top-to-bottom, oldest-first) terms, whichever way the

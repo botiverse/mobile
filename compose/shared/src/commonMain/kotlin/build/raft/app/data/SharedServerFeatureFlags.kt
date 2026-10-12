@@ -58,9 +58,10 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 
 /**
  * Thread message list laid out bottom-up (`reverseLayout`): the newest row is item 0 and renders
- * at the bottom from the first frame, with no scroll-to-bottom pass. On by default in alpha builds;
- * release builds follow this server flag (default OFF). Local A/B goes through the diagnostics
- * "Local Feature Overrides" ForceOn/ForceOff latch. Decided once per thread open.
+ * at the bottom from the first frame, with no scroll-to-bottom pass. Default ON in every build
+ * (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); the server turns it off with an explicit
+ * decision such as a kill switch. Local A/B goes through the diagnostics "Local Feature Overrides"
+ * ForceOn/ForceOff latch. Decided once per thread open.
  */
 const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread_reverse_layout_v0"
 
@@ -98,8 +99,13 @@ const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_
  */
 // sync_core_messages_v1 joined on 2026-10-11: artin wants offline cache on by default (an offline cold
 // start or a server without the flag row used to read it as off).
+// mobile_thread_reverse_layout_v0 joined on 2026-10-12: artin wants the bottom-up thread list on by default.
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
-    setOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
+    setOf(
+        MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
+        SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+        MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
+    )
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
 private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"

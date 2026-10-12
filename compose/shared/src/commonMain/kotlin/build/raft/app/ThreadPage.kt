@@ -7223,7 +7223,6 @@ private fun SharedThreadRouteContentContent(
                             ServerId(gateInputs.serverId),
                             MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
                         ),
-                    buildType = currentFeatureFlagClientContext().buildType,
                     environmentId = gateInputs.environmentId,
                     accountId = gateInputs.accountId,
                     serverId = gateInputs.serverId
