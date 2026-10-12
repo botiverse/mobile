@@ -182,6 +182,16 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "${VARIANT}" in
+  release|debug) ;;
+  play)
+    die "the Hands publisher cannot publish the Play carrier; retain its signed AAB as a Play artifact instead"
+    ;;
+  *)
+    die "Hands variant must be release or debug"
+    ;;
+esac
+
 VERSION_NAME="$(version_name)"
 VERSION_CODE="$(version_code)"
 GIT_COMMIT="$(git -C "${ROOT_DIR}" rev-parse HEAD)"

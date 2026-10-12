@@ -259,15 +259,21 @@ val googleServicesConfigFiles =
         file("src/debug/google-services.json"),
         file("src/connectedTest/google-services.json"),
         file("src/release/google-services.json"),
+        file("src/play/google-services.json"),
         file("src/alpha/google-services.json")
     )
 
-val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
-    taskName.substringAfterLast(":").contains("release", ignoreCase = true)
+val productionBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.substringAfterLast(":").let { task ->
+        task.contains("release", ignoreCase = true) || task.contains("play", ignoreCase = true)
+    }
 }
-if (releaseBuildRequested && !file("src/release/google-services.json").isFile) {
+if (productionBuildRequested &&
+    (!file("src/release/google-services.json").isFile || !file("src/play/google-services.json").isFile)
+) {
     throw GradleException(
-        "Firebase google-services.json is required for release builds; provide androidApp/src/release/google-services.json"
+        "Firebase google-services.json is required for release and Play builds; provide " +
+            "androidApp/src/release/google-services.json and androidApp/src/play/google-services.json"
     )
 }
 
@@ -623,6 +629,7 @@ android {
         buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "false")
         buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "false")
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
+        buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "true")
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
@@ -672,8 +679,13 @@ android {
                 "proguard-rules.pro"
             )
         }
+        create("play") {
+            initWith(getByName("release"))
+            buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")
+            matchingFallbacks += listOf("release")
+        }
         configureEach {
-            val callbackScheme = if (name == "release") "raft" else "raft-${name.lowercase()}"
+            val callbackScheme = if (name == "release" || name == "play") "raft" else "raft-${name.lowercase()}"
             buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"$callbackScheme\"")
             manifestPlaceholders["oauthCallbackScheme"] = callbackScheme
         }

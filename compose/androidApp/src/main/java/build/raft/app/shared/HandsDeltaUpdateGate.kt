@@ -10,6 +10,17 @@ internal const val HANDS_DELTA_ALPHA_CHANNEL = "alpha-delta"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
 
+internal fun handsApkUpdateDisabledResponse(): Map<String, Any> =
+    mapOf(
+        // The shared bridge parser treats every non-"ok" response as an
+        // error.  This is a successful capability response whose payload
+        // advertises that in-app APK updates are unavailable for Play.
+        "status" to "ok",
+        "code" to "hands_apk_update_disabled",
+        "updateCheckSupported" to false,
+        "updateAvailable" to false,
+    )
+
 internal data class HandsUpdateRoute(
     val mode: String,
     val appSlug: String,

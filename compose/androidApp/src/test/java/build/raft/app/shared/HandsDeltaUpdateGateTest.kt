@@ -23,6 +23,16 @@ import org.junit.Test
 
 class HandsDeltaUpdateGateTest {
     @Test
+    fun playBuildDisablesHandsApkUpdateBridge() {
+        val response = handsApkUpdateDisabledResponse()
+
+        assertEquals("ok", response["status"])
+        assertEquals("hands_apk_update_disabled", response["code"])
+        assertEquals(false, response["updateCheckSupported"])
+        assertEquals(false, response["updateAvailable"])
+    }
+
+    @Test
     fun explicitAppLanguageWinsOverTheSystemLocale() {
         assertEquals("zh-CN", handsUpdateLanguageTag("zh-CN", "en-US"))
         assertEquals("ja", handsUpdateLanguageTag("ja", "zh-CN"))

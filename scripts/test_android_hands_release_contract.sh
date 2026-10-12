@@ -46,6 +46,8 @@ ruby -e '
   raise "release workflow JNI choices drifted" unless jni_input.fetch("options") == %w[current legacy modern]
   android_variant_input = inputs.fetch("android_variant")
   raise "release workflow must expose the Play carrier" unless android_variant_input.fetch("options") == %w[release play debug]
+  upload_input = inputs.fetch("upload_android_artifacts")
+  raise "manual artifact upload must default off" unless upload_input.fetch("default") == false
 
   jobs = workflow.fetch("jobs")
   resolve_job = jobs.fetch("resolve")
@@ -146,6 +148,10 @@ ruby -e '
     raise "immutable checkout loses AAB signing implementation" unless stage_run.include?(path)
   end
   upload_env = release_steps.fetch(upload_index).fetch("env")
+  raise "Hands upload step is not excluded for Play" unless release_steps.fetch(upload_index).fetch("if") == "${{ needs.resolve.outputs.upload_android_artifacts == 'true' && needs.resolve.outputs.android_variant != 'play' }}"
+  artifact_step = release_steps.find { |step| step["name"] == "Upload signed AAB and verification receipt" }
+  raise "signed AAB artifact step is missing" unless artifact_step
+  raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if") == "${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}"
   raise "uploader bypasses signed AAB" unless upload_env.fetch("AAB_PATH") == "${{ steps.sign-aab.outputs.aab_path }}"
   raise "upload pin is not derived from verified AAB" unless upload_env.fetch("UPLOAD_KEY_CERT_SHA256") == "${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}"
   raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)
@@ -184,6 +190,10 @@ ruby -e '
   raise "Hands release manifest must retain the source permission" if File.exist?("compose/androidApp/src/release/AndroidManifest.xml") && File.read("compose/androidApp/src/release/AndroidManifest.xml").include?(%q{tools:node="remove"})
   kuikly_activity = File.read("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt")
   raise "Play carrier does not gate the Hands updater bridge" unless kuikly_activity.include?("BuildConfig.HANDS_APK_UPDATE_ENABLED") && kuikly_activity.include?("handsApkUpdateDisabledResponse()")
+  resolve_outputs = resolve_job.fetch("outputs")
+  raise "release resolver does not expose artifact-upload policy" unless resolve_outputs.key?("upload_android_artifacts")
+  raise "release resolver does not receive artifact-upload input" unless resolve_env.fetch("INPUT_UPLOAD_ANDROID_ARTIFACTS") == "${{ inputs.upload_android_artifacts }}"
+  raise "Play carrier does not require a retained signed AAB" unless resolve_run.include?("Play builds require upload_android_artifacts=true")
   unless android_gradle.include?("providers.gradleProperty(\"raftDexUseLegacyPackaging\")") &&
       android_gradle.include?("providers.gradleProperty(\"raftJniUseLegacyPackaging\")") &&
       android_gradle.match?(/packaging\s*\{.*?dex\s*\{.*?useLegacyPackaging\s*=\s*raftDexUseLegacyPackaging\.orNull/m) &&
@@ -248,6 +258,7 @@ ruby -e '
   end
 
   publish_script = File.read("scripts/publish_android_hands_release.sh")
+  raise "Hands publisher can route the Play carrier" unless publish_script.include?("the Hands publisher cannot publish the Play carrier")
   raise "Hands publisher drops Japanese notes" unless publish_script.include?("--changelog-file \"ja=${SLOCK_RELEASE_CHANGELOG_JA_FILE}\"")
   finalizer = File.read("scripts/finalize_android_hands_release.sh")
   raise "Hands finalizer does not require Japanese notes" unless finalizer.include?("--ja-notes") && finalizer.include?("--changelog-file \"ja=${JA_NOTES}\"")

@@ -303,6 +303,34 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun loadNotificationsSkipsUnsupportedAppUpdateEvenWhenNativeOfferIsPresent() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                appUpdateStatusProvider = {
+                    // Play builds report the capability as unsupported and must
+                    // never turn a stale/erroneous offer into a Home banner.
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = false,
+                            updateAvailable = true,
+                            currentVersionCode = 1_000_000L,
+                            latestVersionCode = 1_000_100L
+                        )
+                    )
+                },
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val result = source.loadNotifications()
+
+        assertEquals(emptyList(), (result as DataResult.Content).data)
+    }
+
+    @Test
     fun appUpdateNotificationUsesNativeActionLabel() = runBlocking {
         val source =
             SharedHomeDataSource(

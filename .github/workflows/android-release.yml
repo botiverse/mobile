@@ -159,12 +159,13 @@ on:
           - nightly
           - debug
       android_variant:
-        description: "Gradle variant: release (default) | debug"
+        description: "Gradle variant: release (Hands, default) | play (Google Play) | debug"
         required: true
         type: choice
         default: "release"
         options:
           - release
+          - play
           - debug
       dex_packaging:
         description: "DEX packaging: current control | compressed | mmap"
@@ -236,6 +237,7 @@ jobs:
       jni_packaging: ${{ steps.p.outputs.jni_packaging }}
       release_mode: ${{ steps.p.outputs.release_mode }}
       create_hands_draft: ${{ steps.p.outputs.create_hands_draft }}
+      upload_android_artifacts: ${{ steps.p.outputs.upload_android_artifacts }}
       create_share_page: ${{ steps.p.outputs.create_share_page }}
       share_ttl_seconds: ${{ steps.p.outputs.share_ttl_seconds }}
     steps:
@@ -248,12 +250,18 @@ jobs:
           INPUT_CREATE_HANDS_DRAFT: ${{ inputs.create_hands_draft }}
           INPUT_DEX_PACKAGING: ${{ inputs.dex_packaging }}
           INPUT_JNI_PACKAGING: ${{ inputs.jni_packaging }}
+          INPUT_ANDROID_VARIANT: ${{ inputs.android_variant }}
+          INPUT_UPLOAD_ANDROID_ARTIFACTS: ${{ inputs.upload_android_artifacts }}
         run: |
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
           [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CREATE_HANDS_DRAFT=true
+            if [ "${INPUT_ANDROID_VARIANT}" = "play" ]; then
+              CREATE_HANDS_DRAFT=false
+            else
+              CREATE_HANDS_DRAFT=true
+            fi
           else
             CREATE_HANDS_DRAFT="${INPUT_CREATE_HANDS_DRAFT}"
           fi
@@ -273,6 +281,11 @@ jobs:
               exit 1
               ;;
           esac
+          UPLOAD_ANDROID_ARTIFACTS="${INPUT_UPLOAD_ANDROID_ARTIFACTS}"
+          if [ "${INPUT_ANDROID_VARIANT}" = "play" ] && [ "${UPLOAD_ANDROID_ARTIFACTS}" != "true" ]; then
+            echo "Play builds require upload_android_artifacts=true so the signed AAB is retained for Play Console." >&2
+            exit 1
+          fi
           {
             echo "version_major=${{ inputs.version_major }}"
             echo "version_minor=${{ inputs.version_minor }}"
@@ -286,6 +299,7 @@ jobs:
             echo "jni_packaging=${JNI_PACKAGING}"
             echo "release_mode=draft"
             echo "create_hands_draft=${CREATE_HANDS_DRAFT}"
+            echo "upload_android_artifacts=${UPLOAD_ANDROID_ARTIFACTS}"
             echo "create_share_page=${{ inputs.create_share_page }}"
             echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
           } >> "$GITHUB_OUTPUT"
@@ -405,16 +419,22 @@ jobs:
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Gradle build (assembleRelease / assembleDebug)
+      - name: Gradle build (assembleRelease / assemblePlay / assembleDebug)
         working-directory: compose
         env:
           SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
         shell: bash
         run: |
+          case "${{ needs.resolve.outputs.android_variant }}" in
+            debug) GRADLE_VARIANT=Debug ;;
+            release) GRADLE_VARIANT=Release ;;
+            play) GRADLE_VARIANT=Play ;;
+            *) echo "Unsupported Android variant: ${{ needs.resolve.outputs.android_variant }}" >&2; exit 1 ;;
+          esac
           GRADLE_ARGS=(
             :shared:generateSqlDelightInterface
-            :androidApp:assemble${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
-            :androidApp:bundle${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
+            ":androidApp:assemble${GRADLE_VARIANT}"
+            ":androidApp:bundle${GRADLE_VARIANT}"
             :androidApp:copyHandsNativeSymbols
             "-PversionX=${{ needs.resolve.outputs.version_major }}"
             "-PversionY=${{ needs.resolve.outputs.version_minor }}"
@@ -601,7 +621,7 @@ jobs:
           echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
 
       - name: Locate AAB
-        if: ${{ inputs.upload_android_artifacts }}
+        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
         id: locate-aab
         shell: bash
         run: |
@@ -612,7 +632,7 @@ jobs:
           echo "aab_path=$AAB" >> "$GITHUB_OUTPUT"
 
       - name: Sign and verify AAB
-        if: ${{ inputs.upload_android_artifacts }}
+        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
         id: sign-aab
         env:
           UPLOAD_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
@@ -636,7 +656,7 @@ jobs:
           echo "upload_key_cert_sha256=$(jq -er .upload_key_cert_sha256 signed-aab/aab-signature.json)" >> "$GITHUB_OUTPUT"
 
       - name: Upload immutable AAB + APK to Hands
-        if: ${{ inputs.upload_android_artifacts }}
+        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' && needs.resolve.outputs.android_variant != 'play' }}
         id: hands-artifacts
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
@@ -658,7 +678,7 @@ jobs:
           awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
 
       - name: Upload signed AAB and verification receipt
-        if: ${{ inputs.upload_android_artifacts }}
+        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}-aab
@@ -723,7 +743,8 @@ jobs:
     needs: [resolve, build_android_release]
     if: |
       github.event_name == 'workflow_dispatch' &&
-      needs.resolve.outputs.create_hands_draft == 'true'
+      needs.resolve.outputs.create_hands_draft == 'true' &&
+      needs.resolve.outputs.android_variant != 'play'
     environment:
       name: production
       # Optional: enforce manual approval for `production` env in repo settings.
