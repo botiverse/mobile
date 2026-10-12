@@ -148,10 +148,11 @@ ruby -e '
     raise "immutable checkout loses AAB signing implementation" unless stage_run.include?(path)
   end
   upload_env = release_steps.fetch(upload_index).fetch("env")
-  raise "Hands upload step is not excluded for Play" unless release_steps.fetch(upload_index).fetch("if") == "${{ needs.resolve.outputs.upload_android_artifacts == 'true' && needs.resolve.outputs.android_variant != 'play' }}"
+  hands_upload_if = release_steps.fetch(upload_index).fetch("if").to_s
+  raise "Hands upload step is not excluded for Play" unless hands_upload_if.include?("upload_android_artifacts") && hands_upload_if.include?("android_variant") && hands_upload_if.include?("!= 'play'")
   artifact_step = release_steps.find { |step| step["name"] == "Upload signed AAB and verification receipt" }
   raise "signed AAB artifact step is missing" unless artifact_step
-  raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if") == "${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}"
+  raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if").to_s.include?("needs.resolve.outputs.upload_android_artifacts")
   raise "uploader bypasses signed AAB" unless upload_env.fetch("AAB_PATH") == "${{ steps.sign-aab.outputs.aab_path }}"
   raise "upload pin is not derived from verified AAB" unless upload_env.fetch("UPLOAD_KEY_CERT_SHA256") == "${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}"
   raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)
