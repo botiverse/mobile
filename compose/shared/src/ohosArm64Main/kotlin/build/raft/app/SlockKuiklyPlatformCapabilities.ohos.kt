@@ -83,6 +83,8 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
 // until it streams (see docs/sdk-parity/ohos.md in the hands repo).
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
+internal actual fun slockFeedbackWebViewClientKind(): String = "ohos"
+
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f
 
 internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 0f

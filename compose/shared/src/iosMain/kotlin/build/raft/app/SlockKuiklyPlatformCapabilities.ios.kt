@@ -99,6 +99,8 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
 // Cross-platform Hands contract is bounded by the OHOS SDK's current 50MB cap.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
+internal actual fun slockFeedbackWebViewClientKind(): String = "ios"
+
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f
 
 /** TabPager releases first-page rightward drags to native full-screen back. */

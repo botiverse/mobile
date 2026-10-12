@@ -1060,7 +1060,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
         (function() { 'use strict';
           var port = window.raftHostPort;
           var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
-          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:'android', clientVersion:'mobile', locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
+          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:${json.encodeToString(slockFeedbackWebViewClientKind())}, clientVersion:'mobile', locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
           Object.defineProperty(window, 'RaftFeedback', {value:{version:'raft-feedback-v1', session:session, emit:function(event, nextBinding){ if (!port) return; try { port.postMessage(JSON.stringify({kind:event,payload:nextBinding || binding})); } catch (_) {} }}, writable:false, configurable:false});
         })();
     """.trimIndent()
