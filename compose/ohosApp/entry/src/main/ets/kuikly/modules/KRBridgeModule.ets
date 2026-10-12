@@ -630,8 +630,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     };
     return binding.accountId.length >= 1 && binding.accountId.length <= 256 &&
       !/[\u0000\n\r]/.test(binding.accountId) &&
-      Number.isSafeInteger(binding.sessionGeneration) && binding.sessionGeneration >= 0 &&
-      Number.isSafeInteger(binding.webViewGeneration) && binding.webViewGeneration >= 0 ? binding : null;
+      Number.isFinite(binding.sessionGeneration) && Math.floor(binding.sessionGeneration) === binding.sessionGeneration &&
+      binding.sessionGeneration >= 0 && Number.isFinite(binding.webViewGeneration) &&
+      Math.floor(binding.webViewGeneration) === binding.webViewGeneration && binding.webViewGeneration >= 0 ? binding : null;
   }
 
   private acceptFeedbackDiagnosticsProgress(
