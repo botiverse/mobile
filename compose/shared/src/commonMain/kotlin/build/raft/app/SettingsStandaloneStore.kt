@@ -36,7 +36,6 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -175,7 +174,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                                         ServerId(serverId),
                                         MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
                                     ),
-                                buildType = currentFeatureFlagClientContext().buildType,
                                 environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
                                 accountId = session.user.id,
                                 serverId = serverId
