@@ -268,7 +268,8 @@ private fun SettingsAccountScreen() {
             // This page is hosted outside the app shell, so the account list must
             // reserve the native navigation bar itself. Without this, the inline
             // logout confirmation row can end under three-button navigation.
-            bottomContentPadding = settingsAccountStandaloneBottomContentPadding(slockBottomSafeAreaPadding()),
+            bottomContentPadding =
+                settingsAccountStandaloneBottomContentPadding(slockBottomSafeAreaPadding()),
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
                     SharedSettingsIntent.ChangeAccountPassword(
