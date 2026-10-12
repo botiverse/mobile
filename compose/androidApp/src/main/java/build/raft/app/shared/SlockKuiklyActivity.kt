@@ -7006,7 +7006,6 @@ internal class SlockKuiklyBridgeModule(
             )
         val operation = FeedbackDiagnosticsUpload(requestId, binding, uploader)
         feedbackDiagnosticsUploads[requestId] = operation
-        monitorFeedbackDiagnosticsAuth(operation)
         val hostActivity = activity as? ComponentActivity
         if (hostActivity == null) {
             cancelFeedbackDiagnosticsOperation(operation)
@@ -7071,6 +7070,7 @@ internal class SlockKuiklyBridgeModule(
                 operation.authMonitorJob?.cancel()
             }
         }
+        monitorFeedbackDiagnosticsAuth(operation)
     }
 
     private fun monitorFeedbackDiagnosticsAuth(operation: FeedbackDiagnosticsUpload) {
