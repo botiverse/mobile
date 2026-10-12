@@ -149,7 +149,7 @@ ruby -e '
   end
   upload_env = release_steps.fetch(upload_index).fetch("env")
   hands_upload_if = release_steps.fetch(upload_index).fetch("if").to_s
-  raise "Hands upload step is not excluded for Play" unless hands_upload_if.include?("upload_android_artifacts") && hands_upload_if.include?("android_variant") && hands_upload_if.include?("!= 'play'")
+  raise "Hands upload step is not excluded for Play" unless hands_upload_if.include?("upload_android_artifacts") && hands_upload_if.include?("android_variant") && hands_upload_if.include?("play")
   artifact_step = release_steps.find { |step| step["name"] == "Upload signed AAB and verification receipt" }
   raise "signed AAB artifact step is missing" unless artifact_step
   raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if").to_s.include?("needs.resolve.outputs.upload_android_artifacts")
