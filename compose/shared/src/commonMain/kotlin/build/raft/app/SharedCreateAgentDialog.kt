@@ -854,6 +854,10 @@ internal fun SharedCreateAgentDialog(
 ) {
     val focusManager = LocalFocusManager.current
     var name by remember(initialName) { mutableStateOf(initialName) }
+    // The name row lives in a LazyColumn, so scrolling it off and back
+    // recomposes it; a plain `autoFocus = true` re-requested focus (and the
+    // keyboard) every time the row came back (#143). Focus it on open only.
+    var nameAutoFocusConsumed by remember { mutableStateOf(false) }
     var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
     var model by remember(runtime, initialModel) { mutableStateOf(initialModel ?: getDefaultModel(runtime)) }
@@ -1416,7 +1420,8 @@ internal fun SharedCreateAgentDialog(
                         onValueChange = { name = it },
                         placeholder = stringResource(MR.strings.agent_create_placeholder_name),
                         enabled = !submitting,
-                        autoFocus = true
+                        autoFocus = !nameAutoFocusConsumed,
+                        onFocusChanged = { focused -> if (focused) nameAutoFocusConsumed = true }
                     )
                 }
                 if (inlineNameError != null) {
