@@ -7026,12 +7026,14 @@ internal class SlockKuiklyBridgeModule(
                 val archive = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
                 val archiveSize = archive.length()
                 if (!feedbackDiagnosticsLifecycle.beginUpload(requestId, binding, archiveSize)) {
-                    if (archiveSize !in 1L..FeedbackDiagnosticsLifecycle.MAX_BYTES) {
-                        feedbackDiagnosticsLifecycle.failed(
-                            requestId,
-                            binding,
-                            FeedbackDiagnosticsFailureReason.TooLarge,
-                        )?.let { event -> callback?.invoke(feedbackDiagnosticsEventPayload(event)) }
+                    val reason =
+                        if (archiveSize > FeedbackDiagnosticsLifecycle.MAX_BYTES) {
+                            FeedbackDiagnosticsFailureReason.TooLarge
+                        } else {
+                            FeedbackDiagnosticsFailureReason.GenerateFailed
+                        }
+                    feedbackDiagnosticsLifecycle.failed(requestId, binding, reason)?.let { event ->
+                        callback?.invoke(feedbackDiagnosticsEventPayload(event))
                     }
                     return@launch
                 }
