@@ -1,5 +1,7 @@
 package build.raft.app
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+
 /** Identity carried by every feedback diagnostics request and event. */
 data class FeedbackDiagnosticsBinding(
     val accountId: String,
@@ -80,16 +82,20 @@ class FeedbackDiagnosticsLifecycle {
         var sent: Long = 0L,
     )
 
+    // Native upload callbacks can arrive from an IO thread while WebView/auth invalidation is
+    // running on the UI thread. Keep the complete admission/terminal transition atomic so a
+    // late progress or done callback cannot race cancellation into a second terminal event.
+    private val lock = SynchronizedObject()
     private var active: ActiveRequest? = null
 
-    fun start(requestId: String, binding: FeedbackDiagnosticsBinding): Boolean {
+    fun start(requestId: String, binding: FeedbackDiagnosticsBinding): Boolean = synchronized(lock) {
         if (!FeedbackDiagnosticsBridge.validRequestId(requestId) || !binding.isValid()) return false
         if (active != null) return false
         active = ActiveRequest(requestId, binding, FeedbackDiagnosticsRequestPhase.Preparing)
         return true
     }
 
-    fun beginUpload(requestId: String, binding: FeedbackDiagnosticsBinding, total: Long): Boolean {
+    fun beginUpload(requestId: String, binding: FeedbackDiagnosticsBinding, total: Long): Boolean = synchronized(lock) {
         val current = active ?: return false
         if (!matches(current, requestId, binding) || total !in 1..MAX_BYTES) return false
         current.phase = FeedbackDiagnosticsRequestPhase.Uploading
@@ -103,7 +109,7 @@ class FeedbackDiagnosticsLifecycle {
         binding: FeedbackDiagnosticsBinding,
         sent: Long,
         total: Long,
-    ): FeedbackDiagnosticsLifecycleEvent.Progress? {
+    ): FeedbackDiagnosticsLifecycleEvent.Progress? = synchronized(lock) {
         val current = active ?: return null
         if (!matches(current, requestId, binding) || current.phase != FeedbackDiagnosticsRequestPhase.Uploading) return null
         if (total != current.total || total !in 1..MAX_BYTES || sent !in current.sent..total) return null
@@ -115,7 +121,7 @@ class FeedbackDiagnosticsLifecycle {
         requestId: String,
         binding: FeedbackDiagnosticsBinding,
         ref: FeedbackDiagnosticsReference,
-    ): FeedbackDiagnosticsLifecycleEvent.Done? {
+    ): FeedbackDiagnosticsLifecycleEvent.Done? = synchronized(lock) {
         val current = active ?: return null
         if (!matches(current, requestId, binding) || current.phase != FeedbackDiagnosticsRequestPhase.Uploading || !ref.isValid()) return null
         current.phase = FeedbackDiagnosticsRequestPhase.Done
@@ -127,7 +133,7 @@ class FeedbackDiagnosticsLifecycle {
         requestId: String,
         binding: FeedbackDiagnosticsBinding,
         reason: FeedbackDiagnosticsFailureReason,
-    ): FeedbackDiagnosticsLifecycleEvent.Failed? {
+    ): FeedbackDiagnosticsLifecycleEvent.Failed? = synchronized(lock) {
         val current = active ?: return null
         if (!matches(current, requestId, binding) || current.phase == FeedbackDiagnosticsRequestPhase.Done || current.phase == FeedbackDiagnosticsRequestPhase.Failed || current.phase == FeedbackDiagnosticsRequestPhase.Cancelled) return null
         current.phase = FeedbackDiagnosticsRequestPhase.Failed
@@ -136,7 +142,7 @@ class FeedbackDiagnosticsLifecycle {
     }
 
     /** Invalidates a request without producing a ticket or a terminal WebView event. */
-    fun cancel(requestId: String, binding: FeedbackDiagnosticsBinding): Boolean {
+    fun cancel(requestId: String, binding: FeedbackDiagnosticsBinding): Boolean = synchronized(lock) {
         val current = active ?: return false
         if (!matches(current, requestId, binding)) return false
         current.phase = FeedbackDiagnosticsRequestPhase.Cancelled
@@ -144,12 +150,12 @@ class FeedbackDiagnosticsLifecycle {
         return true
     }
 
-    fun invalidateBinding(binding: FeedbackDiagnosticsBinding) {
+    fun invalidateBinding(binding: FeedbackDiagnosticsBinding) = synchronized(lock) {
         if (active?.binding == binding) active = null
     }
 
     fun phase(requestId: String, binding: FeedbackDiagnosticsBinding): FeedbackDiagnosticsRequestPhase? =
-        active?.takeIf { matches(it, requestId, binding) }?.phase
+        synchronized(lock) { active?.takeIf { matches(it, requestId, binding) }?.phase }
 
     private fun matches(
         current: ActiveRequest,
