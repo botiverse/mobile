@@ -5351,6 +5351,12 @@ internal class SlockKuiklyBridgeModule(
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
         val request = JSONObject(params ?: "{}")
         val action = request.optString("action")
+        if (!BuildConfig.HANDS_APK_UPDATE_ENABLED &&
+            action in setOf("handsDownloadProgress", "handsUpdateCheck", "handsUpdateStatus", "handsUpdateInstall")
+        ) {
+            callback?.invoke(handsApkUpdateDisabledResponse())
+            return
+        }
         if (action == "handsDownloadProgress") {
             val token = request.optString("token")
             val tracked = handsUpdateDownloads.values.firstOrNull { it.downloadId.toString() == token }
@@ -5995,9 +6001,15 @@ internal class SlockKuiklyBridgeModule(
                 "apiBaseUrl" to current.apiBaseUrl,
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
-                "updateCheckSupported" to true,
-                "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Hands channel ${updateRoute.channel} for a newer Android APK.",
+                "updateCheckSupported" to BuildConfig.HANDS_APK_UPDATE_ENABLED,
+                "updateCheckStatusLabel" to
+                        if (BuildConfig.HANDS_APK_UPDATE_ENABLED) "Ready" else "Disabled",
+                "updateCheckDetail" to
+                        if (BuildConfig.HANDS_APK_UPDATE_ENABLED) {
+                            "Check Hands channel ${updateRoute.channel} for a newer Android APK."
+                        } else {
+                            "Google Play builds update through Google Play and do not install APKs in-app."
+                        },
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
                 // marshal support. OHOS/iOS hosts still send structured
@@ -8697,6 +8709,7 @@ internal class SlockKuiklyBridgeModule(
         private const val HANDS_INSTALL_FAILED = "failed"
 
         internal fun resumePendingHandsAutoInstall(context: Context) {
+            if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) return
             val key = pendingHandsAutoInstallKey ?: return
             val download =
                     handsUpdateDownloads[key]
@@ -8718,6 +8731,7 @@ internal class SlockKuiklyBridgeModule(
                 download: HandsUpdateDownload,
                 source: String
         ): String {
+            if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) return HANDS_INSTALL_FAILED
             if (!canRequestPackageInstalls(context)) {
                 pendingHandsAutoInstallKey = download.key
                 openUnknownAppSourcesSettings(context)

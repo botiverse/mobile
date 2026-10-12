@@ -64,7 +64,7 @@ Options:
   --build <n>             Version build component. Default: 0
   --suffix <value>        Version name suffix, e.g. rc1.
   --channel <slug>        Hands channel. Default: main.
-  --variant <name>        Android variant: release or debug. Default: release.
+  --variant <name>        Hands variant: release or debug. Default: release.
   --dex-packaging <mode>  current, compressed, or mmap. Default: compressed.
   --jni-packaging <mode>  current, legacy, or modern. Default: current.
   --required-pr <number>  Candidate PR included in this release; repeatable.
@@ -301,6 +301,16 @@ esac
 case "${JNI_PACKAGING}" in
   current|legacy|modern) ;;
   *) die "JNI packaging must be current, legacy, or modern" ;;
+esac
+
+case "${VARIANT}" in
+  release|debug) ;;
+  play)
+    die "the Hands release wrapper does not dispatch the Play carrier; use android-release.yml with android_variant=play and upload_android_artifacts=true"
+    ;;
+  *)
+    die "Hands variant must be release or debug"
+    ;;
 esac
 
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
