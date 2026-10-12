@@ -27,7 +27,19 @@ internal data class RuntimeFormV2Choice(
     val attributes: JsonObject = JsonObject(emptyMap()),
     /** `choice.labels`: only ever from FieldCopy.choices, never from the option itself. */
     val description: String? = null
-)
+) {
+    /** `provider.saved_connection`: non-null marks a saved provider connection (value is `connection:<id>`). */
+    val connectionId: String? get() = attributes["connectionId"].stringOrNull()?.takeIf { it.isNotEmpty() }
+
+    /** `provider.saved_connection`: the connection's provider id; visibility rules see it too. */
+    val underlyingProviderId: String? get() = attributes["underlyingProviderId"].stringOrNull()?.takeIf { it.isNotEmpty() }
+
+    /** `provider.saved_connection`: `saved` or `direct`; null when the source does not group. */
+    val group: String? get() = attributes["group"].stringOrNull()
+
+    /** `provider.saved_connection` (edit): the bound connection cannot be selected right now; it blocks the save. */
+    val unavailable: Boolean get() = attributes["unavailable"].booleanValue()
+}
 
 /**
  * Label priority (`choice.labels`): FieldCopy.choices[value].label, else the option's own label,
@@ -89,7 +101,12 @@ internal enum class RuntimeFormV2ErrorCode {
     NotAChoice,
     UnsupportedRequired,
     /** A required field whose option source is unavailable (`option_source.status`): retry, or wait. */
-    SourceUnavailable
+    SourceUnavailable,
+    /**
+     * The selected saved provider connection is marked `unavailable` (`provider.saved_connection`):
+     * the stored binding stays visible but cannot be saved over; pick something else.
+     */
+    ConnectionUnavailable
 }
 
 /** Parses an option-sources response; null when it is not a usable source. */
@@ -181,6 +198,25 @@ private fun selectedOption(
     }
     return null
 }
+
+/**
+ * The selected option of a select field when it is a saved provider connection
+ * (`provider.saved_connection`: Option.connectionId non-empty); null for any other selection or field.
+ */
+internal fun runtimeFormV2SelectedConnection(
+    field: RuntimeFormV2Field,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values
+): RuntimeFormV2Choice? =
+    if (field.kind != RuntimeFormV2FieldKind.Select) null
+    else selectedOption(field.key, sources, values)?.takeIf { it.connectionId != null }
+
+/** True while any field holds a saved-connection selection: connectionOwned fields are then the connection's. */
+internal fun runtimeFormV2ConnectionActive(
+    form: ParsedRuntimeFormV2,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values
+): Boolean = form.fields.any { runtimeFormV2SelectedConnection(it, sources, values) != null }
 
 private fun defaultFor(
     field: RuntimeFormV2Field,
@@ -281,6 +317,13 @@ internal fun applyRuntimeFormV2Change(
             changed += field.key
         }
     }
+    // Moving onto or off a saved-connection selection (`provider.saved_connection`) hands the
+    // connectionOwned fields to the connection or back to the user: their old value must not survive.
+    if (runtimeFormV2ConnectionActive(form, sources, next) != runtimeFormV2ConnectionActive(form, sources, values)) {
+        for (field in form.fields) {
+            if (field.connectionOwned) next[field.key] = defaultFor(field, sources, next)
+        }
+    }
     return next
 }
 
@@ -303,13 +346,27 @@ internal fun runtimeFormV2SourceStatus(field: RuntimeFormV2Field, sources: Runti
 private fun hiddenAsUnavailable(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources?): Boolean =
     !field.required && sources != null && runtimeFormV2SourceStatus(field, sources)?.unavailable == true
 
+/**
+ * The values a visibility rule sees for [key]: the raw one, plus, when it holds a saved-connection
+ * selection (`provider.saved_connection`), the connection's underlying provider id. A gateway
+ * connection keeps the gateway's endpoint fields visible (as disabled managed fields) instead of
+ * hiding them behind the raw `connection:<id>` value.
+ */
+private fun visibilityValuesOf(key: String, values: RuntimeFormV2Values, sources: RuntimeFormV2Sources?): List<String> {
+    val raw = values.text(key)
+    val source = sources?.values?.firstOrNull { it.pointer == "/$key" && it.options != null } ?: return listOf(raw)
+    val underlying = source.options?.firstOrNull { it.value == raw }?.underlyingProviderId
+    return if (underlying != null) listOf(raw, underlying) else listOf(raw)
+}
+
 /** Visibility rules, plus (when [sources] is given) `option_source.status`: an optional field whose source is unavailable is hidden. */
 internal fun isRuntimeFormV2FieldVisible(
     field: RuntimeFormV2Field,
     values: RuntimeFormV2Values,
     sources: RuntimeFormV2Sources? = null
 ): Boolean =
-    !hiddenAsUnavailable(field, sources) && field.visibleWhen.all { rule -> values.text(rule.key) in rule.values }
+    !hiddenAsUnavailable(field, sources) &&
+        field.visibleWhen.all { rule -> visibilityValuesOf(rule.key, values, sources).any { it in rule.values } }
 
 private val textLikeKinds = setOf(
     RuntimeFormV2FieldKind.Text,
@@ -328,10 +385,16 @@ internal fun validateRuntimeFormV2(
     editing: Boolean = false
 ): Map<String, RuntimeFormV2ErrorCode> {
     val errors = linkedMapOf<String, RuntimeFormV2ErrorCode>()
+    val connectionActive = runtimeFormV2ConnectionActive(form, sources, values)
     for (field in form.fields) {
         if (!isRuntimeFormV2FieldVisible(field, values, sources)) continue
         if (field.kind == RuntimeFormV2FieldKind.Unsupported) {
             if (field.required) errors[field.key] = RuntimeFormV2ErrorCode.UnsupportedRequired
+            continue
+        }
+        // A bound-but-unavailable connection stays visible and blocks the save: it is never silently rewritten.
+        if (connectionActive && runtimeFormV2SelectedConnection(field, sources, values)?.unavailable == true) {
+            errors[field.key] = RuntimeFormV2ErrorCode.ConnectionUnavailable
             continue
         }
         if (field.required && runtimeFormV2SourceStatus(field, sources)?.unavailable == true) {
@@ -339,8 +402,9 @@ internal fun validateRuntimeFormV2(
             continue
         }
         val text = values.text(field.key).trim()
-        // On edit a blank secret (writeOnly) field keeps the stored value.
-        val blankAllowed = editing && field.kind == RuntimeFormV2FieldKind.Secret
+        // On edit a blank secret (writeOnly) field keeps the stored value. A field a selected saved
+        // connection owns is not the user's to fill.
+        val blankAllowed = (editing && field.kind == RuntimeFormV2FieldKind.Secret) || (connectionActive && field.connectionOwned)
         if (field.required && !blankAllowed && field.kind in textLikeKinds && text.isEmpty()) {
             errors[field.key] = RuntimeFormV2ErrorCode.Required
             continue
@@ -368,7 +432,8 @@ internal fun validateRuntimeFormV2(
  * The `formValues` body: every visible field, plus the stored value of any
  * field this client could not render so it survives unchanged. An optional
  * field hidden because its source is unavailable keeps its stored value too
- * (edit); on create it has none and is omitted.
+ * (edit); on create it has none and is omitted. Fields a selected saved
+ * connection owns are left out entirely.
  */
 internal fun runtimeFormV2Submission(
     form: ParsedRuntimeFormV2,
@@ -376,12 +441,16 @@ internal fun runtimeFormV2Submission(
     sources: RuntimeFormV2Sources? = null
 ): JsonObject {
     val out = linkedMapOf<String, JsonElement>()
+    val connectionActive = sources != null && runtimeFormV2ConnectionActive(form, sources, values)
     for (field in form.fields) {
+        // Connection-owned fields never enter formValues while a saved connection is selected, not even
+        // as empty strings: the server refuses any value for them on a connection submit.
+        if (connectionActive && field.connectionOwned) continue
         if (hiddenAsUnavailable(field, sources)) {
             form.values?.get(field.key)?.let { out[field.key] = it }
             continue
         }
-        if (field.kind != RuntimeFormV2FieldKind.Unsupported && !isRuntimeFormV2FieldVisible(field, values)) continue
+        if (field.kind != RuntimeFormV2FieldKind.Unsupported && !isRuntimeFormV2FieldVisible(field, values, sources)) continue
         val value = values[field.key] ?: continue
         val text = value.stringOrNull()
         out[field.key] =

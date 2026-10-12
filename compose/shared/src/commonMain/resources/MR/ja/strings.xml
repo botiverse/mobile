@@ -2121,6 +2121,10 @@
     <string name="runtime_form_v2_source_status_machine_offline">この Computer はオフラインです。</string>
     <string name="runtime_form_v2_source_status_unknown">選択肢を読み込めませんでした。</string>
     <string name="runtime_form_v2_saved_refresh">保存しました。最新の設定は再読み込みで確認できます。</string>
+    <string name="runtime_form_v2_saved_providers">保存済みのプロバイダー</string>
+    <string name="runtime_form_v2_direct_providers">直接設定</string>
+    <string name="runtime_form_v2_connection_owned">「%1$s」から提供</string>
+    <string name="runtime_form_v2_saved_provider_unavailable">この保存済みプロバイダーは利用できません。別のプロバイダーを選択してください。</string>
     <string name="thread_followers_title">フォロー中のエージェント</string>
     <string name="thread_followers_count">%1$d エージェントがフォロー中</string>
     <string name="thread_followers_retry">フォロー一覧 · 再試行</string>

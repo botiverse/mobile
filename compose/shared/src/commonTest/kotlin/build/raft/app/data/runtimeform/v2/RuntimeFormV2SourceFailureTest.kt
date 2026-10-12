@@ -25,7 +25,8 @@ class RuntimeFormV2SourceFailureTest {
             machineId: String,
             runtimeId: String,
             sourceId: String,
-            refresh: Boolean
+            refresh: Boolean,
+            formRevision: String?
         ): HomeNetworkResponse = sources.getValue(sourceId)
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")

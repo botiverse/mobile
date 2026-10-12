@@ -51,7 +51,9 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal data class SlockBrutalSelectOption(
     val id: String,
     val label: String,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** A group heading inside the menu: never selectable, drawn muted in regular weight. */
+    val header: Boolean = false
 )
 
 internal fun slockSelectMenuWidth(
@@ -252,7 +254,7 @@ private fun SlockBrutalSelectMenu(
                 items(options.size, key = { idx -> options[idx].id }) { idx ->
                     val option = options[idx]
                     val selected = selectedId == option.id
-                    val rowEnabled = enabled && option.enabled
+                    val rowEnabled = enabled && option.enabled && !option.header
                     Row(
                         modifier =
                             Modifier
@@ -271,7 +273,7 @@ private fun SlockBrutalSelectMenu(
                         }
                         Text(
                             text = option.label,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            style = if (option.header) SlockType.Caption else SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                             color = if (rowEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

@@ -25,8 +25,10 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
+import build.raft.app.data.runtimeform.v2.isFormRevisionStale
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Choices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2SelectedConnection
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
@@ -53,6 +55,9 @@ private const val RUNTIME_FORM_V2_DEFAULT_OPTION_ID = "__runtime_form_v2_default
 
 /** Sentinel select id for "type your own value" (`select.custom_value`). */
 private const val RUNTIME_FORM_V2_CUSTOM_OPTION_ID = "__runtime_form_v2_custom__"
+
+/** Select id prefix for a group heading (`provider.saved_connection`: saved / direct). */
+private const val RUNTIME_FORM_V2_GROUP_OPTION_PREFIX = "__runtime_form_v2_group__"
 
 /**
  * Runtime form v2 renderer shared by create and edit. Every field is drawn by
@@ -87,6 +92,11 @@ internal fun RuntimeFormV2Fields(
     }
     val primary = drawn.filterNot { it.advanced }
     val advanced = drawn.filter { it.advanced }
+    // `provider.saved_connection`: while a field holds a saved connection, the fields it owns are the
+    // connection's: disabled, not required, and (by runtimeFormV2Submission) never submitted.
+    val connection = loaded.form.fields.firstNotNullOfOrNull { runtimeFormV2SelectedConnection(it, loaded.sources, values) }
+    val connectionOwnedHint = stringResource(MR.strings.runtime_form_v2_connection_owned, connection?.label.orEmpty())
+    val managedHint = connectionOwnedHint.takeIf { connection != null }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (loaded.form.blockingFieldKeys.isNotEmpty()) {
@@ -98,7 +108,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh, managedHint) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -113,7 +123,7 @@ internal fun RuntimeFormV2Fields(
             if (advancedOpen || forcedOpen) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh, managedHint) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -122,6 +132,16 @@ internal fun RuntimeFormV2Fields(
         }
     }
 }
+
+/**
+ * Errors to show: those of fields the user touched or the server pointed at, plus an unavailable
+ * saved connection (`provider.saved_connection`), which blocks the save before anything is touched.
+ */
+internal fun runtimeFormV2ShownErrors(
+    errors: Map<String, RuntimeFormV2ErrorCode>,
+    shownKeys: Set<String>
+): Map<String, RuntimeFormV2ErrorCode> =
+    errors.filter { (key, code) -> key in shownKeys || code == RuntimeFormV2ErrorCode.ConnectionUnavailable }
 
 @Composable
 private fun runtimeFormV2ErrorText(
@@ -140,6 +160,7 @@ private fun runtimeFormV2ErrorText(
             RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(MR.strings.runtime_form_v2_update_required)
             // The field's source status line already says why, with its retry.
             RuntimeFormV2ErrorCode.SourceUnavailable -> null
+            RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(MR.strings.runtime_form_v2_saved_provider_unavailable)
             null -> null
         }
     }
@@ -154,9 +175,15 @@ private fun RuntimeFormV2FieldRow(
     editing: Boolean,
     enabled: Boolean,
     sourceRefresh: RuntimeFormV2SourceRefresh?,
+    managedHint: String?,
     clearFocus: () -> Unit
 ) {
     val current = values.text(field.key)
+    // Owned by the selected saved connection: shown disabled with "Provided by …" instead of its own hint.
+    val connectionOwned = managedHint != null && field.connectionOwned
+    val fieldEnabled = enabled && !connectionOwned
+    val required = field.required && !connectionOwned
+    val hint = if (connectionOwned) managedHint else field.hint
     when (field.kind) {
         RuntimeFormV2FieldKind.Text, RuntimeFormV2FieldKind.Url ->
             SlockBrutalTextField(
@@ -164,10 +191,10 @@ private fun RuntimeFormV2FieldRow(
                 value = current,
                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
                 placeholder = field.placeholder.orEmpty(),
-                required = field.required,
-                hint = field.hint,
+                required = required,
+                hint = hint,
                 error = error,
-                enabled = enabled
+                enabled = fieldEnabled
             )
         RuntimeFormV2FieldKind.Secret -> {
             // Masked input keeps its own TextFieldValue so the editing token survives recomposition.
@@ -181,10 +208,10 @@ private fun RuntimeFormV2FieldRow(
                     onChange(field.key, JsonPrimitive(it.text))
                 },
                 placeholder = field.placeholder.orEmpty(),
-                required = field.required && !editing,
-                hint = if (editing) stringResource(MR.strings.runtime_form_v2_secret_keep_hint) else field.hint,
+                required = required && !editing,
+                hint = if (editing && !connectionOwned) stringResource(MR.strings.runtime_form_v2_secret_keep_hint) else hint,
                 error = error,
-                enabled = enabled,
+                enabled = fieldEnabled,
                 password = true
             )
         }
@@ -197,11 +224,11 @@ private fun RuntimeFormV2FieldRow(
                 SlockCheckbox(
                     checked = values[field.key].booleanValue(),
                     onCheckedChange = { onChange(field.key, JsonPrimitive(it)) },
-                    enabled = enabled
+                    enabled = fieldEnabled
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(field.label, style = SlockType.Caption, color = SlockColor.TextBlack)
-                    field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                    hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
                     error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
                 }
             }
@@ -221,11 +248,11 @@ private fun RuntimeFormV2FieldRow(
                         next.forEach { (key, value) -> key.trim().takeIf { it.isNotEmpty() }?.let { map[it] = JsonPrimitive(value) } }
                         onChange(field.key, JsonObject(map))
                     },
-                    enabled = enabled,
+                    enabled = fieldEnabled,
                     label = field.label,
-                    required = field.required
+                    required = required
                 )
-                field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
                 error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
             }
         }
@@ -239,14 +266,18 @@ private fun RuntimeFormV2FieldRow(
                         value = current,
                         onValueChange = { onChange(field.key, JsonPrimitive(it)) },
                         placeholder = field.placeholder.orEmpty(),
-                        required = field.required,
-                        hint = field.hint,
+                        required = required,
+                        hint = hint,
                         error = error,
-                        enabled = enabled
+                        enabled = fieldEnabled
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(MR.strings.runtime_form_v2_option_default)
                     val customLabel = stringResource(MR.strings.agent_create_label_custom)
+                    val savedGroupLabel = stringResource(MR.strings.runtime_form_v2_saved_providers)
+                    val directGroupLabel = stringResource(MR.strings.runtime_form_v2_direct_providers)
+                    // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
+                    val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
                     // `select.custom_value`: a combobox. "Custom" switches to a text field; a stored value
                     // the list does not offer (typed earlier) opens in that mode, never as not-a-choice.
@@ -255,7 +286,17 @@ private fun RuntimeFormV2FieldRow(
                     if (choices.allowCustom && unlisted && !customMode) customMode = true
                     val options = buildList {
                         if (choices.allowEmpty) add(SlockBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
-                        choices.options.forEach { add(SlockBrutalSelectOption(it.value, it.label)) }
+                        var lastGroup: String? = null
+                        choices.options.forEach { option ->
+                            val group = option.group
+                            if (grouped && group != null && group != lastGroup) {
+                                val heading = if (group == "saved") savedGroupLabel else directGroupLabel
+                                add(SlockBrutalSelectOption("$RUNTIME_FORM_V2_GROUP_OPTION_PREFIX$group", heading, header = true))
+                            }
+                            lastGroup = group
+                            // A bound connection that is unavailable stays visible but cannot be picked again.
+                            add(SlockBrutalSelectOption(option.value, option.label, enabled = !option.unavailable))
+                        }
                         if (choices.allowCustom) {
                             add(SlockBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
                         } else if (unlisted) {
@@ -280,9 +321,9 @@ private fun RuntimeFormV2FieldRow(
                         if (refreshableSource != null && sourceRefresh != null) {
                             CreateAgentSectionLabelWithAction(
                                 label = field.label,
-                                required = field.required,
+                                required = required,
                                 actionIcon = SlockLucideIconName.RefreshCw,
-                                actionEnabled = enabled && refreshableSource !in sourceRefresh.refreshing,
+                                actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
                                 loading = refreshableSource in sourceRefresh.refreshing,
                                 onAction = {
                                     clearFocus()
@@ -290,14 +331,14 @@ private fun RuntimeFormV2FieldRow(
                                 }
                             )
                         } else {
-                            SlockBrutalSectionLabel(label = field.label, required = field.required)
+                            SlockBrutalSectionLabel(label = field.label, required = required)
                         }
                         SlockBrutalSelectField(
                             options = options,
                             selectedId = selectedId,
                             selectedLabel = options.firstOrNull { it.id == selectedId }?.label.orEmpty(),
                             placeholder = field.placeholder ?: field.label,
-                            enabled = enabled,
+                            enabled = fieldEnabled,
                             rowHeight = 36.dp,
                             onSelect = { option ->
                                 clearFocus()
@@ -318,14 +359,14 @@ private fun RuntimeFormV2FieldRow(
                                 value = current,
                                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
                                 placeholder = field.placeholder.orEmpty(),
-                                enabled = enabled
+                                enabled = fieldEnabled
                             )
                         }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
                         choices.options.firstOrNull { it.value == current }?.description?.let {
                             Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
                         }
-                        field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
                         sourceStatus?.let { status ->
                             RuntimeFormV2SourceStatusLine(
                                 status = status,
@@ -405,12 +446,15 @@ internal data class RuntimeFormV2SourceRefresh(
  * Holds re-probed sources as overrides on top of [loaded], so a refresh never replaces the
  * loaded form (dialogs key their values on it). Returns the form to render/validate/submit with
  * and the refresh wiring; the wiring is null when there is nothing to refresh against.
+ * [onFormStale]: the server answered `form_revision_stale` (`provider.saved_connection`); the
+ * caller reloads the whole form, as options are never merged into a stale one.
  */
 @Composable
 internal fun rememberRuntimeFormV2SourceRefresh(
     access: RuntimeFormV2Access?,
     machineId: String?,
     loaded: RuntimeFormV2Loaded?,
+    onFormStale: () -> Unit,
     onSourceReloaded: (updated: RuntimeFormV2Loaded, sourceId: String) -> Unit
 ): Pair<RuntimeFormV2Loaded?, RuntimeFormV2SourceRefresh?> {
     var overrides by remember(loaded) { mutableStateOf(emptyMap<String, RuntimeFormV2Source>()) }
@@ -425,14 +469,20 @@ internal fun rememberRuntimeFormV2SourceRefresh(
                 refreshing = refreshing + sourceId
                 failed = failed - sourceId
                 scope.launch {
-                    when (val result = access.loader.reloadSource(access.serverId, machineId, loaded.form.runtimeId, sourceId)) {
-                        is DataResult.Content -> {
+                    val result = access.loader.reloadSource(
+                        access.serverId,
+                        machineId,
+                        loaded.form.runtimeId,
+                        sourceId,
+                        loaded.form.revision
+                    )
+                    when {
+                        result is DataResult.Content -> {
                             overrides = overrides + (sourceId to result.data)
                             onSourceReloaded(loaded.copy(sources = loaded.sources + overrides), sourceId)
                         }
-                        is DataResult.Empty,
-                        is DataResult.Error,
-                        is DataResult.NoPermission -> failed = failed + sourceId
+                        result.isFormRevisionStale() -> onFormStale()
+                        else -> failed = failed + sourceId
                     }
                     refreshing = refreshing - sourceId
                 }

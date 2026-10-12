@@ -51,7 +51,7 @@ class RuntimeFormV2SourceStatusTest {
     @Test
     fun aFallbackListIsUsableAndSubmittable() {
         val values = initialRuntimeFormV2Values(codex, fallback)
-        assertEquals("gpt-6-astra", values.text("model"))
+        assertEquals("gpt-6.1-sol", values.text("model"))
         assertEquals(emptyMap(), validateRuntimeFormV2(codex, fallback, values))
     }
 

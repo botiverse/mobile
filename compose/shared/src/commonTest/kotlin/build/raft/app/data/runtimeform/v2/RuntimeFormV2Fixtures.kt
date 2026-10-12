@@ -1390,7 +1390,7 @@ internal const val CODEX_V2_LIVE_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/codex.option-source.fallback.json, sha256 0d77d6a3e7b0b1709a190e33177a1563d5f5f5b94ac622a0f61f08e78b50ef43 */
+/** fixtures/codex.option-source.fallback.json, sha256 1c3ed2ce1633ff77c36d9a06eab53ad6634b8b2576c871f3e3f305ae80f78829 */
 internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "codex",
@@ -1399,6 +1399,19 @@ internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
   "kind": "select",
   "pointer": "/model",
   "options": [
+    {
+      "value": "gpt-6.1-sol",
+      "label": "GPT-6.1 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "low"
+    },
     {
       "value": "gpt-6-astra",
       "label": "GPT-6-Astra",
@@ -1411,6 +1424,31 @@ internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
         "ultra"
       ],
       "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "gpt-6-sol",
+      "label": "GPT-6 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-6-luna",
+      "label": "GPT-6 Luna",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "defaultReasoningEffort": "medium"
     },
     {
       "value": "gpt-5.6-sol",
@@ -1551,7 +1589,7 @@ internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
       ]
     }
   ],
-  "defaultValue": "gpt-6-astra",
+  "defaultValue": "gpt-6.1-sol",
   "customValueAllowed": true,
   "status": "fallback",
   "reason": "missing_config",
@@ -2119,7 +2157,7 @@ internal const val CLAUDE_V2_PROVIDER_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/claude.option-source.fallback.json, sha256 e3f17dfd0209fe41e82a7bdcf06cdbd867901397b293da96a61d11004f0c8f07 */
+/** fixtures/claude.option-source.fallback.json, sha256 4315ca68a1451f09851f7950984bd10d8b4504fb62a1df8604e5197f303dcc2a */
 internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "claude",
@@ -2261,6 +2299,16 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
     {
       "value": "claude-sonnet-4-6",
       "label": "Claude Sonnet 4.6",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-haiku-5-5",
+      "label": "Claude Haiku 5.5",
       "supportedReasoningEfforts": [
         "low",
         "medium",
