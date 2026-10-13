@@ -191,7 +191,9 @@ import build.raft.app.data.SlockSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
+import build.raft.app.data.HomeRowRestoredHint
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeConversationRow
@@ -18742,6 +18744,7 @@ private fun rememberProjectedDirectMessageItems(
     draftPersistSlice: SharedThreadComposerDraftPersistSlice?,
 ): List<SlockHomeConversationItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
+    val restoredRowHints = (state.content as? SharedHomeContentState.Content)?.displayRowHints().orEmpty()
     val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
         .collectAsState(emptySet())
     val draftProjection =
@@ -18769,10 +18772,11 @@ private fun rememberProjectedDirectMessageItems(
         }
     val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
     val conversationRowProjector =
-        remember(conversationDirectoryProjections, draftProjection) {
+        remember(conversationDirectoryProjections, draftProjection, restoredRowHints) {
             SharedHomeConversationRowProjector(
                 directoryProjections = conversationDirectoryProjections,
-                draftProjection = draftProjection
+                draftProjection = draftProjection,
+                restoredRowHints = restoredRowHints
             )
         }
     return remember(snapshot?.directMessages, conversationRowProjector) {
@@ -19057,11 +19061,13 @@ private fun SharedHomeScreen(
                         ?: EmptyConversationDirectoryProjectionFlow
                 }
             val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
+            val restoredRowHints = current.displayRowHints()
             val conversationRowProjector =
-                remember(conversationDirectoryProjections, draftProjection) {
+                remember(conversationDirectoryProjections, draftProjection, restoredRowHints) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
-                        draftProjection = draftProjection
+                        draftProjection = draftProjection,
+                        restoredRowHints = restoredRowHints
                     )
                 }
             val servers =
@@ -23230,10 +23236,17 @@ internal data class SharedHomeConversationRowSeed(
 
 internal data class SharedHomeConversationRowProjector(
     val directoryProjections: Map<String, SharedConversationDirectoryProjection> = emptyMap(),
-    val draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty
+    val draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
+    /** task #166: cold-start hints from [SharedHomeContentState.Content.displayRowHints]. */
+    val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap()
 ) {
     fun project(conversation: HomeConversationRow): SlockHomeConversationItem =
-        project(conversation.toSharedHomeConversationRowSeed())
+        project(
+            conversation.toSharedHomeConversationRowSeed().withRestoredHint(
+                // A known count (read prediction, realtime) is newer than anything restored.
+                restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
+            )
+        )
 
     fun project(seed: SharedHomeConversationRowSeed): SlockHomeConversationItem =
         seed.toSharedHomeConversationItem(
@@ -23303,6 +23316,17 @@ internal fun HomeServerDrawerState.toSlockHomeServerDrawerHostedSections(
                 section.content?.snapshot?.let { it.channels.isNotEmpty() || it.directMessages.isNotEmpty() } == true
         )
     }
+
+internal fun SharedHomeConversationRowSeed.withRestoredHint(hint: HomeRowRestoredHint?): SharedHomeConversationRowSeed {
+    if (hint == null) return this
+    val usePreview = lastMessagePreview.isNullOrBlank() && !hint.lastMessagePreview.isNullOrBlank()
+    return copy(
+        unreadCount = if (unreadCount > 0) unreadCount else hint.unreadCount.coerceAtLeast(0),
+        lastMessagePreview = if (usePreview) hint.lastMessagePreview else lastMessagePreview,
+        lastMessageAt = if (usePreview) hint.lastMessageAt ?: lastMessageAt else lastMessageAt,
+        lastMessageSenderName = if (usePreview) hint.lastMessageSenderName else lastMessageSenderName
+    )
+}
 
 private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
     SharedHomeConversationRowSeed(
