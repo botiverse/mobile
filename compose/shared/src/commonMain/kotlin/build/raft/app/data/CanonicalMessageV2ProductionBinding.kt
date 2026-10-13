@@ -367,13 +367,20 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     log(partition, channelId, "flag_revoked")
                     return@withScopeWriter
                 }
-                val outcome = when (generationEngine.applySnapshot(frame, expectedGeneration)) {
-                    CanonicalMessageV2CommitResult.Committed -> "committed facts=${frame.envelopes.size}"
-                    CanonicalMessageV2CommitResult.PartitionRevoked -> "partition_revoked"
-                    CanonicalMessageV2CommitResult.ScopeEvicted -> "scope_evicted"
-                    is CanonicalMessageV2CommitResult.BaselineRequired -> "baseline_required"
+                try {
+                    val outcome = when (generationEngine.applySnapshot(frame, expectedGeneration)) {
+                        CanonicalMessageV2CommitResult.Committed -> "committed facts=${frame.envelopes.size}"
+                        CanonicalMessageV2CommitResult.PartitionRevoked -> "partition_revoked"
+                        CanonicalMessageV2CommitResult.ScopeEvicted -> "scope_evicted"
+                        is CanonicalMessageV2CommitResult.BaselineRequired -> "baseline_required"
+                    }
+                    log(partition, channelId, outcome)
+                } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
+                    // A stale/cross-scope durable row must never escape the background enter job.
+                    // The page already has its network-backed content; leave the durable window
+                    // untouched and fail closed until a later clean baseline can be written.
+                    log(partition, channelId, "poisoned fact=${poisoned.factId.orEmpty()}")
                 }
-                log(partition, channelId, outcome)
             }
         } finally {
             inFlightMutex.withLock { inFlight.remove(key) }
