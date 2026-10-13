@@ -745,13 +745,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private fun isAllowedMainDocumentUrl(url: String): Boolean {
         if (src.isBlank() && url == ABOUT_BLANK_URL) return true
         if (url == loadedSrc) return true
-        val allowed = allowedUri ?: return false
-        val target = runCatching { Uri.parse(url) }.getOrNull() ?: return false
-        return target.scheme == allowed.scheme &&
-            target.host == allowed.host &&
-            target.port == allowed.port &&
-            target.path == allowed.path &&
-            target.encodedQuery == allowed.encodedQuery
+        return isExactMainDocumentUrl(allowedUri, url)
     }
 
     private fun notifyLoadFailure(reason: String) {
@@ -995,6 +989,17 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 this == EVENT_NAVIGATION_STATE_CHANGE ||
                 this == EVENT_HOST_MESSAGE
     }
+}
+
+/** Exact scheme/authority/path/query comparison used after same-origin history updates. */
+internal fun isExactMainDocumentUrl(allowed: Uri?, targetUrl: String): Boolean {
+    if (allowed == null) return false
+    val target = runCatching { Uri.parse(targetUrl) }.getOrNull() ?: return false
+    return target.scheme == allowed.scheme &&
+        target.host == allowed.host &&
+        target.port == allowed.port &&
+        target.path == allowed.path &&
+        target.encodedQuery == allowed.encodedQuery
 }
 
 internal fun documentStartScriptOriginRule(targetUrl: String): String? =
