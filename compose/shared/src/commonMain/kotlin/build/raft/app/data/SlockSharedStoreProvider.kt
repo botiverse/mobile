@@ -414,6 +414,15 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
+    // task #166: display-only last-known unread counts and previews for the cached cold-start
+    // Home. Declared first so every later initializer that builds the Home store sees it.
+    private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
+    private val homeRowHintPersistSlice =
+        createSharedHomeRowHintPersistSlice(
+            storage = homeRowHintPersistStorage,
+            diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_row_hints"),
+            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints")
+        )
     private val selectedServerStores = SlockShellScopedStoreCache<SelectedServerStore>()
     private val selectedServerSelectionEpochStore =
         KeyValueSelectedServerSelectionEpochStore(sharedPreferenceStore)
@@ -630,6 +639,9 @@ internal class SlockSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     ProcessAttachmentAuthScopes.retireAccount()
                     homeSavedStateCache.clear()
+                    // Cached previews are message content: they leave with the session. Losing a
+                    // successor's hints to a late terminal event only costs one cold-start hint.
+                    homeRowHintPersistStorage.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -1309,7 +1321,8 @@ internal class SlockSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
-                persistSlices = listOf(homeIdentityPersistSlice),
+                // Identity first: the hint slice attaches to the durable content it restores.
+                persistSlices = listOf(homeIdentityPersistSlice, homeRowHintPersistSlice),
                 conversationIdentityPublicationSink = publication@{ publication ->
                     // Capture the authority in the same synchronous turn as the Home state that
                     // produced this candidate. Looking it up later in a launched coroutine could

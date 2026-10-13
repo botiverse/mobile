@@ -155,7 +155,7 @@ private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessag
         activityNotificationPreference = ChannelActivityNotificationPreference.Unsupported
     )
 
-private fun SharedHomeContentState.homeSessionOrNull(): StoredAuthSession? =
+internal fun SharedHomeContentState.homeSessionOrNull(): StoredAuthSession? =
     when (this) {
         is SharedHomeContentState.Content -> session
         is SharedHomeContentState.Empty -> session
@@ -163,7 +163,7 @@ private fun SharedHomeContentState.homeSessionOrNull(): StoredAuthSession? =
         is SharedHomeContentState.Error -> session
     }
 
-private fun SharedHomeContentState.homeServerIdOrNull(): ServerId? =
+internal fun SharedHomeContentState.homeServerIdOrNull(): ServerId? =
     when (this) {
         is SharedHomeContentState.Content -> snapshot.server.id
         is SharedHomeContentState.Empty -> session.currentServerId?.let(::ServerId)

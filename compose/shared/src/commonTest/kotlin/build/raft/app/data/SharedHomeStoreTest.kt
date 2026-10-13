@@ -1205,6 +1205,128 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun coldStartShowsLastKnownUnreadAndPreviewHintsUntilNetworkHomeArrives() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val lastSession =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            unreadCount = 9,
+                            unreadCountKnown = true,
+                            lastMessagePreview = "ship it",
+                            lastMessageAt = "2026-10-12T08:00:00Z",
+                            lastMessageSenderName = "Ada"
+                        ),
+                        channel("channel-2", "random").copy(unreadCountKnown = true)
+                    ),
+                unreadTotal = 9,
+                unreadSource = AppBadgeSource.SERVER_UNREAD_SUMMARY
+            )
+        fun slices() =
+            listOf(
+                createSharedHomeIdentityPersistSlice(storage = SharedPreferencePersistStorage(storage)),
+                createSharedHomeRowHintPersistSlice(storage = HomeRowHintPersistStorage(storage))
+            )
+        SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(lastSession),
+            scope = scope,
+            persistSlices = slices()
+        ).accept(SharedHomeIntent.Start)
+
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = BlockingHomeApi()
+        val coldStore =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                persistSlices = slices()
+            )
+        val blockedLoad = api.blockNextChannels()
+        val loadJob = launch { coldStore.accept(SharedHomeIntent.Start) }
+        blockedLoad.awaitStarted()
+
+        val cached = coldStore.state.value.content
+        assertTrue(cached is SharedHomeContentState.Content)
+        assertEquals(
+            mapOf(
+                "channel-1" to
+                    HomeRowRestoredHint(
+                        unreadCount = 9,
+                        lastMessagePreview = "ship it",
+                        lastMessageAt = "2026-10-12T08:00:00Z",
+                        lastMessageSenderName = "Ada"
+                    )
+            ),
+            cached.displayRowHints(),
+            "only rows with something to show are restored"
+        )
+        // The rows themselves stay unknown, so the badge sum, realtime increments and sidebar
+        // mark-read cannot act on the restored number.
+        assertEquals(0, cached.snapshot.channels.first().unreadCount)
+        assertEquals(false, cached.snapshot.channels.first().unreadCountKnown)
+        assertEquals(0, coldStore.state.value.appBadgeCount.count)
+
+        blockedLoad.release()
+        loadJob.join()
+
+        val fresh = coldStore.state.value.content
+        assertTrue(fresh is SharedHomeContentState.Content)
+        assertEquals(emptyMap(), fresh.displayRowHints(), "network Home replaces the restored hints")
+        scope.cancel()
+    }
+
+    @Test
+    fun rowHintsAreRestoredOnlyForTheAccountThatWroteThem() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val home = sampleHome(ServerId("server-1")).copy(channels = listOf(channel("channel-1", "general")))
+        SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            persistSlices =
+                listOf(createSharedHomeIdentityPersistSlice(storage = SharedPreferencePersistStorage(storage)))
+        ).accept(SharedHomeIntent.Start)
+
+        suspend fun restoredHintsWrittenBy(memberId: String): Map<String, HomeRowRestoredHint> {
+            storage.putString(
+                storage.hintKeyFor(sampleSession().user.id, "server-1"),
+                """{"version":1,"snapshot":{"serverId":"server-1","memberId":"$memberId",""" +
+                    """"hints":{"channel-1":{"unreadCount":4,"lastMessagePreview":"hello"}}}}"""
+            )
+            val coldStore =
+                SharedHomeStore(
+                    authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    dataSource = sourceWithSnapshot(home),
+                    scope = scope,
+                    persistSlices =
+                        listOf(
+                            createSharedHomeIdentityPersistSlice(storage = SharedPreferencePersistStorage(storage)),
+                            createSharedHomeRowHintPersistSlice(storage = HomeRowHintPersistStorage(storage))
+                        )
+                )
+            assertTrue(coldStore.hydrateCachedHome(ServerId("server-1")))
+            val cached = coldStore.state.value.content
+            assertTrue(cached is SharedHomeContentState.Content)
+            return cached.displayRowHints()
+        }
+
+        assertEquals(
+            mapOf("channel-1" to HomeRowRestoredHint(unreadCount = 4, lastMessagePreview = "hello")),
+            restoredHintsWrittenBy(home.currentMember.id.value)
+        )
+        assertEquals(emptyMap(), restoredHintsWrittenBy("someone-else"))
+        scope.cancel()
+    }
+
+    private fun InMemorySlockKeyValueStore.hintKeyFor(userId: String, serverId: String): String =
+        "mvi:persist:home:hints:v1:user:$userId:server:$serverId"
+
+    @Test
     fun hydrateCachedHomeDoesNotStartNetworkLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storage = InMemorySlockKeyValueStore()

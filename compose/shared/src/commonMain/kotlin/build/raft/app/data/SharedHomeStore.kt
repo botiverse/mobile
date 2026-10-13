@@ -4445,7 +4445,13 @@ sealed interface SharedHomeContentState {
         /** Durable identity cache restored before the first authoritative Home request. */
         val isDurableIdentityCache: Boolean = false,
         /** True until the first network-backed Home refresh is admitted. */
-        val needsNetworkRefresh: Boolean = isDurableIdentityCache
+        val needsNetworkRefresh: Boolean = isDurableIdentityCache,
+        /**
+         * Display-only last-known unread counts and previews keyed by thread id, restored with the
+         * durable identity cache (task #166). Never fed into rows, badges or read state; see
+         * [displayRowHints].
+         */
+        val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap()
     ) : SharedHomeContentState
 }
 
