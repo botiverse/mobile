@@ -8974,7 +8974,7 @@ internal class SharedThreadStore(
         // that the initial route load performs — so reply summaries stay stale
         // until the next full route reload (task #317).
         var mergedNewArrivals = false
-        // Read from this recovery's state when it ends: a resume that coalesced into it may have set it.
+        // Copied from this recovery's state while it is live: a resume that coalesced into it may have set it.
         var backfillRequested = false
         try {
             while (true) {
@@ -9016,6 +9016,9 @@ internal class SharedThreadStore(
                         realtimeGapRecoveryState
                             ?.takeIf { state -> state.id == recoveryId }
                             ?: return@withLock
+                    // Read before any branch below clears the state (an empty or final page ends the
+                    // recovery here, not in `finally`); a resume that coalesced mid-fetch set it on this state.
+                    if (recovery.backfillAfterRecovery) backfillRequested = true
                     val currentPayload = _state.value.payload
                     if (
                         !staleTokenStillCurrent(
@@ -9181,7 +9184,7 @@ internal class SharedThreadStore(
         } finally {
             realtimeGapRecoveryMutex.withLock {
                 val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
-                backfillRequested = active?.backfillAfterRecovery == true
+                if (active?.backfillAfterRecovery == true) backfillRequested = true
                 if (active != null) {
                     realtimeGapRecoveryState = null
                     val currentPayload = _state.value.payload
