@@ -17,9 +17,7 @@ import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -33,12 +31,19 @@ import kotlin.test.assertTrue
  * Task #168 step 2b: a channel opened offline pages OLDER through the durable V2 window. While the
  * stand-in is shown, an older page is read from disk first; the network is asked only when the
  * window has nothing older. Every positive has a twin that differs in one fact.
+ *
+ * Every store here runs on the test's own `runBlocking` event loop (`coroutineContext + job`), the
+ * single-threaded confinement production gets from `viewModelScope` (Main). An `Unconfined` store
+ * scope resumes the store's `delay`s and its launched jobs (refresh, access resolution) on the
+ * `DefaultExecutor` thread, so they mutate the store state concurrently with the test thread's
+ * own `accept(...)` calls: a lost update that only shows on a slow machine.
  */
 class SharedThreadStoreDurableOlderPagingTest {
     @Test
     fun offlineStandInPagesOlderFromDiskUntilTheStoredOldest() = runBlocking {
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val reader = FakeReader(frame(count = 120, hasLoadedOldest = true))
         val store = SharedThreadStore(dataSource(api, reader, logs = logs), scope = scope)
@@ -65,14 +70,15 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertEquals(1, api.channelMessageCalls, "no older page went to the network")
         assertEquals(3, logs.count { "thread_durable_older_page" in it && "served=30" in it }, logs.toString())
         assertTrue(logs.any { "served=30 reason=reached_oldest" in it }, logs.toString())
-        scope.cancel()
+        scopeJob.cancelAndJoin()
     }
 
     @Test
     fun windowNotReachingTheChannelStartKeepsPagingOpenForTheNetwork() = runBlocking {
         // Twin of the test above: identical 120 facts, but the cursor says older history exists.
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val store =
             SharedThreadStore(dataSource(api, FakeReader(frame(count = 120, hasLoadedOldest = false)), logs = logs), scope = scope)
@@ -91,12 +97,13 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertTrue(failed.canLoadMoreBefore, "the retry row stays available")
         assertEquals(120, failed.messages.size)
         assertTrue(logs.any { "served=0 reason=exhausted" in it }, logs.toString())
-        scope.cancel()
+        scopeJob.cancelAndJoin()
     }
 
     @Test
     fun standInOfAWholeWindowThatReachesTheStartHasPagingClosed() = runBlocking {
-        val closedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val closedScopeJob = SupervisorJob()
+        val closedScope = CoroutineScope(coroutineContext + closedScopeJob)
         val closed =
             SharedThreadStore(
                 dataSource(SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), FakeReader(frame(count = 30, hasLoadedOldest = true))),
@@ -105,10 +112,11 @@ class SharedThreadStoreDurableOlderPagingTest {
         closed.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(30, closed.state.value.payload.messages.size)
         assertFalse(closed.state.value.payload.canLoadMoreBefore)
-        closedScope.cancel()
+        closedScopeJob.cancelAndJoin()
 
         // Twin: the same 30 facts, but the window does not reach the start.
-        val openScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val openScopeJob = SupervisorJob()
+        val openScope = CoroutineScope(coroutineContext + openScopeJob)
         val open =
             SharedThreadStore(
                 dataSource(SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), FakeReader(frame(count = 30, hasLoadedOldest = false))),
@@ -116,14 +124,15 @@ class SharedThreadStoreDurableOlderPagingTest {
             )
         open.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(open.state.value.payload.canLoadMoreBefore)
-        openScope.cancel()
+        openScopeJob.cancelAndJoin()
     }
 
     @Test
     fun onlineFrameLoadsOlderFromTheNetworkAndNeverReadsTheWindow() = runBlocking {
         // Twin of the offline walk: same 120-fact window, but the network answers, so the frame is
         // no longer the stand-in when the user pages older.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi()
         val reader = FakeReader(frame(count = 120, hasLoadedOldest = true))
         val store = SharedThreadStore(dataSource(api, reader), scope = scope)
@@ -136,13 +145,13 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertEquals(1, api.beforeSeqs.size, "older page went to the network")
         assertEquals(readsBefore, reader.reads.size, "the durable window was not read")
         assertTrue(store.state.value.payload.messages.any { it.body == "older body" })
-        scope.cancel()
+        scopeJob.cancelAndJoin()
     }
 
     @Test
     fun onlineRefreshReplacesTheStandInIncludingItsDiskPages() = runBlocking {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(coroutineContext + scopeJob)
         val loadingStateApplied = CompletableDeferred<Unit>()
         val releaseRefresh = CompletableDeferred<Unit>()
         val store =
@@ -176,7 +185,8 @@ class SharedThreadStoreDurableOlderPagingTest {
     @Test
     fun anotherOwnerNeverPagesTheStandInFromDisk() = runBlocking {
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val reader = FakeReader(frame(count = 120, hasLoadedOldest = true))
         var identity = ownerA
@@ -191,7 +201,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertEquals(readsBefore, reader.reads.size, "no durable read for another owner")
         assertTrue(store.state.value.payload.messages.none { it.body == "body 90" })
         assertTrue(logs.any { "thread_durable_older_page" in it && "reason=owner_changed" in it }, logs.toString())
-        scope.cancel()
+        scopeJob.cancelAndJoin()
     }
 
     @Test

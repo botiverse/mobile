@@ -17,9 +17,8 @@ import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -67,7 +66,9 @@ class SharedThreadDurableOlderPagingRoundTripTest {
                 isEnabledForServer = { true },
             ).loadOnEnter(partition, "channel-1") { true }
 
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            // Same single-threaded confinement as production (see SharedThreadStoreDurableOlderPagingTest).
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(coroutineContext + scopeJob)
             val store = SharedThreadStore(dataSource = dataSource, scope = scope)
             store.accept(SharedThreadIntent.Start(basePayload()))
             val standIn = store.state.value.payload
@@ -94,7 +95,7 @@ class SharedThreadDurableOlderPagingRoundTripTest {
             assertEquals((1..70).map { "hello m$it" }, last.messages.map { it.body })
             assertFalse(last.canLoadMoreBefore)
             assertEquals(2, api.channelMessageCalls)
-            scope.cancel()
+            scopeJob.cancelAndJoin()
         }
     }
 
