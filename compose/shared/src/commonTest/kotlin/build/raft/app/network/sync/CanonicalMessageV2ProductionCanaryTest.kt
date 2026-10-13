@@ -134,12 +134,13 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun reconnectSnapshotsBeforeTheNextFrameInsteadOfAppendingAcrossTheGap() = runBlocking {
         val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
         fixture.accept(fixture.input("m1", 1L))
         fixture.accept(fixture.input("m2", 2L))
         assertEquals(1, fixture.store.incrementalCalls)
 
-        // m3 is delivered while the socket is down and never reaches the writer.
-        fixture.canary.markRealtimeDiscontinuity(partition)
+        // m3 is delivered while the socket is down and never reaches the writer; the socket comes back as epoch 2.
+        fixture.canary.noteTransportEpoch(partition, 2L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(2, fixture.loaderCalls, "the first frame after a reconnect must re-snapshot")
@@ -154,8 +155,11 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun withoutAReconnectTheNextFrameStaysIncremental() = runBlocking {
         val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
         fixture.accept(fixture.input("m1", 1L))
         fixture.accept(fixture.input("m2", 2L))
+        // A repeated or late signal for the same or an older epoch is not a reconnect.
+        fixture.canary.noteTransportEpoch(partition, 1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(1, fixture.loaderCalls)
@@ -179,9 +183,10 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aFailedSnapshotAfterReconnectKeepsTheMarkAndNeverFallsBackToAppending() = runBlocking {
         val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
         fixture.accept(fixture.input("m1", 1L))
         fixture.accept(fixture.input("m2", 2L))
-        fixture.canary.markRealtimeDiscontinuity(partition)
+        fixture.canary.noteTransportEpoch(partition, 2L)
 
         fixture.loaderFailure = "offline"
         assertIs<CanonicalMessageV2CanaryOutcome.Held>(fixture.accept(fixture.input("m4", 4L)))
@@ -196,11 +201,12 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aReconnectOnAnotherServerOrAccountDoesNotTouchThisWindow() = runBlocking {
         val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
         fixture.accept(fixture.input("m1", 1L))
         fixture.accept(fixture.input("m2", 2L))
 
-        fixture.canary.markRealtimeDiscontinuity(partition.copy(serverId = "server-2"))
-        fixture.canary.markRealtimeDiscontinuity(partition.copy(principalId = "principal-2"))
+        fixture.canary.noteTransportEpoch(partition.copy(serverId = "server-2"), 2L)
+        fixture.canary.noteTransportEpoch(partition.copy(principalId = "principal-2"), 2L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(1, fixture.loaderCalls)

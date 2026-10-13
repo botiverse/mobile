@@ -215,10 +215,9 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 
     /**
-     * The realtime transport for [partition] reconnected (task #167): frames missed while it was down
-     * never reached this writer, so the selected scope must not append its next frame to the old window.
+     * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch].
      */
-    suspend fun markRealtimeDiscontinuity(partition: DurablePartitionKey) {
+    suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
         // Not implemented yet: test-first commit.
     }
 
