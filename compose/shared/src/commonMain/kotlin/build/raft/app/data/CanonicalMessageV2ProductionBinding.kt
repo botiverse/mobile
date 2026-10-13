@@ -36,6 +36,9 @@ internal fun interface CanonicalMessageV2OwnerGateway {
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
     ): CanonicalMessageV2CanaryOutcome
+
+    /** Task #167: the transport behind [grant] (re)connected as [transportEpoch]; callers check the grant is current. */
+    suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {}
 }
 
 internal class ProviderBackedCanonicalMessageV2OwnerGateway(
@@ -56,6 +59,10 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
             foldInput = foldInput,
             snapshotLoader = CanonicalMessageV2SnapshotLoader { request -> loadSnapshot(grant, request) },
         )
+    }
+
+    override suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {
+        canary.noteTransportEpoch(grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID), transportEpoch)
     }
 
     private suspend fun loadSnapshot(

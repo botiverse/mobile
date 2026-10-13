@@ -53,7 +53,23 @@ private data class CanonicalMessageV2CanaryScopeState(
     var initialized: Boolean = false,
     var mode: CanonicalMessageV2CanaryMode = CanonicalMessageV2CanaryMode.Activating,
     var cursor: PersistedCursor? = null,
-)
+    /**
+     * Task #167: the realtime transport epoch this scope last committed under. Frames delivered while the
+     * socket was down never reach the writer, so a frame from a different epoch must not be appended to
+     * this window; it re-snapshots first. Null until the first commit.
+     */
+    var committedTransportEpoch: Long? = null,
+    /** A window restored from disk has no known epoch: frames may have been missed while the process was dead. */
+    var restoredWithoutEpoch: Boolean = false,
+) {
+    fun appendsContinuously(currentTransportEpoch: Long?): Boolean =
+        !restoredWithoutEpoch && committedTransportEpoch == currentTransportEpoch
+
+    fun committedUnder(currentTransportEpoch: Long?) {
+        committedTransportEpoch = currentTransportEpoch
+        restoredWithoutEpoch = false
+    }
+}
 
 /**
  * One-product-flag, one-scope production canary.
@@ -77,6 +93,7 @@ internal class CanonicalMessageV2ProductionCanary(
     private val selectedScopeByPartition = mutableMapOf<DurablePartitionKey, SyncScopeKey>()
     private val scopeMutexByKey = mutableMapOf<SyncScopeKey, MutexEntry>()
     private val stateByScope = mutableMapOf<SyncScopeKey, CanonicalMessageV2CanaryScopeState>()
+    private val currentTransportEpochByPartition = mutableMapOf<DurablePartitionKey, Long>()
 
     init {
         generationEngine.addPartitionRevocationObserver(::onPartitionRevoked)
@@ -142,6 +159,8 @@ internal class CanonicalMessageV2ProductionCanary(
                     }
                     state.initialized = true
                     state.cursor = restored.cursor
+                    // A window that survived a process restart may have missed frames meanwhile.
+                    state.restoredWithoutEpoch = restored.cursor != null
                     state.mode =
                         if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
                         else CanonicalMessageV2CanaryMode.SoleApply
@@ -149,7 +168,13 @@ internal class CanonicalMessageV2ProductionCanary(
                 state.cursor = generationEngine.currentCursor(scope)
                 if (state.cursor == null) state.mode = CanonicalMessageV2CanaryMode.Activating
 
-                if (foldInput.kind == CanonicalMessageFoldKind.New && state.cursor != null) {
+                // Read the epoch inside this scope's writer, at commit time, not when the frame arrived.
+                val transportEpoch = currentTransportEpoch(scope.partition)
+                if (
+                    foldInput.kind == CanonicalMessageFoldKind.New &&
+                    state.cursor != null &&
+                    state.appendsContinuously(transportEpoch)
+                ) {
                     val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
                     if (envelope != null) {
                         val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
@@ -161,6 +186,7 @@ internal class CanonicalMessageV2ProductionCanary(
                         ) {
                             CanonicalMessageV2CommitResult.Committed -> {
                                 state.cursor = cursor
+                                state.committedUnder(transportEpoch)
                                 state.mode = CanonicalMessageV2CanaryMode.SoleApply
                                 logger(
                                     "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
@@ -215,6 +241,21 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 
     /**
+     * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch]. Posted by
+     * the native host before any frame of the new socket. Recorded per partition; every scope compares it
+     * with the epoch it last committed under, inside its own writer.
+     */
+    suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
+        if (transportEpoch <= 0L) return
+        // Any different value is a new connection: a rebuilt native transport restarts its numbering, so
+        // "only larger" would miss real reconnects. A late old signal costs at most one extra snapshot.
+        selectionMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
+    }
+
+    private suspend fun currentTransportEpoch(partition: DurablePartitionKey): Long? =
+        selectionMutex.withLock { currentTransportEpochByPartition[partition] }
+
+    /**
      * Read-only view for writers outside the canary (task #1124 enter-snapshot): whether [scope] is
      * the scope this canary currently owns for its partition. Never selects, never widens.
      */
@@ -237,6 +278,9 @@ internal class CanonicalMessageV2ProductionCanary(
         partitionGeneration: Long,
     ): CanonicalMessageV2CanaryOutcome {
         state.mode = CanonicalMessageV2CanaryMode.Activating
+        // The snapshot is only known to be continuous with the connection that was current when it was
+        // requested. If the transport reconnects while it loads, the next frame must snapshot again.
+        val epochAtRequest = currentTransportEpoch(scope.partition)
         return when (val loaded = snapshotLoader.load(CanonicalMessageV2SnapshotRequest(scope, targetFactId))) {
             is CanonicalMessageV2SnapshotLoadResult.Unavailable -> {
                 generationEngine.rebaselineFailed(scope)
@@ -263,6 +307,7 @@ internal class CanonicalMessageV2ProductionCanary(
                     ) {
                         CanonicalMessageV2CommitResult.Committed -> {
                             state.cursor = frame.cursor
+                            state.committedUnder(epochAtRequest)
                             state.mode = CanonicalMessageV2CanaryMode.SoleApply
                             logger(
                                 "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
@@ -318,6 +363,7 @@ internal class CanonicalMessageV2ProductionCanary(
     private suspend fun onPartitionRevoked(partition: DurablePartitionKey) {
         selectionMutex.withLock {
             selectedScopeByPartition.remove(partition)
+            currentTransportEpochByPartition.remove(partition)
             stateByScope.keys.removeAll { it.partition == partition }
         }
     }

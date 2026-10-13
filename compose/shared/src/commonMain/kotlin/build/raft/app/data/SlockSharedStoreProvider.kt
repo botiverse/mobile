@@ -503,6 +503,11 @@ internal class SlockSharedStoreProvider private constructor(
         grant: RealtimeGrantRecord,
         transportEpoch: Long
     ) {
+        // Task #167: the durable message window must not append the new socket's frames after the old
+        // tail. Only a current grant may move the epoch, so a late signal from a retired identity is ignored.
+        realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+            realtimeDomainEventOwner.noteTransportEpoch(grant, transportEpoch)
+        }
         var rebaselineResult: ProcessPresenceTransportRebaselineResult? = null
         var rebaselineOwner: ProcessServerMembersOwner? = null
         val admitted =
@@ -2689,6 +2694,11 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installCanonicalMessageV2OwnerGateway(gateway: CanonicalMessageV2OwnerGateway) {
         canonicalMessageV2OwnerGateway = gateway
+    }
+
+    /** Task #167: forwards a new realtime transport epoch to the durable message canary. Caller checks the grant. */
+    suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {
+        canonicalMessageV2OwnerGateway?.noteTransportEpoch(grant, transportEpoch)
     }
 
     // task #136 (agent-status SSOT): agent presence facts must reach the
