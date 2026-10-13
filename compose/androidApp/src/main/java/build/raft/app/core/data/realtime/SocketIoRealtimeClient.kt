@@ -67,6 +67,7 @@ class SocketIoRealtimeClient(
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
+    private val connectedListeners = mutableSetOf<(RealtimeSocketConnectionContext) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
@@ -241,6 +242,15 @@ class SocketIoRealtimeClient(
         return RealtimeSubscription { transport.linearize { rawListeners -= listener } }
     }
 
+    /**
+     * Task #167: called on the transport's linearized thread each time a socket connects, before any frame of
+     * that socket is dispatched, so a consumer can mark the start of a new connection.
+     */
+    fun observeConnected(listener: (context: RealtimeSocketConnectionContext) -> Unit): RealtimeSubscription {
+        transport.linearize { connectedListeners += listener }
+        return RealtimeSubscription { transport.linearize { connectedListeners -= listener } }
+    }
+
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { capturedContext, _ ->
@@ -248,6 +258,7 @@ class SocketIoRealtimeClient(
             markInbound()
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
+            connectedListeners.toList().forEach { it(capturedContext) }
             diagnostics?.onConnected(capturedContext.serverId)
             logger(
                 "client_connected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +

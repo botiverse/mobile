@@ -43,6 +43,7 @@ export interface SlockOhosRealtimeSharedIngress {
 }
 
 class SlockOhosRealtimeRuntime {
+  private static nextPresenceTransportEpoch: number = 0;
   // Task #154: picked per connect (Settings switch, else mobile_curl_socketio_v0); see selectSocket().
   private socketIo: OhosRealtimeSocket = new OhosSocketIoClient();
   private socketIoIsCurl: boolean = false;
@@ -243,6 +244,7 @@ class SlockOhosRealtimeRuntime {
         this.connectInFlight = false;
         this.startHeartbeatWatchdog(capturedGeneration);
         console.info(`[SlockOhosRealtime] socket_io_connected serverId=${this.serverId} generation=${capturedGeneration}`);
+        this.postPresenceTransportConnected();
         this.rejoinChannels('connect');
       },
       onDisconnected: (reason: string) => {
@@ -307,6 +309,27 @@ class SlockOhosRealtimeRuntime {
       authorityConnectionFamilyId: params.authorityConnectionFamilyId,
       eventName: decision.eventName,
       rawPayload: decision.rawPayload,
+    });
+  }
+
+  // Task #167: same signal iOS and Android post, before any frame of the new socket, so shared consumers (the
+  // durable message canary, agent-activity seq) know a new connection started.
+  private postPresenceTransportConnected(): void {
+    const params = this.connectParams;
+    if (params === undefined || params.authorityScopeLeaseId.length === 0) {
+      return;
+    }
+    SlockOhosRealtimeRuntime.nextPresenceTransportEpoch += 1;
+    const epoch = SlockOhosRealtimeRuntime.nextPresenceTransportEpoch;
+    console.info(`[SlockOhosRealtime] presence_transport_connected serverId=${this.serverId} presenceEpoch=${epoch}`);
+    this.notify({
+      action: 'presenceTransportConnected',
+      serverId: params.serverId,
+      authorityScopeLeaseId: params.authorityScopeLeaseId,
+      authorityPrincipalId: params.authorityPrincipalId,
+      authorityAuthGeneration: params.authorityAuthGeneration,
+      authorityConnectionFamilyId: params.authorityConnectionFamilyId,
+      presenceTransportEpoch: epoch,
     });
   }
 
