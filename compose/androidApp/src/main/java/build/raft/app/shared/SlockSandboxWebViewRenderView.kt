@@ -849,6 +849,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             val listener = object : WebViewCompat.WebMessageListener {
                 override fun onPostMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
                     if (!isMainFrame || sourceOrigin.toString() != originRule) return
+                    // The origin allowlist is necessary but insufficient for fenced feedback:
+                    // same-origin history routes must not retain access to the native bridge.
+                    val activeUrl = view.url.orEmpty()
+                    if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
                     val raw = message.data ?: return
                     hostMessageCallback?.invoke(mapOf("message" to raw))
                 }

@@ -207,6 +207,8 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     NSInteger actualPort = origin.port > 0 ? origin.port : defaultPort;
     if (![origin.protocol.lowercaseString isEqualToString:scheme] ||
         ![origin.host.lowercaseString isEqualToString:expectedURL.host.lowercaseString] || actualPort != expectedPort) return;
+    NSURL *activeURL = self.webView.URL;
+    if (!self.allowNavigation && ![self isAllowedMainDocumentURL:activeURL]) return;
     if (![message.body isKindOfClass:NSString.class]) return;
     self.hostMessageCallback(@{ @"message" : message.body });
 }

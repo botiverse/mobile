@@ -109,9 +109,11 @@ test('feedback bootstrap does not materialize a session on an untrusted path', (
 
 test('native hosts fence auth script and runtime updates to trusted documents', () => {
   assert.match(androidNative, /!allowNavigation && !isAllowedMainDocumentUrl\(activeUrl\)/);
+  assert.match(androidNative, /same-origin history routes must not retain access to the native bridge/);
   assert.match(androidNative, /allowedNavigationSchemes\.isNotEmpty\(\) && \(!allowNavigation/);
   assert.match(iosNative, /forMainFrameOnly:!self\.allowNavigation/);
   assert.match(iosNative, /isSameOriginURL:activeURL/);
+  assert.match(iosNative, /!self\.allowNavigation && !\[self isAllowedMainDocumentURL:activeURL\]/);
   assert.match(iosNative, /evaluateJavaScript:script completionHandler:nil/);
   assert.match(ohosNative, /window\.top!==window\.self/);
   assert.match(ohosNative, /this\.controller\.runJavaScript\(script\)/);
