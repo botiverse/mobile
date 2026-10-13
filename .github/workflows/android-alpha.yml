@@ -32,7 +32,12 @@ permissions:
 jobs:
   build_alpha:
     name: Build .alpha APK
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'build-alpha')
+    # Fork pull requests never receive repository secrets (signing keystores below), so only
+    # same-repository PRs may build; forks would only fail noisily once the repo is public.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (contains(github.event.pull_request.labels.*.name, 'build-alpha')
+          && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 30
     steps:
