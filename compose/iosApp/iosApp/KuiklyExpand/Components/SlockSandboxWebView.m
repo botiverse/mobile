@@ -433,7 +433,14 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 }
 
 - (void)updateAllowNavigation:(BOOL)allowNavigation {
+    if (self.allowNavigation == allowNavigation) {
+        return;
+    }
     self.allowNavigation = allowNavigation;
+    // The auth user-script's main-frame scope is selected from this policy at configuration
+    // time. Rebuild when the policy changes so a previously broad script cannot survive into a
+    // fenced feedback document.
+    [self rebuildWebView];
 }
 
 - (void)updateDomStorageEnabled:(BOOL)domStorageEnabled {
