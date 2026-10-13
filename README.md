@@ -27,9 +27,9 @@ the license.
 
 ## Contributions
 
-- External pull requests are not accepted at this time. How the source is
-  published and whether contributions open up will be documented here when
-  decided.
+- External pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+  for the process, the Developer Certificate of Origin sign-off and the
+  license terms for contributions.
 - Security issues: see [SECURITY.md](SECURITY.md). Please do not file them
   publicly.
 
