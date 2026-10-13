@@ -330,7 +330,7 @@ class RealtimeRepositoryTest {
             )
         val repository = SessionRealtimeRepository(
             store = store,
-            client = SocketIoRealtimeClient(transport),
+            client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi = authApi,
@@ -364,7 +364,7 @@ class RealtimeRepositoryTest {
             )
         val repository = SessionRealtimeRepository(
             store = store,
-            client = SocketIoRealtimeClient(transport),
+            client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi = authApi,
@@ -391,7 +391,7 @@ class RealtimeRepositoryTest {
         val authApi = FakeAuthApi()
         val repository = SessionRealtimeRepository(
             store = store,
-            client = SocketIoRealtimeClient(transport),
+            client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi = authApi,
@@ -428,7 +428,7 @@ class RealtimeRepositoryTest {
                 )
             )
         val authApi = FakeAuthApi(responses = listOf(AuthRefreshResponse("rotated-access", "rotated-refresh")))
-        val client = SocketIoRealtimeClient(transport)
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
         SessionRealtimeRepository(
             store = store,
             client = client,
@@ -462,7 +462,7 @@ class RealtimeRepositoryTest {
         val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))
         val repository = SessionRealtimeRepository(
             store = store,
-            client = SocketIoRealtimeClient(transport),
+            client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi = FakeAuthApi(refreshFailure = CancellationException("cancelled")),
@@ -497,7 +497,7 @@ class RealtimeRepositoryTest {
             )
         val repository = SessionRealtimeRepository(
             store = store,
-            client = SocketIoRealtimeClient(transport),
+            client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi = FakeAuthApi(refreshFailureCode = 401),
@@ -1262,7 +1262,7 @@ class RealtimeRepositoryTest {
     @Test
     fun authRefreshUpdatesCapturedServerWhilePreservingConnectionWitness() {
         val transport = LinearizedGenerationFakeTransport()
-        val client = SocketIoRealtimeClient(transport)
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
         val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
         client.setAuthRefreshProvider { _, _ ->
             RealtimeAuth(token = "token-B", serverId = ServerId("server-B"))
@@ -1290,7 +1290,7 @@ class RealtimeRepositoryTest {
     @Test
     fun retainedConnectErrorCannotRefreshSuccessorConnection() {
         val transport = LinearizedGenerationFakeTransport()
-        val client = SocketIoRealtimeClient(transport)
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
         val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
         val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
         var refreshCalls = 0
@@ -1318,7 +1318,7 @@ class RealtimeRepositoryTest {
     @Test
     fun retainedSameServerConnectErrorCannotRefreshSuccessorAttempt() {
         val transport = LinearizedGenerationFakeTransport()
-        val client = SocketIoRealtimeClient(transport)
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
         val witness = realtimeConnectRequest(serverId = "server-A", familyId = "family-A").witness
         val requestA =
             RealtimeConnectRequest(
@@ -1353,9 +1353,99 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun socketAuthRefreshInFlightDoesNotBlockReconnectPolicyChanges() {
+        // Ticket 9222ba03: onResume's setReconnectAllowed waited on the transport lock while the
+        // socket thread held it through a network token refresh, and the app hit an ANR.
+        val transport = LinearizedGenerationFakeTransport()
+        val refresh = BlockingAuthRefresh()
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = refresh.runner)
+        client.setAuthRefreshProvider { _, _ ->
+            refresh.block()
+            RealtimeAuth(token = "token-refreshed", serverId = ServerId("server-A"))
+        }
+        client.connect(realtimeConnectRequest(serverId = "server-A", familyId = "family-A"))
+        val connectionA = transport.captureCurrent()
+
+        val socketThread = Thread {
+            transport.deliverRetained(connectionA, RealtimeSocketEvents.ConnectError, "invalid token")
+        }.apply { start() }
+        assertTrue(refresh.entered.await(5, TimeUnit.SECONDS))
+
+        val policyChanged = CountDownLatch(1)
+        Thread {
+            client.setReconnectAllowed(false)
+            policyChanged.countDown()
+        }.start()
+        val returnedWhileRefreshing = policyChanged.await(2, TimeUnit.SECONDS)
+
+        refresh.release()
+        socketThread.join(5_000)
+        assertTrue(refresh.finished.await(5, TimeUnit.SECONDS))
+        assertTrue(returnedWhileRefreshing)
+        assertTrue(policyChanged.await(5, TimeUnit.SECONDS))
+        assertEquals(1, transport.connectCount)
+        assertEquals("token-family-A", transport.lastAuth["token"])
+        assertEquals(RealtimeConnectionState.Disconnected, client.state)
+    }
+
+    @Test
+    fun socketAuthRefreshFinishingAfterAConnectionSwapIsDropped() {
+        val transport = LinearizedGenerationFakeTransport()
+        val refresh = BlockingAuthRefresh()
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = refresh.runner)
+        client.setAuthRefreshProvider { _, _ ->
+            refresh.block()
+            RealtimeAuth(token = "token-stale-refresh", serverId = ServerId("server-A"))
+        }
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+        client.connect(realtimeConnectRequest(serverId = "server-A", familyId = "family-A"))
+        val connectionA = transport.captureCurrent()
+
+        Thread {
+            transport.deliverRetained(connectionA, RealtimeSocketEvents.ConnectError, "invalid token")
+        }.start()
+        assertTrue(refresh.entered.await(5, TimeUnit.SECONDS))
+        val swapped = CountDownLatch(1)
+        Thread {
+            client.connect(requestB)
+            swapped.countDown()
+        }.start()
+        val swappedWhileRefreshing = swapped.await(2, TimeUnit.SECONDS)
+        refresh.release()
+        assertTrue(refresh.finished.await(5, TimeUnit.SECONDS))
+
+        assertTrue(swappedWhileRefreshing)
+        assertEquals(requestB.toContext(), transport.currentContext())
+        assertEquals("token-family-B", transport.lastAuth["token"])
+        assertEquals(2, transport.connectCount)
+    }
+
+    @Test
+    fun socketAuthRefreshOffTheSocketThreadStillReconnectsWithTheNewToken() {
+        val transport = LinearizedGenerationFakeTransport()
+        val refresh = BlockingAuthRefresh()
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = refresh.runner)
+        client.setAuthRefreshProvider { _, _ ->
+            refresh.block()
+            RealtimeAuth(token = "token-refreshed", serverId = ServerId("server-A"))
+        }
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        client.connect(requestA)
+        val connectionA = transport.captureCurrent()
+
+        assertTrue(transport.deliverRetained(connectionA, RealtimeSocketEvents.ConnectError, "invalid token"))
+        refresh.release()
+        assertTrue(refresh.finished.await(5, TimeUnit.SECONDS))
+
+        assertEquals(2, transport.connectCount)
+        assertEquals("token-refreshed", transport.lastAuth["token"])
+        assertEquals(requestA.toContext(), transport.currentContext())
+    }
+
+    @Test
     fun backgroundReconnectSuspensionRejectsRetainedSocketAuthCallbacks() {
         val transport = LinearizedGenerationFakeTransport()
-        val client = SocketIoRealtimeClient(transport)
+        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
         val request = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
         var refreshCalls = 0
         client.setAuthRefreshProvider { _, _ ->
@@ -2218,4 +2308,30 @@ private fun <T> runSuspend(block: suspend () -> T): T {
     failure?.let { throw it }
     @Suppress("UNCHECKED_CAST")
     return value as T
+}
+
+private val runAuthRefreshInline: (() -> Unit) -> Unit = { task -> task() }
+
+/** Runs the auth provider on its own thread and holds it inside the provider until released. */
+private class BlockingAuthRefresh {
+    val entered = CountDownLatch(1)
+    val finished = CountDownLatch(1)
+    private val gate = CountDownLatch(1)
+
+    val runner: (() -> Unit) -> Unit = { task ->
+        Thread {
+            try {
+                task()
+            } finally {
+                finished.countDown()
+            }
+        }.start()
+    }
+
+    fun block() {
+        entered.countDown()
+        check(gate.await(10, TimeUnit.SECONDS)) { "auth refresh was never released" }
+    }
+
+    fun release() = gate.countDown()
 }

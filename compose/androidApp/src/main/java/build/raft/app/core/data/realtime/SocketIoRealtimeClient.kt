@@ -64,6 +64,8 @@ class SocketIoRealtimeClient(
         timer::cancel
     },
     private val beforeHeartbeatReconnect: (() -> Unit)? = null,
+    // RED (ticket 9222ba03): accepted but not used yet; the provider still runs under the lock.
+    @Suppress("unused") private val authRefreshRunner: (task: () -> Unit) -> Unit = { it() },
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
