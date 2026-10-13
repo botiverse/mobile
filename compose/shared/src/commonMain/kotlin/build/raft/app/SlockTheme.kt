@@ -113,7 +113,10 @@ val elegantTheme: SlockTheme =
     SlockTheme(
         family = SlockThemeFamily.Elegant,
         ink = RaftUiThemeColors.ElegantLight.foregroundStrong, // oklch(0.145 0 0)
-        inkMuted = RaftUiThemeColors.ElegantLight.foregroundMuted,
+        // raft-ui's elegant text ladder (#404/#408): `foreground-muted` is content text; small
+        // (≤13px) notes ride `foreground-hint`. inkMuted only colours Caption-size notes and
+        // disabled labels, so it maps to the hint tier.
+        inkMuted = RaftUiThemeColors.ElegantLight.foregroundHint,
         surface = SlockColor.SurfaceWhite, // brutal-paper base is shared; muting is secondary
         surfaceMuted = RaftUiThemeColors.ElegantLight.fillMuted,
         line = RaftUiThemeColors.ElegantLight.line,
