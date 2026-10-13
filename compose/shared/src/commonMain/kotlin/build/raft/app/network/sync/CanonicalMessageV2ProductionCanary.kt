@@ -215,6 +215,14 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 
     /**
+     * The realtime transport for [partition] reconnected (task #167): frames missed while it was down
+     * never reached this writer, so the selected scope must not append its next frame to the old window.
+     */
+    suspend fun markRealtimeDiscontinuity(partition: DurablePartitionKey) {
+        // Not implemented yet: test-first commit.
+    }
+
+    /**
      * Read-only view for writers outside the canary (task #1124 enter-snapshot): whether [scope] is
      * the scope this canary currently owns for its partition. Never selects, never widens.
      */
