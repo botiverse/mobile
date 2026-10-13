@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.designtokens.RaftUiPalette
+import build.raft.app.designtokens.RaftUiThemeColors
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -12,10 +13,9 @@ import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
-// Colours that exist on Web come from the generated RaftUiPalette (tools/design-tokens),
-// so a Web palette change shows up as a regenerated diff instead of silent drift.
-// The remaining literals have no Web token yet or differ from Web on purpose; see
-// tools/design-tokens/README.md "Known drift" before changing them.
+// Colours that exist on Web come from the generated tokens (tools/design-tokens), so a Web
+// palette change shows up as a regenerated diff instead of silent drift. The remaining
+// literals have no Web token.
 internal object SlockColor {
     val BrandYellow = RaftUiPalette.brutalYellow
     // Semantic alias for react `--color-soft-signal` (== brutal/brand yellow #FFD440),
@@ -37,18 +37,20 @@ internal object SlockColor {
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
-    // Web brutal `--foreground` / `--line` are #141110, not pure black (Known drift).
-    val TextBlack = Color(0xFF000000)
+    // Web brutal `--foreground` (body text, #141110 — a warm near-black, not pure black).
+    val TextBlack = RaftUiThemeColors.Brutal.foreground
     // Tailwind neutral-500.
     val TextMutedGray = RaftUiPalette.neutral500
-    val BorderBlack = Color(0xFF000000)
+    // Web brutal `--line` (#141110).
+    val BorderBlack = RaftUiThemeColors.Brutal.line
     val ShadowBlack = RaftUiPalette.brutalBlack
 
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"
-    const val TextBlackArgb = "#FF000000"
+    // Must equal TextBlack; Kuikly string-colour callsites.
+    const val TextBlackArgb = "#FF141110"
     const val TextMutedGrayArgb = "#FF737373"
-    const val BorderBlackArgb = "#FF000000"
+    const val BorderBlackArgb = "#FF141110"
     const val ShadowBlackArgb = "#FF141111"
     const val AccentOrangeArgb = "#FFF8A16F"
     const val AccentRedArgb = "#FFF97264"

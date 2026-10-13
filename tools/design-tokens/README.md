@@ -37,19 +37,10 @@ python3 tools/design-tokens/gen_tokens.py --self-test  # CI: colour maths, casca
 
 Matches the Web build: every `@theme` block (Tailwind, then raft-ui `styles.css`, then Web `index.css`) lands in Tailwind's `theme` layer and the last declaration wins; raft-ui `foundation.css` and Web `:root.dark` are unlayered and beat any `@theme` value of the same name. Inside them the more specific theme selector wins (default < `[data-theme="elegant"]` < `[data-theme="elegant"].dark`). Colours use CSS Color 4 maths and are clipped per channel, as Chrome paints them. The oracle checks all of this against Chromium itself.
 
-## Known drift (mobile ≠ Web today)
+## Aligned with Web
 
-Hand-written mobile values that differ from what Web paints with raft-ui 0.5.52. They are left unchanged in the first PR because changing them is a visible change; each needs a decision.
-
-| Mobile constant | Mobile | Web token (theme) | Web |
-| --- | --- | --- | --- |
-| `SlockColor.TextBlack` | `#000000` | `--foreground` (brutal; Web `body` colour) | `#141110` |
-| `SlockColor.BorderBlack` | `#000000` | `--line` (brutal) | `#141110` |
-| `elegantTheme.inkMuted` | `#71717A` | `--foreground-muted` (elegant light) | `#3D3D3A` |
-| `elegantTheme.surfaceMuted` | `#F4F4F5` | `--fill-muted` (elegant light) | `#F4F4F3` |
-| `elegantTheme.line` | `#CACACE` | `--line` (elegant light) | `#CBCBC6` |
-| `elegantTheme.lineSubtle` | `#E4E4E7` | `--line-muted` (elegant light) | `#E5E5E2` |
-
-The elegant rows come from raft-ui moving its elegant neutrals from cool zinc (hue ≈ 286) to warm neutrals (hue 106.42). `BorderBlack` is less clear-cut than `TextBlack`: many Web brutal components draw `border-black` (Tailwind `#000000`) rather than `--line`, so it needs a per-component check.
-
-Matching constants already read from the generated file: brand yellow, the seven brutal accents, `warning`, white, cream, Tailwind `gray-400` / `neutral-500`, brutal black and elegant `foreground-strong`.
+All mobile colour constants that have a Web token now read from the generated file. The earlier
+drift (brutal text/border pure black instead of `#141110`; elegant cool zinc neutrals instead of
+raft-ui's warm hue-106 neutrals) was aligned in the follow-up to task #165 at artin's request.
+Remaining `Color(0x…)` literals in `SlockColor` (`AppBgLightBlue`, `EmptyStateGray`) have no Web
+token.

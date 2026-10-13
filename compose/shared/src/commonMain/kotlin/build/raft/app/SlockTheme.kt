@@ -29,10 +29,9 @@ import com.tencent.kuikly.compose.ui.unit.dp
  * refactor — components migrated to read the theme render byte-identically until
  * the (still-to-be-defined) key flips the root provider to [elegantTheme].
  *
- * Elegant colors are exact oklch→sRGB conversions of the rui elegant tokens
- * (elegant-ink oklch(0.145 0 0) = #0A0A0A, -ink-strong = #18181B, -muted = #F4F4F5,
- * -line = #CACACE, -line-subtle = #E4E4E7), which land on the Tailwind zinc ramp
- * rui derives them from. Source Yellow is shared across both registers by design.
+ * Elegant colors come from the generated raft-ui elegant-light tokens
+ * (tools/design-tokens): warm neutrals at hue 106 since raft-ui moved off the zinc ramp.
+ * Source Yellow is shared across both registers by design.
  */
 enum class SlockThemeFamily { Brutal, Elegant }
 
@@ -109,18 +108,19 @@ val brutalTheme: SlockTheme =
         uppercaseLabels = true,
     )
 
-/** The product-grade register — rui elegant tokens (oklch→sRGB, zinc ramp). */
+/** The product-grade register — generated raft-ui elegant-light tokens. */
 val elegantTheme: SlockTheme =
     SlockTheme(
         family = SlockThemeFamily.Elegant,
         ink = RaftUiThemeColors.ElegantLight.foregroundStrong, // oklch(0.145 0 0)
-        // The values below predate raft-ui's warm elegant neutrals (hue 106); Web now
-        // paints these roles differently. See tools/design-tokens/README.md "Known drift".
-        inkMuted = Color(0xFF71717A), // zinc-500, elegant muted body text
+        // raft-ui's elegant text ladder (#404/#408): `foreground-muted` is content text; small
+        // (≤13px) notes ride `foreground-hint`. inkMuted only colours Caption-size notes and
+        // disabled labels, so it maps to the hint tier.
+        inkMuted = RaftUiThemeColors.ElegantLight.foregroundHint,
         surface = SlockColor.SurfaceWhite, // brutal-paper base is shared; muting is secondary
-        surfaceMuted = Color(0xFFF4F4F5), // elegant-muted oklch(0.967 0.001 286)
-        line = Color(0xFFCACACE), // elegant-line   oklch(0.84 0.006 285)
-        lineSubtle = Color(0xFFE4E4E7), // elegant-line-subtle oklch(0.92 0.004 286)
+        surfaceMuted = RaftUiThemeColors.ElegantLight.fillMuted,
+        line = RaftUiThemeColors.ElegantLight.line,
+        lineSubtle = RaftUiThemeColors.ElegantLight.lineMuted,
         lineWidth = SlockStroke.Thin, // 1dp hairline
         cornerRadius = 8.dp, // rounded.md
         shadow =
