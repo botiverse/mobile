@@ -64,6 +64,10 @@ class SocketIoRealtimeClient(
         timer::cancel
     },
     private val beforeHeartbeatReconnect: (() -> Unit)? = null,
+    // Ticket 9222ba03: socket callbacks run under the transport lock, and the auth provider may
+    // do a network token refresh (4s per attempt, one retry). Running it there made onResume's
+    // setReconnectAllowed wait on the lock long enough to ANR, so the provider runs here instead.
+    private val authRefreshRunner: (task: () -> Unit) -> Unit = ::runOnRealtimeAuthRefreshThread,
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
@@ -513,7 +517,35 @@ class SocketIoRealtimeClient(
             return
         }
         val previous = currentAuth
-        val next = provider(reason, previous) ?: run {
+        authRefreshRunner {
+            val next = provider(reason, previous)
+            transport.linearize {
+                applyRefreshedTransportAuth(reason, capturedContext, previous, next)
+            }
+        }
+    }
+
+    private fun applyRefreshedTransportAuth(
+        reason: String,
+        capturedContext: RealtimeSocketConnectionContext,
+        previous: RealtimeAuth?,
+        next: RealtimeAuth?,
+    ) {
+        // The lock was released while the provider ran: the connection may have been replaced,
+        // suspended, or re-authenticated meanwhile, and none of those may be overwritten.
+        if (!reconnectAllowed) {
+            logger("auth_refresh_skip reason=$reason result=reconnect_suspended")
+            return
+        }
+        if (capturedContext !== currentConnectionContext || currentAuth != previous) {
+            logger(
+                "auth_refresh_skip reason=$reason result=stale_connection " +
+                    "capturedServerId=${capturedContext.serverId.value} " +
+                    "activeServerId=${currentConnectionContext?.serverId?.value.orEmpty()}"
+            )
+            return
+        }
+        if (next == null) {
             logger("auth_refresh_skip reason=$reason result=missing_session")
             return
         }
@@ -696,4 +728,22 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
     is PerReceiverPinnedChanged -> "pinned_updated"
     is NotificationPushReceived -> "notification_push"
+}
+
+private val realtimeAuthRefreshExecutor =
+    java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "slock-realtime-auth-refresh").apply { isDaemon = true }
+    }
+
+private fun runOnRealtimeAuthRefreshThread(task: () -> Unit) {
+    realtimeAuthRefreshExecutor.execute {
+        try {
+            task()
+        } catch (throwable: Throwable) {
+            build.raft.app.core.data.diagnostics.SlockAppLog.w(
+                "SlockRealtime",
+                "auth_refresh_failed error=${throwable.javaClass.simpleName}",
+            )
+        }
+    }
 }
