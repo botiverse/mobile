@@ -232,6 +232,7 @@ internal fun SharedHomeActivityScreen(
                 payloadStore = sharedStores.threadPayloadStore,
                 durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
+                durablePageExtender = sharedStores.threadDurablePageExtender,
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
                 },

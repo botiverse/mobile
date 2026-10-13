@@ -144,6 +144,15 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import build.raft.app.network.sync.ThreadDurablePageExtender
+import build.raft.app.network.sync.ThreadDurablePageDirection
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
+import build.raft.app.network.sync.DurablePartitionKey
+import build.raft.app.data.RawMessagePageWitness
+import build.raft.app.data.RawMessagePage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -14618,6 +14627,161 @@ class SharedThreadStoreTest {
         )
         scope.cancel()
     }
+
+    @Test
+    fun repositoryOlderAndNewerPagesAreOfferedToTheDurableWindowExtender() = runBlocking {
+        // Task #168: an applied paging page is handed to the extender with the route's channel, the
+        // fetching identity's V2 partition, the paging anchor, and the raw server page.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rawOlder = durableRawPage("m5", limit = 30)
+        val rawNewer = durableRawPage("m12", limit = 30)
+        val repository =
+            FakeConversationRepository(
+                olderResult =
+                    DataResult.Content(
+                        threadSnapshot(body = "older repo body", id = "m5", seq = 5).copy(rawMessagePage = rawOlder)
+                    ),
+                newerResult =
+                    DataResult.Content(
+                        threadSnapshot(body = "newer repo body", id = "m12", seq = 12).copy(rawMessagePage = rawNewer)
+                    )
+            )
+        val extender = RecordingDurablePageExtender()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                durablePageExtender = extender
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val partition =
+            assertNotNull(
+                dataSource.currentReplyCacheProvenance()
+                    ?.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+            )
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
+
+        store.accept(SharedThreadIntent.LoadOlder)
+        assertEquals(listOf("older repo body", "repository body"), store.state.value.payload.messages.map { it.body })
+        assertEquals(
+            listOf(RecordingDurablePageExtender.Call(partition, "channel-1", ThreadDurablePageDirection.Older, 10L, listOf("m5"), 30, true)),
+            extender.calls
+        )
+
+        store.accept(SharedThreadIntent.LoadNewer)
+        assertEquals(
+            RecordingDurablePageExtender.Call(partition, "channel-1", ThreadDurablePageDirection.Newer, 10L, listOf("m12"), 30, true),
+            extender.calls.last()
+        )
+        assertEquals(2, extender.calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun pagesWithoutARawPageOrOnReplyRoutesAreNeverOfferedToTheExtender() = runBlocking {
+        // Twin of the test above: identical paging, but the repository page carries no raw page.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val extender = RecordingDurablePageExtender()
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = FakeConversationRepository(),
+                        durablePageExtender = extender
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
+        store.accept(SharedThreadIntent.LoadOlder)
+        store.accept(SharedThreadIntent.LoadNewer)
+        assertEquals(listOf("older repo body", "repository body", "newer repo body"), store.state.value.payload.messages.map { it.body })
+        assertTrue(extender.calls.isEmpty(), extender.calls.toString())
+        scope.cancel()
+
+        // Admission: a reply-thread route is not a V2 top-level window even with a raw page.
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                durablePageExtender = extender
+            )
+        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
+        val replyRoute =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-parent-1",
+                streamChannelId = "thread-parent-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "parent-1",
+                originParentMessageId = "parent-1"
+            ).resolveThreadRouteIdentity()
+        val raw = assertNotNull(durableRawPage("m5", limit = 30).page)
+        assertFalse(
+            dataSource.extendDurableWindowIfCurrent(replyRoute, context, ThreadDurablePageDirection.Older, 10L, raw)
+        )
+        assertTrue(
+            dataSource.extendDurableWindowIfCurrent(
+                basePayload().resolveThreadRouteIdentity(),
+                context,
+                ThreadDurablePageDirection.Older,
+                10L,
+                raw
+            ),
+            "positive control: the channel route with the same page is admitted"
+        )
+        assertEquals(1, extender.calls.size)
+    }
+
+    private class RecordingDurablePageExtender : ThreadDurablePageExtender {
+        data class Call(
+            val partition: DurablePartitionKey,
+            val channelId: String,
+            val direction: ThreadDurablePageDirection,
+            val anchorSeq: Long,
+            val messageIds: List<String?>,
+            val requestedLimit: Int,
+            val stillCurrent: Boolean
+        )
+
+        val calls = mutableListOf<Call>()
+
+        override suspend fun extendWithAdjacentPage(
+            partition: DurablePartitionKey,
+            channelId: String,
+            direction: ThreadDurablePageDirection,
+            anchorSeq: Long,
+            rawMessages: JsonArray,
+            requestedLimit: Int,
+            stillCurrent: () -> Boolean
+        ) {
+            calls +=
+                Call(
+                    partition = partition,
+                    channelId = channelId,
+                    direction = direction,
+                    anchorSeq = anchorSeq,
+                    messageIds = rawMessages.map { (it as? JsonObject)?.get("id")?.jsonPrimitive?.content },
+                    requestedLimit = requestedLimit,
+                    stillCurrent = stillCurrent()
+                )
+        }
+    }
+
+    private fun durableRawPage(id: String, limit: Int): RawMessagePageWitness =
+        RawMessagePageWitness(
+            RawMessagePage(
+                messages = Json.parseToJsonElement("""[{"id":"$id"}]""") as JsonArray,
+                requestedLimit = limit
+            )
+        )
 
     @Test
     fun threadPageSizeAcceptsTwentyThirtyAndFiftyButRejectsUnsafeValues() {

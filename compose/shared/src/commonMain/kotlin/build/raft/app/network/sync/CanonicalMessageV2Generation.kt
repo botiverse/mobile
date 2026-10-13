@@ -245,6 +245,10 @@ class CanonicalMessageV2GenerationEngine(
 
     suspend fun knownPartitions(): List<DurablePartitionKey> = store.knownPartitions()
 
+    /** Pass-through of [CanonicalMessageV2Store.baselinedScopeKinds]; reads only, no coordinator effect. */
+    suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
+        store.baselinedScopeKinds(partition, scopeId)
+
     private suspend fun <T> withPartitionMutation(
         partition: DurablePartitionKey,
         block: suspend () -> T,

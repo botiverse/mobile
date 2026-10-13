@@ -60,6 +60,7 @@ import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
@@ -407,6 +408,8 @@ internal class SlockSharedStoreProvider private constructor(
     internal val threadDurableLastKnownReader: ThreadDurableLastKnownReader,
     /** Offline cache write entry (task #1124): entered channel's REST page → V2 baseline. */
     internal val threadEnteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader,
+    /** Offline cache paging entry (task #168): adjacent older / newer pages → the same V2 window. */
+    internal val threadDurablePageExtender: ThreadDurablePageExtender,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -2339,6 +2342,25 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
                 )
+            // Paging write side (task #168): same canary, engine, flag and network client as the enter
+            // loader; extends the window that loader created, never creates one.
+            val threadDurablePageExtender =
+                CanonicalMessageV2AdjacentPageWriter(
+                    canary = canonicalMessageV2Canary,
+                    generationEngine = canonicalMessageV2GenerationEngine,
+                    fetcher =
+                        CanonicalMessageV2RestSnapshotFetcher(
+                            networkClient = networkClient,
+                            logger = sharedInfoLogger("CanonicalMessageV2AdjacentPage", "canonical_v2_adjacent_page"),
+                        ),
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("CanonicalMessageV2AdjacentPage", "canonical_v2_adjacent_page"),
+                )
             provider = SlockSharedStoreProvider(
                 bridge = bridge,
                 sqlDatabase = database,
@@ -2441,6 +2463,7 @@ internal class SlockSharedStoreProvider private constructor(
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
                 threadDurableLastKnownReader = threadDurableLastKnownReader,
                 threadEnteredScopeSnapshotLoader = threadEnteredScopeSnapshotLoader,
+                threadDurablePageExtender = threadDurablePageExtender,
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,

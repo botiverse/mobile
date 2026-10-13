@@ -5,6 +5,7 @@ import build.raft.app.network.sync.ReplyPreview
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
 
 @Serializable
 data class InboxItem(
@@ -509,7 +510,45 @@ data class ThreadSnapshot(
      */
     @Transient
     val canonicalConversationDetail: ConversationSummary? = null,
+    /**
+     * Raw `messages` array of the REST page this snapshot was mapped from (task #168). Set ONLY by
+     * the older / newer paging fetches; every other path leaves it [RawMessagePageWitness.None]. It
+     * exists so a paging page can also be persisted into the durable V2 window; see
+     * [RawMessagePageWitness] for why it never takes part in equality.
+     */
+    @Transient
+    val rawMessagePage: RawMessagePageWitness = RawMessagePageWitness.None,
 )
+
+/** One fetched REST message page: the server's raw `messages` array and the `limit` the request sent. */
+data class RawMessagePage(
+    val messages: JsonArray,
+    val requestedLimit: Int,
+)
+
+/**
+ * Write-side witness carrying a [RawMessagePage] from the repository mapper to the thread store's
+ * paging call site (task #168), which hands it to the durable window extender.
+ *
+ * It must never affect state equality or dedupe: two snapshots that map to the same messages are
+ * the same snapshot whether or not one of them still carries its raw page. So [equals] is `true`
+ * for every other witness (present or absent alike) and [hashCode] is constant. The field is
+ * non-null with a [None] sentinel precisely so that "absent vs present" is not a difference either
+ * (a nullable field would make `null != page` under the data-class equality).
+ */
+class RawMessagePageWitness(val page: RawMessagePage?) {
+    override fun equals(other: Any?): Boolean = other is RawMessagePageWitness
+
+    override fun hashCode(): Int = 0
+
+    override fun toString(): String =
+        page?.let { "RawMessagePageWitness(size=${it.messages.size}, requestedLimit=${it.requestedLimit})" }
+            ?: "RawMessagePageWitness(None)"
+
+    companion object {
+        val None: RawMessagePageWitness = RawMessagePageWitness(null)
+    }
+}
 
 data class ThreadListSnapshot(
     val server: ServerSummary,
