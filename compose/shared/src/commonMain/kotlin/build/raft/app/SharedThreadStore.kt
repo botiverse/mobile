@@ -6052,6 +6052,12 @@ internal class SharedThreadStore(
          * full tail refetch until `loadedReplyTimelineCount()` reaches it.
          */
         var replyCountTarget: Int? = null,
+        /**
+         * Set by a foreground resume (ad1df6b7): re-read the loaded parents' reply summaries after the
+         * recovery even when it merged nothing. While the app was in the background the socket was down,
+         * so replies posted meanwhile reached neither `ThreadUpdated` nor the top-level `messageSync`.
+         */
+        var backfillAfterRecovery: Boolean = false,
         var replyCountTailFallbackUsed: Boolean = false,
     )
 
@@ -8873,6 +8879,9 @@ internal class SharedThreadStore(
             // keep counting toward ↓ x new (frozen task #232 contract); only
             // foreground gap recovery is tagged as refill.
             tagAsGapRefill = false,
+            // Replies posted while backgrounded are not top-level messages, so the sync above can come
+            // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
+            backfillAfterRecovery = true,
         )
     }
 
@@ -8882,6 +8891,7 @@ internal class SharedThreadStore(
         staleToken: MviStaleToken,
         tagAsGapRefill: Boolean,
         replyCountTarget: Int? = null,
+        backfillAfterRecovery: Boolean = false,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
         val recoveryId =
@@ -8910,6 +8920,7 @@ internal class SharedThreadStore(
                         active.targetSeq = initialRequest.serverSeq
                         active.targetVersion += 1L
                     }
+                    if (backfillAfterRecovery) active.backfillAfterRecovery = true
                     null
                 } else if (
                     pagination != null &&
@@ -8930,6 +8941,7 @@ internal class SharedThreadStore(
                             targetSeq = initialRequest.serverSeq,
                             targetVersion = 1L,
                             replyCountTarget = replyCountTarget,
+                            backfillAfterRecovery = backfillAfterRecovery,
                         )
                     reducePayloadPatch(cachePayload = true) { currentPayload ->
                         currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
@@ -8962,6 +8974,8 @@ internal class SharedThreadStore(
         // that the initial route load performs — so reply summaries stay stale
         // until the next full route reload (task #317).
         var mergedNewArrivals = false
+        // Copied from this recovery's state while it is live: a resume that coalesced into it may have set it.
+        var backfillRequested = false
         try {
             while (true) {
                 val requestSnapshot =
@@ -9002,6 +9016,9 @@ internal class SharedThreadStore(
                         realtimeGapRecoveryState
                             ?.takeIf { state -> state.id == recoveryId }
                             ?: return@withLock
+                    // Read before any branch below clears the state (an empty or final page ends the
+                    // recovery here, not in `finally`); a resume that coalesced mid-fetch set it on this state.
+                    if (recovery.backfillAfterRecovery) backfillRequested = true
                     val currentPayload = _state.value.payload
                     if (
                         !staleTokenStillCurrent(
@@ -9167,6 +9184,7 @@ internal class SharedThreadStore(
         } finally {
             realtimeGapRecoveryMutex.withLock {
                 val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
+                if (active?.backfillAfterRecovery == true) backfillRequested = true
                 if (active != null) {
                     realtimeGapRecoveryState = null
                     val currentPayload = _state.value.payload
@@ -9182,7 +9200,7 @@ internal class SharedThreadStore(
                 }
             }
         }
-        if (!mergedNewArrivals) return
+        if (!mergedNewArrivals && !backfillRequested) return
         val latest = _state.value.payload
         if (
             !staleTokenStillCurrent(
@@ -9202,7 +9220,8 @@ internal class SharedThreadStore(
             return
         }
         diagnosticsLogger?.invoke(
-            "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} trigger=resume_gap"
+            "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} " +
+                "trigger=${if (mergedNewArrivals) "resume_gap" else "resume"}"
         )
         launchSecondaryTimelineRefresh(initial, staleToken)
     }

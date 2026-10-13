@@ -16070,6 +16070,201 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun resumeWithNoNewTopLevelMessagesStillBackfillsReplySummaries() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m12", seq = 12)
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "current body",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m10",
+                                        seq = 10,
+                                        body = "current body",
+                                        threadChannelId = "thread-m10",
+                                        replyCount = 0
+                                    )
+                                )
+                        )
+                    ),
+                newerResult = DataResult.Empty(EmptyReason.NoMessages),
+                threadReplySummariesResult =
+                    DataResult.Content(
+                        ThreadReplySummariesSnapshot(
+                            threads =
+                                listOf(
+                                    InboxItem(
+                                        key = "thread:m10",
+                                        kind = InboxItemKind.Thread,
+                                        channelId = ChannelId("thread-m10"),
+                                        channelName = "reply thread",
+                                        threadChannelId = ChannelId("thread-m10"),
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m10"),
+                                        replyCount = 7,
+                                        unreadCount = 2,
+                                        firstUnreadMessageId = MessageId("reply-6"),
+                                        latestReplies =
+                                            listOf(
+                                                ReplyPreview(
+                                                    messageId = "reply-6",
+                                                    seq = 6,
+                                                    content = "first unread",
+                                                    senderId = "u2",
+                                                    senderType = "human",
+                                                    senderName = "cindy",
+                                                    senderAvatarUrl = null,
+                                                    createdAt = "2026-05-19T16:06:00Z",
+                                                    senderDisplayName = "Cindy",
+                                                )
+                                            )
+                                    )
+                                ),
+                            followedThreadKeys = setOf("thread:m10")
+                        )
+                    )
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        delay(1L)
+
+        val summariesBefore = repository.getThreadReplySummariesRequests.size
+
+        store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+
+        withTimeout(5_000) {
+            while (repository.syncNewerRequests.map { it.second } != listOf(10L)) delay(10)
+        }
+        assertEquals(listOf("current body"), store.state.value.payload.messages.map { it.body })
+        // ad1df6b7: replies posted while backgrounded are not top-level messages, so the sync is empty,
+        // yet the loaded parents' reply summaries must still be re-read.
+        withTimeout(5_000) {
+            while (logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume") }) {
+                delay(10)
+            }
+        }
+        withTimeout(5_000) {
+            while (repository.getThreadReplySummariesRequests.size <= summariesBefore) delay(10)
+        }
+        assertEquals(7, store.state.value.payload.messages.single { it.id == "m10" }.replyCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun foregroundGapWithNoNewMessagesDoesNotBackfillReplySummaries() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m12", seq = 12)
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "current body",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m10",
+                                        seq = 10,
+                                        body = "current body",
+                                        threadChannelId = "thread-m10",
+                                        replyCount = 0
+                                    )
+                                )
+                        )
+                    ),
+                newerResult = DataResult.Empty(EmptyReason.NoMessages),
+                threadReplySummariesResult =
+                    DataResult.Content(
+                        ThreadReplySummariesSnapshot(
+                            threads =
+                                listOf(
+                                    InboxItem(
+                                        key = "thread:m10",
+                                        kind = InboxItemKind.Thread,
+                                        channelId = ChannelId("thread-m10"),
+                                        channelName = "reply thread",
+                                        threadChannelId = ChannelId("thread-m10"),
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m10"),
+                                        replyCount = 7,
+                                        unreadCount = 2,
+                                        firstUnreadMessageId = MessageId("reply-6"),
+                                        latestReplies =
+                                            listOf(
+                                                ReplyPreview(
+                                                    messageId = "reply-6",
+                                                    seq = 6,
+                                                    content = "first unread",
+                                                    senderId = "u2",
+                                                    senderType = "human",
+                                                    senderName = "cindy",
+                                                    senderAvatarUrl = null,
+                                                    createdAt = "2026-05-19T16:06:00Z",
+                                                    senderDisplayName = "Cindy",
+                                                )
+                                            )
+                                    )
+                                ),
+                            followedThreadKeys = setOf("thread:m10")
+                        )
+                    )
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        delay(1L)
+
+        val summariesBefore = repository.getThreadReplySummariesRequests.size
+
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+
+        withTimeout(5_000) {
+            while (repository.syncNewerRequests.map { it.second } != listOf(10L)) delay(10)
+        }
+        assertEquals(listOf("current body"), store.state.value.payload.messages.map { it.body })
+        // Twin: an in-foreground realtime gap that merges nothing keeps skipping the backfill (the socket
+        // was up, so ThreadUpdated already carried any reply-count change).
+        delay(50)
+        assertTrue(
+            logs.none { it.startsWith("thread_secondary_backfill") },
+            "expected no secondary backfill for an empty foreground gap, got: $logs"
+        )
+        assertEquals(summariesBefore, repository.getThreadReplySummariesRequests.size)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeGapRecoveryStaleDropSkipsSecondaryBackfill() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
