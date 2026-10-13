@@ -40,6 +40,7 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -52,6 +53,31 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     private val repository: SessionRealtimeRepository,
     val client: SocketIoRealtimeClient
 ) : SlockRealtimeHostContext {
+    // Task #167: same signal iOS posts. Shared consumers (the durable message canary, agent-activity seq) need
+    // to know a new socket started before they see its frames.
+    private val presenceTransportEpochs = AtomicLong(0L)
+    private val connectedSubscription =
+        client.observeConnected { context -> postPresenceTransportConnected(context) }
+
+    private fun postPresenceTransportConnected(context: RealtimeSocketConnectionContext) {
+        val witness = context.witness
+        if (witness.scopeLeaseId.isBlank()) return
+        val epoch = presenceTransportEpochs.incrementAndGet()
+        log("presence_transport_connected serverId=${context.serverId.value} presenceEpoch=$epoch")
+        postAndroidAppScopeEvent(
+            eventName = SlockRealtimeNotifyContract.EventName,
+            eventData =
+                JSONObject()
+                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionPresenceTransportConnected)
+                    .put(SlockRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                    .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+        )
+    }
+
     override val state: RealtimeConnectionState
         get() = client.state
 
