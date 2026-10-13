@@ -1,6 +1,5 @@
 package build.raft.app.shared
 
-import android.net.Uri
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,7 +7,7 @@ import org.junit.Test
 class SlockSandboxWebViewRenderViewTest {
     @Test
     fun sameOriginHistoryRouteCannotReuseFencedNativeBridge() {
-        val trusted = Uri.parse("https://example.test/feedback/?embed=raft-settings-v1")
+        val trusted = "https://example.test/feedback/?embed=raft-settings-v1"
 
         assertTrue(
             isExactMainDocumentUrl(

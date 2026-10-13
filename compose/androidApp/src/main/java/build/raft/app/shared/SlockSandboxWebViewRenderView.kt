@@ -993,13 +993,18 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
 /** Exact scheme/authority/path/query comparison used after same-origin history updates. */
 internal fun isExactMainDocumentUrl(allowed: Uri?, targetUrl: String): Boolean {
-    if (allowed == null) return false
-    val target = runCatching { Uri.parse(targetUrl) }.getOrNull() ?: return false
+    return isExactMainDocumentUrl(allowed?.toString(), targetUrl)
+}
+
+/** Pure-URL form used by JVM tests without depending on Android framework stubs. */
+internal fun isExactMainDocumentUrl(allowedUrl: String?, targetUrl: String): Boolean {
+    val allowed = runCatching { URI(allowedUrl ?: return false) }.getOrNull() ?: return false
+    val target = runCatching { URI(targetUrl) }.getOrNull() ?: return false
     return target.scheme == allowed.scheme &&
         target.host == allowed.host &&
         target.port == allowed.port &&
         target.path == allowed.path &&
-        target.encodedQuery == allowed.encodedQuery
+        target.rawQuery == allowed.rawQuery
 }
 
 internal fun documentStartScriptOriginRule(targetUrl: String): String? =
