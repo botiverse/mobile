@@ -77,6 +77,22 @@ static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
     return NO;
 }
 
+static BOOL SlockInteractivePopHorizontalScrollConflict(UIView *view, UIView *rootView)
+{
+    UIView *candidate = view;
+    while (candidate && candidate != rootView) {
+        if ([candidate isKindOfClass:UIScrollView.class]) {
+            UIScrollView *scrollView = (UIScrollView *)candidate;
+            BOOL horizontallyScrollable =
+                scrollView.alwaysBounceHorizontal ||
+                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
+            if (horizontallyScrollable) return YES;
+        }
+        candidate = candidate.superview;
+    }
+    return NO;
+}
+
 static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 {
     if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
@@ -138,6 +154,14 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // back direction once the pager has released it.
     if (gestureRecognizer.numberOfTouches > 0) return YES;
     if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
+        self.touchBeganInEdgeZone = NO;
+        return NO;
+    }
+    // Preserve native horizontal scrolling (code blocks, image/pager views). The
+    // Kuikly TabPager itself is pointer-driven rather than a UIScrollView and is
+    // therefore still admitted; its page-aware guard decides whether to release
+    // a first-page rightward drag to this recognizer.
+    if (SlockInteractivePopHorizontalScrollConflict(touch.view, gestureRecognizer.view)) {
         self.touchBeganInEdgeZone = NO;
         return NO;
     }
@@ -294,9 +318,10 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
             ? (KuiklyRenderViewController *)viewController
             : nil;
     if (renderViewController) {
-        // Only pages directly above the App Shell are in this contract. Deeper
-        // native routes retain the established edge-only behavior.
-        renderViewController.fd_interactivePopAllowsFullScreen = (self.viewControllers.count == 1);
+        // Every pushed Kuikly page can be returned from. The admission policy
+        // still requires a navigation stack above root; text-input and native
+        // horizontal-scroll conflicts are rejected at touch-down above.
+        renderViewController.fd_interactivePopAllowsFullScreen = YES;
     }
     [self fd_setConversationForwardGestureEnabled:
         renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
