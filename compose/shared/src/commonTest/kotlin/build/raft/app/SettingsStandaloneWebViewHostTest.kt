@@ -2,13 +2,40 @@ package build.raft.app
 
 import build.raft.app.data.SlockShellStoreScope
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kmm.network.export.NetworkAppIdentity
+import com.tencent.kmm.network.export.NetworkUserAgent
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsStandaloneWebViewHostTest {
+    @Test
+    fun feedbackBootstrapUsesInstalledIdentityAndInstallsDiagnosticsBridgeIdempotently() {
+        val previous = NetworkUserAgent.appIdentity
+        try {
+            NetworkUserAgent.appIdentity =
+                NetworkAppIdentity(
+                    name = "Raft",
+                    version = " 1.0.11-alpha+abc123 ",
+                    buildNumber = "10011019",
+                    buildType = "debug",
+                )
+
+            val script = feedbackWebViewBootstrapJavaScript(null, null, "https://api.example.test")
+
+            assertContains(script, "clientVersion:\"1.0.11-alpha+abc123\"")
+            assertFalse(script.contains("clientVersion:'mobile'"))
+            assertContains(script, "diagnostics-upload-v1")
+            assertContains(script, "diagnostics:start")
+            assertContains(script, "if (!feedback || feedback.version !== 'raft-feedback-v1')")
+        } finally {
+            NetworkUserAgent.appIdentity = previous
+        }
+    }
+
     @Test
     fun everySettingsWebSurfaceUsesTheSinglePageRoute() {
         SettingsWebViewSurface.entries.forEach { surface ->

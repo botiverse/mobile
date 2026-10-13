@@ -51,6 +51,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.kmm.network.export.NetworkUserAgent
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
@@ -1056,15 +1057,47 @@ internal fun feedbackWebViewBootstrapJavaScript(
     val webViewGeneration = binding?.webViewGeneration ?: 0L
     val accessToken = json.encodeToString(session?.accessToken.orEmpty())
     val api = json.encodeToString(apiOrigin)
+    val clientVersion = json.encodeToString(feedbackWebViewClientVersion())
+    val clientKind = json.encodeToString(slockFeedbackWebViewClientKind())
     return """
         (function() { 'use strict';
           var port = window.raftHostPort;
           var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
-          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:${json.encodeToString(slockFeedbackWebViewClientKind())}, clientVersion:'mobile', locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
-          Object.defineProperty(window, 'RaftFeedback', {value:{version:'raft-feedback-v1', session:session, emit:function(event, nextBinding){ if (!port) return; try { port.postMessage(JSON.stringify({kind:event,payload:nextBinding || binding})); } catch (_) {} }}, writable:false, configurable:false});
+          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
+          function post(kind, payload) {
+            if (!port) return;
+            try { port.postMessage(JSON.stringify({kind:kind, payload:payload || binding})); } catch (_) {}
+          }
+          function diagnosticsCommand(kind, request, nextBinding) {
+            var requestId = request && typeof request === 'object' ? request.requestId : request;
+            var requestedBinding = request && typeof request === 'object' && request.binding ? request.binding : (nextBinding || binding);
+            post(kind, {requestId:requestId, binding:requestedBinding});
+          }
+          var feedback = window.RaftFeedback;
+          if (!feedback || feedback.version !== 'raft-feedback-v1') {
+            feedback = {version:'raft-feedback-v1', session:session, capabilities:['diagnostics-upload-v1'], diagnostics:{start:function(request, nextBinding){ diagnosticsCommand('diagnostics:start', request, nextBinding); }, cancel:function(request, nextBinding){ diagnosticsCommand('diagnostics:cancel', request, nextBinding); }}, emit:function(event, nextBinding){ post(event, nextBinding || binding); }};
+            try { Object.defineProperty(window, 'RaftFeedback', {value:feedback, writable:false, configurable:false}); } catch (_) { feedback = window.RaftFeedback; }
+          }
+          if (feedback && feedback.session) {
+            try {
+              feedback.session.accountId = session.accountId;
+              feedback.session.sessionGeneration = session.sessionGeneration;
+              feedback.session.webViewGeneration = session.webViewGeneration;
+              feedback.session.accessToken = session.accessToken;
+              feedback.session.apiOrigin = session.apiOrigin;
+              feedback.session.clientKind = session.clientKind;
+              feedback.session.clientVersion = session.clientVersion;
+            } catch (_) {}
+          }
+          try { if (feedback && !feedback.capabilities) feedback.capabilities = ['diagnostics-upload-v1']; } catch (_) {}
+          try { if (feedback && !feedback.diagnostics) feedback.diagnostics = {start:function(request, nextBinding){ diagnosticsCommand('diagnostics:start', request, nextBinding); }, cancel:function(request, nextBinding){ diagnosticsCommand('diagnostics:cancel', request, nextBinding); }}; } catch (_) {}
         })();
     """.trimIndent()
 }
+
+/** The host's installed app identity is the source of truth for Web feedback metadata. */
+private fun feedbackWebViewClientVersion(): String =
+    NetworkUserAgent.appIdentity?.version?.trim().orEmpty()
 
 internal fun feedbackWebViewRuntimeSessionJavaScript(
     accessToken: String,
