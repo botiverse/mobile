@@ -2,7 +2,7 @@
 
 ## Scope
 
-The standalone `feedback/` WebView remains the product feedback UI. On submit, the native host generates diagnostics and uploads them through the matching Hands app. The existing Web transport authenticates `/api/product-feedback/...` with the user session bearer held in `window.RaftFeedback.session.accessToken`; that bearer is kept in page memory only and is never written to a URL, Web Storage, log, or native diagnostics payload. The WebView never receives a Hands client key, presign URL, local path, or diagnostics bytes. The diagnostics bridge receives only progress and a one-time controlled reference.
+The standalone `feedback/` WebView remains the product feedback UI. On submit, the native host generates diagnostics and uploads them through the matching Hands app. The existing Web transport authenticates `/api/product-feedback/...` with the user session bearer held in `window.RaftFeedback.session.accessToken`; that bearer is kept in page memory only and is never written to a URL, Web Storage, log, or native diagnostics payload. The auth bootstrap and every runtime refresh are limited to the trusted feedback main document (exact origin/path/query); subframes and other navigations receive no session. The native host does not forward feedback-page console output to its logs. The WebView never receives a Hands client key, presign URL, local path, or diagnostics bytes. The diagnostics bridge receives only progress and a one-time controlled reference.
 
 This applies to Android WebView, iOS WKWebView, and OHOS ArkWeb. A host without the optional capability keeps the existing feedback submission flow.
 
@@ -47,6 +47,7 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 - Capability absent: legacy feedback works unchanged.
 - Duplicate, stale, cancelled, and late events are ignored.
 - No diagnostics bridge payload contains a Hands client key, presign URL, access token, local path, or diagnostics bytes. The user session bearer is limited to the in-memory `RaftFeedback.session` transport contract and must not appear in a URL, Web Storage, log, or native diagnostics payload.
+- Auth bootstrap and token refresh run only in the trusted feedback main document; subframes, cross-origin pages, and path/query changes are fenced out. Feedback console output is not forwarded to native logs.
 - Failure never blocks ordinary feedback.
 - A `done` reference is one-time; late completion after cancel/close/account switch cannot create a second ticket.
 - Shared contract plus Android, iOS, and OHOS compile checks pass. Runtime staging preupload → create-ticket evidence is required separately per platform.

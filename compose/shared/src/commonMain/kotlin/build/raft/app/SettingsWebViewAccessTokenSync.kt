@@ -234,6 +234,7 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     controller: SlockWebViewController,
     binding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
+    trustedDocumentUrl: String = "",
     logger: (String) -> Unit = {},
 ) {
     val session = snapshot.session ?: return
@@ -253,6 +254,7 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
                         accountId = update.accountId,
                         sessionGeneration = update.sessionGeneration,
                         webViewGeneration = update.webViewGeneration,
+                        trustedDocumentUrl = trustedDocumentUrl,
                     )
                 } else {
                     settingsWebViewRuntimeAccessTokenJavaScript(

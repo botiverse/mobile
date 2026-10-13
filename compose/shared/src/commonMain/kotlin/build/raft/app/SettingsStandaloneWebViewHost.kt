@@ -1079,7 +1079,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
     return """
         (function() { 'use strict';
           if (window.top !== window) return;
-          if ($trustedUrl) { try { var trusted = new URL($trustedUrl); if (location.origin !== trusted.origin || location.pathname !== trusted.pathname || location.search !== trusted.search) return; } catch (_) { return; } }
+          if ($trustedUrl) { try { var trusted = new URL($trustedUrl); var bootstrapPath = '/__raft_mobile_bootstrap__'; if (location.origin !== trusted.origin || (location.pathname !== trusted.pathname && location.pathname !== bootstrapPath) || (location.pathname !== bootstrapPath && location.search !== trusted.search)) return; } catch (_) { return; } }
           var port = window.raftHostPort;
           var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
           var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};

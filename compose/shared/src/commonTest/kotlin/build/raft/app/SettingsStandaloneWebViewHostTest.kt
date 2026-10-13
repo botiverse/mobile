@@ -59,9 +59,15 @@ class SettingsStandaloneWebViewHostTest {
                 fence = SettingsWebViewAccessTokenFence(session, 42L, 7L),
             )
 
-        val script = feedbackWebViewBootstrapJavaScript(session, binding, "https://api.example.test")
+        val script = feedbackWebViewBootstrapJavaScript(
+            session,
+            binding,
+            "https://api.example.test",
+            trustedDocumentUrl = "https://web.example.test/feedback/",
+        )
 
         assertContains(script, "window.top !== window")
+        assertContains(script, "location.pathname")
         assertContains(script, "accessToken:\"session-bearer-secret\"")
         assertFalse(script.contains("localStorage"))
         assertFalse(script.contains("refresh-secret"))

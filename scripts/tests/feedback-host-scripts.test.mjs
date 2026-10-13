@@ -93,6 +93,20 @@ test('feedback bootstrap does not materialize a session in a child frame', () =>
   assert.equal(window.RaftFeedback, undefined);
 });
 
+test('feedback bootstrap does not materialize a session on an untrusted path', () => {
+  const window = { top: null, self: null, raftHostPort: { postMessage: () => { throw new Error('untrusted page must not post'); } } };
+  window.top = window;
+  window.self = window;
+  const context = vm.createContext({
+    window,
+    navigator: { language: 'en' },
+    location: { origin: 'https://example.test', pathname: '/account/', search: '' },
+    URL,
+  });
+  vm.runInContext(bootstrap, context, { filename: 'feedback-bootstrap-untrusted-path.js' });
+  assert.equal(window.RaftFeedback, undefined);
+});
+
 test('native hosts fence auth script and runtime updates to trusted documents', () => {
   assert.match(androidNative, /!allowNavigation && !isAllowedMainDocumentUrl\(activeUrl\)/);
   assert.match(androidNative, /allowedNavigationSchemes\.isNotEmpty\(\) && \(!allowNavigation/);
