@@ -1,0 +1,31 @@
+name: Design tokens
+
+# Mobile colour tokens are generated from the Web CSS (task #165). This gate keeps
+# the vendored sources, the generated Kotlin and the Chromium oracle in lockstep.
+on:
+  pull_request:
+    paths:
+      - "tools/design-tokens/**"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/**"
+      - ".github/workflows/design-tokens.yml"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tokens:
+    name: Generated tokens current
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Self-test generator
+        run: python3 tools/design-tokens/gen_tokens.py --self-test
+
+      - name: Check sources, generated Kotlin and oracle
+        run: python3 tools/design-tokens/gen_tokens.py --check

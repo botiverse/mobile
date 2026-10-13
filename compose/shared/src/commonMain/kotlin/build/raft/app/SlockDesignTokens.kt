@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.designtokens.RaftUiPalette
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -11,32 +12,37 @@ import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
+// Colours that exist on Web come from the generated RaftUiPalette (tools/design-tokens),
+// so a Web palette change shows up as a regenerated diff instead of silent drift.
+// The remaining literals have no Web token yet or differ from Web on purpose; see
+// tools/design-tokens/README.md "Known drift" before changing them.
 internal object SlockColor {
-    val BrandYellow = Color(0xFFFFD440)
+    val BrandYellow = RaftUiPalette.brutalYellow
     // Semantic alias for react `--color-soft-signal` (== brutal/brand yellow #FFD440),
     // used for the self-mention chip highlight so callsites read intent, not hue.
-    val SoftSignal = BrandYellow
-    val AccentPink = Color(0xFFFE7DA8)
-    val AccentCyan = Color(0xFF27CCF3)
-    val AccentOrange = Color(0xFFF8A16F)
-    val AccentLavender = Color(0xFFBBAFE6)
-    val AccentLime = Color(0xFFA9D877)
-    val AccentRed = Color(0xFFF97264)
-    val AccentStone = Color(0xFFC0B9B1)
-    // react raft-ui `--state-warning-base: oklch(0.7 0.202 44.441)` (#FF6900) —
-    // the warning badge/banner fill. Distinct from AccentOrange (#F8A16F).
-    val StateWarningBase = Color(0xFFFF6900)
-    val SurfaceWhite = Color(0xFFFFFFFF)
-    val SurfaceCream = Color(0xFFFFFAEF)
+    val SoftSignal = RaftUiPalette.softSignal
+    val AccentPink = RaftUiPalette.brutalPink
+    val AccentCyan = RaftUiPalette.brutalCyan
+    val AccentOrange = RaftUiPalette.brutalOrange
+    val AccentLavender = RaftUiPalette.brutalLavender
+    val AccentLime = RaftUiPalette.brutalLime
+    val AccentRed = RaftUiPalette.brutalRed
+    val AccentStone = RaftUiPalette.brutalStone
+    // raft-ui `--warning` (#FF6900): the warning badge/banner fill. Distinct from AccentOrange.
+    val StateWarningBase = RaftUiPalette.warning
+    val SurfaceWhite = RaftUiPalette.white
+    val SurfaceCream = RaftUiPalette.brutalCream
     val AppBgLightBlue = Color(0xFFE6F8FF)
     val EmptyStateGray = Color(0xFFE7E7E7)
-    // react Tailwind gray-400 (oklch 70.7% 0.022 261.325 = #99A1AF): the neutral /
-    // offline status-dot fill. Not the same gray as EmptyStateGray (#E7E7E7).
-    val StatusNeutralGray = Color(0xFF99A1AF)
+    // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
+    // Not the same gray as EmptyStateGray (#E7E7E7).
+    val StatusNeutralGray = RaftUiPalette.gray400
+    // Web brutal `--foreground` / `--line` are #141110, not pure black (Known drift).
     val TextBlack = Color(0xFF000000)
-    val TextMutedGray = Color(0xFF737373)
+    // Tailwind neutral-500.
+    val TextMutedGray = RaftUiPalette.neutral500
     val BorderBlack = Color(0xFF000000)
-    val ShadowBlack = Color(0xFF141111)
+    val ShadowBlack = RaftUiPalette.brutalBlack
 
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"

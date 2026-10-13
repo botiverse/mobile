@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.app.designtokens.RaftUiThemeColors
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -112,7 +113,9 @@ val brutalTheme: SlockTheme =
 val elegantTheme: SlockTheme =
     SlockTheme(
         family = SlockThemeFamily.Elegant,
-        ink = Color(0xFF0A0A0A), // elegant-ink   oklch(0.145 0 0)
+        ink = RaftUiThemeColors.ElegantLight.foregroundStrong, // oklch(0.145 0 0)
+        // The values below predate raft-ui's warm elegant neutrals (hue 106); Web now
+        // paints these roles differently. See tools/design-tokens/README.md "Known drift".
         inkMuted = Color(0xFF71717A), // zinc-500, elegant muted body text
         surface = SlockColor.SurfaceWhite, // brutal-paper base is shared; muting is secondary
         surfaceMuted = Color(0xFFF4F4F5), // elegant-muted oklch(0.967 0.001 286)
