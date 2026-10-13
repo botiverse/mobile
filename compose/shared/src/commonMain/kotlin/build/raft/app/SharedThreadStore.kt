@@ -68,6 +68,8 @@ import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.data.RawMessagePage
+import build.raft.app.data.RawMessagePageWitness
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
@@ -124,6 +126,8 @@ import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurablePageDirection
+import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
@@ -1450,7 +1454,18 @@ internal data class MarkdownThreadRefTarget(
 
 internal data class SharedThreadPageFetchResult(
     val payload: KuiklyThreadScreenPayload,
-    val requestedPageSize: Int
+    val requestedPageSize: Int,
+    /**
+     * Task #168: the raw server page plus the identity that fetched it, for the durable window
+     * extender. Present only for repository-backed older / newer pages; never read for rendering.
+     */
+    val durablePage: SharedThreadDurablePage? = null
+)
+
+/** A fetched paging page as the durable window extender needs it (task #168). */
+internal data class SharedThreadDurablePage(
+    val context: ReplyCacheProducerContext,
+    val rawPage: RawMessagePage
 )
 
 internal class SharedThreadDataSource(
@@ -1488,6 +1503,12 @@ internal class SharedThreadDataSource(
      * means "never write"; production wires the V2 loader from the provider.
      */
     private val enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
+    /**
+     * Offline cache paging entry (task #168): an older / newer page that is exactly adjacent to the
+     * stored V2 window is appended to it. Absent means "never write"; production wires the V2
+     * adjacent-page writer from the provider.
+     */
+    private val durablePageExtender: ThreadDurablePageExtender? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
@@ -1587,6 +1608,7 @@ internal class SharedThreadDataSource(
         payloadStore: SharedThreadPayloadStore? = null,
         durableLastKnownReader: ThreadDurableLastKnownReader? = null,
         enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
+        durablePageExtender: ThreadDurablePageExtender? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
@@ -1617,6 +1639,7 @@ internal class SharedThreadDataSource(
         payloadStore = payloadStore,
         durableLastKnownReader = durableLastKnownReader,
         enteredScopeSnapshotLoader = enteredScopeSnapshotLoader,
+        durablePageExtender = durablePageExtender,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
@@ -2119,6 +2142,41 @@ internal class SharedThreadDataSource(
                 ?: return false
         if (!isCurrentReplyCacheProvenance(context.provenance)) return false
         loader.loadOnEnter(partition, channelId) { isCurrentReplyCacheProvenance(context.provenance) }
+        return true
+    }
+
+    /**
+     * Offline cache paging entry (task #168): hand a fetched older / newer page to the durable window
+     * extender, which appends it only when it is exactly adjacent to the stored window. Same admission
+     * as [loadEnteredScopeSnapshotIfCurrent]; `stillCurrent` is re-read by the extender after its own
+     * network round trip. Returns whether the extender was asked at all (diagnostics only).
+     */
+    internal suspend fun extendDurableWindowIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        direction: ThreadDurablePageDirection,
+        anchorSeq: Long,
+        rawPage: RawMessagePage,
+    ): Boolean {
+        val extender = durablePageExtender ?: return false
+        if (!routeIdentity.canRenderTimelineCandidates) return false
+        when (routeIdentity.surfaceKind) {
+            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> Unit
+            else -> return false
+        }
+        val channelId = routeIdentity.timelineChannelId ?: return false
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return false
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return false
+        extender.extendWithAdjacentPage(
+            partition = partition,
+            channelId = channelId,
+            direction = direction,
+            anchorSeq = anchorSeq,
+            rawMessages = rawPage.messages,
+            requestedLimit = rawPage.requestedLimit,
+        ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
 
@@ -4678,6 +4736,7 @@ internal class SharedThreadDataSource(
         diagnosticsLogger(
             "thread_page_size source=$source server=${session.currentServerId.orEmpty()} pageSize=$pageSize"
         )
+        var rawPage = RawMessagePageWitness.None
         val result =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
@@ -4685,7 +4744,10 @@ internal class SharedThreadDataSource(
                     expectedProvenance = resolutionScope.provenance,
                     fallbackCode = "thread_${source}_network",
                     call = { repository -> repositoryCall(repository, ThreadId(threadId), pageSize) },
-                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+                    transform = { snapshot ->
+                        rawPage = snapshot.rawMessagePage
+                        snapshot.toKuiklyThreadPayload(basePayload, session.user.id)
+                    }
                 )
             } else {
                 val response =
@@ -4717,7 +4779,14 @@ internal class SharedThreadDataSource(
                 DataResult.Content(
                     SharedThreadPageFetchResult(
                         payload = result.data,
-                        requestedPageSize = pageSize
+                        requestedPageSize = pageSize,
+                        durablePage =
+                            rawPage.page?.let { page ->
+                                SharedThreadDurablePage(
+                                    context = ReplyCacheProducerContext(session, resolutionScope.provenance),
+                                    rawPage = page
+                                )
+                            }
                     )
                 )
             }
@@ -8441,6 +8510,40 @@ internal class SharedThreadStore(
             routeStillCurrent(existing, "thread_page", "older_secondary", applied)
         ) {
             launchSecondaryTimelineRefresh(applied, staleToken)
+            launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
+        }
+    }
+
+    /**
+     * Offline cache paging entry (task #168): offer an applied older / newer page to the durable V2
+     * window. Fire-and-forget on the store scope like the enter snapshot: it never touches the
+     * visible payload, and a failure is only logged.
+     */
+    private fun launchDurableWindowExtension(
+        routePayload: KuiklyThreadScreenPayload,
+        fetched: SharedThreadPageFetchResult,
+        direction: ThreadDurablePageDirection,
+        anchorSeq: Long,
+    ) {
+        val durablePage = fetched.durablePage ?: return
+        val routeIdentity = routePayload.resolveThreadRouteIdentity()
+        scope.launch {
+            try {
+                dataSource.extendDurableWindowIfCurrent(
+                    routeIdentity = routeIdentity,
+                    context = durablePage.context,
+                    direction = direction,
+                    anchorSeq = anchorSeq,
+                    rawPage = durablePage.rawPage,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger?.invoke(
+                    "thread_durable_page_extend_failed direction=${direction.wireName} " +
+                        "reason=${throwable::class.simpleName ?: "unknown"}"
+                )
+            }
         }
     }
 
@@ -8571,6 +8674,9 @@ internal class SharedThreadStore(
                     }
                     appliedToCurrentRoute = true
                     latestPayload.withThreadContentProjectionFrom(nextPayload)
+                }
+                if (appliedToCurrentRoute && result is DataResult.Content) {
+                    launchDurableWindowExtension(initial, result.data, ThreadDurablePageDirection.Newer, afterSeq)
                 }
                 if (appliedToCurrentRoute) {
                     outcome =

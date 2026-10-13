@@ -29,6 +29,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlin.time.TimeSource
 
 private val conversationRepositoryJson = Json {
@@ -818,7 +820,8 @@ class RealConversationRepository private constructor(
                 )
             },
             source = "messages_channel_older",
-            includeChannelSummaries = false
+            includeChannelSummaries = false,
+            captureRawMessagePage = true,
         )
     }
 
@@ -849,7 +852,7 @@ class RealConversationRepository private constructor(
                     threadId = threadId,
                     canLoadMoreAfter = payload.messages.size >= messageLimit,
                     diagnostics = warningLogger,
-                )
+                ).copy(rawMessagePage = rawMessagePageWitness(bodyText, messageLimit))
             }
         )
     }
@@ -1259,6 +1262,8 @@ class RealConversationRepository private constructor(
         includeChannelSummaries: Boolean = false,
         includeFollowedSummaries: Boolean = false,
         hydrateConversationDetail: Boolean = false,
+        /** Task #168: only the older-page fetch carries the raw page to the durable window extender. */
+        captureRawMessagePage: Boolean = false,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
@@ -1281,7 +1286,13 @@ class RealConversationRepository private constructor(
                             threadId = threadId,
                             canLoadMoreBefore = payload.messages.size >= messageLimit,
                             diagnostics = warningLogger,
-                        )
+                        ).let { snapshot ->
+                            if (captureRawMessagePage) {
+                                snapshot.copy(rawMessagePage = rawMessagePageWitness(bodyText, messageLimit))
+                            } else {
+                                snapshot
+                            }
+                        }
                     }
                 )
                 warningLogger(
@@ -1701,6 +1712,22 @@ private fun buildSharedThreadSnapshot(
         logger = diagnostics,
     )
 }
+
+/**
+ * Task #168: the raw `messages` array of a paging response, for the durable window extender. A
+ * body that is not an object with a `messages` array yields no witness (nothing will be persisted);
+ * the rendered snapshot is unaffected either way.
+ */
+private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
+    val messages =
+        runCatching { rawMessagePageJson.parseToJsonElement(bodyText) as? JsonObject }
+            .getOrNull()
+            ?.get("messages") as? JsonArray
+            ?: return RawMessagePageWitness.None
+    return RawMessagePageWitness(RawMessagePage(messages = messages, requestedLimit = requestedLimit))
+}
+
+private val rawMessagePageJson = Json { ignoreUnknownKeys = true }
 
 private fun ThreadSnapshot.withConversationDetail(
     detail: ConversationSummary?,

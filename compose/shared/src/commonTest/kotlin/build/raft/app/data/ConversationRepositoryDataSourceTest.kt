@@ -12,10 +12,14 @@ import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
@@ -1253,6 +1257,49 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(listOf(MessageType.System, MessageType.Chat), latest.messages.map { it.messageType })
         assertEquals(listOf("remove-19", "chat-20"), older.messages.map { it.id.value })
         assertEquals(listOf(MessageType.System, MessageType.Chat), older.messages.map { it.messageType })
+    }
+
+    @Test
+    fun onlyOlderAndNewerPagesCarryTheirRawServerPage() = runBlocking {
+        // Task #168: the raw `messages` array (and the limit actually sent) rides along for the
+        // durable window extender — on the two paging fetches only.
+        val pageBody =
+            """{"messages":[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}],"historyLimited":false}"""
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to pageBody,
+                        "GET messages/sync" to """[${messageJson("m7", "channel-1", seq = 7)}]""",
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val older = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 9, limit = 30),
+        ).data
+        val olderPage = assertNotNull(older.rawMessagePage.page)
+        assertEquals(listOf("m7", "m8"), olderPage.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
+        assertEquals(30, olderPage.requestedLimit)
+        assertTrue("senderName" in olderPage.messages.first().jsonObject, "the raw node, not the domain projection")
+
+        val newer = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.loadNewerMessages(ThreadId("channel-1"), afterSeq = 6, limit = 20),
+        ).data
+        assertEquals(2, assertNotNull(newer.rawMessagePage.page).messages.size)
+        assertEquals(20, newer.rawMessagePage.page?.requestedLimit)
+
+        // Negative twin: the same body through the initial load and the gap sync carries nothing.
+        val initial = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1"))).data
+        assertNull(initial.rawMessagePage.page)
+        val sync = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.syncNewerMessages(ThreadId("channel-1"), sinceSeq = 6, limit = 20),
+        ).data
+        assertNull(sync.rawMessagePage.page)
+
+        // The witness never takes part in equality: a snapshot with and without it is the same.
+        assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None), older)
+        assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None).hashCode(), older.hashCode())
     }
 
     private fun sampleStore(): SlockAuthSessionStore =

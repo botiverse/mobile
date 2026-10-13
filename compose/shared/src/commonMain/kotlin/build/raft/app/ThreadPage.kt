@@ -4079,6 +4079,7 @@ private fun ThreadPageScreen(
                 payloadStore = sharedStores.threadPayloadStore,
                 durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
+                durablePageExtender = sharedStores.threadDurablePageExtender,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }

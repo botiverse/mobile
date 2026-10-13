@@ -21,6 +21,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurablePageExtender
 
 /**
  * Test constructor for [SharedThreadDataSource] (task #1122). Mirrors the production secondary
@@ -48,6 +49,7 @@ internal fun testSharedThreadDataSource(
     payloadStore: SharedThreadPayloadStore? = null,
     durableLastKnownReader: ThreadDurableLastKnownReader? = null,
     enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
+    durablePageExtender: ThreadDurablePageExtender? = null,
     agentsApiClient: SlockAgentsApiClient? = null,
     actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     savedStatusRepository: SavedStatusRepository? = null,
@@ -78,6 +80,7 @@ internal fun testSharedThreadDataSource(
     payloadStore = payloadStore,
     durableLastKnownReader = durableLastKnownReader,
     enteredScopeSnapshotLoader = enteredScopeSnapshotLoader,
+    durablePageExtender = durablePageExtender,
     agentsApiClient = agentsApiClient,
     actionCardsApiClient = actionCardsApiClient,
     savedStatusRepository = savedStatusRepository,
