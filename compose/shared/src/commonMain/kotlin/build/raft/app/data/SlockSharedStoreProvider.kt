@@ -503,6 +503,11 @@ internal class SlockSharedStoreProvider private constructor(
         grant: RealtimeGrantRecord,
         transportEpoch: Long
     ) {
+        // Task #167: the durable message window must not append the new socket's frames after the old
+        // tail. Only a current grant may move the epoch, so a late signal from a retired identity is ignored.
+        realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+            canonicalMessageV2OwnerGateway?.noteTransportEpoch(grant, transportEpoch)
+        }
         var rebaselineResult: ProcessPresenceTransportRebaselineResult? = null
         var rebaselineOwner: ProcessServerMembersOwner? = null
         val admitted =
