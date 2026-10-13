@@ -21,6 +21,53 @@ internal data class ThreadDurableLastKnownFrame(
  */
 internal interface ThreadDurableLastKnownReader {
     suspend fun read(partition: DurablePartitionKey, channelId: SyncScopeId): ThreadDurableLastKnownFrame?
+
+    /**
+     * Offline paging (task #168 step 2b): the newest [limit] facts of the stored window that are
+     * older than [beforeSeq], in ascending seq order. Same gates as [read] (it is built on it: flag,
+     * baseline, scope kind, poison), so `null` means "no frame". The store restores a whole scope in
+     * one query (at most the retention cap of 500 facts), so filtering the restored frame IS the
+     * `before` query; there is no cheaper SQL path to add.
+     */
+    suspend fun readBefore(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        beforeSeq: Long,
+        limit: Int,
+    ): ThreadDurableOlderPage? {
+        require(limit > 0)
+        val frame = read(partition, channelId) ?: return null
+        val older = frame.windowEnvelopes().filter { it.fact.seq < beforeSeq }.sortedBy { it.fact.seq }
+        val page = older.takeLast(limit)
+        return ThreadDurableOlderPage(
+            scope = frame.scope,
+            envelopes = page,
+            hasOlderStored = older.size > page.size,
+            hasLoadedOldest = frame.cursor.hasLoadedOldest,
+        )
+    }
+}
+
+/**
+ * One offline older page read from the stored window. [hasOlderStored]: the window holds still-older
+ * facts below [envelopes]; [hasLoadedOldest]: the stored cursor says the window reaches the
+ * channel's first message.
+ */
+internal data class ThreadDurableOlderPage(
+    val scope: SyncScopeKey,
+    val envelopes: List<CanonicalMessageEnvelopeV2>,
+    val hasOlderStored: Boolean,
+    val hasLoadedOldest: Boolean,
+)
+
+/**
+ * The facts inside the stored window (`seq >= cursor.oldestLoadedSeq`). Facts below it can only be
+ * thread roots kept alive by a reply scope after retention trimmed the window; they are not
+ * contiguous with it, so offline paging never serves them.
+ */
+internal fun ThreadDurableLastKnownFrame.windowEnvelopes(): List<CanonicalMessageEnvelopeV2> {
+    val oldest = cursor.oldestLoadedSeq ?: return envelopes
+    return envelopes.filter { it.fact.seq >= oldest }
 }
 
 /** Top-level scope kinds the V2 writer persists. Reply threads are not readable here (no writer yet). */

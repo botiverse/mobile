@@ -125,6 +125,7 @@ import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
+import build.raft.app.network.sync.windowEnvelopes
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
@@ -1452,6 +1453,13 @@ internal data class MarkdownThreadRefTarget(
     val threadChannelId: String? = null
 )
 
+/** An older page served from the durable V2 window while the stand-in is shown (task #168 step 2b). */
+internal data class SharedThreadDurableOlderPage(
+    val messages: List<KuiklyThreadMessageItem>,
+    val pageSize: Int,
+    val canLoadMoreBefore: Boolean,
+)
+
 internal data class SharedThreadPageFetchResult(
     val payload: KuiklyThreadScreenPayload,
     val requestedPageSize: Int,
@@ -2224,10 +2232,10 @@ internal class SharedThreadDataSource(
         // laying out and drawing the whole stored scope (up to 500 facts) held the first frame behind a
         // loading state for over a second on a cold open (artin, Hands 2d15915b: 147 rows ⇒ ~1.3 s).
         val pageSize = threadPageSize(partition.serverId)
+        val window = frame.windowEnvelopes()
+        val shownEnvelopes = window.sortedByDescending { it.fact.seq }.take(pageSize)
         val messages =
-            frame.envelopes
-                .sortedByDescending { it.fact.seq }
-                .take(pageSize)
+            shownEnvelopes
                 .mapNotNull { envelope ->
                     envelope.toThreadMessageItem(
                         currentUserId = context.provenance.principalId,
@@ -2236,20 +2244,90 @@ internal class SharedThreadDataSource(
                 }
                 .sortedByThreadTimeline()
         if (messages.isEmpty()) return null
+        // Task #168 step 2b: older paging stays open while the window holds older facts than the ones
+        // shown, or the window itself does not reach the channel's start (an online retry may still
+        // fetch them). Loading older on the stand-in reads the window first (`durableOlderPageIfCurrent`).
+        val canLoadMoreBefore = window.size > shownEnvelopes.size || !frame.cursor.hasLoadedOldest
         diagnosticsLogger(
             "thread_durable_last_known threadId=$channelId outcome=frame scopeKind=${frame.scope.scopeKind} " +
-                "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq}"
+                "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq} " +
+                "canLoadMoreBefore=$canLoadMoreBefore"
         )
         return routePayload.copy(
             status = "content",
             backgroundRefreshing = false,
             durableLastKnown = true,
             messages = messages,
-            canLoadMoreBefore = false,
+            canLoadMoreBefore = canLoadMoreBefore,
             canLoadMoreAfter = false,
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
             errorCode = null,
+        )
+    }
+
+    /**
+     * Offline older page for a durable stand-in (task #168 step 2b): the newest page of stored facts
+     * older than [beforeSeq], projected like the stand-in itself. Same admission as
+     * [durableLastKnownPayloadIfCurrent] (reader, renderable top-level route, scope kind matching the
+     * surface, owning partition, current provenance before AND after the disk read; the reader applies
+     * the server flag). Reads only, never writes. Returns `null` when nothing can be served from disk
+     * (the caller then asks the network as before); every call logs one `thread_durable_older_page`.
+     */
+    internal suspend fun durableOlderPageIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        beforeSeq: Long,
+        expectedOwnerScopeId: String?,
+    ): SharedThreadDurableOlderPage? {
+        val channelId = routeIdentity.timelineChannelId
+        fun refuse(reason: String): SharedThreadDurableOlderPage? {
+            diagnosticsLogger(
+                "thread_durable_older_page threadId=${channelId.orEmpty()} served=0 reason=$reason beforeSeq=$beforeSeq"
+            )
+            return null
+        }
+        val reader = durableLastKnownReader ?: return refuse("no_reader")
+        val ownerScopeId = context.provenance.threadPayloadOwnerScopeId
+        if (ownerScopeId == null || ownerScopeId != expectedOwnerScopeId) return refuse("owner_changed")
+        if (!routeIdentity.canRenderTimelineCandidates) return refuse("not_renderable")
+        val allowedScopeKinds =
+            when (routeIdentity.surfaceKind) {
+                KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
+                KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
+                else -> return refuse("not_top_level")
+            }
+        if (channelId == null) return refuse("no_channel")
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return refuse("no_partition")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        val pageSize = threadPageSize(partition.serverId)
+        val page = reader.readBefore(partition, channelId, beforeSeq, pageSize) ?: return refuse("no_frame")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        if (page.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
+        val messages =
+            page.envelopes.mapNotNull { envelope ->
+                envelope.toThreadMessageItem(
+                    currentUserId = context.provenance.principalId,
+                    diagnostics = diagnosticsLogger,
+                )
+            }.sortedByThreadTimeline()
+        if (messages.isEmpty()) {
+            return refuse(if (page.hasLoadedOldest) "exhausted_at_oldest" else "exhausted")
+        }
+        // More stored below this page ⇒ keep paging from disk; window exhausted but it does not reach
+        // the channel's start ⇒ keep paging open for an online retry; otherwise this is the beginning.
+        val canLoadMoreBefore = page.hasOlderStored || !page.hasLoadedOldest
+        diagnosticsLogger(
+            "thread_durable_older_page threadId=$channelId served=${messages.size} reason=" +
+                (if (page.hasOlderStored) "more_stored" else if (page.hasLoadedOldest) "reached_oldest" else "window_end") +
+                " beforeSeq=$beforeSeq canLoadMoreBefore=$canLoadMoreBefore"
+        )
+        return SharedThreadDurableOlderPage(
+            messages = messages,
+            pageSize = pageSize,
+            canLoadMoreBefore = canLoadMoreBefore,
         )
     }
 
@@ -8469,6 +8547,9 @@ internal class SharedThreadStore(
             return
         }
         reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
+        // Task #168 step 2b: while the offline stand-in is shown, older pages come from the durable
+        // window first; only when it has nothing older does the ordinary network fetch run.
+        if (existing.durableLastKnown && loadOlderFromDurableStandIn(existing, beforeSeq)) return
         val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
         val latest = _state.value.payload
         if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
@@ -8485,8 +8566,9 @@ internal class SharedThreadStore(
                             pageSize = result.data.requestedPageSize
                         )
                         .preserveStableTimelineFrom(latest)
-                    dataSource
-                        .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
+                    // A stand-in (durable rows) is never committed to the memory payload cache: a memory
+                    // candidate outranks the durable frame on the next entry as "network-fresh".
+                    (if (latest.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
                         .withRouteContext(existing)
                         .preserveStableTimelineFrom(latest)
                 }
@@ -8545,6 +8627,48 @@ internal class SharedThreadStore(
                 )
             }
         }
+    }
+
+    /**
+     * Task #168 step 2b: serve one older page of the offline stand-in from the durable window. Returns
+     * `true` when the request is handled here (served, or dropped because the stand-in was replaced
+     * meanwhile), `false` when the window has nothing to give and the caller should ask the network.
+     * Reads only; the merged payload is not cached, and the online refresh still replaces the whole
+     * stand-in including these pages.
+     */
+    private suspend fun loadOlderFromDurableStandIn(
+        existing: KuiklyThreadScreenPayload,
+        beforeSeq: Long,
+    ): Boolean {
+        val context = dataSource.captureReplyCacheProducerContext() ?: return false
+        val page =
+            dataSource.durableOlderPageIfCurrent(
+                routeIdentity = existing.resolveThreadRouteIdentity(),
+                context = context,
+                beforeSeq = beforeSeq,
+                // The stand-in on screen belongs to the owner it was read for; another owner never pages it.
+                expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+            ) ?: return false
+        var applied = false
+        reducePayloadPatch { currentPayload ->
+            if (
+                !currentPayload.durableLastKnown ||
+                !routeStillCurrent(existing, "thread_page", "durable_older_apply", currentPayload)
+            ) {
+                return@reducePayloadPatch currentPayload
+            }
+            applied = true
+            currentPayload
+                .mergePagedMessages(pageMessages = page.messages, before = true, pageSize = page.pageSize)
+                .copy(canLoadMoreBefore = page.canLoadMoreBefore)
+        }
+        if (!applied) {
+            diagnosticsLogger?.invoke(
+                "thread_durable_older_page threadId=${existing.sourceThreadId.orEmpty()} " +
+                    "served=0 reason=stand_in_replaced"
+            )
+        }
+        return true
     }
 
     suspend fun loadNewer(): ThreadNewerPageLoadOutcome {

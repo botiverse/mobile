@@ -21630,10 +21630,11 @@ internal fun threadOlderMessagesStatusSpec(
     durableLastKnown: Boolean = false
 ): ThreadHistoryStatusSpec =
     when {
-        // Task #1125: an offline stand-in frame has paging closed, but it is NOT the beginning of the
+        // Task #168 step 2b: a stand-in whose stored window still has older pages pages like any frame.
+        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
+        // Task #1125: an offline stand-in frame with paging closed is NOT the beginning of the
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove.
         durableLastKnown -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
-        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
         else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
     }
 
