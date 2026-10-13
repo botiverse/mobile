@@ -249,7 +249,10 @@ internal class CanonicalMessageV2ProductionCanary(
         if (transportEpoch <= 0L) return
         // Any different value is a new connection: a rebuilt native transport restarts its numbering, so
         // "only larger" would miss real reconnects. A late old signal costs at most one extra snapshot.
-        selectionMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
+        selectionMutex.withLock {
+            val previous = currentTransportEpochByPartition[partition]
+            if (previous == null || transportEpoch > previous) currentTransportEpochByPartition[partition] = transportEpoch
+        }
     }
 
     private suspend fun currentTransportEpoch(partition: DurablePartitionKey): Long? =
@@ -307,7 +310,7 @@ internal class CanonicalMessageV2ProductionCanary(
                     ) {
                         CanonicalMessageV2CommitResult.Committed -> {
                             state.cursor = frame.cursor
-                            state.committedUnder(epochAtRequest)
+                            state.committedUnder(currentTransportEpoch(scope.partition))
                             state.mode = CanonicalMessageV2CanaryMode.SoleApply
                             logger(
                                 "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
