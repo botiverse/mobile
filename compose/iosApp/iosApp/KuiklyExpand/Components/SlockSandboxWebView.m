@@ -27,6 +27,7 @@ static NSString *const SlockSandboxWebViewCommandGoBack = @"goBack";
 static NSString *const SlockSandboxWebViewCommandGoForward = @"goForward";
 static NSString *const SlockSandboxWebViewCommandReload = @"reload";
 static NSString *const SlockSandboxWebViewCommandStop = @"stop";
+static NSString *const SlockSandboxWebViewCommandEvaluateJavaScriptPrefix = @"evaluateJavaScript:";
 
 static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     static NSArray<NSString *> *keyPaths;
@@ -67,6 +68,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 @property (nonatomic, copy) KuiklyRenderCallback navigationStateChangeCallback;
 @property (nonatomic, copy) KuiklyRenderCallback hostMessageCallback;
 @property (nonatomic, assign) BOOL hostEventsEnabled;
+- (BOOL)isSameOriginURL:(NSURL *)targetURL;
 
 @end
 
@@ -337,7 +339,7 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
         WKUserScript *script =
             [[WKUserScript alloc] initWithSource:self.injectedJavaScript
                                    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                                forMainFrameOnly:NO];
+                                forMainFrameOnly:!self.allowNavigation];
         [userContentController addUserScript:script];
     }
     configuration.userContentController = userContentController;
@@ -498,6 +500,17 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 - (void)executeNavigationCommand:(NSString *)navigationCommand {
     NSString *command =
         [navigationCommand stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([command hasPrefix:SlockSandboxWebViewCommandEvaluateJavaScriptPrefix]) {
+        NSString *script = [command substringFromIndex:SlockSandboxWebViewCommandEvaluateJavaScriptPrefix.length];
+        NSURL *activeURL = self.webView.URL;
+        BOOL sameTrustedDocument = activeURL && [self isNavigationSchemeAllowedURL:activeURL] &&
+            [self isSameOriginURL:activeURL] &&
+            (self.allowNavigation || [self isAllowedMainDocumentURL:activeURL]);
+        if (sameTrustedDocument && script.length > 0) {
+            [self.webView evaluateJavaScript:script completionHandler:nil];
+        }
+        return;
+    }
     if ([command isEqualToString:SlockSandboxWebViewCommandGoBack]) {
         if (self.webView.canGoBack) {
             [self.webView goBack];
@@ -666,6 +679,21 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     BOOL samePath = [allowedPath isEqualToString:targetPath];
     BOOL sameQuery = [allowedQuery isEqualToString:targetQuery];
     return sameScheme && sameHost && samePath && sameQuery && [allowedPort isEqualToNumber:targetPort];
+}
+
+- (BOOL)isSameOriginURL:(NSURL *)targetURL {
+    if (!targetURL || !self.allowedURL) {
+        return NO;
+    }
+    NSString *allowedScheme = self.allowedURL.scheme.lowercaseString ?: @"";
+    NSString *targetScheme = targetURL.scheme.lowercaseString ?: @"";
+    NSString *allowedHost = self.allowedURL.host.lowercaseString ?: @"";
+    NSString *targetHost = targetURL.host.lowercaseString ?: @"";
+    NSInteger defaultPort = [allowedScheme isEqualToString:@"https"] ? 443 : 80;
+    NSInteger allowedPort = self.allowedURL.port ? self.allowedURL.port.integerValue : defaultPort;
+    NSInteger targetPort = targetURL.port ? targetURL.port.integerValue : defaultPort;
+    return [allowedScheme isEqualToString:targetScheme] &&
+        [allowedHost isEqualToString:targetHost] && allowedPort == targetPort;
 }
 
 - (void)notifyLoadFailure:(NSString *)reason {

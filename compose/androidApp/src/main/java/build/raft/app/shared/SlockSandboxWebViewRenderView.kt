@@ -618,7 +618,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         val activeUrl = currentUrl.ifBlank { lastSuccessfulUrl }
         val sourceOrigin = documentStartScriptOriginRule(src)
         val activeOrigin = documentStartScriptOriginRule(activeUrl)
-        if (sourceOrigin == null || activeOrigin != sourceOrigin) {
+        if (sourceOrigin == null || activeOrigin != sourceOrigin ||
+            (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl))) {
             Log.i(
                 LOG_TAG,
                 "runtime_js result=dropped reason=document_not_ready sameOrigin=${sourceOrigin != null && activeOrigin == sourceOrigin}"
@@ -890,7 +891,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     private fun isRestrictedGenericMode(): Boolean =
-        allowedNavigationSchemes.isNotEmpty() && injectedJavaScript.isBlank()
+        // Feedback carries an in-memory bearer in its bootstrap. Never forward page console
+        // output for a fenced settings document: hostile page code can otherwise print the
+        // bearer and have it copied into logcat. Generic restricted previews also stay silent.
+        allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
 
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)

@@ -61,12 +61,18 @@ class SettingsStandaloneWebViewHostTest {
 
         val script = feedbackWebViewBootstrapJavaScript(session, binding, "https://api.example.test")
 
+        assertContains(script, "window.top !== window")
         assertContains(script, "accessToken:\"session-bearer-secret\"")
         assertFalse(script.contains("localStorage"))
         assertFalse(script.contains("refresh-secret"))
         assertFalse(script.contains("handsClientKey"))
         assertFalse(script.contains("presign"))
         assertFalse(script.contains("diagnosticsBytes"))
+    }
+
+    @Test
+    fun feedbackWebViewKeepsMainDocumentNavigationFenced() {
+        assertFalse(settingsFeedbackWebViewSpec.allowNavigation)
     }
 
     @Test

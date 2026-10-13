@@ -242,6 +242,12 @@ internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
     val includeLocaleQuery: Boolean = false,
     val headerFollowsDocumentTitle: Boolean = false,
+    /**
+     * When false, the native host admits only the original document URL (same
+     * scheme/host/port/path/query). Feedback keeps auth-bearing scripts fenced
+     * to that trusted document; in-page history remains available.
+     */
+    val allowNavigation: Boolean = true,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
@@ -587,8 +593,14 @@ internal fun StandaloneSettingsWebViewContent(
         onDispose { feedbackDiagnosticsHost?.unbind(hostAuthBinding) }
     }
     val injectedJavaScript =
-        remember(spec.surface, session, hostAuthBinding, apiOrigin) {
-            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, apiOrigin)
+        remember(spec.surface, session, hostAuthBinding, apiOrigin, webUrl) {
+            standaloneSettingsWebViewInjectedJavaScript(
+                session,
+                hostAuthBinding,
+                spec.surface,
+                apiOrigin,
+                trustedDocumentUrl = webUrl,
+            )
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
@@ -601,6 +613,7 @@ internal fun StandaloneSettingsWebViewContent(
         url = webUrl,
         modifier = modifier,
         allowedNavigationSchemes = spec.allowedNavigationSchemes,
+        allowNavigation = spec.allowNavigation,
         hostEventsEnabled = spec.hostEventsEnabled,
         bottomContentPadding = spec.bottomContentPadding,
         injectedJavaScript = injectedJavaScript,
@@ -626,6 +639,7 @@ internal fun StandaloneSettingsWebViewContent(
         controller = controller,
         binding = hostAuthBinding,
         surface = spec.surface,
+        trustedDocumentUrl = webUrl,
         logger = accessTokenSyncLogger,
     )
 }
@@ -1028,9 +1042,10 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     hostBinding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
     apiOrigin: String = "",
+    trustedDocumentUrl: String = "",
 ): String {
     if (surface == SettingsWebViewSurface.Feedback) {
-        return feedbackWebViewBootstrapJavaScript(session, hostBinding, apiOrigin)
+        return feedbackWebViewBootstrapJavaScript(session, hostBinding, apiOrigin, trustedDocumentUrl)
     }
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
     val clientKind = ""
@@ -1050,6 +1065,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
     session: StoredAuthSession?,
     binding: SettingsWebViewHostAuthBinding?,
     apiOrigin: String,
+    trustedDocumentUrl: String = "",
 ): String {
     val json = kotlinx.serialization.json.Json
     val accountId = json.encodeToString(binding?.accountId.orEmpty())
@@ -1059,8 +1075,11 @@ internal fun feedbackWebViewBootstrapJavaScript(
     val api = json.encodeToString(apiOrigin)
     val clientVersion = json.encodeToString(feedbackWebViewClientVersion())
     val clientKind = json.encodeToString(slockFeedbackWebViewClientKind())
+    val trustedUrl = json.encodeToString(trustedDocumentUrl)
     return """
         (function() { 'use strict';
+          if (window.top !== window) return;
+          if ($trustedUrl) { try { var trusted = new URL($trustedUrl); if (location.origin !== trusted.origin || location.pathname !== trusted.pathname || location.search !== trusted.search) return; } catch (_) { return; } }
           var port = window.raftHostPort;
           var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
           var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
@@ -1104,9 +1123,11 @@ internal fun feedbackWebViewRuntimeSessionJavaScript(
     accountId: String,
     sessionGeneration: Long,
     webViewGeneration: Long,
+    trustedDocumentUrl: String = "",
 ): String {
     val json = kotlinx.serialization.json.Json
+    val trustedUrl = json.encodeToString(trustedDocumentUrl)
     return """
-        (function() { var host = window.RaftFeedback; if (!host || !host.session) return; host.session.accessToken = ${json.encodeToString(accessToken)}; host.session.accountId = ${json.encodeToString(accountId)}; host.session.sessionGeneration = $sessionGeneration; host.session.webViewGeneration = $webViewGeneration; window.dispatchEvent(new CustomEvent('raft:feedback-session-updated', {detail:host.session})); })();
+        (function() { if (window.top !== window) return; if ($trustedUrl) { try { var trusted = new URL($trustedUrl); if (location.origin !== trusted.origin || location.pathname !== trusted.pathname || location.search !== trusted.search) return; } catch (_) { return; } } var host = window.RaftFeedback; if (!host || !host.session) return; host.session.accessToken = ${json.encodeToString(accessToken)}; host.session.accountId = ${json.encodeToString(accountId)}; host.session.sessionGeneration = $sessionGeneration; host.session.webViewGeneration = $webViewGeneration; window.dispatchEvent(new CustomEvent('raft:feedback-session-updated', {detail:host.session})); })();
     """.trimIndent()
 }

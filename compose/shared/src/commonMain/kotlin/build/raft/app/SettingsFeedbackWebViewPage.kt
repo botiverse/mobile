@@ -10,6 +10,7 @@ internal fun Pager.openSettingsFeedbackWebViewPage(storeScope: build.raft.app.da
 internal val settingsFeedbackWebViewSpec = StandaloneSettingsWebViewSpec(
     surface = SettingsWebViewSurface.Feedback,
     hostEventsEnabled = true,
+    allowNavigation = false,
     buildWebUrl = { webBaseUrl, _, _ ->
         sharedSettingsHostShellWebUrl(webBaseUrl, "feedback/")
     },

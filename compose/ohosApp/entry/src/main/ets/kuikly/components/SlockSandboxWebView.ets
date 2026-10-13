@@ -23,6 +23,7 @@ const kCommandGoBack = 'goBack';
 const kCommandGoForward = 'goForward';
 const kCommandReload = 'reload';
 const kCommandStop = 'stop';
+const kCommandEvaluateJavaScriptPrefix = 'evaluateJavaScript:';
 
 /** ArkWeb JavaScript proxy exposed only on opted-in feedback WebViews. */
 class SlockSandboxWebViewHostPort {
@@ -426,6 +427,25 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.bumpRenderRevision();
   }
 
+  /**
+   * ArkWeb's document-start rules are URL scoped but do not expose a main-frame-only switch.
+   * Keep the native rule broad for compatibility, then fence the auth-bearing script itself to
+   * the original HTTP(S) document and top-level frame.
+   */
+  scopedInjectedJavaScript(): string {
+    if (this.injectedJavaScript.length === 0 || this.allowNavigation) {
+      return '';
+    }
+    const document = parseDocumentUrl(this.src);
+    if (document === null) {
+      return '';
+    }
+    const origin = JSON.stringify(`${document.protocol}//${document.host}`);
+    const path = JSON.stringify(document.pathname);
+    const search = JSON.stringify(document.search);
+    return `(function(){if(window.top!==window.self||window.location.origin!==${origin}||window.location.pathname!==${path}||window.location.search!==${search})return;${this.injectedJavaScript}\n})();`;
+  }
+
   private registerHostProxy(): void {
     if (this.destroyed || !this.controllerAttached || !this.hostEventsEnabled || this.hostProxyRegistered) {
       return;
@@ -499,7 +519,12 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     while (this.pendingNavigationCommands.length > 0 && this.controllerAttached && !this.destroyed) {
       const command = this.pendingNavigationCommands[0];
       try {
-        if (command === kCommandGoBack) {
+        if (command.startsWith(kCommandEvaluateJavaScriptPrefix)) {
+          const script = command.substring(kCommandEvaluateJavaScriptPrefix.length);
+          if (script.length > 0 && this.canEvaluateRuntimeJavaScript()) {
+            this.controller.runJavaScript(script);
+          }
+        } else if (command === kCommandGoBack) {
           if (this.controller.accessBackward()) {
             this.controller.backward();
           }
@@ -532,6 +557,15 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     }
     const scheme = navigationScheme(url);
     return scheme.length > 0 && this.allowedNavigationSchemes.has(scheme);
+  }
+
+  private canEvaluateRuntimeJavaScript(): boolean {
+    const target = this.currentUrl.length > 0 ? this.currentUrl : this.src;
+    if (target.length === 0 || !this.isNavigationSchemeAllowed(target)) {
+      return false;
+    }
+    return sameHttpOrigin(this.src, target) &&
+      (this.allowNavigation || this.isAllowedMainDocumentUrl(target));
   }
 
   private canGoBack(): boolean {
@@ -616,7 +650,7 @@ export struct SlockSandboxWebViewComponent {
           .onlineImageAccess(true)
           .multiWindowAccess(false)
           .runJavaScriptOnDocumentStart(this.renderView.allowScripts && this.renderView.injectedJavaScript.length > 0
-            ? [{ script: this.renderView.injectedJavaScript, scriptRules: ['*'] }]
+            ? [{ script: this.renderView.allowNavigation ? this.renderView.injectedJavaScript : this.renderView.scopedInjectedJavaScript(), scriptRules: ['*'] }]
             : [])
           .onControllerAttached(() => {
             this.renderView.onControllerAttached(renderKey);
@@ -738,7 +772,8 @@ function navigationScheme(url: string): string {
 
 function isNavigationCommand(command: string): boolean {
   return command === kCommandGoBack || command === kCommandGoForward ||
-    command === kCommandReload || command === kCommandStop;
+    command === kCommandReload || command === kCommandStop ||
+    command.startsWith(kCommandEvaluateJavaScriptPrefix);
 }
 
 function clampProgress(progress: number): number {

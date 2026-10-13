@@ -10,6 +10,9 @@ const android = read('compose/androidApp/src/main/java/build/raft/app/shared/Slo
 const iosLiteral = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSandboxWebView.m')
   .match(/NSString \*bridge = @("(?:\\.|[^"\\])*");/)[1];
 const ios = JSON.parse(iosLiteral);
+const androidNative = read('compose/androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt');
+const iosNative = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSandboxWebView.m');
+const ohosNative = read('compose/ohosApp/entry/src/main/ets/kuikly/components/SlockSandboxWebView.ets');
 const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt')
   .split('internal fun feedbackWebViewBootstrapJavaScript(')[1]
   .match(/return """([\s\S]*?)"""/)[1]
@@ -18,6 +21,7 @@ const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/Sett
   .replaceAll('$webViewGeneration', '4')
   .replaceAll('$accessToken', '"test-token"')
   .replaceAll('$api', '"https://example.test"')
+  .replaceAll('$trustedUrl', '"https://example.test/feedback/"')
   .replaceAll('$clientKind', '"android"')
   .replaceAll('$clientVersion', '"1.0.11-alpha+test"')
   .replace('${json.encodeToString(slockFeedbackWebViewClientKind())}', '"android"');
@@ -33,7 +37,15 @@ for (const [platform, script] of [['android', android], ['ios', ios]]) {
       setItem: () => { throw new Error('feedback bootstrap must not write storage'); },
       removeItem: () => { throw new Error('feedback bootstrap must not write storage'); },
     };
-    const context = vm.createContext({ window, navigator: { language: 'en' }, localStorage });
+    window.top = window;
+    window.self = window;
+    const context = vm.createContext({
+      window,
+      navigator: { language: 'en' },
+      localStorage,
+      location: { origin: 'https://example.test', pathname: '/feedback/', search: '' },
+      URL,
+    });
     vm.runInContext(script, context, { filename: `${platform}-host.js` });
     vm.runInContext(bootstrap, context, { filename: 'feedback-bootstrap.js' });
     assert.equal(window.RaftFeedback.session.accessToken, 'test-token');
@@ -68,3 +80,25 @@ for (const [platform, script] of [['android', android], ['ios', ios]]) {
     assert.equal(typeof window.RaftFeedback.diagnostics?.cancel, 'function');
   });
 }
+
+test('feedback bootstrap does not materialize a session in a child frame', () => {
+  const window = { top: {}, self: {}, raftHostPort: { postMessage: () => { throw new Error('child frame must not post'); } } };
+  const context = vm.createContext({
+    window,
+    navigator: { language: 'en' },
+    location: { origin: 'https://example.test', pathname: '/feedback/', search: '' },
+    URL,
+  });
+  vm.runInContext(bootstrap, context, { filename: 'feedback-bootstrap-child.js' });
+  assert.equal(window.RaftFeedback, undefined);
+});
+
+test('native hosts fence auth script and runtime updates to trusted documents', () => {
+  assert.match(androidNative, /!allowNavigation && !isAllowedMainDocumentUrl\(activeUrl\)/);
+  assert.match(androidNative, /allowedNavigationSchemes\.isNotEmpty\(\) && \(!allowNavigation/);
+  assert.match(iosNative, /forMainFrameOnly:!self\.allowNavigation/);
+  assert.match(iosNative, /isSameOriginURL:activeURL/);
+  assert.match(iosNative, /evaluateJavaScript:script completionHandler:nil/);
+  assert.match(ohosNative, /window\.top!==window\.self/);
+  assert.match(ohosNative, /this\.controller\.runJavaScript\(script\)/);
+});

@@ -86,6 +86,7 @@ class SettingsWebViewAccessTokenSyncTest {
             )
 
         assertContains(script, "host.session.accessToken")
+        assertContains(script, "window.top !== window")
         assertContains(script, "rotated-session-bearer")
         assertContains(script, "raft:feedback-session-updated")
         assertFalse(script.contains("localStorage"))
