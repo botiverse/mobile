@@ -243,16 +243,13 @@ internal class CanonicalMessageV2ProductionCanary(
     /**
      * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch]. Posted by
      * the native host before any frame of the new socket. Recorded per partition; every scope compares it
-     * with the epoch it last committed under, inside its own writer, at commit time.
+     * with the epoch it last committed under, inside its own writer.
      */
     suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
         if (transportEpoch <= 0L) return
-        selectionMutex.withLock {
-            val previous = currentTransportEpochByPartition[partition]
-            if (previous == null || transportEpoch > previous) {
-                currentTransportEpochByPartition[partition] = transportEpoch
-            }
-        }
+        // Any different value is a new connection: a rebuilt native transport restarts its numbering, so
+        // "only larger" would miss real reconnects. A late old signal costs at most one extra snapshot.
+        selectionMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
     }
 
     private suspend fun currentTransportEpoch(partition: DurablePartitionKey): Long? =
@@ -281,6 +278,9 @@ internal class CanonicalMessageV2ProductionCanary(
         partitionGeneration: Long,
     ): CanonicalMessageV2CanaryOutcome {
         state.mode = CanonicalMessageV2CanaryMode.Activating
+        // The snapshot is only known to be continuous with the connection that was current when it was
+        // requested. If the transport reconnects while it loads, the next frame must snapshot again.
+        val epochAtRequest = currentTransportEpoch(scope.partition)
         return when (val loaded = snapshotLoader.load(CanonicalMessageV2SnapshotRequest(scope, targetFactId))) {
             is CanonicalMessageV2SnapshotLoadResult.Unavailable -> {
                 generationEngine.rebaselineFailed(scope)
@@ -307,9 +307,7 @@ internal class CanonicalMessageV2ProductionCanary(
                     ) {
                         CanonicalMessageV2CommitResult.Committed -> {
                             state.cursor = frame.cursor
-                            // The snapshot reads the server's current window, so it is continuous with
-                            // whatever epoch is current now (read under this scope's writer).
-                            state.committedUnder(currentTransportEpoch(scope.partition))
+                            state.committedUnder(epochAtRequest)
                             state.mode = CanonicalMessageV2CanaryMode.SoleApply
                             logger(
                                 "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
