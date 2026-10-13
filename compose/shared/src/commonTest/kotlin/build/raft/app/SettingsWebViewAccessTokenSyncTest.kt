@@ -76,6 +76,27 @@ class SettingsWebViewAccessTokenSyncTest {
     }
 
     @Test
+    fun feedbackRuntimeScriptRefreshesOnlyInMemorySessionWithoutStorageOrDiagnosticsSecrets() {
+        val script =
+            feedbackWebViewRuntimeSessionJavaScript(
+                accessToken = "rotated-session-bearer",
+                accountId = "user-1",
+                sessionGeneration = 42,
+                webViewGeneration = 7,
+            )
+
+        assertContains(script, "host.session.accessToken")
+        assertContains(script, "rotated-session-bearer")
+        assertContains(script, "raft:feedback-session-updated")
+        assertFalse(script.contains("localStorage"))
+        assertFalse(script.contains("refresh-secret"))
+        assertFalse(script.contains("handsClientKey"))
+        assertFalse(script.contains("presign"))
+        assertFalse(script.contains("diagnosticsBytes"))
+        assertFalse(script.contains("localPath"))
+    }
+
+    @Test
     fun readySameBindingAcceptsRotationsWithStableBindingAndAdvancingSequence() {
         val initial = session(accessToken = "access-1")
         val fence = fence(initial)

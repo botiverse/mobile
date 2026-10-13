@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kmm.network.export.NetworkAppIdentity
 import com.tencent.kmm.network.export.NetworkUserAgent
@@ -34,6 +37,36 @@ class SettingsStandaloneWebViewHostTest {
         } finally {
             NetworkUserAgent.appIdentity = previous
         }
+    }
+
+    @Test
+    fun feedbackBootstrapKeepsUserSessionBearerInMemoryWithoutStorageOrDiagnosticsLeakage() {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "user@example.test"),
+                accessToken = "session-bearer-secret",
+                refreshToken = "refresh-secret",
+                selectedServerId = "server-1",
+                selectedServerSlug = "workspace",
+                servers = listOf(StoredAuthServer(id = "server-1", name = "Workspace", slug = "workspace")),
+            )
+        val binding =
+            SettingsWebViewHostAuthBinding(
+                accountId = "user-1",
+                serverId = "server-1",
+                sessionGeneration = 42L,
+                webViewGeneration = 7L,
+                fence = SettingsWebViewAccessTokenFence(session, 42L, 7L),
+            )
+
+        val script = feedbackWebViewBootstrapJavaScript(session, binding, "https://api.example.test")
+
+        assertContains(script, "accessToken:\"session-bearer-secret\"")
+        assertFalse(script.contains("localStorage"))
+        assertFalse(script.contains("refresh-secret"))
+        assertFalse(script.contains("handsClientKey"))
+        assertFalse(script.contains("presign"))
+        assertFalse(script.contains("diagnosticsBytes"))
     }
 
     @Test

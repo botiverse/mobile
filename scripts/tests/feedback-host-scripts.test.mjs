@@ -18,23 +18,53 @@ const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/Sett
   .replaceAll('$webViewGeneration', '4')
   .replaceAll('$accessToken', '"test-token"')
   .replaceAll('$api', '"https://example.test"')
+  .replaceAll('$clientKind', '"android"')
+  .replaceAll('$clientVersion', '"1.0.11-alpha+test"')
   .replace('${json.encodeToString(slockFeedbackWebViewClientKind())}', '"android"');
 
 for (const [platform, script] of [['android', android], ['ios', ios]]) {
-  test(`${platform}: actual host and feedback scripts deliver legacy events without advertising an absent uploader`, () => {
+  test(`${platform}: actual host and feedback scripts keep auth in memory and diagnostics payloads tokenless`, () => {
     const messages = [];
     const port = { postMessage: value => messages.push(JSON.parse(value)) };
     const window = platform === 'android'
       ? { raftHostPort: port }
       : { webkit: { messageHandlers: { raftHostPort: port } } };
-    const context = vm.createContext({ window, navigator: { language: 'en' } });
+    const localStorage = {
+      setItem: () => { throw new Error('feedback bootstrap must not write storage'); },
+      removeItem: () => { throw new Error('feedback bootstrap must not write storage'); },
+    };
+    const context = vm.createContext({ window, navigator: { language: 'en' }, localStorage });
     vm.runInContext(script, context, { filename: `${platform}-host.js` });
     vm.runInContext(bootstrap, context, { filename: 'feedback-bootstrap.js' });
+    assert.equal(window.RaftFeedback.session.accessToken, 'test-token');
+    assert.equal(window.RaftFeedback.session.apiOrigin, 'https://example.test');
+    assert.equal(messages.some(message => JSON.stringify(message).includes('test-token')), false);
+    window.RaftFeedback.diagnostics.start(
+      { requestId: 'request-1' },
+      { accountId: 'account-one', sessionGeneration: 3, webViewGeneration: 4 },
+    );
+    assert.deepEqual(messages, [{
+      kind: 'diagnostics:start',
+      payload: {
+        requestId: 'request-1',
+        binding: { accountId: 'account-one', sessionGeneration: 3, webViewGeneration: 4 },
+      },
+    }]);
     window.RaftFeedback.emit('ready');
-    assert.deepEqual(messages, [{ kind: 'ready', payload: { accountId: 'account-one', sessionGeneration: 3, webViewGeneration: 4 } }]);
-    for (const host of [window.RaftHost, window.RaftFeedback]) {
-      assert.ok(!host.capabilities?.includes('diagnostics-upload-v1'));
-      assert.equal(host.diagnostics, undefined);
-    }
+    assert.deepEqual(messages, [
+      {
+        kind: 'diagnostics:start',
+        payload: {
+          requestId: 'request-1',
+          binding: { accountId: 'account-one', sessionGeneration: 3, webViewGeneration: 4 },
+        },
+      },
+      { kind: 'ready', payload: { accountId: 'account-one', sessionGeneration: 3, webViewGeneration: 4 } },
+    ]);
+    assert.ok(!window.RaftHost.capabilities?.includes('diagnostics-upload-v1'));
+    assert.equal(window.RaftHost.diagnostics, undefined);
+    assert.ok(window.RaftFeedback.capabilities?.includes('diagnostics-upload-v1'));
+    assert.equal(typeof window.RaftFeedback.diagnostics?.start, 'function');
+    assert.equal(typeof window.RaftFeedback.diagnostics?.cancel, 'function');
   });
 }
