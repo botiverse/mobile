@@ -235,7 +235,6 @@ internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() 
     }
 }
 
-@Page(AUTH_ABOUT_PAGE, supportInLocal = true)
 /**
  * Where the auth About page opens. The login pages' "Sign in to a private deployment" link (web login on
  * HarmonyOS, the email/social login on Android and iOS) passes [AUTH_DESTINATION_API_ENVIRONMENT] to land on
@@ -248,6 +247,7 @@ internal fun authAboutInitialDestination(destination: String?): AuthAboutDestina
         AuthAboutDestination.About
     }
 
+@Page(AUTH_ABOUT_PAGE, supportInLocal = true)
 internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
