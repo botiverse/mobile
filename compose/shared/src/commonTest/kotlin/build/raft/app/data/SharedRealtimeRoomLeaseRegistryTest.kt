@@ -1,11 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SharedRealtimeRoomLeaseRegistryTest {
@@ -135,6 +138,28 @@ class SharedRealtimeRoomLeaseRegistryTest {
         assertEquals(true, realtimeRoomLeaveAllowed(directory, "server-a", "public-browsed"))
         assertEquals(false, realtimeRoomLeaveAllowed(directory, "server-a", "unknown-room"), "unknown = keep")
         assertEquals(false, realtimeRoomLeaveAllowed(null, "server-a", "public-browsed"), "no directory = keep")
+    }
+
+    @Test
+    fun aDirectMessageFromTheHomeDirectoryIsNeverLeft() {
+        // Built through the production row -> directory conversion: DM rows carry no joined field on the
+        // wire, so the projection must still read as a member and the DM room must stay subscribed.
+        val dm =
+            HomeDirectMessageRow(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                name = "Alice",
+            ).toSharedConversationDirectoryProjection(ServerId("server-a"))
+        assertNotNull(dm)
+        val directory = FakeDirectory(mapOf("dm-1" to dm))
+        val registry =
+            SharedRealtimeRoomLeaseRegistry("shell-a") { serverId, roomId ->
+                realtimeRoomLeaveAllowed(directory, serverId, roomId)
+            }
+        val page = owner("thread-pager-1", generation = 1)
+        registry.acquire(page, listOf("dm-1"))
+
+        assertTrue(registry.release(page).isEmpty())
     }
 
     private class FakeDirectory(
