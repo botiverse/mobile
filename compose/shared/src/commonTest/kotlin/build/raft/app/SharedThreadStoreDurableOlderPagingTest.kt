@@ -205,7 +205,9 @@ class SharedThreadStoreDurableOlderPagingTest {
     }
 
     @Test
-    fun replyRouteIsNeverServedFromTheWindow() = runBlocking {
+    fun replyRouteWithoutItsParentIsNeverServedFromTheWindow() = runBlocking {
+        // Task #168 step 3: a reply route pages from its own `thread` scope only, and only with its
+        // typed parent (`SharedThreadStoreReplyThreadDurableTest`); without it nothing is served.
         val logs = mutableListOf<String>()
         val dataSource = dataSource(SharedThreadStoreTest.FakeThreadApi(), FakeReader(frame(count = 120, hasLoadedOldest = true)), logs = logs)
         val context = kotlin.test.assertNotNull(dataSource.captureReplyCacheProducerContext())
@@ -220,7 +222,7 @@ class SharedThreadStoreDurableOlderPagingTest {
             ).resolveThreadRouteIdentity()
         val owner = context.provenance.threadPayloadOwnerScopeId
         assertEquals(null, dataSource.durableOlderPageIfCurrent(reply, context, beforeSeq = 91L, expectedOwnerScopeId = owner))
-        assertTrue(logs.any { "reason=not_top_level" in it }, logs.toString())
+        assertTrue(logs.any { "reason=no_reply_parent" in it }, logs.toString())
         // Positive control: the channel route with the same context is served.
         val page = kotlin.test.assertNotNull(
             dataSource.durableOlderPageIfCurrent(

@@ -68,7 +68,8 @@ class SharedThreadStoreEnteredScopeTest {
 
     @Test
     fun replyRoutesAndRoutesWithoutAnOwnerNeverRequestTheLoad() = runBlocking {
-        // Reply threads have no V2 writer; they are not this loader's surface.
+        // A reply route is never loaded as a top-level window (task #168 step 3: its own entry is
+        // `loadReplyThreadOnEnter`, covered in SharedThreadStoreReplyThreadDurableTest).
         val replyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val replyLoader = FakeLoader()
         SharedThreadStore(dataSource = dataSource(loader = replyLoader, identity = { ownerA }), scope = replyScope)

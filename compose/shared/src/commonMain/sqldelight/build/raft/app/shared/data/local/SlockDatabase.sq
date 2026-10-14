@@ -1037,6 +1037,16 @@ WHERE environmentId = ?
   AND channelId = ?
 ORDER BY seq, id;
 
+touchSyncCursorUpdatedAt:
+UPDATE syncCursorEntity
+SET updatedAtMs = ?
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?;
+
 deleteSyncCursorForScope:
 DELETE FROM syncCursorEntity
 WHERE environmentId = ?

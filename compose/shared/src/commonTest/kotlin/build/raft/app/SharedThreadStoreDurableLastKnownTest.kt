@@ -214,7 +214,8 @@ class SharedThreadStoreDurableLastKnownTest {
         assertFalse(cachedStore.state.value.payload.durableLastKnown)
         cachedScope.cancel()
 
-        // Reply threads have no V2 writer yet; the reader is not their surface.
+        // A reply route never reads a top-level window (task #168 step 3: it reads its own thread
+        // scope through `readReplyThread`, covered in SharedThreadStoreReplyThreadDurableTest).
         val replyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val replyReader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
         val replyStore =
