@@ -31,7 +31,11 @@ sealed interface CanonicalMessageV2CanaryOutcome {
     /** The V2 commit completed and the caller may project the event after a fresh grant check. */
     data object Committed : CanonicalMessageV2CanaryOutcome
 
-    /** The selected scope stays dark; no legacy or final sink may observe this event. */
+    /**
+     * The durable V2 write did not happen (snapshot unavailable, revoked, evicted, poisoned). Nothing was
+     * written; the caller still projects the event through the legacy display path after a fresh grant
+     * check (task #168: a failed durable write must never hide a message).
+     */
     data class Held(val diagnostic: String) : CanonicalMessageV2CanaryOutcome
 }
 
@@ -62,6 +66,25 @@ private data class CanonicalMessageV2CanaryScopeState(
     /** A window restored from disk has no known epoch: frames may have been missed while the process was dead. */
     var restoredWithoutEpoch: Boolean = false,
 ) {
+    /**
+     * Task #168: the last delivery committed for each fact id (bounded). One realtime frame reaches the
+     * canary through more than one entry (process owner and AppShell owner; on iOS / OHOS the process
+     * owner twice), so a delivery equal to the last committed one for its fact is that same frame again.
+     */
+    private val lastCommittedDeliveryByFactId = LinkedHashMap<String, CanonicalMessageV2Delivery>()
+
+    fun isAlreadyCommitted(delivery: CanonicalMessageV2Delivery): Boolean =
+        lastCommittedDeliveryByFactId[delivery.foldInput.row.id] == delivery
+
+    fun recordCommitted(delivery: CanonicalMessageV2Delivery) {
+        val factId = delivery.foldInput.row.id
+        lastCommittedDeliveryByFactId.remove(factId)
+        lastCommittedDeliveryByFactId[factId] = delivery
+        while (lastCommittedDeliveryByFactId.size > COMMITTED_DELIVERY_MEMORY) {
+            lastCommittedDeliveryByFactId.remove(lastCommittedDeliveryByFactId.keys.first())
+        }
+    }
+
     fun appendsContinuously(currentTransportEpoch: Long?): Boolean =
         !restoredWithoutEpoch && committedTransportEpoch == currentTransportEpoch
 
@@ -69,7 +92,17 @@ private data class CanonicalMessageV2CanaryScopeState(
         committedTransportEpoch = currentTransportEpoch
         restoredWithoutEpoch = false
     }
+
+    private companion object {
+        const val COMMITTED_DELIVERY_MEMORY = 256
+    }
 }
+
+/** One delivery of a realtime frame: the exact decoded frame and the connection that delivered it. */
+private data class CanonicalMessageV2Delivery(
+    val foldInput: CanonicalMessageFoldInput,
+    val frameTransportEpoch: Long?,
+)
 
 /**
  * One-product-flag, one-scope production canary.
@@ -77,7 +110,8 @@ private data class CanonicalMessageV2CanaryScopeState(
  * The first eligible top-level scope on an enabled server owns that server's process-local canary slot.
  * Its first event must establish a fresh server-backed V2 snapshot. Exact later MessageNew frames commit
  * incrementally; MessageUpdated and any input that cannot prove a full V2 node take the safe snapshot path.
- * No failure degrades the selected scope to legacy. Other scopes retain the existing shadow/legacy path.
+ * A failure never writes, and never hides the event: the caller still displays it (task #168). Other
+ * scopes retain the existing shadow/legacy path.
  */
 internal class CanonicalMessageV2ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
@@ -147,100 +181,136 @@ internal class CanonicalMessageV2ProductionCanary(
                     return@writer CanonicalMessageV2CanaryOutcome.NotSelected
                 }
 
-                if (!state.initialized) {
-                    val restored = try {
-                        generationEngine.restore(scope)
-                    } catch (throwable: Throwable) {
-                        state.mode = CanonicalMessageV2CanaryMode.Broken
-                        logger(
-                            "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                                "reason=restore_${throwable::class.simpleName ?: "unknown"}",
-                        )
-                        return@writer CanonicalMessageV2CanaryOutcome.Held(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
-                    }
-                    state.initialized = true
-                    state.cursor = restored.cursor
-                    // A window that survived a process restart may have missed frames meanwhile.
-                    state.restoredWithoutEpoch = restored.cursor != null
-                    state.mode =
-                        if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
-                        else CanonicalMessageV2CanaryMode.SoleApply
-                }
-                state.cursor = generationEngine.currentCursor(scope)
-                if (state.cursor == null) state.mode = CanonicalMessageV2CanaryMode.Activating
-
-                // A frame that names its connection decides by that: the reconnect signal travels through
-                // another coroutine and may not have been recorded yet, or may already name a newer socket.
-                // Otherwise read the recorded epoch inside this scope's writer, at commit time.
-                val frameEpoch = frameTransportEpoch?.takeIf { it > 0L }
-                val committedEpoch = state.committedTransportEpoch
-                if (
-                    frameEpoch != null &&
-                    committedEpoch != null &&
-                    !state.restoredWithoutEpoch &&
-                    frameEpoch < committedEpoch
-                ) {
-                    // A late frame of an older socket: the window already continues from a newer
-                    // connection, and frames that socket lost may sit between. Show it, never write it.
-                    // Epochs only grow within a process on every host; a restart restores without one.
+                val delivery = CanonicalMessageV2Delivery(foldInput, frameTransportEpoch?.takeIf { it > 0L })
+                if (state.isAlreadyCommitted(delivery)) {
+                    // The same frame through another entry: it is on disk already. Never write it again.
                     logger(
-                        "canonical_v2_canary skip=stale_transport server=${scope.serverId} scope=${scope.scopeId} " +
-                            "frameEpoch=$frameEpoch committedEpoch=$committedEpoch",
+                        "canonical_v2_canary skip=duplicate_delivery server=${scope.serverId} " +
+                            "scope=${scope.scopeId}",
                     )
-                    return@writer CanonicalMessageV2CanaryOutcome.NotSelected
+                    return@writer CanonicalMessageV2CanaryOutcome.Committed
                 }
-                val transportEpoch = frameEpoch ?: currentTransportEpoch(scope.partition)
-                if (
-                    foldInput.kind == CanonicalMessageFoldKind.New &&
-                    state.cursor != null &&
-                    state.appendsContinuously(transportEpoch)
-                ) {
-                    val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
-                    if (envelope != null) {
-                        val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
-                        return@writer when (
-                            generationEngine.applyIncremental(
-                                CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor),
-                                expectedPartitionGeneration = partitionGeneration,
-                            )
-                        ) {
-                            CanonicalMessageV2CommitResult.Committed -> {
-                                state.cursor = cursor
-                                state.committedUnder(transportEpoch)
-                                state.mode = CanonicalMessageV2CanaryMode.SoleApply
-                                logger(
-                                    "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
-                                        "scope=${scope.scopeId} source=incremental",
-                                )
-                                CanonicalMessageV2CanaryOutcome.Committed
-                            }
-                            is CanonicalMessageV2CommitResult.BaselineRequired ->
-                                applyAuthoritativeSnapshot(
-                                    scope,
-                                    foldInput.row.id,
-                                    state,
-                                    snapshotLoader,
-                                    partitionGeneration,
-                                    frameTransportEpoch,
-                                )
-                            CanonicalMessageV2CommitResult.PartitionRevoked ->
-                                heldAfterPartitionRevoke(scope, state)
-                            CanonicalMessageV2CommitResult.ScopeEvicted ->
-                                heldAfterScopeEviction(scope, state)
-                        }
+                acceptInsideWriter(scope, partition, foldInput, state, snapshotLoader, partitionGeneration, frameTransportEpoch)
+                    .also { outcome ->
+                        if (outcome == CanonicalMessageV2CanaryOutcome.Committed) state.recordCommitted(delivery)
                     }
-                }
-
-                applyAuthoritativeSnapshot(
-                    scope,
-                    foldInput.row.id,
-                    state,
-                    snapshotLoader,
-                    partitionGeneration,
-                    frameTransportEpoch,
-                )
             }
         }
+    }
+
+    private suspend fun acceptInsideWriter(
+        scope: SyncScopeKey,
+        partition: DurablePartitionKey,
+        foldInput: CanonicalMessageFoldInput,
+        state: CanonicalMessageV2CanaryScopeState,
+        snapshotLoader: CanonicalMessageV2SnapshotLoader,
+        partitionGeneration: Long,
+        frameTransportEpoch: Long?,
+    ): CanonicalMessageV2CanaryOutcome {
+        if (!state.initialized) {
+            val restored = try {
+                generationEngine.restore(scope)
+            } catch (throwable: Throwable) {
+                state.mode = CanonicalMessageV2CanaryMode.Broken
+                logger(
+                    "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
+                        "reason=restore_${throwable::class.simpleName ?: "unknown"}",
+                )
+                return CanonicalMessageV2CanaryOutcome.Held(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+            }
+            state.initialized = true
+            state.cursor = restored.cursor
+            // A window that survived a process restart may have missed frames meanwhile.
+            state.restoredWithoutEpoch = restored.cursor != null
+            state.mode =
+                if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
+                else CanonicalMessageV2CanaryMode.SoleApply
+        }
+        state.cursor = generationEngine.currentCursor(scope)
+        if (state.cursor == null) state.mode = CanonicalMessageV2CanaryMode.Activating
+
+        // A frame that names its connection decides by that: the reconnect signal travels through
+        // another coroutine and may not have been recorded yet, or may already name a newer socket.
+        // Otherwise read the recorded epoch inside this scope's writer, at commit time.
+        val frameEpoch = frameTransportEpoch?.takeIf { it > 0L }
+        val committedEpoch = state.committedTransportEpoch
+        if (
+            frameEpoch != null &&
+            committedEpoch != null &&
+            !state.restoredWithoutEpoch &&
+            frameEpoch < committedEpoch
+        ) {
+            // A late frame of an older socket: the window already continues from a newer
+            // connection, and frames that socket lost may sit between. Show it, never write it.
+            // Epochs only grow within a process on every host; a restart restores without one.
+            logger(
+                "canonical_v2_canary skip=stale_transport server=${scope.serverId} scope=${scope.scopeId} " +
+                    "frameEpoch=$frameEpoch committedEpoch=$committedEpoch",
+            )
+            return CanonicalMessageV2CanaryOutcome.NotSelected
+        }
+        val transportEpoch = frameEpoch ?: currentTransportEpoch(scope.partition)
+        if (
+            foldInput.kind == CanonicalMessageFoldKind.New &&
+            state.cursor != null &&
+            state.appendsContinuously(transportEpoch)
+        ) {
+            val windowOldest = state.cursor!!.oldestLoadedSeq
+            if (windowOldest != null && foldInput.row.seq < windowOldest) {
+                // Older than the stored window: nothing says the messages between it and the window's
+                // oldest edge are on disk, so writing it (and stretching the edge down to it) would claim
+                // a range never loaded. Show it, never write it.
+                logger(
+                    "canonical_v2_canary skip=below_window server=${scope.serverId} scope=${scope.scopeId} " +
+                        "seq=${foldInput.row.seq} oldestLoadedSeq=$windowOldest",
+                )
+                return CanonicalMessageV2CanaryOutcome.NotSelected
+            }
+            val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
+            if (envelope != null) {
+                val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
+                return when (
+                    generationEngine.applyIncremental(
+                        // A `New` only ever adds: a stored fact may already be newer (edited, reacted).
+                        CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor, insertOnly = true),
+                        expectedPartitionGeneration = partitionGeneration,
+                    )
+                ) {
+                    CanonicalMessageV2CommitResult.Committed -> {
+                        state.cursor = generationEngine.currentCursor(scope) ?: cursor
+                        state.committedUnder(transportEpoch)
+                        state.mode = CanonicalMessageV2CanaryMode.SoleApply
+                        logger(
+                            "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
+                                "scope=${scope.scopeId} source=incremental",
+                        )
+                        CanonicalMessageV2CanaryOutcome.Committed
+                    }
+                    is CanonicalMessageV2CommitResult.BaselineRequired ->
+                        applyAuthoritativeSnapshot(
+                            scope,
+                            foldInput.row.id,
+                            state,
+                            snapshotLoader,
+                            partitionGeneration,
+                            frameTransportEpoch,
+                        )
+                    CanonicalMessageV2CommitResult.PartitionRevoked ->
+                        heldAfterPartitionRevoke(scope, state)
+                    CanonicalMessageV2CommitResult.ScopeEvicted ->
+                        heldAfterScopeEviction(scope, state)
+                }
+            }
+        }
+
+        return applyAuthoritativeSnapshot(
+            scope,
+            foldInput.row.id,
+            state,
+            snapshotLoader,
+            partitionGeneration,
+            frameTransportEpoch,
+        )
     }
 
     private suspend fun <T> withScopeMutex(
@@ -330,7 +400,7 @@ internal class CanonicalMessageV2ProductionCanary(
                         )
                     ) {
                         CanonicalMessageV2CommitResult.Committed -> {
-                            state.cursor = frame.cursor
+                            state.cursor = generationEngine.currentCursor(scope) ?: frame.cursor
                             state.committedUnder(epochAtRequest)
                             state.mode = CanonicalMessageV2CanaryMode.SoleApply
                             logger(
@@ -506,10 +576,11 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
     ) as? CanonicalMessageV2NormalizationResult.Normalized)?.envelope
 }
 
+/** Only for a seq at or above the window's oldest edge (below-window frames are never written). */
 private fun PersistedCursor.advancedBy(seq: Long): PersistedCursor =
     copy(
         latestSeq = maxOf(latestSeq ?: seq, seq),
-        oldestLoadedSeq = minOf(oldestLoadedSeq ?: seq, seq),
+        oldestLoadedSeq = oldestLoadedSeq ?: seq,
         newestLoadedSeq = maxOf(newestLoadedSeq ?: seq, seq),
         hasLoadedNewest = true,
     )

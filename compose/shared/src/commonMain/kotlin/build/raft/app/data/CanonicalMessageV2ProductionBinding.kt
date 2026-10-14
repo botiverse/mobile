@@ -575,8 +575,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
  *    contiguous and the page is the server's contiguous block next to the anchor, page ∪ window
  *    is contiguous. The edge (and its `hasLoaded*` flag) moves only when the page extends past it;
  *    a page entirely inside the window is a plain refresh with the cursor unchanged;
- * 6. retention: per-scope pruning keeps the newest [maxFactsPerScope] facts and never rewrites the
- *    cursor. An older page that would push the scope past the cap would be pruned straight back out
+ * 6. retention: per-scope pruning keeps the newest [maxFactsPerScope] facts (and, since task #168,
+ *    the store itself moves the oldest edge past whatever it prunes). An older page that would push the scope past the cap would be pruned straight back out
  *    while the cursor claimed it, so it is refused (`at_capacity`). A newer page that overflows the
  *    cap prunes the oldest end, so the cursor's oldest edge is moved to the oldest fact that
  *    survives and `hasLoadedOldest` is cleared;

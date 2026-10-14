@@ -1100,7 +1100,7 @@ GROUP BY cursor.scopeKind, cursor.scopeId, cursor.updatedAtMs
 ORDER BY cursor.updatedAtMs DESC, cursor.scopeKind, cursor.scopeId;
 
 selectCanonicalFactIdsBeyondLimit:
-SELECT fact.id
+SELECT fact.id, fact.seq
 FROM messageEntity AS fact
 WHERE fact.environmentId = ?
   AND fact.serverId = ?
@@ -1122,6 +1122,19 @@ WHERE fact.environmentId = ?
   )
 ORDER BY fact.seq DESC, fact.id DESC
 LIMIT -1 OFFSET ?;
+
+-- The oldest fact of a V2 scope above [seq]: after the per-scope cap prunes the oldest end, the window's
+-- oldest edge moves here (the oldest fact newer than everything pruned).
+selectOldestCanonicalFactSeqAbove:
+SELECT MIN(seq) AS oldestSeq
+FROM messageEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?
+  AND seq > ?;
 
 selectReplyScopesDependingOnParent:
 SELECT scopeKind, scopeId
