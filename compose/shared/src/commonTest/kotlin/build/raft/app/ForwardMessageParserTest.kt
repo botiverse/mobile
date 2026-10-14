@@ -167,8 +167,8 @@ class ForwardMessageParserTest {
                                     WireForwardMessageItem(
                                         messageId = "m1",
                                         senderId = "user-2",
-                                        senderName = "jor",
-                                        content = "我自己蹬自己的项目都用的没他多"
+                                        senderName = "alice",
+                                        content = "周末一起去爬山吗？"
                                     )
                                 )
                         )
@@ -192,6 +192,6 @@ class ForwardMessageParserTest {
         val bundle = assertNotNull(rendered.messages.single().forwardBundle)
         assertEquals("Group chat history", bundle.title)
         assertEquals(1, bundle.messages.size)
-        assertEquals("我自己蹬自己的项目都用的没他多", bundle.messages.single().body)
+        assertEquals("周末一起去爬山吗？", bundle.messages.single().body)
     }
 }

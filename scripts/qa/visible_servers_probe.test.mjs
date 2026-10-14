@@ -8,7 +8,7 @@ import { judgeVisibleServers, PRODUCTION_SERVER_NAME, REQUIRED_QA_SERVER } from 
 
 const qa = (name) => ({ id: `id-${name}`, name, slug: name.toLowerCase() });
 // Identity as the login response supplies it — never as the request supplied it.
-const who = { id: "b8b3f81d", email: "slock-test@oranix.io", name: "SlockTestOranix" };
+const who = { id: "b8b3f81d", email: "qa-probe@example.test", name: "SlockTestOranix" };
 
 test("the constants are the ones the rest of the fleet uses", () => {
   assert.equal(PRODUCTION_SERVER_NAME, "Raft Android");
@@ -91,7 +91,7 @@ test("half 2 is load-bearing: dropping it would let three failures read as PASS"
 
 // ---- identity: a verdict that cannot name whose visibility it measured is not a verdict ----
 test("RED when there is no authenticated identity to bind the reading to", () => {
-  for (const bad of [null, undefined, {}, { email: "slock-test@oranix.io" }]) {
+  for (const bad of [null, undefined, {}, { email: "qa-probe@example.test" }]) {
     const v = judgeVisibleServers([qa(REQUIRED_QA_SERVER)], bad);
     assert.equal(v.ok, false, `identity ${JSON.stringify(bad)} must not yield a verdict`);
     assert.equal(v.code, "unattributable");
@@ -104,5 +104,5 @@ test("the clean verdict names the account it measured", () => {
   // identity. "2 servers, no production" is therefore meaningless unless it says whose.
   const v = judgeVisibleServers([qa("OranixSlockTest"), qa("qa-server-b-slock")], who);
   assert.equal(v.ok, true);
-  assert.match(v.detail, /slock-test@oranix\.io/, "the reading must carry the identity that produced it");
+  assert.match(v.detail, /qa-probe@example\.test/, "the reading must carry the identity that produced it");
 });

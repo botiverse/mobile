@@ -327,7 +327,7 @@ class SettingsHomeSearchEntityRankingTest {
             listOf(
                 SearchSenderFilterItem(
                     id = "human-pinyin",
-                    label = "赵梓淇",
+                    label = "赵子奇",
                     handle = "zhaozq",
                     kind = MemberKind.Human,
                     sourceServerId = ServerId("server-1")

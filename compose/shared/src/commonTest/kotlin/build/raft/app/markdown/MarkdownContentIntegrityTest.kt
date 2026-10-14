@@ -395,8 +395,8 @@ class MarkdownContentIntegrityTest {
 
     @Test
     fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
-        val url = "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
-        val source = "@huxijin 情绪板已经准备完成，有空可以看下$url"
+        val url = "https://design.example.test/file/brand-exploration?node-id=372-1396&t=preview"
+        val source = "@alice 情绪板已经准备完成，有空可以看下$url"
         val rendered = renderTopParagraphsWithLinks(source).single()
         assertEquals(source, rendered.text)
         assertEquals(listOf(url), rendered.urls)

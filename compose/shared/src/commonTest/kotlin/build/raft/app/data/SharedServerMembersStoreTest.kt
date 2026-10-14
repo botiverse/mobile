@@ -2563,7 +2563,7 @@ class SharedServerMembersStoreTest {
         val memberId = "123e4567-e89b-12d3-a456-426614174000"
         repository.membersByServer["server-1"] =
             listOf(
-                member(memberId, "赵梓淇").copy(handle = memberId)
+                member(memberId, "王小明").copy(handle = memberId)
             )
         val store = SharedServerMembersStore(repository)
 
@@ -2581,11 +2581,11 @@ class SharedServerMembersStoreTest {
         val memberId = "123e4567-e89b-12d3-a456-426614174000"
         repository.membersByServer["server-1"] =
             listOf(
-                member(memberId, "赵梓淇").copy(handle = memberId)
+                member(memberId, "王小明").copy(handle = memberId)
             )
         repository.channelMembersByChannel["channel-1"] =
             listOf(
-                member(memberId, "赵梓淇").copy(handle = "赵梓淇")
+                member(memberId, "王小明").copy(handle = "王小明")
             )
         val store = SharedServerMembersStore(repository)
 
@@ -2599,12 +2599,12 @@ class SharedServerMembersStoreTest {
                 serverId = ServerId("server-1"),
                 mentionChannelId = "channel-1"
             ).suggestions.single()
-        assertEquals("赵梓淇", suggestion.handle)
-        assertEquals("赵梓淇", suggestion.displayName)
+        assertEquals("王小明", suggestion.handle)
+        assertEquals("王小明", suggestion.displayName)
         assertEquals(true, suggestion.inMentionChannel)
         assertEquals(memberId, suggestion.memberId)
         assertEquals(
-            "赵梓淇",
+            "王小明",
             store.currentCanonicalMentionHandle(
                 serverId = ServerId("server-1"),
                 mentionChannelId = "channel-1",
@@ -2618,7 +2618,7 @@ class SharedServerMembersStoreTest {
         val repository = FakeMemberRepository()
         val memberId = "123e4567-e89b-12d3-a456-426614174000"
         repository.membersByServer["server-1"] =
-            listOf(member(memberId, "赵梓淇").copy(handle = memberId))
+            listOf(member(memberId, "王小明").copy(handle = memberId))
         val store = SharedServerMembersStore(repository)
 
         store.refreshMembers(ServerId("server-1"))
@@ -2635,14 +2635,14 @@ class SharedServerMembersStoreTest {
     @Test
     fun channelSnapshotReplacesStaleRosterHandleByMemberIdentity() = runBlocking {
         val repository = FakeMemberRepository()
-        val memberId = "member-zhao"
+        val memberId = "member-wang"
         repository.membersByServer["server-1"] =
             listOf(
-                member(memberId, "赵梓淇").copy(handle = "stale-zhao")
+                member(memberId, "王小明").copy(handle = "stale-wang")
             )
         repository.channelMembersByChannel["channel-1"] =
             listOf(
-                member(memberId, "赵梓淇").copy(handle = "赵梓淇")
+                member(memberId, "王小明").copy(handle = "王小明")
             )
         val store = SharedServerMembersStore(repository)
 
@@ -2657,7 +2657,7 @@ class SharedServerMembersStoreTest {
                 mentionChannelId = "channel-1"
             ).suggestions
         assertEquals(1, suggestions.size)
-        assertEquals("赵梓淇", suggestions.single().handle)
+        assertEquals("王小明", suggestions.single().handle)
         assertEquals(memberId, suggestions.single().memberId)
     }
 
