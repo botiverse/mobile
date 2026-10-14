@@ -3088,7 +3088,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     return @{ @"path" : path, @"fileName" : name, @"size" : @(size) };
 }
 
-@interface SlockFeedbackDiagnosticsUploadOperation : NSObject <NSURLSessionTaskDelegate, NSURLSessionDataDelegate, NSURLSessionUploadDelegate>
+@interface SlockFeedbackDiagnosticsUploadOperation : NSObject <NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 @property(nonatomic, copy) NSString *requestId;
 @property(nonatomic, copy) NSString *accountId;
 @property(nonatomic) long long sessionGeneration;
