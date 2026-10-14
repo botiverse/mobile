@@ -10,6 +10,7 @@ import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
+import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeKey
 import kotlinx.coroutines.CompletableDeferred
@@ -161,6 +162,23 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(0, h.store.snapshots.size)
         assertTrue(h.logs.any { "outcome=partition_revoked" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun poisonedSnapshotIsContainedAndDoesNotEscapeTheEnterJob() = runBlocking {
+        val h = harness(flagOn = true)
+        h.store.snapshotFailure = CanonicalMessageV2ScopePoisoned(
+            scope = SyncScopeKey(partition, "channel-1", "channel"),
+            factId = "poisoned-fact",
+        )
+
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+
+        assertEquals(0, h.store.snapshots.size)
+        assertTrue(
+            h.logs.any { "scope=channel-1 outcome=poisoned fact=poisoned-fact" in it },
+            h.logs.toString(),
+        )
     }
 
     @Test

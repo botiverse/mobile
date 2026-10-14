@@ -4,6 +4,7 @@ import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2Store
 import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
+import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.RestoredCanonicalMessageV2Scope
 import build.raft.app.network.sync.SyncScopeKey
@@ -57,8 +58,10 @@ internal class RecordingNetworkClient(
 
 internal class RecordingStore : CanonicalMessageV2Store {
     val snapshots = mutableListOf<CanonicalMessageV2SnapshotFrame>()
+    var snapshotFailure: CanonicalMessageV2ScopePoisoned? = null
 
     override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
+        snapshotFailure?.let { throw it }
         snapshots += frame
         return CanonicalMessageV2StoreWriteResult()
     }
