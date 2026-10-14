@@ -17,6 +17,7 @@
     <string name="error_attachment_too_large">添付ファイルが大きすぎます。小さいファイルを選んで、もう一度お試しください。</string>
     <string name="error_too_many_attempts">試行回数が多すぎます。しばらくしてからもう一度お試しください。</string>
     <string name="error_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>
+    <string name="error_server_version_incompatible">このプライベートデプロイはこのアプリバージョンと互換性がありません。管理者にサーバーのアップグレードを依頼してください。</string>
     <string name="error_generic">問題が発生しました。もう一度お試しください。</string>
     <string name="empty_no_channels">利用できるチャンネルはまだありません。</string>
     <string name="empty_no_messages">利用できるメッセージはまだありません。</string>
@@ -2143,6 +2144,7 @@
     <string name="joint_billing_locked_detail">猶予期間が終了しました。管理者がアップグレードするか無料サーバーが脱退するまで、このチャンネルは読み取り専用です。</string>
     <string name="auth_web_login_button">Raft にログイン</string>
     <string name="auth_web_login_hint">raft.build からログイン</string>
+    <string name="auth_web_login_private_entry">プライベートデプロイにログイン</string>
     <string name="auth_web_login_failed">ログインを完了できませんでした。もう一度お試しください。</string>
     <string name="channel_member_role_owner">オーナー</string>
     <string name="channel_member_role_admin">管理者</string>

@@ -48,6 +48,7 @@ class KmmResourceI18nTest {
                 MR.strings.error_too_many_attempts,
                 MR.strings.error_response_unreadable,
                 MR.strings.error_generic,
+                MR.strings.error_server_version_incompatible,
                 MR.strings.empty_no_channels,
                 MR.strings.empty_no_messages,
                 MR.strings.empty_no_tasks,

@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "build.raft.mobile",
     "vendor": "Raft",
-    "versionCode": 1000000,
-    "versionName": "1.0.0",
+    "versionCode": 11301004,
+    "versionName": "1.13.1-local-private-deploy",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

@@ -98,6 +98,12 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 textAlign = TextAlign.Center,
             )
+            AuthTextLink(
+                text = stringResource(MR.strings.auth_web_login_private_entry),
+                onClick = {
+                    pager.openAuthPage(AUTH_ABOUT_PAGE, destination = AUTH_DESTINATION_API_ENVIRONMENT)
+                },
+            )
         }
     }
 }

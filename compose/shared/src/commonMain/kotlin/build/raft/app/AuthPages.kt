@@ -98,6 +98,8 @@ const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
+internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
+internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
 private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
@@ -237,7 +239,13 @@ internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() 
 internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AuthAboutScreen() }
+        val initial =
+            if (pageData.params.optString(AUTH_DESTINATION_KEY) == AUTH_DESTINATION_API_ENVIRONMENT) {
+                AuthAboutDestination.ApiEnvironment
+            } else {
+                AuthAboutDestination.About
+            }
+        setContent { AuthAboutScreen(initialDestination = initial) }
     }
 }
 
@@ -2027,12 +2035,14 @@ private fun ForgotPasswordSuccessPreview() {
     )
 }
 
-private fun Pager.openAuthPage(pageName: String) {
+internal fun Pager.openAuthPage(pageName: String, destination: String? = null) {
     val pageData =
         authPageData(
             pageName = pageName,
             replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE
-        )
+        ).apply {
+            destination?.takeIf { it.isNotBlank() }?.let { put(AUTH_DESTINATION_KEY, it) }
+        }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
 
