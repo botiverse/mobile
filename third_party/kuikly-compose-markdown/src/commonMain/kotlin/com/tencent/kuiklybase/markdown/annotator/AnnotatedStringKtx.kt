@@ -567,7 +567,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     // The lexer emits EMAIL_AUTOLINK for "user@host" between angle
                     // brackets even inside code spans. Without this branch the token
                     // fell through the when and was silently DROPPED, rendering
-                    // `artin <artin@cat.ms>` as "artin <>" (task #493). Verbatim in
+                    // `artin <artin@example.test>` as "artin <>" (task #493). Verbatim in
                     // code spans; a mailto link elsewhere (GFM behavior, web parity).
                     MarkdownTokenTypes.EMAIL_AUTOLINK ->
                         if (insideCodeSpan) {

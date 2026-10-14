@@ -10,7 +10,7 @@ Upstream sources of truth:
   standard, L1–L4)
 - `<slock-source>/rfcs/038-unified-sync-contract.md` (sequence watermarks, gap
   repair, canonical resolution)
-- Coordination channel: #raft-mobile-reconcile (contract DRI: 赵梓淇, task #70)
+- Coordination channel: #raft-mobile-reconcile (contract DRI: see task #70)
 
 This document is the **mobile/KMP binding** of those two RFCs. RFC 038 §4 makes
 the client obligations normative for AD4/KMP by name — mobile does not get to
@@ -109,7 +109,7 @@ composables, never in platform hosts.
    of the watermark after repair).
    Sparse domains (agent activity) skip gap detection but keep ordered apply
    and idempotent drop.
-   **Density ruling for the messages domain (赵梓淇 + HanXin, 2026-07-07,
+   **Density ruling for the messages domain (contract DRI + HanXin, 2026-07-07,
    normative — same text in the RFC 038 amendment):** the messages density
    declaration does NOT take effect until the per-scope difference endpoints
    land (server implementation window, Stone). On the current wire,
@@ -158,7 +158,7 @@ trap (shadow stays retryable; the push echo absorbs it by id).
 
 **Current server reality (confirmed with the contract DRI, 2026-07-07): the
 server does not accept or echo `random_id` yet.** A server-side additive
-slice is being filed by 赵梓淇; progress tracked in #proj-frontend /
+slice is being filed by the contract DRI; progress tracked in #proj-frontend /
 #raft-mobile-reconcile.
 
 Mobile rules until then:
@@ -327,7 +327,7 @@ to the first-principles checklist:
 
 ## 10. Open questions (tracked in #raft-mobile-reconcile)
 
-- Server timeline for `random_id` echo slice (赵梓淇 filing; B1 switch-over
+- Server timeline for `random_id` echo slice (contract DRI filing; B1 switch-over
   depends on it).
 - Channel-domain event vocabulary publication (web T10 S1, expected this
   week) — B4 trigger.
