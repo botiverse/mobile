@@ -30,6 +30,8 @@
 
 @property (nonatomic, weak) UINavigationController *navigationController;
 @property (nonatomic, assign) BOOL touchBeganInEdgeZone;
+@property (nonatomic, assign) BOOL touchBeganInPhysicalEdgeZone;
+@property (nonatomic, weak) UIView *touchView;
 
 @end
 
@@ -77,16 +79,27 @@ static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
     return NO;
 }
 
-static BOOL SlockInteractivePopHorizontalScrollConflict(UIView *view, UIView *rootView)
+static BOOL SlockInteractivePopHorizontalScrollCanConsumeDirection(
+    UIView *view,
+    UIView *rootView,
+    BOOL movingRight
+)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
         if ([candidate isKindOfClass:UIScrollView.class]) {
             UIScrollView *scrollView = (UIScrollView *)candidate;
-            BOOL horizontallyScrollable =
-                scrollView.alwaysBounceHorizontal ||
-                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
-            if (horizontallyScrollable) return YES;
+            CGFloat minimumOffset = -scrollView.adjustedContentInset.left;
+            CGFloat maximumOffset = MAX(
+                minimumOffset,
+                scrollView.contentSize.width - CGRectGetWidth(scrollView.bounds) + scrollView.adjustedContentInset.right
+            );
+            if (maximumOffset > minimumOffset + 1.0) {
+                CGFloat offset = scrollView.contentOffset.x;
+                if (movingRight ? offset > minimumOffset + 0.5 : offset < maximumOffset - 0.5) {
+                    return YES;
+                }
+            }
         }
         candidate = candidate.superview;
     }
@@ -153,16 +166,10 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // allowed to arbitrate by UIKit; the full-screen page policy only admits the
     // back direction once the pager has released it.
     if (gestureRecognizer.numberOfTouches > 0) return YES;
+    self.touchView = touch.view;
     if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
         self.touchBeganInEdgeZone = NO;
-        return NO;
-    }
-    // Preserve native horizontal scrolling (code blocks, image/pager views). The
-    // Kuikly TabPager itself is pointer-driven rather than a UIScrollView and is
-    // therefore still admitted; its page-aware guard decides whether to release
-    // a first-page rightward drag to this recognizer.
-    if (SlockInteractivePopHorizontalScrollConflict(touch.view, gestureRecognizer.view)) {
-        self.touchBeganInEdgeZone = NO;
+        self.touchBeganInPhysicalEdgeZone = NO;
         return NO;
     }
     UINavigationController *navigationController = self.navigationController;
@@ -179,6 +186,8 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
     self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
+    admission.allowsFullScreen = NO;
+    self.touchBeganInPhysicalEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
     return YES;
 }
 
@@ -195,6 +204,17 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .velocityY = velocity.y,
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
+    double horizontal = fabs(velocity.x) > 1.0 ? velocity.x : translation.x;
+    BOOL movingRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight
+        ? horizontal > 0.0
+        : horizontal < 0.0;
+    if (SlockInteractivePopHorizontalScrollCanConsumeDirection(
+            self.touchView,
+            gestureRecognizer.view,
+            movingRight
+        )) {
+        return NO;
+    }
     return SlockInteractivePopGestureShouldBegin(admission);
 }
 
@@ -207,7 +227,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         otherGestureRecognizer.view != nil &&
         otherGestureRecognizer.view != gestureRecognizer.view &&
         [otherGestureRecognizer.view isDescendantOfView:rootView];
-    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentPan);
+    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInPhysicalEdgeZone, otherIsContentPan);
 }
 
 @end
