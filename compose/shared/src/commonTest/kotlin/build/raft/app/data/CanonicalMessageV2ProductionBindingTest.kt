@@ -108,6 +108,11 @@ class CanonicalMessageV2ProductionBindingTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = engine)
+        // The connection's rooms:joined arrived: an entered member channel becomes continuous (task #168 step 3).
+        runBlocking {
+            canary.noteTransportEpoch(partition, 1L)
+            canary.noteRoomsJoined(partition, 1L)
+        }
         val loader = CanonicalMessageV2EnteredScopeLoader(
             canary = canary,
             generationEngine = engine,

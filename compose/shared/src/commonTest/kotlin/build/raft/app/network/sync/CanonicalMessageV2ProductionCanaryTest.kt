@@ -119,13 +119,13 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aReconnectMakesTheWindowDisplayOnlyUntilTheNextEnter() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
         assertEquals(1, fixture.store.incrementalCalls)
 
         // m3 is delivered while the socket is down and never reaches the writer; the socket comes back as epoch 2.
-        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.connect(2L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m5", 5L)))
@@ -142,11 +142,11 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun withoutAReconnectTheNextFrameStaysIncremental() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
         // A repeated signal for the same epoch is not a reconnect.
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(2, fixture.store.incrementalCalls)
@@ -175,7 +175,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aReconnectOnAnotherServerOrAccountDoesNotTouchThisWindow() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         fixture.enter(1L)
 
         fixture.canary.noteTransportEpoch(partition.copy(serverId = "server-2"), 2L)
@@ -188,11 +188,11 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aRestartedTransportCountingFromOneIsStillAReconnect() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 5L)
+        fixture.connect(5L)
         fixture.enter(1L)
 
         // The native transport object was rebuilt (server switch, re-login) and numbers from 1 again.
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(0, fixture.store.incrementalCalls, "a smaller recorded epoch is a different connection too")
@@ -201,24 +201,67 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aReconnectDuringTheEnterFetchKeepsTheNewWindowDisplayOnly() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         // The request is sent under epoch 1; the socket reconnects as epoch 2 before the page commits.
-        fixture.enter(1L, beforeCommit = { fixture.canary.noteTransportEpoch(partition, 2L) })
+        fixture.enter(1L, beforeCommit = { fixture.connect(2L) })
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
         assertEquals(0, fixture.store.incrementalCalls, "the page predates epoch 2")
 
         // Twin: no reconnect during the fetch.
         val twin = Fixture(enabled = true)
-        twin.canary.noteTransportEpoch(partition, 1L)
+        twin.connect(1L)
         twin.enter(1L)
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, twin.accept(twin.input("m2", 2L)))
     }
 
     @Test
+    fun anEnterRightAfterAReconnectIsDisplayOnlyUntilRoomsJoinedArrivedForThatConnection() = runBlocking {
+        // Before rooms:joined the page may predate the connect-time room join: display only.
+        val before = Fixture(enabled = true)
+        before.connect(2L, roomsJoined = false)
+        before.enter(1L)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, before.canary.continuityOf(scope))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, before.accept(before.input("m2", 2L)))
+        assertEquals(0, before.store.incrementalCalls)
+
+        // rooms:joined recorded for an OLDER connection only: still display only.
+        val older = Fixture(enabled = true)
+        older.connect(1L)
+        older.connect(2L, roomsJoined = false)
+        older.enter(1L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, older.accept(older.input("m2", 2L)))
+        assertEquals(0, older.store.incrementalCalls)
+
+        // Twin: the same open once rooms:joined arrived for the current connection appends.
+        val after = Fixture(enabled = true)
+        after.connect(2L, roomsJoined = false)
+        after.canary.noteRoomsJoined(partition, 2L)
+        after.enter(1L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, after.accept(after.input("m2", 2L)))
+        assertEquals(1, after.store.incrementalCalls)
+    }
+
+    @Test
+    fun aCatchUpBaselineIsRegisteredOnlyForAMemberWhoseConnectionSawRoomsJoined() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.connect(2L, roomsJoined = false)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "before rooms:joined")
+        fixture.canary.noteRoomsJoined(partition, 2L)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = true), "non-member")
+        val registered = fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false)
+        assertEquals(2L, registered?.epochAtRequest)
+        // A partition reset forgets rooms:joined with the epoch.
+        fixture.canary.abandonEnterBaseline(registered!!)
+        fixture.resetPartition()
+        fixture.connect(2L, roomsJoined = false)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "after a reset")
+    }
+
+    @Test
     fun aFrameFromTheNewConnectionIsDisplayOnlyEvenWhenItBeatsTheReconnectSignal() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L)
         assertEquals(1, fixture.store.incrementalCalls)
@@ -227,7 +270,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L))
         assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
 
-        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.connect(2L)
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m5", 5L), transportEpoch = 2L))
         assertEquals(1, fixture.store.incrementalCalls, "still display only: only an enter makes it continuous again")
     }
@@ -235,7 +278,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aLateFrameOfAnOlderConnectionIsShownButNeverWrittenAndChangesNothing() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.connect(2L)
         fixture.enter(104L)
 
         // m110 left the old socket before it closed; its coroutine only now reaches the writer.
@@ -255,12 +298,12 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun framesWithoutATransportEpochStillFollowTheReconnectSignal() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
         assertEquals(1, fixture.store.incrementalCalls)
 
-        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.connect(2L)
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(1, fixture.store.incrementalCalls)
     }
@@ -276,14 +319,26 @@ class CanonicalMessageV2ProductionCanaryTest {
             generationEngine = engine,
         )
 
+        suspend fun resetPartition() = engine.clearPartition(partition)
+
         suspend fun accept(
             input: CanonicalMessageFoldInput,
             transportEpoch: Long? = null,
         ): CanonicalMessageV2CanaryOutcome =
             canary.accept(partition = partition, foldInput = input, frameTransportEpoch = transportEpoch)
 
+        private var connected = false
+
+        /** The socket (re)connected as [epoch]; [roomsJoined]: the server's `rooms:joined` arrived on it. */
+        suspend fun connect(epoch: Long, roomsJoined: Boolean = true) {
+            canary.noteTransportEpoch(partition, epoch)
+            if (roomsJoined) canary.noteRoomsJoined(partition, epoch)
+            connected = true
+        }
+
         /** The user opens the channel: its enter page (one message at [seq]) commits as the baseline. */
         suspend fun enter(seq: Long, channelId: String = "channel-1", beforeCommit: suspend () -> Unit = {}) {
+            if (!connected) connect(1L)
             val target = SyncScopeKey(partition, channelId, "channel")
             val envelope = requireNotNull(input("e$seq", seq, channelId).toCanonicalMessageV2Envelope(partition, replyCount = 0))
             val frame = CanonicalMessageV2SnapshotFrame(target, listOf(envelope), cursor(seq))

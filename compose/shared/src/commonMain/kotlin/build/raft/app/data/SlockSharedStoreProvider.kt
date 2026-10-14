@@ -63,6 +63,7 @@ import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
@@ -689,11 +690,18 @@ internal class SlockSharedStoreProvider private constructor(
             nativeHost = BridgeProcessRealtimeNativeHost(bridge),
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
-            // Task #168: consumers (the durable message canary) attach here; for now it only proves arrival.
+            // Task #168: the durable message canary records which connection has its member rooms joined;
+            // only a current grant may record it (as the transport epoch, #2991).
             onRoomsJoined = { grant, transportEpoch ->
                 sharedInfoLogger("SlockRealtime", "rooms_joined")(
                     "serverId=${grant.serverId} transportEpoch=$transportEpoch"
                 )
+                realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+                    canonicalMessageV2Canary.noteRoomsJoined(
+                        grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
+                        transportEpoch,
+                    )
+                }
             },
         ).start()
         threadSendScope.launch {
@@ -2391,6 +2399,7 @@ internal class SlockSharedStoreProvider private constructor(
                     // Lines already start with `canonical_v2_adjacent_page` / `canonical_v2_latest_page`: a prefix
                     // here doubled the latest-page line on device (task #168).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),
+                    isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
             provider = SlockSharedStoreProvider(
                 bridge = bridge,

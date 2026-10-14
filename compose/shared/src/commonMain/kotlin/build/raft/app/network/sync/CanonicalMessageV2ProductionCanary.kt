@@ -94,6 +94,14 @@ class CanonicalMessageV2EnterBaseline internal constructor(
     internal val roomLeaveCountAtRequest: Long,
     /** The conversation directory said the user is not a member when the request was sent. */
     internal val nonMemberAtRequest: Boolean,
+    /**
+     * The server had already sent `rooms:joined` on the socket of [epochAtRequest] when the request was sent:
+     * that connection is subscribed to every member room, so a page read from here on is continuous with
+     * its frames. Without it the page may predate the connect-time room join.
+     */
+    internal val roomsJoinedAtRequest: Boolean,
+    /** `enter` or `catch_up` (diagnostics only). */
+    internal val source: String = "enter",
 ) {
     internal val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
     internal var overflowed = false
@@ -195,7 +203,12 @@ private sealed interface CanonicalMessageV2AppendResult {
  * - Hole A: the enter snapshot registers a pending baseline with its request epoch before it fetches;
  *   frames of that channel meanwhile are displayed and buffered (bounded), then replayed inside the scope
  *   writer right after the enter commit by #3007's rules.
+ * - The enter (and, for the viewed channel, the gap catch-up: [beginCatchUpBaseline]) makes a window
+ *   continuous only for a member channel whose connection has already seen `rooms:joined`
+ *   ([noteRoomsJoined], per epoch): before it, the page may predate the server's connect-time room join.
  */
+private const val ROOMS_JOINED_EPOCH_MEMORY = 8
+
 internal class CanonicalMessageV2ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
@@ -213,6 +226,9 @@ internal class CanonicalMessageV2ProductionCanary(
 
     /** Guarded by [stateMutex]. */
     private val currentTransportEpochByPartition = mutableMapOf<DurablePartitionKey, Long>()
+
+    /** Guarded by [stateMutex]: the transport epochs that have seen `rooms:joined` (most recent last, bounded). */
+    private val roomsJoinedEpochsByPartition = mutableMapOf<DurablePartitionKey, LinkedHashSet<Long>>()
 
     private val roomLeaveLock = SynchronizedObject()
 
@@ -544,6 +560,27 @@ internal class CanonicalMessageV2ProductionCanary(
         logger("canonical_v2_canary room_left server=$serverId scope=$roomId count=$count")
     }
 
+    /**
+     * Task #168: the server sent `rooms:joined` on the socket of [transportEpoch] (#3013: posted by the host
+     * with the socket's own epoch, witness-checked by the ingress coordinator). From now on that connection
+     * receives the frames of every room the user is a member of. Explicit per epoch: never inferred from
+     * another epoch's signal.
+     */
+    suspend fun noteRoomsJoined(partition: DurablePartitionKey, transportEpoch: Long) {
+        if (transportEpoch <= 0L) return
+        stateMutex.withLock {
+            val epochs = roomsJoinedEpochsByPartition.getOrPut(partition) { LinkedHashSet() }
+            epochs.remove(transportEpoch)
+            epochs += transportEpoch
+            while (epochs.size > ROOMS_JOINED_EPOCH_MEMORY) epochs.remove(epochs.first())
+        }
+        logger("canonical_v2_canary rooms_joined server=${partition.serverId} epoch=$transportEpoch")
+    }
+
+    /** Holding [stateMutex]. */
+    private fun roomsJoinedLocked(partition: DurablePartitionKey, epoch: Long?): Boolean =
+        epoch != null && roomsJoinedEpochsByPartition[partition]?.contains(epoch) == true
+
     private fun roomLeaveCount(serverId: String, roomId: String): Long =
         synchronized(roomLeaveLock) { roomLeaveCountByRoom[serverId to roomId] ?: 0L }
 
@@ -558,21 +595,62 @@ internal class CanonicalMessageV2ProductionCanary(
         scopeId: SyncScopeId,
         nonMember: Boolean,
     ): CanonicalMessageV2EnterBaseline? = stateMutex.withLock {
+        registerBaselineLocked(partition, scopeId, nonMember, source = "enter")
+    }
+
+    /**
+     * Task #168: a gap catch-up of [scopeId] (the channel the user is viewing) is about to fetch its latest
+     * page. MUST be called before that fetch. Registers the same request-time baseline as an enter, but
+     * ONLY when it can make the window continuous: the user is a member of the channel and the current
+     * connection has already seen `rooms:joined` (else the page may predate the connect-time room join).
+     * `null` = not registered: the catch-up commits as a plain external commit (display only afterwards).
+     */
+    suspend fun beginCatchUpBaseline(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        nonMember: Boolean,
+    ): CanonicalMessageV2EnterBaseline? = stateMutex.withLock {
+        val epoch = currentTransportEpochByPartition[partition]
+        val refusal = when {
+            nonMember -> "non_member"
+            !roomsJoinedLocked(partition, epoch) -> "rooms_not_joined"
+            else -> null
+        }
+        if (refusal != null) {
+            logger(
+                "canonical_v2_canary catch_up=unregistered server=${partition.serverId} scope=$scopeId " +
+                    "epoch=$epoch reason=$refusal",
+            )
+            return@withLock null
+        }
+        registerBaselineLocked(partition, scopeId, nonMember, source = "catch_up")
+    }
+
+    /** Holding [stateMutex]. */
+    private fun registerBaselineLocked(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        nonMember: Boolean,
+        source: String,
+    ): CanonicalMessageV2EnterBaseline? {
         val key = partition to scopeId
-        if (enterBaselineByChannel[key]?.closed == false) return@withLock null
+        if (enterBaselineByChannel[key]?.closed == false) return null
+        val epoch = currentTransportEpochByPartition[partition]
         val baseline = CanonicalMessageV2EnterBaseline(
             partition = partition,
             scopeId = scopeId,
-            epochAtRequest = currentTransportEpochByPartition[partition],
+            epochAtRequest = epoch,
             roomLeaveCountAtRequest = roomLeaveCount(partition.serverId, scopeId),
             nonMemberAtRequest = nonMember,
+            roomsJoinedAtRequest = roomsJoinedLocked(partition, epoch),
+            source = source,
         )
         enterBaselineByChannel[key] = baseline
         logger(
-            "canonical_v2_canary enter=registered server=${partition.serverId} scope=$scopeId " +
-                "epochAtRequest=${baseline.epochAtRequest} nonMember=$nonMember",
+            "canonical_v2_canary $source=registered server=${partition.serverId} scope=$scopeId " +
+                "epochAtRequest=$epoch nonMember=$nonMember roomsJoined=${baseline.roomsJoinedAtRequest}",
         )
-        baseline
+        return baseline
     }
 
     /**
@@ -580,7 +658,8 @@ internal class CanonicalMessageV2ProductionCanary(
      * `generationEngine.withScopeWriter(snapshot.scope)`, right after `applySnapshot` returned `Committed`.
      * The scope gets a fresh state continuous under the request epoch, then the buffered frames are replayed
      * by #3007's rules. It stays discontinuous instead when the user is not a member of the channel (the
-     * server joins its room asynchronously on open, so the page may miss messages never pushed), the room was
+     * server joins its room asynchronously on open, so the page may miss messages never pushed), the request's
+     * connection had not seen `rooms:joined` yet (same race for member rooms right after a reconnect), the room was
      * left meanwhile, another writer committed meanwhile, or the buffer overflowed.
      */
     suspend fun onEnterCommitted(
@@ -607,6 +686,7 @@ internal class CanonicalMessageV2ProductionCanary(
             stateByScope[scope] = state
             val reason = when {
                 baseline.nonMemberAtRequest || nonMemberAtCommit -> "non_member"
+                !baseline.roomsJoinedAtRequest -> "rooms_not_joined"
                 roomLeaveCount(scope.serverId, scope.scopeId) != baseline.roomLeaveCountAtRequest -> "room_left"
                 baseline.superseded -> "external_commit"
                 baseline.overflowed -> "buffer_overflow"
@@ -616,7 +696,7 @@ internal class CanonicalMessageV2ProductionCanary(
             Triple(state, baseline.buffered.toList(), reason)
         }
         logger(
-            "canonical_v2_canary enter=committed server=${scope.serverId} scope=${scope.scopeId} " +
+            "canonical_v2_canary ${baseline.source}=committed server=${scope.serverId} scope=${scope.scopeId} " +
                 "epoch=${baseline.epochAtRequest} buffered=${buffered.size} " +
                 (reason?.let { "continuity=discontinuous reason=$it" } ?: "continuity=continuous"),
         )
@@ -634,7 +714,7 @@ internal class CanonicalMessageV2ProductionCanary(
             closeLocked(baseline)
             if (baseline.buffered.isNotEmpty() || baseline.overflowed) markChannelLocked(baseline, "enter_failed")
             logger(
-                "canonical_v2_canary enter=abandoned server=${baseline.partition.serverId} " +
+                "canonical_v2_canary ${baseline.source}=abandoned server=${baseline.partition.serverId} " +
                     "scope=${baseline.scopeId} buffered=${baseline.buffered.size}",
             )
         }
@@ -772,6 +852,10 @@ internal class CanonicalMessageV2ProductionCanary(
             else CanonicalMessageV2ScopeContinuity.Continuous
         }
 
+    /** The recorded transport epoch of [partition] (tests / diagnostics). */
+    internal suspend fun currentTransportEpochOf(partition: DurablePartitionKey): Long? =
+        stateMutex.withLock { currentTransportEpochByPartition[partition] }
+
     /** The scopes of [partition] with a window committed in this process (the in-memory index). */
     internal suspend fun windowedScopes(partition: DurablePartitionKey): Set<SyncScopeKey> =
         stateMutex.withLock { stateByScope.keys.filterTo(mutableSetOf()) { it.partition == partition } }
@@ -807,6 +891,7 @@ internal class CanonicalMessageV2ProductionCanary(
     private suspend fun onPartitionRevoked(partition: DurablePartitionKey) {
         stateMutex.withLock {
             currentTransportEpochByPartition.remove(partition)
+            roomsJoinedEpochsByPartition.remove(partition)
             stateByScope.keys.removeAll { it.partition == partition }
             enterBaselineByChannel.entries.removeAll { (key, baseline) ->
                 (key.first == partition).also { if (it) baseline.closed = true }

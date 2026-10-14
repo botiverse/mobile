@@ -85,7 +85,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     fun afterTheCatchUpTheWindowIsDisplayOnlyUntilTheNextEnterWithoutAnyLoad() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
-            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.connect(1L)
             rig.enter(pageOf(10L, 20L, 30L))
             assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(40L))
             rig.latest(pageOf(100L, 110L, 120L), limit = 3)
@@ -128,7 +128,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     fun anOlderPageOnARealtimeWindowIsWrittenAndTheWindowKeepsAppending() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
-            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.connect(1L)
             rig.enter(pageOf(10L, 20L, 30L))
             val incrementalsBefore = rig.store.incrementalWrites
             rig.extend(ThreadDurablePageDirection.Older, anchorSeq = 10L, pageOf(5L, 8L), limit = 3)
@@ -152,7 +152,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     fun aNewerPageOnARealtimeWindowIsWrittenAndTheWindowBecomesDisplayOnly() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
-            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.connect(1L)
             rig.enter(pageOf(10L, 20L, 30L))
             rig.extend(ThreadDurablePageDirection.Newer, anchorSeq = 30L, pageOf(35L, 38L), limit = 3)
             assertEquals(listOf(10L, 20L, 30L, 35L, 38L), rig.coldStartSeqs())
@@ -252,8 +252,18 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         /** A realtime `New` of `m<seq>` (frame epoch = the recorded one). */
         suspend fun accept(seq: Long): CanonicalMessageV2CanaryOutcome = canary.accept(partition, input(seq))
 
+        private var connected = false
+
+        /** The socket (re)connected as [epoch] and its `rooms:joined` arrived. */
+        suspend fun connect(epoch: Long) {
+            canary.noteTransportEpoch(partition, epoch)
+            canary.noteRoomsJoined(partition, epoch)
+            connected = true
+        }
+
         /** The user opens channel-1 and the server answers [rawMessages] (after [gate], when given). */
         suspend fun enter(rawMessages: JsonArray, gate: CompletableDeferred<Unit>? = null) {
+            if (!connected) connect(1L)
             val body = """{"messages":$rawMessages,"historyLimited":false}"""
             val network = RecordingNetworkClient(body).also { it.pageGate = gate; networks += it }
             CanonicalMessageV2EnteredScopeLoader(

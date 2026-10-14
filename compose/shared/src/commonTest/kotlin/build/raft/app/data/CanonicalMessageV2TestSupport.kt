@@ -91,6 +91,10 @@ internal suspend fun commitEnterBaselineForTest(
     frame: CanonicalMessageV2SnapshotFrame,
     nonMember: Boolean = false,
 ): build.raft.app.network.sync.CanonicalMessageV2CommitResult {
+    // A member channel on a connection whose rooms:joined arrived (task #168 step 3 gate).
+    val epoch = canary.currentTransportEpochOf(frame.scope.partition)
+        ?: 1L.also { canary.noteTransportEpoch(frame.scope.partition, it) }
+    canary.noteRoomsJoined(frame.scope.partition, epoch)
     val baseline = requireNotNull(canary.beginEnterBaseline(frame.scope.partition, frame.scope.scopeId, nonMember))
     return engine.withScopeWriter(frame.scope) {
         engine.applySnapshot(frame).also { result ->

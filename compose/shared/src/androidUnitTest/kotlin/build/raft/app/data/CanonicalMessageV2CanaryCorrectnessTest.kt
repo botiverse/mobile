@@ -234,7 +234,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         fun run(bufferedEpoch: Long): Pair<Set<String>, CanonicalMessageV2ScopeContinuity> = withFreshDatabase { database ->
             val rig = Rig(database)
             bounded {
-                rig.canary.noteTransportEpoch(partition, 2L)
+                rig.connect(2L)
                 rig.server.has(channelA, "m1" to 1L)
                 val hold = rig.server.holdNextPage()
                 val entering = async { rig.enter(channelA) }
@@ -306,12 +306,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     fun t4AReconnectMakesTheWindowDisplayOnlyWithoutLoadsUntilTheChannelIsOpenedAgain() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
-            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.connect(1L)
             rig.server.has(channelA, "m1" to 1L)
             rig.enter(channelA)
             val loads = rig.server.pageLoads()
 
-            rig.canary.noteTransportEpoch(partition, 2L)
+            rig.connect(2L)
             val m3 = rig.messageNew(channelA, "m3", 3L)
             assertTrue(rig.deliver(m3, epoch = 2L))
             assertTrue(rig.deliver(rig.messageNew(channelA, "m4", 4L), epoch = 2L))
@@ -333,14 +333,14 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     fun oneReconnectMakesEveryWindowedChannelDiscontinuous() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
-            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.connect(1L)
             rig.server.has(channelA, "a1" to 1L)
             rig.server.has(channelB, "b1" to 1L)
             rig.enter(channelA)
             rig.enter(channelB)
             val loads = rig.server.pageLoads()
 
-            rig.canary.noteTransportEpoch(partition, 2L)
+            rig.connect(2L)
             rig.deliver(rig.messageNew(channelA, "a2", 2L), epoch = 2L)
             rig.deliver(rig.messageNew(channelB, "b2", 2L), epoch = 2L)
 
@@ -351,6 +351,101 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             assertEquals(0, rig.store.incrementalWrites)
             assertEquals(loads, rig.server.pageLoads())
         }
+    }
+
+    // ---- gap catch-up of the viewed channel: continuous again only after rooms:joined ---------------
+
+    /** Channel A open under epoch 1; the socket reconnects as 2 (m2, m3 missed); returns after [catchUp]. */
+    private fun catchUpCase(
+        roomsJoinedForEpoch2: Boolean,
+        roomsJoinedForEpoch1: Boolean = true,
+        nonMember: Boolean = false,
+    ): Pair<Set<String>, CanonicalMessageV2ScopeContinuity> = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.connect(1L, roomsJoined = roomsJoinedForEpoch1)
+            rig.server.has(channelA, "m1" to 1L)
+            rig.enter(channelA)
+            if (nonMember) rig.nonMembers += channelA.scopeId
+            rig.server.has(channelA, "m2" to 2L, "m3" to 3L)
+            rig.connect(2L, roomsJoined = roomsJoinedForEpoch2)
+            rig.catchUp(channelA)
+            assertEquals(setOf("m1", "m2", "m3"), rig.storedIds(channelA), "the catch-up page is written either way")
+            val paths = rig.server.paths.toList()
+            rig.deliver(rig.messageNew(channelA, "m4", 4L), epoch = 2L)
+            assertEquals(paths, rig.server.paths, "a realtime frame never loads")
+            rig.storedIds(channelA) to rig.canary.continuityOf(channelA)
+        }
+    }
+
+    @Test
+    fun aCatchUpAfterRoomsJoinedForTheCurrentConnectionMakesTheViewedChannelContinuousAgain() {
+        assertEquals(setOf("m1", "m2", "m3", "m4") to CanonicalMessageV2ScopeContinuity.Continuous, catchUpCase(roomsJoinedForEpoch2 = true))
+    }
+
+    @Test
+    fun aCatchUpBeforeRoomsJoinedForTheCurrentConnectionLeavesTheChannelDisplayOnly() {
+        // No rooms:joined recorded at all yet (the signal has not arrived).
+        assertEquals(
+            setOf("m1", "m2", "m3") to CanonicalMessageV2ScopeContinuity.Discontinuous,
+            catchUpCase(roomsJoinedForEpoch2 = false, roomsJoinedForEpoch1 = false),
+        )
+    }
+
+    @Test
+    fun aCatchUpWithRoomsJoinedOnlyForAnOlderConnectionLeavesTheChannelDisplayOnly() {
+        // rooms:joined arrived for epoch 1 (before the reconnect), never for epoch 2.
+        assertEquals(
+            setOf("m1", "m2", "m3") to CanonicalMessageV2ScopeContinuity.Discontinuous,
+            catchUpCase(roomsJoinedForEpoch2 = false, roomsJoinedForEpoch1 = true),
+        )
+    }
+
+    @Test
+    fun aCatchUpOfANonMemberChannelLeavesItDisplayOnly() {
+        assertEquals(
+            setOf("m1", "m2", "m3") to CanonicalMessageV2ScopeContinuity.Discontinuous,
+            catchUpCase(roomsJoinedForEpoch2 = true, nonMember = true),
+        )
+    }
+
+    @Test
+    fun framesDuringTheCatchUpFetchAreReplayedAfterItsCommit() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.connect(1L)
+            rig.server.has(channelA, "m1" to 1L)
+            rig.enter(channelA)
+            rig.server.has(channelA, "m2" to 2L)
+            rig.connect(2L)
+            val m3 = rig.messageNew(channelA, "m3", 3L)
+            rig.catchUp(channelA) {
+                // Pushed after the page was read: buffered, displayed, not on the page.
+                assertTrue(rig.deliver(m3, epoch = 2L))
+                assertEquals(setOf("m1"), rig.storedIds(channelA), "buffered, not written yet")
+            }
+            assertEquals(m3, rig.projected.last())
+            assertEquals(setOf("m1", "m2", "m3"), rig.storedIds(channelA), "m3 survives the catch-up commit")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(channelA))
+            rig.deliver(rig.messageNew(channelA, "m4", 4L), epoch = 2L)
+            assertEquals(setOf("m1", "m2", "m3", "m4"), rig.storedIds(channelA))
+        }
+    }
+
+    @Test
+    fun anEnterRightAfterAReconnectAppendsOnlyOnceRoomsJoinedArrivedForThatConnection() {
+        fun run(roomsJoined: Boolean): Set<String> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.connect(2L, roomsJoined = roomsJoined)
+                rig.server.has(channelA, "m1" to 1L)
+                rig.enter(channelA)
+                rig.deliver(rig.messageNew(channelA, "m2", 2L), epoch = 2L)
+                rig.storedIds(channelA)
+            }
+        }
+        assertEquals(setOf("m1"), run(roomsJoined = false), "the page may predate the connect-time room join")
+        assertEquals(setOf("m1", "m2"), run(roomsJoined = true))
     }
 
     // ---- T5 room leave -------------------------------------------------------------------------------
@@ -584,7 +679,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                 processOwner.acceptProcessMutation(grant, event, "process_realtime", presenceTransportEpoch = 3L)
                 shellOwner.accept(grant, event, source = "app_shell", transportEpoch = 3L)
             }
-            rig.canary.noteTransportEpoch(partition, 3L)
+            rig.connect(3L)
             rig.server.has(channelA, "m1" to 1L)
             rig.server.has(channelB, "n1" to 1L)
             rig.enter(channelA)
@@ -760,6 +855,14 @@ class CanonicalMessageV2CanaryCorrectnessTest {
 
         fun pageLoads(): Int = paths.count { it.startsWith("messages/channel/") }
 
+        /** The channel's latest page (≤ 200 nodes) as the catch-up reads it, now. */
+        fun latestPage(scope: SyncScopeKey): kotlinx.serialization.json.JsonArray = synchronized(nodes) {
+            val page = nodes[scope.scopeId].orEmpty().entries.sortedByDescending { it.value.first }.take(200)
+            kotlinx.serialization.json.Json.parseToJsonElement(
+                "[" + page.joinToString(",") { (id, value) -> node(scope.scopeId, id, value.first, value.second) } + "]",
+            ) as kotlinx.serialization.json.JsonArray
+        }
+
         override suspend fun request(
             priority: DataRequestPriority,
             path: String,
@@ -836,8 +939,40 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             },
         )
 
+        private var connected = false
+
+        /** The socket (re)connected as [epoch]; [roomsJoined]: the server's `rooms:joined` arrived on it. */
+        suspend fun connect(epoch: Long, roomsJoined: Boolean = true) {
+            canary.noteTransportEpoch(partition, epoch)
+            if (roomsJoined) canary.noteRoomsJoined(partition, epoch)
+            connected = true
+        }
+
         /** The user opens the channel: the real enter snapshot loader against [server]. */
-        suspend fun enter(scope: SyncScopeKey) = loader.loadOnEnter(partition, scope.scopeId) { true }
+        suspend fun enter(scope: SyncScopeKey) {
+            if (!connected) connect(1L)
+            loader.loadOnEnter(partition, scope.scopeId) { true }
+        }
+
+        private val writer = CanonicalMessageV2AdjacentPageWriter(
+            canary = canary,
+            generationEngine = engine,
+            fetcher = CanonicalMessageV2RestSnapshotFetcher(server),
+            isEnabledForServer = { true },
+            logger = { logs += it },
+            isKnownNonMember = { _, channelId -> channelId in nonMembers },
+        )
+
+        /**
+         * The gap catch-up of the viewed [scope], as SharedThreadStore runs it: the baseline is registered
+         * before the latest page is read; [duringFetch] runs after the read, before the commit.
+         */
+        suspend fun catchUp(scope: SyncScopeKey, duringFetch: suspend () -> Unit = {}) {
+            val baseline = writer.beginLatestPageBaseline(partition, scope.scopeId)
+            val page = server.latestPage(scope)
+            duringFetch()
+            writer.applyLatestPageAfterBaseline(partition, scope.scopeId, page, 200, null, baseline) { true }
+        }
 
         /** The server persisted the message before pushing it; then one delivery through the displaying owner. */
         suspend fun deliver(event: RealtimeEvent, epoch: Long? = null): Boolean {

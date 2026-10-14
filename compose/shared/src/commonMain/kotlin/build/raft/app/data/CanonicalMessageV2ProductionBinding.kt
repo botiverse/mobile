@@ -602,7 +602,22 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     private val logger: (String) -> Unit = {},
     /** Must equal the store's [CanonicalMessageV2RetentionPolicy.maxFactsPerScope]. */
     private val maxFactsPerScope: Int = CanonicalMessageV2RetentionPolicy().maxFactsPerScope,
+    /** Same rule as the enter loader's: unknown = member. */
+    private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
 ) : ThreadDurablePageExtender {
+    override suspend fun beginLatestPageBaseline(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+    ): CanonicalMessageV2EnterBaseline? {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        if (channelId.isBlank() || channelId != channelId.trim()) return null
+        if (!isEnabledForServer(partition.serverId)) return null
+        return canary.beginCatchUpBaseline(partition, channelId, nonMember = isKnownNonMember(partition.serverId, channelId))
+    }
+
+    override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) =
+        canary.abandonEnterBaseline(baseline)
+
     override suspend fun extendWithAdjacentPage(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
@@ -782,8 +797,45 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
         stillCurrent: () -> Boolean,
+    ) = applyLatestPageAfterBaseline(partition, channelId, rawMessages, requestedLimit, replyParent, null, stillCurrent)
+
+    /**
+     * Task #168 step 3: with a [baseline] (registered before the fetch, only for a member channel whose
+     * connection had seen `rooms:joined`), the committed page is the window's new realtime baseline: frames
+     * buffered during the fetch are replayed and the window is continuous again
+     * ([CanonicalMessageV2ProductionCanary.onEnterCommitted]). Without one, #3008's external commit.
+     * The baseline is abandoned on every path that does not commit.
+     */
+    override suspend fun applyLatestPageAfterBaseline(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
+        baseline: CanonicalMessageV2EnterBaseline?,
+        stillCurrent: () -> Boolean,
+    ) {
+        try {
+            applyLatestPageInternal(partition, channelId, rawMessages, requestedLimit, replyParent, baseline, stillCurrent)
+        } finally {
+            baseline?.let { canary.abandonEnterBaseline(it) }
+        }
+    }
+
+    private suspend fun applyLatestPageInternal(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
+        baseline: CanonicalMessageV2EnterBaseline?,
+        stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        // A baseline is only ever for this exact top-level channel of this partition.
+        val ownBaseline = baseline?.takeIf {
+            replyParent == null && it.partition == partition && it.scopeId == channelId
+        }
         val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
         fun log(outcome: String) {
             logger("canonical_v2_latest_page server=${partition.serverId} scope=$channelId$kindLabel outcome=$outcome")
@@ -845,6 +897,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 val joined =
                     storedOldest != null && storedNewest != null &&
                         restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
+                var committedFrame: CanonicalMessageV2SnapshotFrame? = null
                 val (outcome, result) = if (joined) {
                     checkNotNull(storedOldest)
                     checkNotNull(storedNewest)
@@ -874,6 +927,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
                         expectedGeneration,
                     )
+                    // What the window holds now, for the baseline replay: the page under the union cursor.
+                    committedFrame = CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor)
                     "extended ${result.wireOutcome(envelopes.size)} newest=${cursor.newestLoadedSeq}" to result
                 } else {
                     val cursor = PersistedCursor(
@@ -887,16 +942,26 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         parentScopeId = stored.parentScopeId.takeIf { replyParent != null },
                         rootMessageId = stored.rootMessageId.takeIf { replyParent != null },
                     )
-                    val result = generationEngine.applySnapshot(
-                        CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor),
-                        expectedGeneration,
-                    )
+                    val frame = CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor)
+                    val result = generationEngine.applySnapshot(frame, expectedGeneration)
+                    committedFrame = frame
                     "window_replaced old=${storedOldest ?: "none"}..${storedNewest ?: "none"} " +
                         "oldFacts=${restored.envelopes.size} new=$pageMin..$pageMax " +
                         result.wireOutcome(envelopes.size) to result
                 }
                 log(outcome)
-                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
+                if (result == CanonicalMessageV2CommitResult.Committed) {
+                    val frame = committedFrame
+                    if (ownBaseline != null && frame != null) {
+                        canary.onEnterCommitted(
+                            ownBaseline,
+                            frame,
+                            nonMemberAtCommit = isKnownNonMember(partition.serverId, channelId),
+                        )
+                    } else {
+                        canary.onExternalCommit(scope)
+                    }
+                }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
