@@ -166,6 +166,8 @@ private class CanonicalMessageV2PendingSnapshot(
     val epochAtRequest: Long?,
     /** The delivery that scheduled it: written by the snapshot itself. */
     val trigger: CanonicalMessageV2Delivery,
+    /** The loader it was scheduled with: reused when an external commit supersedes it ([onExternalCommit]). */
+    val snapshotLoader: CanonicalMessageV2SnapshotLoader,
 ) {
     /** Writer-confined. */
     val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
@@ -470,6 +472,7 @@ internal class CanonicalMessageV2ProductionCanary(
             partitionGeneration = partitionGeneration,
             epochAtRequest = epochAtRequest,
             trigger = trigger,
+            snapshotLoader = snapshotLoader,
         )
         state.pendingSnapshot = pending
         val scheduled = selectionMutex.withLock {
@@ -724,6 +727,68 @@ internal class CanonicalMessageV2ProductionCanary(
      */
     suspend fun isSelected(scope: SyncScopeKey): Boolean =
         selectionMutex.withLock { selectedScopeByPartition[scope.partition] == scope }
+
+    /**
+     * Task #168: a writer outside the canary (enter snapshot, adjacent page, gap catch-up) has just committed
+     * into [scope]. MUST be called inside `generationEngine.withScopeWriter(scope)`, right after that commit
+     * returned `Committed`, so it is serialized with every canary write of the scope.
+     *
+     * The canary did not produce that window, so:
+     * 1. the scope is marked discontinuous: the next realtime frame re-snapshots (#2991 rules) instead of
+     *    appending onto a window whose continuity with the realtime stream nothing proves;
+     * 2. a background snapshot still pending for the scope is superseded by an explicit signal, never by
+     *    comparing seqs: it is cancelled exactly like a reset cancels it (`cancelled`, removed from
+     *    [pendingSnapshotByScope], so its in-writer re-check drops it), because it was requested before this
+     *    commit and could otherwise overwrite the newer window with an older page. Its buffered frames are
+     *    dropped (they were displayed when they arrived), and ONE fresh snapshot is scheduled with the same
+     *    trigger: it loads after this commit, so it is never older than the external window, and it puts the
+     *    trigger frame (and everything buffered behind it) on disk even when no further frame arrives.
+     *
+     * No-op when the canary holds no state for [scope] (not selected, or not yet initialized: a state created
+     * later restores from disk without an epoch, which already re-snapshots).
+     *
+     * Locks: only [selectionMutex], a leaf lock (the canary's own scope mutex is ordered BEFORE the scope
+     * writer, so it is never taken here). Nothing of the realtime grant / authority registry is touched.
+     */
+    suspend fun onExternalCommit(scope: SyncScopeKey): Unit = withContext(NonCancellable) {
+        // The commit already happened: a cancellation of the caller must not skip the mark.
+        noteExternalCommitInsideWriter(scope)
+    }
+
+    private suspend fun noteExternalCommitInsideWriter(scope: SyncScopeKey) {
+        val state = selectionMutex.withLock {
+            val state = stateByScope[scope] ?: return
+            val superseded = state.pendingSnapshot
+            if (superseded != null && pendingSnapshotByScope[scope] === superseded) {
+                cancelPendingSnapshotsLocked { it == scope }
+            }
+            state
+        }
+        val superseded = state.pendingSnapshot
+        state.pendingSnapshot = null
+        state.cursor = generationEngine.currentCursor(scope)
+        state.markDiscontinuous()
+        logger(
+            "canonical_v2_canary external_commit server=${scope.serverId} scope=${scope.scopeId} " +
+                "superseded=${superseded != null}",
+        )
+        if (superseded == null) return
+        if (superseded.buffered.isNotEmpty() || superseded.overflowed) {
+            logger(
+                "canonical_v2_canary snapshot=buffer_dropped server=${scope.serverId} " +
+                    "scope=${scope.scopeId} buffered=${superseded.buffered.size} reason=external_commit",
+            )
+        }
+        superseded.buffered.clear()
+        scheduleSnapshot(
+            scope = scope,
+            partition = scope.partition,
+            trigger = superseded.trigger,
+            state = state,
+            snapshotLoader = superseded.snapshotLoader,
+            partitionGeneration = superseded.partitionGeneration,
+        )
+    }
 
     suspend fun modeFor(serverId: String, scopeId: String): CanonicalMessageV2CanaryMode =
         selectionMutex.withLock {
