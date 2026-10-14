@@ -371,6 +371,92 @@ private extension String {
     }
 }
 
+private enum SlockIosDesktopShortcutHost {
+    private static let desktopShortcutOpenName = Notification.Name("slockDesktopShortcutOpen")
+    private static let desktopShortcutOpenReadyName = Notification.Name("slockDesktopShortcutOpenReady")
+    private static let desktopShortcutOpenNotReadyName = Notification.Name("slockDesktopShortcutOpenNotReady")
+    private static var desktopShortcutOpenReadyObserver: NSObjectProtocol?
+    private static var desktopShortcutOpenNotReadyObserver: NSObjectProtocol?
+    private static var desktopShortcutOpenReadyCount = 0
+    private static var pendingShortcutOpens: [[String: String]] = []
+
+    static func install() {
+        if desktopShortcutOpenReadyObserver == nil {
+            desktopShortcutOpenReadyObserver = NotificationCenter.default.addObserver(
+                forName: desktopShortcutOpenReadyName,
+                object: nil,
+                queue: .main
+            ) { _ in
+                desktopShortcutOpenReadyCount += 1
+                drainPendingShortcutOpens()
+            }
+        }
+        if desktopShortcutOpenNotReadyObserver == nil {
+            desktopShortcutOpenNotReadyObserver = NotificationCenter.default.addObserver(
+                forName: desktopShortcutOpenNotReadyName,
+                object: nil,
+                queue: .main
+            ) { _ in
+                desktopShortcutOpenReadyCount = max(0, desktopShortcutOpenReadyCount - 1)
+            }
+        }
+    }
+
+    static func acceptShortcutItem(_ shortcutItem: UIApplicationShortcutItem, source: String) {
+        let userInfo = shortcutItem.userInfo ?? [:]
+        guard let serverId = userInfo["slockShortcutServerId"] as? String, !serverId.isEmpty,
+              let targetId = userInfo["slockShortcutTargetId"] as? String, !targetId.isEmpty else {
+            return
+        }
+        let targetKind = userInfo["slockShortcutTargetKind"] as? String ?? "channel"
+        let launchId = "\(serverId)_\(targetId)_\(Int64(Date().timeIntervalSince1970 * 1000))"
+        let payload: [String: String] = [
+            "slockShortcutServerId": serverId,
+            "slockShortcutTargetId": targetId,
+            "slockShortcutTargetKind": targetKind,
+            "slockShortcutLaunchId": launchId,
+            "slockShortcutTitle": shortcutItem.localizedTitle
+        ]
+
+        if Thread.isMainThread {
+            handlePayload(payload, source: source)
+        } else {
+            DispatchQueue.main.async {
+                handlePayload(payload, source: source)
+            }
+        }
+    }
+
+    private static func handlePayload(_ payload: [String: String], source: String) {
+        if desktopShortcutOpenReadyCount > 0 {
+            dispatchShortcutOpen(payload, source: source)
+        } else {
+            pendingShortcutOpens.append(payload)
+        }
+    }
+
+    private static func drainPendingShortcutOpens() {
+        let pending = pendingShortcutOpens
+        pendingShortcutOpens.removeAll(keepingCapacity: true)
+        for payload in pending {
+            dispatchShortcutOpen(payload, source: "ready_drain")
+        }
+    }
+
+    private static func dispatchShortcutOpen(_ payload: [String: String], source: String) {
+        NotificationCenter.default.post(
+            name: desktopShortcutOpenName,
+            object: nil,
+            userInfo: payload
+        )
+        SlockIosDiagnosticsRecord(
+            "info",
+            "SlockIosShortcut",
+            "desktop_shortcut_open_dispatched source=\(source)"
+        )
+    }
+}
+
 final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     private let networkRequestLifetimeAdapter = SlockIosNetworkRequestLifetimeAdapter(
         notificationCenter: .default,
@@ -387,6 +473,10 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         networkRequestLifetimeAdapter.install()
         SlockIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
+        SlockIosDesktopShortcutHost.install()
+        if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
+            SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "cold_launch")
+        }
         if let userInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             SlockIosPushHost.acceptSystemNotificationOpen(
                 userInfo: userInfo,
@@ -407,6 +497,15 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
         SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "app_delegate")
+    }
+
+    func application(
+        _ application: UIApplication,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "perform_action")
+        completionHandler(true)
     }
 
     func application(
