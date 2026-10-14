@@ -160,6 +160,15 @@ internal class SharedHomeStore(
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
+    /**
+     * Home loads whose response is still in flight, keyed by token, valued by whether a realtime message
+     * raised a local unread count meanwhile. The unread endpoints carry no message seq, so a response read
+     * before that message cannot be told apart from one that counted it: such a load keeps the local unread
+     * and one more load (sent after the message, which the server stored before pushing it) replaces it.
+     */
+    private val realtimeUnreadDirtyByLoad = mutableMapOf<Long, Boolean>()
+    private val realtimeUnreadDirtyLock = SynchronizedObject()
+    private var nextHomeLoadToken = 0L
     /** Monotonic fence for non-cooperative loads that outlive an auth/session reset. */
     private val homeSessionGeneration = atomic(0L)
     private var agentDirectMessageStatusJob: Job? = null
@@ -338,6 +347,7 @@ internal class SharedHomeStore(
      */
     fun reset() {
         homeSessionGeneration.incrementAndGet()
+        clearRealtimeUnreadWatches()
         clear()
         dismissedLocalNotificationIds.clear()
         homeSurfaceVisible = true
@@ -1208,6 +1218,9 @@ internal class SharedHomeStore(
                     appBadgeCount = nextBadge
                 )
             )
+        if (changed && messagePatch.incrementUnread && nextBaseSnapshot.unreadTotal != content.baseSnapshot.unreadTotal) {
+            markRealtimeUnreadDirtyForInflightLoads()
+        }
         diagnosticsLogger(
             "store_merge domain=home source=store_realtime serverId=${serverId.value} " +
                 "event=${event.toSharedHomeRealtimeEventDiagnosticsLabel()} messages=${messagePatch.messages.size} " +
@@ -1265,6 +1278,60 @@ internal class SharedHomeStore(
                     stateDiagnosticsReason = previousReason
                 }
             }
+    }
+
+    private fun beginRealtimeUnreadWatch(): Long =
+        synchronized(realtimeUnreadDirtyLock) {
+            val token = ++nextHomeLoadToken
+            realtimeUnreadDirtyByLoad[token] = false
+            token
+        }
+
+    private fun markRealtimeUnreadDirtyForInflightLoads() {
+        synchronized(realtimeUnreadDirtyLock) {
+            realtimeUnreadDirtyByLoad.keys.toList().forEach { token -> realtimeUnreadDirtyByLoad[token] = true }
+        }
+    }
+
+    private fun isRealtimeUnreadDirty(token: Long): Boolean =
+        synchronized(realtimeUnreadDirtyLock) { realtimeUnreadDirtyByLoad[token] == true }
+
+    private fun endRealtimeUnreadWatch(token: Long): Boolean =
+        synchronized(realtimeUnreadDirtyLock) { realtimeUnreadDirtyByLoad.remove(token) == true }
+
+    /** Drop dirty marks of loads a session reset or server switch has orphaned. */
+    private fun clearRealtimeUnreadWatches() {
+        synchronized(realtimeUnreadDirtyLock) { realtimeUnreadDirtyByLoad.clear() }
+    }
+
+    private fun scheduleRealtimeUnreadReconcileLoad(round: Int) {
+        if (round > MAX_REALTIME_UNREAD_RECONCILE_ROUNDS) {
+            // The local counts stay as they are; the next ordinary load or foreground refresh reconciles.
+            diagnosticsLogger("home_unread_reconcile_cap rounds=$MAX_REALTIME_UNREAD_RECONCILE_ROUNDS")
+            return
+        }
+        val finishing = loadJob
+        scope.launch {
+            finishing?.join()
+            // A load already in flight was sent after the message too; it will replace the counts.
+            if (loadJob?.isActive == true) return@launch
+            val session = authStore.readSession() ?: return@launch
+            if (_state.value.content !is SharedHomeContentState.Content) return@launch
+            diagnosticsLogger("home_unread_reconcile_load round=$round")
+            val nextSwitch = _state.value.serverSwitchState.refresh()
+            reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+            if (session.currentServerId == null) return@launch
+            loadJob =
+                scope.launch {
+                    val previousReason = stateDiagnosticsReason
+                    stateDiagnosticsReason = "RealtimeUnreadReconcile"
+                    try {
+                        load(nextSwitch, showRefreshAffordance = false, realtimeUnreadRound = round)
+                    } finally {
+                        stateDiagnosticsReason = previousReason
+                    }
+                }
+        }
     }
 
     private fun HomeServerDrawerState.withServerContent(
@@ -1720,7 +1787,8 @@ internal class SharedHomeStore(
 
     private suspend fun load(
         request: HomeServerSwitchState,
-        showRefreshAffordance: Boolean
+        showRefreshAffordance: Boolean,
+        realtimeUnreadRound: Int = 0,
     ) {
         val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
@@ -1796,6 +1864,7 @@ internal class SharedHomeStore(
                 forceNetwork = false,
                 refreshNotificationsAfterLoad = true,
                 sessionGeneration = sessionGeneration,
+                realtimeUnreadRound = realtimeUnreadRound,
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -1826,6 +1895,38 @@ internal class SharedHomeStore(
         forceNetwork: Boolean,
         refreshNotificationsAfterLoad: Boolean,
         sessionGeneration: Long,
+        realtimeUnreadRound: Int = 0,
+    ) {
+        val realtimeUnreadToken = beginRealtimeUnreadWatch()
+        try {
+            loadHomeFromNetworkWatched(
+                request = request,
+                activeSession = activeSession,
+                activeServer = activeServer,
+                priority = priority,
+                forceNetwork = forceNetwork,
+                refreshNotificationsAfterLoad = refreshNotificationsAfterLoad,
+                sessionGeneration = sessionGeneration,
+                realtimeUnreadToken = realtimeUnreadToken,
+            )
+        } finally {
+            // A message counted at any point while this load was in flight, including after its response
+            // was frozen against the live counts, needs a load sent after it.
+            if (endRealtimeUnreadWatch(realtimeUnreadToken) && sessionGeneration == homeSessionGeneration.value) {
+                scheduleRealtimeUnreadReconcileLoad(realtimeUnreadRound + 1)
+            }
+        }
+    }
+
+    private suspend fun loadHomeFromNetworkWatched(
+        request: HomeServerSwitchState,
+        activeSession: StoredAuthSession,
+        activeServer: ServerId?,
+        priority: DataRequestPriority,
+        forceNetwork: Boolean,
+        refreshNotificationsAfterLoad: Boolean,
+        sessionGeneration: Long,
+        realtimeUnreadToken: Long,
     ) {
         val activityUnreadRequestOwner =
             activeServer?.let { server ->
@@ -1885,8 +1986,15 @@ internal class SharedHomeStore(
         // fake zero — otherwise the next realtime message would rebuild from 0
         // and clobber the real count. Only a truly available response
         // (including a real 200-empty) advances unread.
+        // A realtime message raised a local unread count after this request was sent: the response may
+        // predate it, so keep every unread-bearing field at the live counts and let the reconcile load
+        // scheduled when this load ends replace them.
+        val realtimeUnreadDirty = isRealtimeUnreadDirty(realtimeUnreadToken)
         val freshSnapshot =
             if (rawSnapshot != null && !rawSnapshot.unreadEnrichmentAvailable && previousContent != null) {
+                rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
+            } else if (rawSnapshot != null && realtimeUnreadDirty && previousContent != null) {
+                diagnosticsLogger("home_unread_keep_local reason=realtime_during_load")
                 rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
             } else {
                 rawSnapshot
@@ -3693,6 +3801,9 @@ private const val BackgroundUnreadSeqBucketLimit = 256
 // fetch before publishing channels alone. Kept short so a slow pinned-order endpoint
 // can't delay the channel list; the sidebar still merges on arrival when it's late.
 private const val SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS = 300L
+
+// Reconcile loads after realtime unread raced a Home load; past this the local counts stand until the next load.
+private const val MAX_REALTIME_UNREAD_RECONCILE_ROUNDS = 3
 
 private data class HomeRealtimeConversationPatch(
     val conversation: ConversationSummary,
