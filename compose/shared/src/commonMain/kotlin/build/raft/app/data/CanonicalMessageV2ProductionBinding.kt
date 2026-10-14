@@ -42,9 +42,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
 internal fun interface CanonicalMessageV2OwnerGateway {
+    /** [transportEpoch]: the realtime connection that delivered the frame, when the host names it (task #168). */
     suspend fun accept(
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
+        transportEpoch: Long? = null,
     ): CanonicalMessageV2CanaryOutcome
 
     /** Task #167: the transport behind [grant] (re)connected as [transportEpoch]; callers check the grant is current. */
@@ -62,12 +64,14 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
     override suspend fun accept(
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
+        transportEpoch: Long?,
     ): CanonicalMessageV2CanaryOutcome {
         val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         return canary.accept(
             partition = partition,
             foldInput = foldInput,
             snapshotLoader = CanonicalMessageV2SnapshotLoader { request -> loadSnapshot(grant, request) },
+            frameTransportEpoch = transportEpoch,
         )
     }
 

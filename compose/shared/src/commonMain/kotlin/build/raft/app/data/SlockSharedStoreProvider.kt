@@ -2793,12 +2793,14 @@ internal class SharedRealtimeDomainEventOwner(
         grant: RealtimeGrantRecord,
         event: RealtimeEvent,
         source: String = "unknown",
+        transportEpoch: Long? = null,
     ): Boolean =
         runGuardedCanonicalShadowFirst(
             RealtimeCanonicalFinalOwnerEntry.Selected,
             grant,
             event,
             source,
+            transportEpoch,
         ) { serverId, acceptedEvent, acceptedSource ->
             // The admission identity is frozen from the grant this event was
             // accepted under — the only entry allowed to write presence.
@@ -2809,12 +2811,14 @@ internal class SharedRealtimeDomainEventOwner(
         grant: RealtimeGrantRecord,
         event: RealtimeEvent,
         source: String = "unknown",
+        transportEpoch: Long? = null,
     ): Boolean =
         runGuardedCanonicalShadowFirst(
             RealtimeCanonicalFinalOwnerEntry.BackgroundUnread,
             grant,
             event,
             source,
+            transportEpoch,
         ) { serverId, acceptedEvent, acceptedSource ->
             acceptGuardedHomeUnreadProjection(serverId, acceptedEvent, acceptedSource)
         }
@@ -2830,6 +2834,7 @@ internal class SharedRealtimeDomainEventOwner(
             grant,
             event,
             source,
+            presenceTransportEpoch,
         ) { serverId, acceptedEvent, acceptedSource ->
             // Process transport grants never capture shell surfaces. The
             // canonical commit still runs first, including with zero mounted
@@ -2864,6 +2869,7 @@ internal class SharedRealtimeDomainEventOwner(
         grant: RealtimeGrantRecord,
         event: RealtimeEvent,
         source: String,
+        transportEpoch: Long?,
         legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
     ): Boolean {
         val currentMessageRunner = runWithCurrentMessageGrant
@@ -2876,7 +2882,7 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyContinuation(grant.serverId, event, source)
             }
         }
-        when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput)) {
+        when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput, transportEpoch)) {
             CanonicalMessageV2CanaryOutcome.Committed ->
                 return runIfCurrentGrant(grant) {
                     legacyContinuation(grant.serverId, event, source)

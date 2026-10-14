@@ -169,8 +169,11 @@ internal class CanonicalMessageV2ProductionCanary(
                 state.cursor = generationEngine.currentCursor(scope)
                 if (state.cursor == null) state.mode = CanonicalMessageV2CanaryMode.Activating
 
-                // Read the epoch inside this scope's writer, at commit time, not when the frame arrived.
-                val transportEpoch = currentTransportEpoch(scope.partition)
+                // A frame that names its connection decides by that: the reconnect signal travels through
+                // another coroutine and may not have been recorded yet, or may already name a newer socket.
+                // Otherwise read the recorded epoch inside this scope's writer, at commit time.
+                val transportEpoch =
+                    frameTransportEpoch?.takeIf { it > 0L } ?: currentTransportEpoch(scope.partition)
                 if (
                     foldInput.kind == CanonicalMessageFoldKind.New &&
                     state.cursor != null &&
@@ -202,6 +205,7 @@ internal class CanonicalMessageV2ProductionCanary(
                                     state,
                                     snapshotLoader,
                                     partitionGeneration,
+                                    frameTransportEpoch,
                                 )
                             CanonicalMessageV2CommitResult.PartitionRevoked ->
                                 heldAfterPartitionRevoke(scope, state)
@@ -217,6 +221,7 @@ internal class CanonicalMessageV2ProductionCanary(
                     state,
                     snapshotLoader,
                     partitionGeneration,
+                    frameTransportEpoch,
                 )
             }
         }
@@ -277,11 +282,13 @@ internal class CanonicalMessageV2ProductionCanary(
         state: CanonicalMessageV2CanaryScopeState,
         snapshotLoader: CanonicalMessageV2SnapshotLoader,
         partitionGeneration: Long,
+        frameTransportEpoch: Long? = null,
     ): CanonicalMessageV2CanaryOutcome {
         state.mode = CanonicalMessageV2CanaryMode.Activating
         // The snapshot is only known to be continuous with the connection that was current when it was
-        // requested. If the transport reconnects while it loads, the next frame must snapshot again.
-        val epochAtRequest = currentTransportEpoch(scope.partition)
+        // requested (the frame's own connection when it names one). If the transport reconnects while it
+        // loads, the next frame must snapshot again.
+        val epochAtRequest = frameTransportEpoch?.takeIf { it > 0L } ?: currentTransportEpoch(scope.partition)
         return when (val loaded = snapshotLoader.load(CanonicalMessageV2SnapshotRequest(scope, targetFactId))) {
             is CanonicalMessageV2SnapshotLoadResult.Unavailable -> {
                 generationEngine.rebaselineFailed(scope)

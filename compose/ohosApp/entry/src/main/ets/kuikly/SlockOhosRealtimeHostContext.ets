@@ -55,6 +55,9 @@ class SlockOhosRealtimeRuntime {
   private authRefreshInFlight: boolean = false;
   private connectInFlight: boolean = false;
   private generation: number = 0;
+  // Task #168: epoch of this runtime's current socket; every frame carries it so shared can tell which
+  // connection delivered it without depending on the order of the signal and the frames.
+  private presenceTransportEpoch: number = 0;
   private readonly serverId: string;
   private readonly runtimeId: string;
   private readonly owner: Object;
@@ -301,7 +304,7 @@ class SlockOhosRealtimeRuntime {
     if (params === undefined) {
       return;
     }
-    this.notify({
+    const frame: KRRecord = {
       serverId: params.serverId,
       authorityScopeLeaseId: params.authorityScopeLeaseId,
       authorityPrincipalId: params.authorityPrincipalId,
@@ -309,18 +312,25 @@ class SlockOhosRealtimeRuntime {
       authorityConnectionFamilyId: params.authorityConnectionFamilyId,
       eventName: decision.eventName,
       rawPayload: decision.rawPayload,
-    });
+    };
+    if (this.presenceTransportEpoch > 0) {
+      frame['presenceTransportEpoch'] = this.presenceTransportEpoch;
+    }
+    this.notify(frame);
   }
 
   // Task #167: same signal iOS and Android post, before any frame of the new socket, so shared consumers (the
   // durable message canary, agent-activity seq) know a new connection started.
   private postPresenceTransportConnected(): void {
+    // A new socket never inherits the previous one's epoch: without a signal its frames carry none.
+    this.presenceTransportEpoch = 0;
     const params = this.connectParams;
     if (params === undefined || params.authorityScopeLeaseId.length === 0) {
       return;
     }
     SlockOhosRealtimeRuntime.nextPresenceTransportEpoch += 1;
     const epoch = SlockOhosRealtimeRuntime.nextPresenceTransportEpoch;
+    this.presenceTransportEpoch = epoch;
     console.info(`[SlockOhosRealtime] presence_transport_connected serverId=${this.serverId} presenceEpoch=${epoch}`);
     this.notify({
       action: 'presenceTransportConnected',

@@ -55,14 +55,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 ) : SlockRealtimeHostContext {
     // Task #167: same signal iOS posts. Shared consumers (the durable message canary, agent-activity seq) need
     // to know a new socket started before they see its frames.
-    private val presenceTransportEpochs = AtomicLong(0L)
+    // Task #168: frames also carry the epoch of the socket that is current when they are fanned out, so the
+    // canary does not depend on the signal reaching it first. 0 = this socket posted no signal.
+    @Volatile private var currentPresenceTransportEpoch = 0L
     private val connectedSubscription =
         client.observeConnected { context -> postPresenceTransportConnected(context) }
 
     private fun postPresenceTransportConnected(context: RealtimeSocketConnectionContext) {
+        currentPresenceTransportEpoch = 0L
         val witness = context.witness
         if (witness.scopeLeaseId.isBlank()) return
         val epoch = presenceTransportEpochs.incrementAndGet()
+        currentPresenceTransportEpoch = epoch
         log("presence_transport_connected serverId=${context.serverId.value} presenceEpoch=$epoch")
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.EventName,
@@ -133,9 +137,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         // dedicated ingest topic consumed only by the canonical AppShell
         // store owner, so a large payload is decoded once instead of once
         // per open page. Lifecycle/action signals keep the broadcast topic.
+        // Read on the main thread after the socket thread posted this frame: if the socket reconnected
+        // meanwhile, an old frame is labelled with the newer epoch, which only costs one extra snapshot.
+        // A frame of the new socket can never be labelled with an older epoch.
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.RawIngestEventName,
-            eventData = realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
+            eventData =
+                realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
+                    .also { payload ->
+                        currentPresenceTransportEpoch
+                            .takeIf { it > 0L }
+                            ?.let { payload.put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, it) }
+                    }
         )
     }
 
@@ -161,6 +174,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
     companion object {
         private const val LOG_TAG = "SlockKuiklyRealtime"
+
+        // Process-wide: a rebuilt host context must not restart at 1 and reuse an epoch a durable window
+        // already committed under (that would read as the same connection).
+        private val presenceTransportEpochs = AtomicLong(0L)
 
         fun create(
             context: Context,
