@@ -2885,11 +2885,14 @@ internal class SharedRealtimeDomainEventOwner(
             }
         }
         when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput, transportEpoch)) {
-            CanonicalMessageV2CanaryOutcome.Committed ->
+            // Held = the durable write failed (nothing was written). Display must not fail with it
+            // (task #168): the event takes the same post-canary legacy path as a committed one.
+            CanonicalMessageV2CanaryOutcome.Committed,
+            is CanonicalMessageV2CanaryOutcome.Held,
+            ->
                 return runIfCurrentGrant(grant) {
                     legacyContinuation(grant.serverId, event, source)
                 }
-            is CanonicalMessageV2CanaryOutcome.Held -> return true
             CanonicalMessageV2CanaryOutcome.NotSelected,
             null,
             -> Unit

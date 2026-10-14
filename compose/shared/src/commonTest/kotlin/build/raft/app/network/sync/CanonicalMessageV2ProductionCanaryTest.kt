@@ -86,7 +86,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun failedSnapshotKeepsSelectedScopeDarkAndCanRetry() = runBlocking {
+    fun failedSnapshotWritesNothingAndCanRetry() = runBlocking {
         val fixture = Fixture(enabled = true)
         fixture.loaderFailure = "network_down"
 

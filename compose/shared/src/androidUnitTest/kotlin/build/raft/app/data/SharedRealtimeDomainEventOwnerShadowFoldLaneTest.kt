@@ -434,7 +434,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
-    fun heldV2CanaryNeverLeaksToLegacyProjection() = runBlocking {
+    fun heldV2CanaryStillProjectsExactlyOnceAfterCurrentGrantCheck() = runBlocking {
         var currentGrantChecks = 0
         var legacyRunnerChecks = 0
         val projected = mutableListOf<RealtimeEvent>()
@@ -461,10 +461,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             ),
         )
 
-        assertTrue(owner.accept(testGrant(), messageNewWithCanonical("v2-held", 1L), source = "test"))
-        assertEquals(0, currentGrantChecks)
+        val event = messageNewWithCanonical("v2-held", 1L)
+
+        // Task #168: Held = the durable write failed. The frame is still displayed, through the same
+        // post-canary path as a committed one (fresh grant check, no shadow lane).
+        assertTrue(owner.accept(testGrant(), event, source = "test"))
+        assertEquals(1, currentGrantChecks)
         assertEquals(0, legacyRunnerChecks)
-        assertTrue(projected.isEmpty())
+        assertEquals<List<RealtimeEvent>>(listOf(event), projected)
     }
 
     @Test

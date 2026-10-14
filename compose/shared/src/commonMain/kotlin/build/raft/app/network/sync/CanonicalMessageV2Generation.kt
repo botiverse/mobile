@@ -71,6 +71,11 @@ data class CanonicalMessageV2IncrementalFrame(
     val scope: SyncScopeKey,
     val envelopes: List<CanonicalMessageEnvelopeV2>,
     val cursor: PersistedCursor,
+    /**
+     * Task #168: a realtime `New` only adds a fact that is not stored yet. A stored fact may already be
+     * newer (edited / reacted, from a snapshot or a later frame), so a late `New` never overwrites it.
+     */
+    val insertOnly: Boolean = false,
 )
 
 data class RestoredCanonicalMessageV2Scope(
@@ -102,6 +107,12 @@ interface CanonicalMessageV2Store {
 
 data class CanonicalMessageV2StoreWriteResult(
     val evictedScopes: Set<SyncScopeKey> = emptySet(),
+    /**
+     * Task #168: the cursor the store actually committed, when it differs from the frame's (the per-scope
+     * cap pruned the oldest end, so the oldest edge moved and `hasLoadedOldest` was cleared). `null` = the
+     * frame's cursor was committed unchanged.
+     */
+    val committedCursor: PersistedCursor? = null,
 )
 
 fun interface CanonicalMessageV2SnapshotCommitObserver {
@@ -180,7 +191,7 @@ class CanonicalMessageV2GenerationEngine(
             return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
         }
         coordinator.onSnapshotCommitted(frame.scope)
-        synchronized(stateLock) { cursorByScope[frame.scope] = frame.cursor }
+        synchronized(stateLock) { cursorByScope[frame.scope] = write.committedCursor ?: frame.cursor }
         snapshotCommitObserver.onSnapshotCommitted(frame.scope)
         CanonicalMessageV2CommitResult.Committed
     }
@@ -199,7 +210,7 @@ class CanonicalMessageV2GenerationEngine(
                 if (frame.scope in write.evictedScopes) {
                     return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
                 }
-                synchronized(stateLock) { cursorByScope[frame.scope] = frame.cursor }
+                synchronized(stateLock) { cursorByScope[frame.scope] = write.committedCursor ?: frame.cursor }
                 CanonicalMessageV2CommitResult.Committed
             }
             is CanonicalMessageV2IncrementalDecision.Hold ->
@@ -311,22 +322,24 @@ internal class SqlDelightCanonicalMessageV2Store(
     private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2Store {
     override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) =
-        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true)
+        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true, insertOnly = false)
 
     override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
-        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = false)
+        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = false, insertOnly = frame.insertOnly)
 
     private suspend fun applyFrame(
         scope: SyncScopeKey,
         envelopes: List<CanonicalMessageEnvelopeV2>,
         cursor: PersistedCursor,
         rebaseline: Boolean,
+        insertOnly: Boolean,
     ): CanonicalMessageV2StoreWriteResult {
         requireV2Scope(scope)
         require(envelopes.map { it.fact.id }.distinct().size == envelopes.size) { "duplicate V2 fact id in frame" }
         envelopes.forEach { envelope -> requireEnvelopeMatchesScope(scope, envelope) }
         requireCursorMatchesScope(scope, cursor, envelopes)
         val evictedScopes = mutableSetOf<SyncScopeKey>()
+        var committedCursor: PersistedCursor? = null
         database.transaction {
             if (rebaseline) {
                 queries.clearUnpinnedCanonicalFactsForScope(
@@ -352,7 +365,9 @@ internal class SqlDelightCanonicalMessageV2Store(
                     createdAt = envelope.fact.createdAt,
                     canonicalFactJson = bytes,
                 )
-                queries.updateCanonicalFact(
+                // A snapshot replaces (its scope was cleared above), a page refreshes; an insert-only
+                // frame leaves an already stored fact exactly as it is.
+                if (!insertOnly) queries.updateCanonicalFact(
                     seq = envelope.fact.seq,
                     createdAt = envelope.fact.createdAt,
                     canonicalFactJson = bytes,
@@ -375,6 +390,10 @@ internal class SqlDelightCanonicalMessageV2Store(
                     ).executeAsOne() != 1L
                 ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)
             }
+            // The per-scope cap runs before the cursor is written, so the cursor that lands on disk
+            // never claims a window edge the cap just pruned away.
+            committedCursor = pruneScopeInsideTransaction(scope, cursor)
+            val written = committedCursor ?: cursor
             queries.upsertSyncCursor(
                 scopeId = scope.scopeId,
                 environmentId = scope.environmentId,
@@ -382,19 +401,18 @@ internal class SqlDelightCanonicalMessageV2Store(
                 principalId = scope.principalId,
                 consumerId = scope.consumerId,
                 scopeKind = scope.scopeKind,
-                latestSeq = cursor.latestSeq,
-                oldestLoadedSeq = cursor.oldestLoadedSeq,
-                newestLoadedSeq = cursor.newestLoadedSeq,
-                hasLoadedOldest = if (cursor.hasLoadedOldest) 1L else 0L,
-                hasLoadedNewest = if (cursor.hasLoadedNewest) 1L else 0L,
+                latestSeq = written.latestSeq,
+                oldestLoadedSeq = written.oldestLoadedSeq,
+                newestLoadedSeq = written.newestLoadedSeq,
+                hasLoadedOldest = if (written.hasLoadedOldest) 1L else 0L,
+                hasLoadedNewest = if (written.hasLoadedNewest) 1L else 0L,
                 updatedAtMs = now(),
-                epoch = cursor.epoch,
-                parentScopeKind = cursor.parentScopeKind,
-                parentScopeId = cursor.parentScopeId,
-                rootMessageId = cursor.rootMessageId,
+                epoch = written.epoch,
+                parentScopeKind = written.parentScopeKind,
+                parentScopeId = written.parentScopeId,
+                rootMessageId = written.rootMessageId,
             )
             touchParentScopeInsideTransaction(scope, cursor)
-            pruneScopeInsideTransaction(scope)
             evictedScopes += prunePartitionInsideTransaction(scope.partition)
             if (faultHook.shouldKillAt(PersistFaultPoint.BeforeCommit)) {
                 throw PersistKilled(PersistFaultPoint.BeforeCommit)
@@ -403,7 +421,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         if (faultHook.shouldKillAt(PersistFaultPoint.AfterCommit)) {
             throw PersistKilled(PersistFaultPoint.AfterCommit)
         }
-        return CanonicalMessageV2StoreWriteResult(evictedScopes)
+        return CanonicalMessageV2StoreWriteResult(evictedScopes, committedCursor)
     }
 
     override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope {
@@ -522,18 +540,27 @@ internal class SqlDelightCanonicalMessageV2Store(
             )
         }
 
-    private fun pruneScopeInsideTransaction(scope: SyncScopeKey) {
-        database.queries.selectCanonicalFactIdsBeyondLimit(
+    /**
+     * Per-scope cap: keeps the newest [CanonicalMessageV2RetentionPolicy.maxFactsPerScope] facts (pinned
+     * thread roots excluded). When it removes facts the window no longer reaches [cursor]'s oldest edge,
+     * so it returns the cursor to commit instead (task #168 — the adjacent page writer's surviving-oldest
+     * rule): its oldest edge is the oldest fact newer than everything pruned, and `hasLoadedOldest` is
+     * cleared. `null` = nothing was pruned; commit [cursor] as it is.
+     */
+    private fun pruneScopeInsideTransaction(scope: SyncScopeKey, cursor: PersistedCursor): PersistedCursor? {
+        val pruned = database.queries.selectCanonicalFactIdsBeyondLimit(
             environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
             scopeKind = scope.scopeKind,
             channelId = scope.scopeId,
-            value = retention.maxFactsPerScope.toLong(),
-        ).executeAsList().forEach { factId ->
+            value_ = retention.maxFactsPerScope.toLong(),
+        ).executeAsList()
+        if (pruned.isEmpty()) return null
+        pruned.forEach { fact ->
             database.queries.deleteCanonicalFactInScope(
-                id = factId,
+                id = fact.id,
                 environmentId = scope.environmentId,
                 serverId = scope.serverId,
                 principalId = scope.principalId,
@@ -542,6 +569,18 @@ internal class SqlDelightCanonicalMessageV2Store(
                 channelId = scope.scopeId,
             )
         }
+        val newestPruned = pruned.maxOf { it.seq }
+        val survivingOldest = database.queries.selectOldestCanonicalFactSeqAbove(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = newestPruned,
+        ).executeAsOne().oldestSeq
+        val oldest = listOfNotNull(cursor.oldestLoadedSeq, survivingOldest).maxOrNull()
+        return cursor.copy(oldestLoadedSeq = oldest, hasLoadedOldest = false)
     }
 
     /**
