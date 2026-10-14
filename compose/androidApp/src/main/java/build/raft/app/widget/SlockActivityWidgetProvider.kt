@@ -1,5 +1,6 @@
 package build.raft.app.widget
 
+import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
@@ -145,7 +146,8 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 )
             val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
             val serverId = ServerId(selectedServer.id)
-            val networkClient = RealSlockNetworkClientFactory.create(sessionStore)
+            val networkClient =
+                RealSlockNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
             val homeResult =
                 runCatching {
                     RealChannelRepository(sessionStore, networkClient).getHome(serverId)

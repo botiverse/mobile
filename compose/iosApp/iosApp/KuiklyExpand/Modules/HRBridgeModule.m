@@ -5315,6 +5315,12 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
+        // Self-host login: the socket still points at the previous server. Close every connection now, as the
+        // Android and HarmonyOS hosts do; the cleared session reconnects to the new environment after login.
+        [[SlockIosRealtimeHost shared] handleCommand:@{
+            @"action" : @"disconnect",
+            @"reason" : @"api_environment_changed",
+        }];
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"setApiEnvironment"]) {

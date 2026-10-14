@@ -12,9 +12,13 @@ import build.raft.app.data.createSlockNetworkClient
  * legacy Ktor stack is gone.
  */
 object RealSlockNetworkClientFactory {
+    /**
+     * [baseUrl] has no default: a production fallback sent a self-hosted session's token to production
+     * (the home-screen widgets did). Pass [AndroidAuthApiFactory.currentBaseUrl] for the live environment.
+     */
     fun create(
         store: SlockAuthSessionStore,
-        baseUrl: String = AndroidAuthApiFactory.BASE_URL
+        baseUrl: String,
     ): SlockNetworkClient =
         createSlockNetworkClient(
             sessionStore = store,
