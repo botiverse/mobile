@@ -310,7 +310,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             RealtimeSubscription {}
 
         override fun observeRawEvents(
-            listener: (RealtimeSocketConnectionContext, String, String) -> Unit
+            listener: (RealtimeSocketConnectionContext, String, String, Long?) -> Unit
         ): RealtimeSubscription =
             RealtimeSubscription {}
     }
@@ -323,6 +323,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             witness: RealtimeConnectionWitnessToken,
             eventName: String,
             rawPayload: String,
+            transportEpoch: Long?,
         ) = Unit
 
         override suspend fun maybePostBackgroundUnreadNotification(

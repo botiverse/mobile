@@ -117,10 +117,23 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         repository.observeEvents(listener)
 
     override fun observeRawEvents(
-        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: String) -> Unit
+        listener: (
+            context: RealtimeSocketConnectionContext,
+            eventName: String,
+            rawPayload: String,
+            transportEpoch: Long?,
+        ) -> Unit
     ): RealtimeSubscription =
         client.observeRawEvents { context, eventName, rawPayload ->
-            listener(context, eventName, rawPayload.toRealtimeRawPayloadString())
+            // Task #168: bind the epoch here, on the socket thread inside the transport fence, where the
+            // connected listener of this socket has already run and no later socket's can have. Read later on
+            // main, an old socket's frame could pick up a newer epoch and be appended as current.
+            listener(
+                context,
+                eventName,
+                rawPayload.toRealtimeRawPayloadString(),
+                currentPresenceTransportEpoch.takeIf { it > 0L },
+            )
         }
 
     override fun log(message: String) {
@@ -131,22 +144,21 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         serverId: ServerId,
         witness: RealtimeConnectionWitnessToken,
         eventName: String,
-        rawPayload: String
+        rawPayload: String,
+        transportEpoch: Long?,
     ) {
         // task #354: raw server events (potentially multi-MiB) go to the
         // dedicated ingest topic consumed only by the canonical AppShell
         // store owner, so a large payload is decoded once instead of once
         // per open page. Lifecycle/action signals keep the broadcast topic.
-        // Read on the main thread after the socket thread posted this frame: if the socket reconnected
-        // meanwhile, an old frame is labelled with the newer epoch, which only costs one extra snapshot.
-        // A frame of the new socket can never be labelled with an older epoch.
+        // The epoch was bound when the socket thread received the frame (observeRawEvents), not read now.
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.RawIngestEventName,
             eventData =
                 realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
                     .also { payload ->
-                        currentPresenceTransportEpoch
-                            .takeIf { it > 0L }
+                        transportEpoch
+                            ?.takeIf { it > 0L }
                             ?.let { payload.put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, it) }
                     }
         )
