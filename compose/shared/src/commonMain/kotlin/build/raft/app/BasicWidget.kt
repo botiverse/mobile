@@ -395,6 +395,28 @@ internal fun SlockAspectFitImagePreviewSurface(
     }
 }
 
+/**
+ * Whether a zoom/pan gesture has moved past the touch slop. Motion is accumulated across events, like the
+ * SDK's detectTransformGestures: a slow drag moves only a pixel or two per event and would never cross the
+ * slop if each event were compared on its own (iOS: a slow one-finger drag on a zoomed image did not pan).
+ */
+internal class ZoomPanTouchSlopTracker(private val touchSlop: Float) {
+    private var zoom = 1f
+    private var pan = Offset.Zero
+    var pastTouchSlop: Boolean = false
+        private set
+
+    /** Adds one event's motion; true once the accumulated zoom or pan is past the slop (and from then on). */
+    fun accept(zoomChange: Float, panChange: Offset, viewportExtent: Float): Boolean {
+        if (pastTouchSlop) return true
+        zoom *= zoomChange
+        pan += panChange
+        val zoomMotion = abs(1f - zoom) * viewportExtent
+        pastTouchSlop = zoomMotion > touchSlop || pan.getDistance() > touchSlop
+        return pastTouchSlop
+    }
+}
+
 @Composable
 private fun SlockZoomableCachedImage(
     source: String,
@@ -425,8 +447,7 @@ private fun SlockZoomableCachedImage(
             .pointerInput(source) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    var pastTouchSlop = false
-                    val touchSlop = viewConfiguration.touchSlop
+                    val touchSlopTracker = ZoomPanTouchSlopTracker(viewConfiguration.touchSlop)
                     do {
                         val event = awaitPointerEvent()
                         if (event.changes.any { it.isConsumed }) {
@@ -437,12 +458,14 @@ private fun SlockZoomableCachedImage(
                         val shouldHandle =
                             zoomChange != 1f ||
                                 scale > 1f
-                        if (!pastTouchSlop && shouldHandle) {
-                            val zoomMotion = abs(1f - zoomChange) * max(viewportSize.width, viewportSize.height)
-                            val panMotion = panChange.getDistance()
-                            pastTouchSlop = zoomMotion > touchSlop || panMotion > touchSlop
-                        }
-                        if (pastTouchSlop && shouldHandle) {
+                        val pastTouchSlop =
+                            shouldHandle &&
+                                touchSlopTracker.accept(
+                                    zoomChange = zoomChange,
+                                    panChange = panChange,
+                                    viewportExtent = max(viewportSize.width, viewportSize.height).toFloat(),
+                                )
+                        if (pastTouchSlop) {
                             val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
                             scale = nextScale
                             pan = clampedPan(pan + panChange, nextScale)
