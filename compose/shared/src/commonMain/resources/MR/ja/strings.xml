@@ -2108,6 +2108,7 @@
     <string name="runtime_form_v2_error_invalid_url">http:// または https:// で始まる URL を入力してください</string>
     <string name="runtime_form_v2_error_not_a_choice">選択肢から選んでください</string>
     <string name="runtime_form_v2_error_rejected">サーバーがこの値を受け付けませんでした</string>
+    <string name="runtime_form_v2_error_secret_reentry_required">API キーは変更した保存済みの設定に紐づいています。新しいキーを入力してください。</string>
     <string name="runtime_form_v2_option_default">デフォルト</string>
     <string name="runtime_form_v2_secret_keep_hint">空欄のままにすると現在の値を保持します。</string>
     <string name="runtime_form_v2_change_runtime">ランタイムを変更</string>

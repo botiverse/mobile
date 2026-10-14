@@ -2119,6 +2119,7 @@
     <string name="runtime_form_v2_error_invalid_url">请输入以 http:// 或 https:// 开头的网址</string>
     <string name="runtime_form_v2_error_not_a_choice">请从选项中选择</string>
     <string name="runtime_form_v2_error_rejected">服务器未接受此值</string>
+    <string name="runtime_form_v2_error_secret_reentry_required">API 密钥与你修改的已保存设置绑定，请输入新的密钥。</string>
     <string name="runtime_form_v2_option_default">默认</string>
     <string name="runtime_form_v2_secret_keep_hint">留空则保留当前值。</string>
     <string name="runtime_form_v2_change_runtime">更换运行时</string>

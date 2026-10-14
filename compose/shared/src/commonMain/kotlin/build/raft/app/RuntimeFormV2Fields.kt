@@ -108,7 +108,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh, managedHint) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -123,7 +123,7 @@ internal fun RuntimeFormV2Fields(
             if (advancedOpen || forcedOpen) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh, managedHint) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -134,14 +134,30 @@ internal fun RuntimeFormV2Fields(
 }
 
 /**
- * Errors to show: those of fields the user touched or the server pointed at, plus an unavailable
- * saved connection (`provider.saved_connection`), which blocks the save before anything is touched.
+ * Errors to show: those of fields the user touched or the server pointed at, plus the ones that block
+ * the save before the field itself is touched: an unavailable saved connection (`provider.saved_connection`)
+ * and a blank secret whose bound fields changed (`writeOnlyKeepRequiresUnchanged`; slock web shows it
+ * without a submit attempt).
  */
 internal fun runtimeFormV2ShownErrors(
     errors: Map<String, RuntimeFormV2ErrorCode>,
     shownKeys: Set<String>
 ): Map<String, RuntimeFormV2ErrorCode> =
-    errors.filter { (key, code) -> key in shownKeys || code == RuntimeFormV2ErrorCode.ConnectionUnavailable }
+    errors.filter { (key, code) ->
+        key in shownKeys ||
+            code == RuntimeFormV2ErrorCode.ConnectionUnavailable ||
+            code == RuntimeFormV2ErrorCode.SecretReentryRequired
+    }
+
+/**
+ * A secret that cannot keep the stored value is edited like on create: required, without the
+ * "leave blank to keep" hint (slock web RuntimeConfigFields `editing && errors[key] !== "secret_reentry_required"`).
+ */
+private fun runtimeFormV2FieldEditing(
+    field: RuntimeFormV2Field,
+    errors: Map<String, RuntimeFormV2ErrorCode>,
+    editing: Boolean
+): Boolean = editing && errors[field.key] != RuntimeFormV2ErrorCode.SecretReentryRequired
 
 @Composable
 private fun runtimeFormV2ErrorText(
@@ -161,6 +177,7 @@ private fun runtimeFormV2ErrorText(
             // The field's source status line already says why, with its retry.
             RuntimeFormV2ErrorCode.SourceUnavailable -> null
             RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(MR.strings.runtime_form_v2_saved_provider_unavailable)
+            RuntimeFormV2ErrorCode.SecretReentryRequired -> stringResource(MR.strings.runtime_form_v2_error_secret_reentry_required)
             null -> null
         }
     }

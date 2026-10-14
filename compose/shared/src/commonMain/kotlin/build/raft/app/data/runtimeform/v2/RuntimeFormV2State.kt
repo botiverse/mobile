@@ -106,7 +106,12 @@ internal enum class RuntimeFormV2ErrorCode {
      * The selected saved provider connection is marked `unavailable` (`provider.saved_connection`):
      * the stored binding stays visible but cannot be saved over; pick something else.
      */
-    ConnectionUnavailable
+    ConnectionUnavailable,
+    /**
+     * Edit: a blank secret that cannot keep the stored value because a field it is bound to changed
+     * (`writeOnlyKeepRequiresUnchanged`); a new one is needed. Mirrors slock v2State `secret_reentry_required`.
+     */
+    SecretReentryRequired
 }
 
 /** Parses an option-sources response; null when it is not a usable source. */
@@ -402,9 +407,19 @@ internal fun validateRuntimeFormV2(
             continue
         }
         val text = values.text(field.key).trim()
+        // While a saved connection is selected, the fields it owns are not the user's to fill, and a changed
+        // provider binding never demands a re-entered secret for them (the connection owns the credential).
+        val connectionOwnedNow = connectionActive && field.connectionOwned
+        if (
+            editing && field.kind == RuntimeFormV2FieldKind.Secret && text.isEmpty() && !connectionOwnedNow &&
+            keepBindingChanged(form, sources, values, field.key)
+        ) {
+            errors[field.key] = RuntimeFormV2ErrorCode.SecretReentryRequired
+            continue
+        }
         // On edit a blank secret (writeOnly) field keeps the stored value. A field a selected saved
         // connection owns is not the user's to fill.
-        val blankAllowed = (editing && field.kind == RuntimeFormV2FieldKind.Secret) || (connectionActive && field.connectionOwned)
+        val blankAllowed = (editing && field.kind == RuntimeFormV2FieldKind.Secret) || connectionOwnedNow
         if (field.required && !blankAllowed && field.kind in textLikeKinds && text.isEmpty()) {
             errors[field.key] = RuntimeFormV2ErrorCode.Required
             continue
@@ -427,6 +442,29 @@ internal fun validateRuntimeFormV2(
     }
     return errors
 }
+
+/**
+ * `writeOnlyKeepRequiresUnchanged` comparison, as slock v2State `boundValue`: as strings (a non-string
+ * value as its JSON text; absent or JSON null as ""), trimmed, trailing slashes removed.
+ */
+private fun boundValue(value: JsonElement?): String =
+    when {
+        value == null || value is JsonNull -> ""
+        else -> value.stringOrNull() ?: value.toString()
+    }.trim().trimEnd('/')
+
+/** Whether a visible field the secret [key] is bound to differs from its stored value (form.values). */
+private fun keepBindingChanged(
+    form: ParsedRuntimeFormV2,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values,
+    key: String
+): Boolean =
+    form.writeOnlyKeepRequiresUnchanged[key].orEmpty().any { boundKey ->
+        val boundField = form.fields.firstOrNull { it.key == boundKey }
+        boundField != null && isRuntimeFormV2FieldVisible(boundField, values, sources) &&
+            boundValue(values[boundKey]) != boundValue(form.values?.get(boundKey))
+    }
 
 /**
  * The `formValues` body: every visible field, plus the stored value of any
