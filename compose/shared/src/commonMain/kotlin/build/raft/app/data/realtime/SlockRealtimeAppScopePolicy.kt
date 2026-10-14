@@ -35,6 +35,11 @@ object SlockRealtimeNotifyContract {
     const val KeyAuthorityAuthGeneration = "authorityAuthGeneration"
     const val KeyAuthorityConnectionFamilyId = "authorityConnectionFamilyId"
     const val ActionPresenceTransportConnected = "presenceTransportConnected"
+    /**
+     * The server sent `rooms:joined` on the socket of [KeyPresenceTransportEpoch]: it has (re)subscribed that
+     * connection to all of its rooms, so frames of that epoch from here on cover every joined room.
+     */
+    const val ActionRealtimeRoomsJoined = "realtimeRoomsJoined"
     const val KeyPresenceTransportEpoch = "presenceTransportEpoch"
     const val ActionAppLifecycle = "appLifecycle"
     const val LifecycleVisibleResume = "resume"

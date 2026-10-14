@@ -689,6 +689,12 @@ internal class SlockSharedStoreProvider private constructor(
             nativeHost = BridgeProcessRealtimeNativeHost(bridge),
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
+            // Task #168: consumers (the durable message canary) attach here; for now it only proves arrival.
+            onRoomsJoined = { grant, transportEpoch ->
+                sharedInfoLogger("SlockRealtime", "rooms_joined")(
+                    "serverId=${grant.serverId} transportEpoch=$transportEpoch"
+                )
+            },
         ).start()
         threadSendScope.launch {
             // Task #153: a Local Feature Overrides change re-reads the DoH flag at once.

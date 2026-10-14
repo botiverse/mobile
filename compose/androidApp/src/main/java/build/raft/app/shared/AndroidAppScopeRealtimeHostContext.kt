@@ -60,6 +60,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     @Volatile private var currentPresenceTransportEpoch = 0L
     private val connectedSubscription =
         client.observeConnected { context -> postPresenceTransportConnected(context) }
+    private val roomsJoinedSubscription =
+        client.observeRoomsJoined { context -> postRealtimeRoomsJoined(context) }
 
     private fun postPresenceTransportConnected(context: RealtimeSocketConnectionContext) {
         currentPresenceTransportEpoch = 0L
@@ -73,6 +75,25 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             eventData =
                 JSONObject()
                     .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionPresenceTransportConnected)
+                    .put(SlockRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                    .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                    .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+        )
+    }
+
+    /** Task #168: same epoch as this socket's connected signal and frames; none if that signal was skipped. */
+    private fun postRealtimeRoomsJoined(context: RealtimeSocketConnectionContext) {
+        val epoch = currentPresenceTransportEpoch.takeIf { it > 0L } ?: return
+        val witness = context.witness
+        log("realtime_rooms_joined serverId=${context.serverId.value} presenceEpoch=$epoch")
+        postAndroidAppScopeEvent(
+            eventName = SlockRealtimeNotifyContract.EventName,
+            eventData =
+                JSONObject()
+                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
                     .put(SlockRealtimeNotifyContract.KeyServerId, context.serverId.value)
                     .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
                     .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)

@@ -458,6 +458,8 @@ final class SlockIosRealtimeHost: NSObject {
                 "rooms_joined serverId=\(runtime.serverId) joinedRooms=\(runtime.joinedChannels.count) " +
                     "lastSeq=\(runtime.resumeLastSeq)"
             )
+            // Task #168: shared learns this socket is subscribed to all of its rooms, with the socket's epoch.
+            postTransportSignal(runtime: runtime, action: "realtimeRoomsJoined")
             if runtime.resumeLastSeq > 0 {
                 emit(
                     runtime: runtime,
@@ -493,12 +495,17 @@ final class SlockIosRealtimeHost: NSObject {
     }
 
     private func postPresenceTransportConnected(runtime: Runtime) {
+        postTransportSignal(runtime: runtime, action: "presenceTransportConnected")
+    }
+
+    /// A connection-level signal for shared, carrying this socket's epoch; skipped when the socket has none.
+    private func postTransportSignal(runtime: Runtime, action: String) {
         guard let params = runtime.connectParams, runtime.presenceTransportEpoch > 0 else { return }
         NotificationCenter.default.post(
             name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
             object: nil,
             userInfo: [
-                GeneratedRealtimeContract.PayloadKey.action: "presenceTransportConnected",
+                GeneratedRealtimeContract.PayloadKey.action: action,
                 GeneratedRealtimeContract.PayloadKey.serverId: params.serverId,
                 "authorityScopeLeaseId": params.authorityScopeLeaseId,
                 "authorityPrincipalId": params.authorityPrincipalId,
