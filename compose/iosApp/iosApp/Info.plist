@@ -41,6 +41,8 @@
         <string>$(APS_ENVIRONMENT)</string>
         <key>LSRequiresIPhoneOS</key>
         <true />
+        <key>CADisableMinimumFrameDurationOnPhone</key>
+        <true />
         <key>NSPhotoLibraryUsageDescription</key>
         <string>Raft uses photo library access when you choose images to attach to messages.</string>
         <key>NSCameraUsageDescription</key>
