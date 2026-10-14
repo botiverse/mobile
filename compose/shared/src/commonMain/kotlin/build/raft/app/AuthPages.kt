@@ -236,15 +236,22 @@ internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() 
 }
 
 @Page(AUTH_ABOUT_PAGE, supportInLocal = true)
+/**
+ * Where the auth About page opens. The login pages' "Sign in to a private deployment" link (web login on
+ * HarmonyOS, the email/social login on Android and iOS) passes [AUTH_DESTINATION_API_ENVIRONMENT] to land on
+ * the API environment editor; the hidden diagnostics shortcut passes nothing and lands on About.
+ */
+internal fun authAboutInitialDestination(destination: String?): AuthAboutDestination =
+    if (destination == AUTH_DESTINATION_API_ENVIRONMENT) {
+        AuthAboutDestination.ApiEnvironment
+    } else {
+        AuthAboutDestination.About
+    }
+
 internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        val initial =
-            if (pageData.params.optString(AUTH_DESTINATION_KEY) == AUTH_DESTINATION_API_ENVIRONMENT) {
-                AuthAboutDestination.ApiEnvironment
-            } else {
-                AuthAboutDestination.About
-            }
+        val initial = authAboutInitialDestination(pageData.params.optString(AUTH_DESTINATION_KEY))
         setContent { AuthAboutScreen(initialDestination = initial) }
     }
 }
@@ -445,7 +452,11 @@ private fun LoginScreen() {
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
         onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
         onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
+        // Same entry as the web login (#2996): the API environment editor, whose save checks the server version.
+        onOpenPrivateDeployment = {
+            pager.openAuthPage(AUTH_ABOUT_PAGE, destination = AUTH_DESTINATION_API_ENVIRONMENT)
+        },
     )
 }
 
@@ -927,7 +938,7 @@ private fun ForgotPasswordScreen() {
     )
 }
 
-private enum class AuthAboutDestination {
+internal enum class AuthAboutDestination {
     About,
     ApiEnvironment,
     Diagnostics
@@ -1364,7 +1375,8 @@ internal fun LoginContent(
     onCreateAccount: () -> Unit,
     onOpenTerms: () -> Unit = {},
     onOpenPrivacy: () -> Unit = {},
-    onOpenDiagnostics: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {},
+    onOpenPrivateDeployment: () -> Unit = {},
 ) {
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
@@ -1540,6 +1552,7 @@ internal fun LoginContent(
                 stringResource(MR.strings.auth_prompt_no_account),
                 stringResource(MR.strings.auth_action_create_one)
             ) { onCreateAccount() }
+            AuthTextLink(stringResource(MR.strings.auth_web_login_private_entry)) { onOpenPrivateDeployment() }
         }
     }
 }
