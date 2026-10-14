@@ -9,10 +9,20 @@ on:
       - "scripts/stage_ohos_mr_resources.sh"
       - "scripts/validate_ohos_hap_resources.sh"
       - "scripts/validate_ohos_app_pack.sh"
+      - "scripts/ci/task68_native_diagnostic*.py"
+      - "scripts/ci/prepare_native_probe_hap.py"
+      - "scripts/ci/check_ohos_diagnostic_dispatch.py"
+      - "scripts/ci/fixtures/task68-native-probe-inputs.zip"
+      - "docs/ohos-native-diagnostic.md"
       - "docs/ohos-release-ci.md"
       - "change-logs/**/ohos/*.md"
   workflow_dispatch:
     inputs:
+      native_diagnostic_pair:
+        description: "Task68 only: re-sign fixed control/probe HAPs; never publish"
+        required: true
+        type: boolean
+        default: false
       source_sha:
         description: "Exact application SHA for artifact-only validation (empty uses workflow ref)"
         required: false
@@ -77,6 +87,8 @@ jobs:
           bash -n scripts/validate_ohos_app_pack.sh
           python3 scripts/ci/test_remote_touchlab_ci_contract.py
           python3 scripts/ci/test_no_local_ktor_ci_contract.py
+          python3 -m unittest discover -s scripts/ci -p 'task68_native_diagnostic_test.py'
+          python3 scripts/ci/check_ohos_diagnostic_dispatch.py --self-test
           node --check scripts/set_ohos_app_version.mjs
 
           app_json="$(mktemp)"
@@ -109,9 +121,18 @@ jobs:
         env:
           REQUESTED_SHA: ${{ inputs.source_sha }}
           PUBLISH_TO_HANDS: ${{ inputs.publish_to_hands }}
+          NATIVE_DIAGNOSTIC_PAIR: ${{ inputs.native_diagnostic_pair }}
+          VERSION_MAJOR: ${{ inputs.version_major }}
+          VERSION_MINOR: ${{ inputs.version_minor }}
+          VERSION_PATCH: ${{ inputs.version_patch }}
+          VERSION_BUILD: ${{ inputs.version_build }}
+          VERSION_SUFFIX: ${{ inputs.version_suffix }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$NATIVE_DIAGNOSTIC_PAIR" == true ]]; then
+            python3 scripts/ci/check_ohos_diagnostic_dispatch.py
+          fi
           if [[ -n "$REQUESTED_SHA" ]]; then
             [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::source_sha must be a full SHA"; exit 1; }
             [[ "$PUBLISH_TO_HANDS" == false ]] || { echo "::error::Custom source is artifact-only"; exit 1; }
@@ -120,14 +141,15 @@ jobs:
 
       - name: Validate and resolve version
         id: parameters
+        env:
+          MAJOR: ${{ inputs.version_major }}
+          MINOR: ${{ inputs.version_minor }}
+          PATCH: ${{ inputs.version_patch }}
+          BUILD: ${{ inputs.version_build }}
+          SUFFIX: ${{ inputs.version_suffix }}
         shell: bash
         run: |
           set -euo pipefail
-          MAJOR="${{ inputs.version_major }}"
-          MINOR="${{ inputs.version_minor }}"
-          PATCH="${{ inputs.version_patch }}"
-          BUILD="${{ inputs.version_build }}"
-          SUFFIX="${{ inputs.version_suffix }}"
 
           for value in "$MAJOR" "$MINOR" "$PATCH" "$BUILD"; do
             [[ "$value" =~ ^[0-9]+$ ]] || { echo "::error::Version components must be non-negative integers"; exit 1; }
@@ -182,7 +204,137 @@ jobs:
           fi
           exit "$missing"
 
+  native-diagnostic-pair:
+    name: Sign fixed task68 native diagnostic HAPs
+    if: github.event_name == 'workflow_dispatch' && inputs.native_diagnostic_pair == true
+    needs: [resolve, signing-preflight]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
+    env:
+      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+    steps:
+      - name: Checkout reviewed diagnostic driver
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download original diagnostic carrier from its fixed run
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '11868217887'
+          run-id: '38503177796'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/task68-original
+          merge-multiple: true
+
+      - name: Verify fixed inputs and prepare unsigned control/probe pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/task68_native_diagnostic.py prepare \
+            --original-dir "$RUNNER_TEMP/task68-original" \
+            --work-dir "$RUNNER_TEMP/task68-prepared"
+          SIGN_TOOL="$(find "$DEVECO_SDK_HOME" -path '*/openharmony/toolchains/lib/hap-sign-tool.jar' -print -quit)"
+          test -n "$SIGN_TOOL"
+          echo "TASK68_SIGN_TOOL=$SIGN_TOOL" >> "$GITHUB_ENV"
+          mkdir "$RUNNER_TEMP/task68-verified"
+          # prepare already requires exactly one matching original and checks its SHA.
+          ORIGINAL_HAP="$(find "$RUNNER_TEMP/task68-original" -type f -name 'raft-ohos-ohosApp-default-unsigned-entry-default.signed-1.13.1-diag-113bb09c-11301900.hap')"
+          java -jar "$SIGN_TOOL" verify-app \
+            -inFile "$ORIGINAL_HAP" \
+            -outCertChain "$RUNNER_TEMP/task68-verified/original.cer" \
+            -outProfile "$RUNNER_TEMP/task68-verified/original.p7b" >/dev/null
+          test -s "$RUNNER_TEMP/task68-verified/original.cer"
+          test -s "$RUNNER_TEMP/task68-verified/original.p7b"
+
+      - name: Decode managed signing assets after input validation
+        shell: bash
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SLOCK_OHOS_SIGNING_CERT_BASE64 }}
+          SIGNING_PROFILE_BASE64: ${{ secrets.SLOCK_OHOS_SIGNING_PROFILE_BASE64 }}
+          SIGNING_KEY_BASE64: ${{ secrets.SLOCK_OHOS_SIGNING_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          mkdir "$RUNNER_TEMP/task68-signing"
+          printf '%s' "$SIGNING_CERT_BASE64" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/task68-signing/release.cer"
+          printf '%s' "$SIGNING_PROFILE_BASE64" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/task68-signing/release.p7b"
+          printf '%s' "$SIGNING_KEY_BASE64" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/task68-signing/release.p12"
+          test -s "$RUNNER_TEMP/task68-signing/release.cer"
+          test -s "$RUNNER_TEMP/task68-signing/release.p7b"
+          test -s "$RUNNER_TEMP/task68-signing/release.p12"
+
+      - name: Sign both HAPs using the original managed identity
+        shell: bash
+        env:
+          KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SLOCK_OHOS_KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.SLOCK_OHOS_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          mkdir "$RUNNER_TEMP/task68-signed"
+          for variant in control probe; do
+            java -jar "$TASK68_SIGN_TOOL" sign-app \
+              -mode localSign -keyAlias "$KEY_ALIAS" -keyPwd "$KEY_PASSWORD" \
+              -appCertFile "$RUNNER_TEMP/task68-signing/release.cer" \
+              -profileFile "$RUNNER_TEMP/task68-signing/release.p7b" -profileSigned 1 \
+              -inFile "$RUNNER_TEMP/task68-prepared/$variant-UNSIGNED.hap" \
+              -signAlg SHA256withECDSA -keystoreFile "$RUNNER_TEMP/task68-signing/release.p12" \
+              -keystorePwd "$KEYSTORE_PASSWORD" \
+              -outFile "$RUNNER_TEMP/task68-signed/$variant.signed.hap" \
+              -compatibleVersion 23 -signCode 1 -pwdInputMode 0
+            java -jar "$TASK68_SIGN_TOOL" verify-app \
+              -inFile "$RUNNER_TEMP/task68-signed/$variant.signed.hap" \
+              -outCertChain "$RUNNER_TEMP/task68-verified/$variant.cer" \
+              -outProfile "$RUNNER_TEMP/task68-verified/$variant.p7b" >/dev/null
+          done
+
+      - name: Verify signer identity and unchanged application payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/task68_native_diagnostic.py verify \
+            --original-dir "$RUNNER_TEMP/task68-original" \
+            --work-dir "$RUNNER_TEMP/task68-prepared" \
+            --signed-dir "$RUNNER_TEMP/task68-signed" \
+            --verified-dir "$RUNNER_TEMP/task68-verified" \
+            --receipt "$RUNNER_TEMP/task68-signed/verification-receipt.json"
+          python3 - <<'PYRECEIPT'
+          import json, os
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'task68-signed', 'driver-identity.json').write_text(json.dumps({
+              'workflowSha': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'],
+              'baseApplicationSha': '4fc2ea871da9c5ec101e4c8c6832ebeda412061a',
+              'rendererProbeSha': 'a76e111b65e1e922e6340f98611672732e590dbf',
+              'scope': 'diagnostic only; no publication; runtime not yet run'
+          }, indent=2) + '\n')
+          PYRECEIPT
+
+      - name: Upload verified signed diagnostic HAPs only
+        uses: actions/upload-artifact@v6
+        with:
+          name: task68-native-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/task68-signed
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove managed signing assets and public verification scratch
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/task68-signing" "$RUNNER_TEMP/task68-verified"
+
   kuikly-artifacts:
+    if: inputs.native_diagnostic_pair != true
     name: Kuikly release manifest (Raft)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [resolve, signing-preflight]
@@ -207,6 +359,7 @@ jobs:
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
   fork-deps:
+    if: inputs.native_diagnostic_pair != true
     name: Shared OHOS fork dependencies
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [resolve, signing-preflight]
@@ -371,6 +524,7 @@ jobs:
         uses: ./.github/actions/gradle-failure-diagnostics
 
   build-ohos-release:
+    if: inputs.native_diagnostic_pair != true
     name: Build, sign, and validate OHOS .app
     runs-on: blacksmith-16vcpu-ubuntu-2404
     needs: [resolve, kuikly-artifacts, fork-deps]
