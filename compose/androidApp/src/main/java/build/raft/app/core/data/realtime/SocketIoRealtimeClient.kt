@@ -72,6 +72,7 @@ class SocketIoRealtimeClient(
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
     private val connectedListeners = mutableSetOf<(RealtimeSocketConnectionContext) -> Unit>()
+    private val roomsJoinedListeners = mutableSetOf<(RealtimeSocketConnectionContext) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
@@ -255,6 +256,16 @@ class SocketIoRealtimeClient(
         return RealtimeSubscription { transport.linearize { connectedListeners -= listener } }
     }
 
+    /**
+     * Task #168: called on the transport's linearized thread when the server sends `rooms:joined` for the
+     * current socket (it has subscribed the connection to all of its rooms), after that socket's connected
+     * listeners and in order with its frames.
+     */
+    fun observeRoomsJoined(listener: (context: RealtimeSocketConnectionContext) -> Unit): RealtimeSubscription {
+        transport.linearize { roomsJoinedListeners += listener }
+        return RealtimeSubscription { transport.linearize { roomsJoinedListeners -= listener } }
+    }
+
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { capturedContext, _ ->
@@ -274,6 +285,7 @@ class SocketIoRealtimeClient(
             if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.RoomsJoined)) return@on
             markInbound()
             connectionState = RealtimeConnectionState.RoomsJoined
+            roomsJoinedListeners.toList().forEach { it(capturedContext) }
             diagnostics?.onRoomsJoined(
                 capturedContext.serverId,
                 cursor.resumeLastSeq.takeIf { it > 0L }

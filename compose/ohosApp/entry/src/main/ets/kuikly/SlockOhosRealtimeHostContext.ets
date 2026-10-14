@@ -343,9 +343,28 @@ class SlockOhosRealtimeRuntime {
     });
   }
 
+  // Task #168: the server subscribed this socket to all of its rooms; same epoch as its connected signal and
+  // frames, none if that signal was skipped.
+  private postRealtimeRoomsJoined(): void {
+    const params = this.connectParams;
+    if (params === undefined || this.presenceTransportEpoch <= 0) {
+      return;
+    }
+    this.notify({
+      action: 'realtimeRoomsJoined',
+      serverId: params.serverId,
+      authorityScopeLeaseId: params.authorityScopeLeaseId,
+      authorityPrincipalId: params.authorityPrincipalId,
+      authorityAuthGeneration: params.authorityAuthGeneration,
+      authorityConnectionFamilyId: params.authorityConnectionFamilyId,
+      presenceTransportEpoch: this.presenceTransportEpoch,
+    });
+  }
+
   private onRoomsJoined(): void {
     const lastSeq = this.currentLastSeq();
     console.info(`[SlockOhosRealtime] rooms_joined serverId=${this.serverId} joinedRooms=${this.joinedChannels.size} lastSeq=${lastSeq}`);
+    this.postRealtimeRoomsJoined();
     if (lastSeq > 0) {
       this.emitSocketEvent(GeneratedRealtimeContract.SocketEvent.SyncResume, { 'lastSeq': lastSeq });
     }

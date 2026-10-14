@@ -43,6 +43,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         val bus = FakeEventBus()
         val host = FakeNativeHost()
         val presenceConnections = mutableListOf<Pair<String, Long>>()
+        val roomsJoined = mutableListOf<Pair<String, Long>>()
         val owner =
             SharedRealtimeDomainEventOwner(
                 cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
@@ -68,6 +69,7 @@ class ProcessRealtimeIngressCoordinatorTest {
             onPresenceTransportConnected = { grant, epoch ->
                 presenceConnections += grant.connectionFamilyId to epoch
             },
+            onRoomsJoined = { grant, epoch -> roomsJoined += grant.connectionFamilyId to epoch },
         ).start()
         yield()
 
@@ -89,6 +91,30 @@ class ProcessRealtimeIngressCoordinatorTest {
             presenceConnections,
             "a stale native witness must not rebaseline presence",
         )
+
+        bus.post(
+            SlockRealtimeNotifyContract.EventName,
+            presenceTransportEnvelope(authority, epoch = 3L)
+                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+        )
+        bus.post(
+            SlockRealtimeNotifyContract.EventName,
+            presenceTransportEnvelope(authority, epoch = 0L)
+                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+        )
+        bus.post(
+            SlockRealtimeNotifyContract.EventName,
+            presenceTransportEnvelope(authority, epoch = 5L)
+                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+        )
+        yield()
+        assertEquals(
+            listOf(authority.witness.connectionFamilyId to 3L),
+            roomsJoined,
+            "rooms joined reaches shared with its epoch; no epoch or a stale witness is dropped",
+        )
+        assertEquals(listOf(authority.witness.connectionFamilyId to 3L), presenceConnections)
 
         bus.post(
             SlockRealtimeNotifyContract.EventName,

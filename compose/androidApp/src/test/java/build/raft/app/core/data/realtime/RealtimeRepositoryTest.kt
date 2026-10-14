@@ -668,6 +668,38 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun roomsJoinedListenersRunForEachRoomsJoinedInOrderWithTheSocketsFrames() {
+        // Task #168: the host turns this into the shared rooms-joined signal carrying the socket's epoch, so it
+        // must run after that socket's connected listener and in order with its frames.
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val order = mutableListOf<String>()
+        client.observeConnected { order += "connected" }
+        client.observeRoomsJoined { order += "rooms_joined" }
+        client.observeRawEvents { _, eventName, _ -> order += "raw:$eventName" }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Connect, null)
+        transport.receive(RealtimeSocketEvents.MessageNew, mapOf("serverId" to "server-1"))
+        transport.receive(RealtimeSocketEvents.RoomsJoined)
+        transport.receive(RealtimeSocketEvents.MessageNew, mapOf("serverId" to "server-1"))
+
+        assertEquals(
+            listOf(
+                "connected",
+                "raw:${RealtimeSocketEvents.MessageNew}",
+                "rooms_joined",
+                "raw:${RealtimeSocketEvents.MessageNew}",
+            ),
+            order,
+        )
+    }
+
+    @Test
     fun clientDoesNotFanOutStableHeartbeatToRawListeners() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)

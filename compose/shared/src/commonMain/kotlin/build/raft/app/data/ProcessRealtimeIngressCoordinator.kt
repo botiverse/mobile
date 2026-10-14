@@ -34,6 +34,7 @@ internal class ProcessRealtimeIngressCoordinator(
     private val nativeHost: ProcessRealtimeNativeHost,
     private val scope: CoroutineScope,
     private val onPresenceTransportConnected: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
+    private val onRoomsJoined: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
 ) {
     fun start() {
         events.addListener { raw ->
@@ -59,10 +60,13 @@ internal class ProcessRealtimeIngressCoordinator(
     }
 
     private suspend fun accept(eventData: JSONObject) {
-        if (
-            eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
-            SlockRealtimeNotifyContract.ActionPresenceTransportConnected
-        ) {
+        val transportSignal =
+            when (eventData.optString(SlockRealtimeNotifyContract.KeyAction)) {
+                SlockRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
+                SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined -> onRoomsJoined
+                else -> null
+            }
+        if (transportSignal != null) {
             val serverId =
                 eventData
                     .optString(SlockRealtimeNotifyContract.KeyServerId)
@@ -76,7 +80,7 @@ internal class ProcessRealtimeIngressCoordinator(
                     ?: return
             val witness = eventData.processRealtimeWitnessOrNull() ?: return
             val grant = authorityProvider.resolve(witness, serverId) ?: return
-            onPresenceTransportConnected(grant, transportEpoch)
+            transportSignal(grant, transportEpoch)
             return
         }
         val event = decode(eventData) ?: return
