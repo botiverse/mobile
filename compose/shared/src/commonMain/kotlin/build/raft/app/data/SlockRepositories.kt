@@ -216,6 +216,15 @@ interface ConversationRepository {
         sinceSeq: Long,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
+    /**
+     * Task #168 step 1: the latest page of [threadId] (`messages/channel/{id}?limit=` with no cursor)
+     * for the gap catch-up, carrying the raw page for the durable window. Repositories that do not
+     * capture raw pages answer with their plain latest page.
+     */
+    suspend fun loadLatestMessages(
+        threadId: ThreadId,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries = false, limit = limit)
     suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>

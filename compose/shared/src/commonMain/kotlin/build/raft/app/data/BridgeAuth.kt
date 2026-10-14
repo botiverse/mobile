@@ -971,6 +971,10 @@ internal interface SharedThreadNetworkApi {
         afterSeq: Long? = null
     ): HomeNetworkResponse
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): HomeNetworkResponse
+
+    /** Task #168 step 1: the gap catch-up's latest page (an uncursored `messages/channel/{id}`). */
+    suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): HomeNetworkResponse =
+        channelMessages(threadId = threadId, limit = limit)
     suspend fun messageContext(messageId: String, channelId: String? = null): HomeNetworkResponse
     suspend fun sendMessage(
         channelId: String,

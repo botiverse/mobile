@@ -825,6 +825,30 @@ class RealConversationRepository private constructor(
         )
     }
 
+    override suspend fun loadLatestMessages(
+        threadId: ThreadId,
+        limit: Int
+    ): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
+        return loadChannelMessages(
+            context = context,
+            threadId = threadId,
+            messageLimit = messageLimit,
+            block = {
+                networkClient.channelMessages(
+                    DataRequestPriority.Visible,
+                    ChannelId(threadId.value),
+                    messageLimit,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "messages_channel_latest",
+            includeChannelSummaries = false,
+            captureRawMessagePage = true,
+        )
+    }
+
     override suspend fun loadNewerMessages(
         threadId: ThreadId,
         afterSeq: Long,
@@ -1262,7 +1286,7 @@ class RealConversationRepository private constructor(
         includeChannelSummaries: Boolean = false,
         includeFollowedSummaries: Boolean = false,
         hydrateConversationDetail: Boolean = false,
-        /** Task #168: only the older-page fetch carries the raw page to the durable window extender. */
+        /** Task #168: only the older-page and gap catch-up fetches carry the raw page to the durable writer. */
         captureRawMessagePage: Boolean = false,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()

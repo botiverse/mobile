@@ -10775,6 +10775,7 @@ private fun SharedThreadRouteContentContent(
                 threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
             onVisibleReadTailChange = { index -> visibleReadTailIndex = index },
+            onViewportFollowsLatestChange = { follows -> threadViewModel.setViewportFollowsLatest(follows) },
             visibleReadTailIndex = visibleReadTailIndex,
             adaptiveCloseRequest = adaptiveCloseRequest,
             adaptiveStoreScope = storeScope,
@@ -14025,6 +14026,7 @@ private class ThreadPageContentCallbacks(
     val onSaveShareImage: suspend (String) -> JSONObject?,
     val onFirstContentReady: () -> Unit,
     val onVisibleReadTailChange: (Int?) -> Unit,
+    val onViewportFollowsLatestChange: (Boolean) -> Unit,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onBack: () -> Unit,
@@ -14119,6 +14121,7 @@ fun ThreadPageContent(
     onFirstContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
+    onViewportFollowsLatestChange: (Boolean) -> Unit = {},
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     adaptiveEventBus: SlockEventBus,
@@ -14227,6 +14230,7 @@ fun ThreadPageContent(
                 onSaveShareImage = onSaveShareImage,
                 onFirstContentReady = onFirstContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
+                onViewportFollowsLatestChange = onViewportFollowsLatestChange,
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onBack = onBack,
@@ -14328,6 +14332,7 @@ private fun ThreadPageContentContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
     val onBack = callbacks.onBack
@@ -15139,6 +15144,7 @@ private fun ThreadPageContentContent(
                         translationStore = translationStore,
                         onThreadContentReady = onFirstContentReady,
                         onVisibleReadTailChange = onVisibleReadTailChange,
+                        onViewportFollowsLatestChange = onViewportFollowsLatestChange,
                         visibleReadTailIndex = visibleReadTailIndex,
                         adaptiveCloseRequest = adaptiveCloseRequest,
                         adaptiveStoreScope = adaptiveStoreScope,
@@ -16569,6 +16575,7 @@ private class ThreadChatTabCallbacks(
     val onOpenForwardBundle: (String) -> Unit,
     val onThreadContentReady: () -> Unit,
     val onVisibleReadTailChange: (Int?) -> Unit,
+    val onViewportFollowsLatestChange: (Boolean) -> Unit,
 )
 
 private @Composable
@@ -16637,6 +16644,7 @@ fun ThreadChatTab(
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
+    onViewportFollowsLatestChange: (Boolean) -> Unit = {},
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     adaptiveEventBus: SlockEventBus,
@@ -16715,6 +16723,7 @@ fun ThreadChatTab(
                 onOpenForwardBundle = onOpenForwardBundle,
                 onThreadContentReady = onThreadContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
+                onViewportFollowsLatestChange = onViewportFollowsLatestChange,
             ),
     )
 }
@@ -16791,6 +16800,7 @@ private fun ThreadChatTabContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
     // A4 destination side (task #18, spec §9): READY must post for EVERY resolved branch —
     // including empty_state, which renders ThreadStateMessage below and never mounts
     // ThreadMessagesList (Jony's 8th QA: real empty status is "empty", not "success", and
@@ -17155,6 +17165,7 @@ private fun ThreadChatTabContent(
                 translationStore = translationStore,
                 onThreadContentReady = onThreadContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
+                onViewportFollowsLatestChange = onViewportFollowsLatestChange,
                 visibleReadTailIndex = visibleReadTailIndex,
                 adaptiveCloseRequest = adaptiveCloseRequest,
                 adaptiveStoreScope = adaptiveStoreScope,
@@ -17491,6 +17502,7 @@ private class ThreadMessagesListCallbacks(
     val onOpenForwardBundle: (String) -> Unit,
     val onThreadContentReady: () -> Unit,
     val onVisibleReadTailChange: (Int?) -> Unit,
+    val onViewportFollowsLatestChange: (Boolean) -> Unit,
 )
 
 private @Composable
@@ -17560,6 +17572,7 @@ fun ThreadMessagesList(
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
+    onViewportFollowsLatestChange: (Boolean) -> Unit = {},
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     adaptiveEventBus: SlockEventBus? = null,
@@ -17640,6 +17653,7 @@ fun ThreadMessagesList(
                 onOpenForwardBundle = onOpenForwardBundle,
                 onThreadContentReady = onThreadContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
+                onViewportFollowsLatestChange = onViewportFollowsLatestChange,
             ),
     )
 }
@@ -17716,6 +17730,7 @@ private fun ThreadMessagesListContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
     // A4 destination side (task #18, spec §9): the ReadyImmediately leg lives in
     // ThreadChatTabContent (empty-state branch never reaches this list); this level owns
     // the RestoreThenReady leg — anchor restore against the real list state, then READY.
@@ -19101,6 +19116,14 @@ private fun ThreadMessagesListContent(
         }
             .distinctUntilChanged()
             .collect { index -> onVisibleReadTailChange(index) }
+    }
+    // Task #168 step 1: tell the store whether the list follows the latest message, so a large-gap
+    // catch-up never replaces the timeline under a reader who scrolled up (it detaches from the tail
+    // instead and the ↓ button / newer paging takes them forward).
+    LaunchedEffect(threadInstanceKey) {
+        snapshotFlow { allowBottomAutoAnchor }
+            .distinctUntilChanged()
+            .collect { follows -> onViewportFollowsLatestChange(follows) }
     }
     LaunchedEffect(
         threadInstanceKey,

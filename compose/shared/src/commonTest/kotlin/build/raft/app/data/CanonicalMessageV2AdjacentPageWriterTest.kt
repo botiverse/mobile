@@ -170,6 +170,56 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
+    fun latestPageOverlappingTheWindowExtendsItAndADisjointOneReplacesIt() = runBlocking {
+        // Task #168 step 1. Positive: m40 (stored) is on the page ⇒ incremental, newest edge moves.
+        val joined = harness()
+        joined.seedWindow()
+        joined.latest(adjacentPageOf(adjacentPageNode("m40", 40), adjacentPageNode("m50", 50)), limit = 200)
+        assertEquals(listOf(20L, 30L, 40L, 50L), joined.store.seqs(scope))
+        assertEquals(1, joined.store.incrementals.size)
+        assertEquals(50L, joined.store.cursors.getValue(scope).newestLoadedSeq)
+        assertEquals(20L, joined.store.cursors.getValue(scope).oldestLoadedSeq)
+
+        // Twin: the same seqs, but the seq-40 message on the page is not the stored one ⇒ snapshot.
+        val disjoint = harness()
+        disjoint.seedWindow()
+        disjoint.latest(adjacentPageOf(adjacentPageNode("x40", 40), adjacentPageNode("m50", 50)), limit = 200)
+        assertEquals(listOf(40L, 50L), disjoint.store.seqs(scope))
+        assertEquals(1, disjoint.store.snapshots.size - 1, "one replacement snapshot on top of the seed")
+        val cursor = disjoint.store.cursors.getValue(scope)
+        assertEquals(40L, cursor.oldestLoadedSeq)
+        assertTrue(cursor.hasLoadedOldest, "2 < limit 200 ⇒ the page reached the channel's start")
+        assertTrue(disjoint.logs.any { "outcome=window_replaced old=20..40 oldFacts=3 new=40..50" in it }, disjoint.logs.toString())
+    }
+
+    @Test
+    fun latestPageKeepsTheAdjacentWritersAdmissionGates() = runBlocking {
+        val page = adjacentPageOf(adjacentPageNode("m100", 100))
+        val none = harness()
+        none.latest(page, limit = 200)
+        assertTrue(none.store.cursors.isEmpty(), "the catch-up never creates a window")
+        assertTrue(none.logs.any { "canonical_v2_latest_page" in it && "outcome=no_window" in it }, none.logs.toString())
+
+        val changed = harness()
+        changed.seedWindow()
+        changed.latest(page, limit = 200, stillCurrent = { false })
+        assertEquals(listOf(20L, 30L, 40L), changed.store.seqs(scope))
+        assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
+
+        val owned = harness(sameEngineForWriter = true)
+        val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
+            canary = owned.canary,
+            authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
+            networkClient = owned.network,
+        )
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        val canaryCursor = owned.store.cursors.getValue(scope)
+        owned.latest(page, limit = 200)
+        assertEquals(canaryCursor, owned.store.cursors.getValue(scope))
+        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=canary_owned" in it }, owned.logs.toString())
+    }
+
+    @Test
     fun noStoredWindowWritesNothingAndNeverCreatesOne() = runBlocking {
         val h = harness()
         // Same page and anchor as the positive older case, but no window was ever committed.
@@ -392,6 +442,13 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
         ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, null, stillCurrent)
+
+        suspend fun latest(
+            rawMessages: JsonArray,
+            limit: Int,
+            channelId: SyncScopeId = "channel-1",
+            stillCurrent: () -> Boolean = { true },
+        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, stillCurrent)
     }
 
     /**
