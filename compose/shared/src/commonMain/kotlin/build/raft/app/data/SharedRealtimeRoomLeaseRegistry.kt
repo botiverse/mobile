@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import build.raft.app.model.ServerId
 
 internal data class RealtimeRoomLeaseOwner(
     val shellInstanceId: String,
@@ -37,10 +38,19 @@ internal data class RealtimeRoomTransition(
  */
 internal class SharedRealtimeRoomLeaseRegistry(
     private val shellInstanceId: String,
+    /**
+     * Whether the last release of a room may send `leave:channel`. The server subscribes every socket to
+     * all channels and DMs the user belongs to when it connects (that is how unread counts arrive), so a
+     * leave for one of those silently stops its realtime messages until the next reconnect. Only rooms the
+     * user is known not to belong to (a public channel opened to look at) may be left; unknown = keep.
+     */
+    private val leaveAllowed: (serverId: String, roomId: String) -> Boolean = { _, _ -> true },
 ) {
     private val lock = SynchronizedObject()
     private val ownersByRoom = mutableMapOf<RoomKey, MutableSet<RealtimeRoomLeaseOwner>>()
     private val roomsByOwner = mutableMapOf<RealtimeRoomLeaseOwner, MutableSet<RoomKey>>()
+    // Rooms the user joined from a page in this shell; the directory may not know about it yet.
+    private val joinedByUser = mutableSetOf<RoomKey>()
 
     init {
         require(shellInstanceId.isNotBlank()) { "Room lease registry requires a shell id" }
@@ -93,6 +103,12 @@ internal class SharedRealtimeRoomLeaseRegistry(
         roomsByOwner.keys.toList().flatMap(::releaseOwnerLocked).distinct()
     }
 
+    /** The user joined [roomId] (e.g. the Join button): never leave it on page close. */
+    fun markJoinedByUser(serverId: String, roomId: String) = synchronized(lock) {
+        val cleanRoomId = roomId.trim().takeIf(String::isNotBlank) ?: return@synchronized
+        joinedByUser += RoomKey(serverId, cleanRoomId)
+    }
+
     fun ownerCount(serverId: String, roomId: String): Int = synchronized(lock) {
         ownersByRoom[RoomKey(serverId, roomId)]?.size ?: 0
     }
@@ -105,12 +121,14 @@ internal class SharedRealtimeRoomLeaseRegistry(
             owners -= owner
             if (owners.isEmpty()) {
                 ownersByRoom -= key
-                transitions +=
-                    RealtimeRoomTransition(
-                        action = RealtimeRoomTransitionAction.Leave,
-                        serverId = key.serverId,
-                        roomId = key.roomId,
-                    )
+                if (key !in joinedByUser && leaveAllowed(key.serverId, key.roomId)) {
+                    transitions +=
+                        RealtimeRoomTransition(
+                            action = RealtimeRoomTransitionAction.Leave,
+                            serverId = key.serverId,
+                            roomId = key.roomId,
+                        )
+                }
             }
         }
         return transitions
@@ -120,4 +138,18 @@ internal class SharedRealtimeRoomLeaseRegistry(
         val serverId: String,
         val roomId: String,
     )
+}
+
+/**
+ * Leave a room on page close only when the conversation directory says the user is not a member.
+ * A missing or ambiguous row counts as "maybe a member": receiving extra messages is harmless, missing a
+ * member channel's messages is the bug this guards against.
+ */
+internal fun realtimeRoomLeaveAllowed(
+    identity: SharedConversationIdentityProvider?,
+    serverId: String,
+    roomId: String,
+): Boolean {
+    val projection = identity?.resolveProjection(ServerId(serverId), roomId) ?: return false
+    return !projection.joined
 }

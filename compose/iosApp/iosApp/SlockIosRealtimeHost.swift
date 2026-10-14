@@ -554,7 +554,32 @@ final class SlockIosRealtimeHost: NSObject {
     }
 
     private func emitRoomCommand(runtime: Runtime, eventName: String, channelId: String) {
-        emit(runtime: runtime, eventName: eventName, payload: ["channelId": channelId])
+        // The server's join:channel / leave:channel handlers take the channel id itself, as Android and
+        // HarmonyOS send it. The previous {"channelId": …} object made both a silent no-op on iOS. Which
+        // rooms get a leave at all is decided in shared (member channels never do).
+        guard runtime.state == .connected else {
+            log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
+            return
+        }
+        if let curl = runtime.curlSession {
+            if !curl.emit(eventName: eventName, payloadJson: jsonStringLiteral(channelId)) {
+                log("emit_dropped transport=curl_socketio serverId=\(runtime.serverId) eventName=\(eventName)")
+            }
+        } else if let socket = runtime.socket {
+            socket.emit(eventName, channelId)
+        } else {
+            log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
+        }
+    }
+
+    private func jsonStringLiteral(_ value: String) -> String {
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+            let text = String(data: data, encoding: .utf8)
+        else {
+            return "\"\""
+        }
+        return text
     }
 
     private func emit(runtime: Runtime, eventName: String, payload: [String: Any]) {
