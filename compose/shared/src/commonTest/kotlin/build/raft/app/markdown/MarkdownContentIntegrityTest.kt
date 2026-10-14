@@ -394,25 +394,6 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
-    fun zzProbeUrls() {
-        val candidates = listOf(
-            "https://design.example.test/file/brand-exploration?node-id=372-1396&t=preview",
-            "https://design.example.com/file/brand-exploration?node-id=372-1396&t=preview",
-            "https://www.example.com/design/AbCdEf123/Raft-brand---Exploration?node-id=372-1396&t=preview-1",
-            "https://www.example.com/design/AbCdEf0123456789/Raft-brand---Exploration?node-id=372-1396&t=AbCdEfGh01234567-1",
-            "https://design.example.test/file",
-            "https://example.com/a",
-        )
-        for (url in candidates) {
-            for (handle in listOf("@alice", "@huxijin")) {
-                val source = "$handle 情绪板已经准备完成，有空可以看下$url"
-                val rendered = renderTopParagraphsWithLinks(source).single()
-                println("PROBE handle=$handle url=$url textOk=${rendered.text == source} urls=${rendered.urls} text=${rendered.text}")
-            }
-        }
-    }
-
-    @Test
     fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
         val url = "https://www.example.com/design/AbCdEf0123456789/Raft-brand---Exploration?node-id=372-1396&t=AbCdEfGh01234567-1"
         val source = "@alice 情绪板已经准备完成，有空可以看下$url"
