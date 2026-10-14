@@ -57,6 +57,7 @@ internal fun parsePublicFeatureFlag(code: Int, bodyText: String?, key: String): 
         (Json.parseToJsonElement(bodyText).jsonObject["flags"] as? JsonObject)
             ?.get(key)
             ?.jsonPrimitive
+            ?.takeUnless { it.isString }
             ?.booleanOrNull
     }.getOrNull()
 }
