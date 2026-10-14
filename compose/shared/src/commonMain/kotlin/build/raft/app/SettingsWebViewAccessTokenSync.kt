@@ -23,6 +23,7 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Marketplace("marketplace"),
     Administration("administration"),
     ReleaseNotes("release-notes"),
+    Feedback("feedback"),
 }
 
 internal data class SettingsWebViewAuthSnapshot(
@@ -233,6 +234,7 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     controller: SlockWebViewController,
     binding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
+    trustedDocumentUrl: String = "",
     logger: (String) -> Unit = {},
 ) {
     val session = snapshot.session ?: return
@@ -246,14 +248,24 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     fun dispatch(update: SettingsWebViewAccessTokenUpdate) {
         val dispatched =
             controller.evaluateJavaScript(
-                settingsWebViewRuntimeAccessTokenJavaScript(
-                    accessToken = update.accessToken,
-                    accountId = update.accountId,
-                    serverId = update.serverId,
-                    sessionGeneration = update.sessionGeneration,
-                    webViewGeneration = update.webViewGeneration,
-                    sequence = update.sequence,
-                )
+                if (surface == SettingsWebViewSurface.Feedback) {
+                    feedbackWebViewRuntimeSessionJavaScript(
+                        accessToken = update.accessToken,
+                        accountId = update.accountId,
+                        sessionGeneration = update.sessionGeneration,
+                        webViewGeneration = update.webViewGeneration,
+                        trustedDocumentUrl = trustedDocumentUrl,
+                    )
+                } else {
+                    settingsWebViewRuntimeAccessTokenJavaScript(
+                        accessToken = update.accessToken,
+                        accountId = update.accountId,
+                        serverId = update.serverId,
+                        sessionGeneration = update.sessionGeneration,
+                        webViewGeneration = update.webViewGeneration,
+                        sequence = update.sequence,
+                    )
+                }
             )
         if (!dispatched) fence.onDispatchFailed(update)
         logger(

@@ -55,6 +55,12 @@ static NSString *const SlockDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
 static NSString *const SlockDiagnosticsFeedbackDirName = @"raft-feedback";
 static NSString *const SlockDiagnosticsFeedbackFilePrefix = @"raft-feedback-";
 static NSString *const SlockDiagnosticsSummaryFileName = @"raft-diagnostics-summary.txt";
+static NSString *const SlockFeedbackDiagnosticsContentType = @"application/zip";
+static unsigned long long const SlockFeedbackDiagnosticsMaxBytes = 200ULL * 1024ULL * 1024ULL;
+static NSUInteger const SlockFeedbackDiagnosticsMaxR2KeyLength = 1024;
+static NSString *const SlockHandsFeedbackBaseURL = @"https://hands.build";
+static NSString *const SlockHandsFeedbackAppSlug = @"raft-ios";
+static NSString *const SlockHandsFeedbackClientKey = @"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99";
 static NSString *const SlockApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
 static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
 static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
@@ -2903,6 +2909,403 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     }];
 }
 
+// The iOS Hands SDK intentionally does not expose the diagnostics presign path.  Keep the
+// optional WebView upload self-contained: generate a small store-only ZIP, ask Hands for one
+// signed object, then stream that object with URLSession.  This avoids putting access tokens or
+// raw diagnostics bytes through the JavaScript bridge.
+static uint32_t SlockFeedbackDiagnosticsCRC32(NSData *data) {
+    static uint32_t table[256];
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        for (uint32_t index = 0; index < 256; index++) {
+            uint32_t value = index;
+            for (NSUInteger bit = 0; bit < 8; bit++) {
+                value = (value & 1U) ? ((value >> 1U) ^ 0xedb88320U) : (value >> 1U);
+            }
+            table[index] = value;
+        }
+    });
+    uint32_t crc = 0xffffffffU;
+    const uint8_t *bytes = data.bytes;
+    for (NSUInteger index = 0; index < data.length; index++) {
+        crc = table[(crc ^ bytes[index]) & 0xffU] ^ (crc >> 8U);
+    }
+    return crc ^ 0xffffffffU;
+}
+
+static void SlockFeedbackDiagnosticsWriteU16(NSOutputStream *stream, uint16_t value) {
+    uint8_t bytes[] = { (uint8_t)(value & 0xffU), (uint8_t)((value >> 8U) & 0xffU) };
+    [stream write:bytes maxLength:sizeof(bytes)];
+}
+
+static void SlockFeedbackDiagnosticsWriteU32(NSOutputStream *stream, uint32_t value) {
+    uint8_t bytes[] = {
+        (uint8_t)(value & 0xffU), (uint8_t)((value >> 8U) & 0xffU),
+        (uint8_t)((value >> 16U) & 0xffU), (uint8_t)((value >> 24U) & 0xffU)
+    };
+    [stream write:bytes maxLength:sizeof(bytes)];
+}
+
+static BOOL SlockFeedbackDiagnosticsWriteBytes(NSOutputStream *stream, NSData *data) {
+    const uint8_t *bytes = data.bytes;
+    NSUInteger remaining = data.length;
+    while (remaining > 0) {
+        NSInteger written = [stream write:bytes maxLength:MIN(remaining, (NSUInteger)64 * 1024)];
+        if (written <= 0) return NO;
+        bytes += written;
+        remaining -= (NSUInteger)written;
+    }
+    return YES;
+}
+
+static NSString *SlockFeedbackDiagnosticsSafeEntryName(NSString *name, NSUInteger index) {
+    NSString *leaf = name.lastPathComponent;
+    if (leaf.length == 0) leaf = [NSString stringWithFormat:@"diagnostics-%lu.log", (unsigned long)index];
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:
+        @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"];
+    NSMutableString *safe = [NSMutableString stringWithCapacity:leaf.length];
+    for (NSUInteger offset = 0; offset < leaf.length; offset++) {
+        unichar character = [leaf characterAtIndex:offset];
+        [safe appendFormat:@"%C", [allowed characterIsMember:character] ? character : '_'];
+    }
+    if (safe.length == 0) safe = [NSMutableString stringWithFormat:@"diagnostics-%lu.log", (unsigned long)index];
+    return [NSString stringWithFormat:@"%02lu-%@", (unsigned long)index, safe];
+}
+
+static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(void), NSError **error) {
+    NSDictionary *about = SlockDiagnosticsCurrentEnvironmentAbout();
+    NSDictionary *prepared = SlockDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback_web", NO);
+    NSArray<NSString *> *paths = [prepared[@"attachmentPaths"] isKindOfClass:NSArray.class]
+        ? prepared[@"attachmentPaths"] : @[];
+    if (![SlockBridgeString(prepared[@"status"]) isEqualToString:@"ok"] || paths.count == 0) {
+        if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:1 userInfo:@{
+            NSLocalizedDescriptionKey : @"Unable to create diagnostics snapshot"
+        }];
+        return nil;
+    }
+    NSString *name = [NSString stringWithFormat:@"raft-feedback-diagnostics-%@.zip", NSUUID.UUID.UUIDString.lowercaseString];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
+    NSOutputStream *stream = [NSOutputStream outputStreamToFileAtPath:path append:NO];
+    [stream open];
+    if (stream.streamStatus == NSStreamStatusError || stream.streamStatus == NSStreamStatusClosed) {
+        if (error) *error = stream.streamError ?: [NSError errorWithDomain:@"raft.feedback.diagnostics" code:2 userInfo:nil];
+        return nil;
+    }
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray arrayWithCapacity:paths.count];
+    unsigned long long offset = 0;
+    BOOL success = YES;
+    for (NSUInteger index = 0; index < paths.count; index++) {
+        if (isCancelled && isCancelled()) { success = NO; break; }
+        NSString *sourcePath = SlockBridgeString(paths[index]);
+        unsigned long long sourceSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:sourcePath error:nil][NSFileSize] unsignedLongLongValue];
+        // Reject oversized inputs before mapping/allocating their bytes. The fixed ZIP headers
+        // and central directory are covered by the conservative 1 KiB allowance and the final
+        // archive-size check below remains authoritative.
+        if (sourceSize == 0 || sourceSize + offset + 1024ULL > SlockFeedbackDiagnosticsMaxBytes) {
+            if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{
+                NSLocalizedDescriptionKey : @"Diagnostics archive exceeds upload limit",
+                @"tooLarge" : @YES
+            }];
+            success = NO;
+            break;
+        }
+        NSData *data = [NSData dataWithContentsOfFile:sourcePath options:NSDataReadingMappedIfSafe error:nil];
+        if (!data) { success = NO; break; }
+        NSString *entryName = index == 0 ? @"diagnostics-summary.txt" : SlockFeedbackDiagnosticsSafeEntryName(sourcePath, index);
+        NSData *entryNameData = [entryName dataUsingEncoding:NSUTF8StringEncoding];
+        if (entryNameData.length > UINT16_MAX || data.length > UINT32_MAX ||
+            data.length + offset + 1024ULL > SlockFeedbackDiagnosticsMaxBytes) {
+            if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{
+                NSLocalizedDescriptionKey : @"Diagnostics archive exceeds upload limit",
+                @"tooLarge" : @YES
+            }];
+            success = NO;
+            break;
+        }
+        uint32_t crc = SlockFeedbackDiagnosticsCRC32(data);
+        SlockFeedbackDiagnosticsWriteU32(stream, 0x04034b50U);
+        SlockFeedbackDiagnosticsWriteU16(stream, 20); // version needed
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // flags
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // store method
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // mtime
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // mdate
+        SlockFeedbackDiagnosticsWriteU32(stream, crc);
+        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
+        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
+        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);
+        if (!SlockFeedbackDiagnosticsWriteBytes(stream, entryNameData) ||
+            !SlockFeedbackDiagnosticsWriteBytes(stream, data)) { success = NO; break; }
+        [entries addObject:@{ @"name" : entryNameData, @"crc" : @(crc), @"size" : @((uint32_t)data.length), @"offset" : @(offset) }];
+        offset += 30ULL + entryNameData.length + data.length;
+    }
+    if (success) {
+        unsigned long long centralOffset = offset;
+        for (NSDictionary *entry in entries) {
+            NSData *entryNameData = entry[@"name"];
+            SlockFeedbackDiagnosticsWriteU32(stream, 0x02014b50U);
+            SlockFeedbackDiagnosticsWriteU16(stream, 20);
+            SlockFeedbackDiagnosticsWriteU16(stream, 20);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"crc"] unsignedIntValue]);
+            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
+            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
+            SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU16(stream, 0);
+            SlockFeedbackDiagnosticsWriteU32(stream, 0);
+            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"offset"] unsignedIntValue]);
+            SlockFeedbackDiagnosticsWriteBytes(stream, entryNameData);
+            offset += 46ULL + entryNameData.length;
+        }
+        unsigned long long centralSize = offset - centralOffset;
+        SlockFeedbackDiagnosticsWriteU32(stream, 0x06054b50U);
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);
+        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
+        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
+        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralSize);
+        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralOffset);
+        SlockFeedbackDiagnosticsWriteU16(stream, 0);
+    }
+    [stream close];
+    if (!success || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        if (error && !*error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:4 userInfo:nil];
+        return nil;
+    }
+    unsigned long long size = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil][NSFileSize] unsignedLongLongValue];
+    if (size == 0 || size > SlockFeedbackDiagnosticsMaxBytes) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{ @"tooLarge" : @YES }];
+        return nil;
+    }
+    return @{ @"path" : path, @"fileName" : name, @"size" : @(size) };
+}
+
+@interface SlockFeedbackDiagnosticsUploadOperation : NSObject <NSURLSessionTaskDelegate, NSURLSessionDataDelegate, NSURLSessionUploadDelegate>
+@property(nonatomic, copy) NSString *requestId;
+@property(nonatomic, copy) NSString *accountId;
+@property(nonatomic) long long sessionGeneration;
+@property(nonatomic) long long webViewGeneration;
+@property(nonatomic, copy) KuiklyRenderCallback callback;
+@property(nonatomic, strong) NSURLSession *session;
+@property(nonatomic, strong) NSURLSessionUploadTask *uploadTask;
+@property(nonatomic, strong) NSURLSessionDataTask *presignTask;
+@property(nonatomic, copy) NSString *archivePath;
+@property(nonatomic, copy) NSString *fileName;
+@property(nonatomic) unsigned long long fileSize;
+@property(nonatomic, copy) NSString *r2Key;
+@property(nonatomic, strong) NSRecursiveLock *lock;
+@property(nonatomic) BOOL cancelled;
+@property(nonatomic) BOOL terminal;
+@property(nonatomic, copy) void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *operation);
+- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(KuiklyRenderCallback)callback;
+- (void)start;
+- (void)cancel;
+@end
+
+
+@implementation SlockFeedbackDiagnosticsUploadOperation {
+    NSMutableData *_presignData;
+    NSInteger _presignStatus;
+    NSInteger _uploadStatus;
+}
+
+- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(KuiklyRenderCallback)callback {
+    if (self = [super init]) {
+        _requestId = [requestId copy];
+        _accountId = [SlockBridgeString(binding[@"accountId"]) copy];
+        _sessionGeneration = [binding[@"sessionGeneration"] longLongValue];
+        _webViewGeneration = [binding[@"webViewGeneration"] longLongValue];
+        _callback = [callback copy];
+        _lock = [[NSRecursiveLock alloc] init];
+        _presignData = [NSMutableData data];
+    }
+    return self;
+}
+
+- (NSDictionary *)binding {
+    return @{ @"accountId" : self.accountId ?: @"",
+              @"sessionGeneration" : @(self.sessionGeneration),
+              @"webViewGeneration" : @(self.webViewGeneration) };
+}
+
+- (void)emit:(NSDictionary *)payload terminal:(BOOL)terminal {
+    [self.lock lock];
+    if (self.cancelled || self.terminal) { [self.lock unlock]; return; }
+    if (terminal) self.terminal = YES;
+    KuiklyRenderCallback callback = self.callback;
+    void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *) = terminal ? self.onTerminal : nil;
+    [self.lock unlock];
+    if (onTerminal) onTerminal(self);
+    NSMutableDictionary *event = [payload mutableCopy];
+    event[@"status"] = @"ok";
+    event[@"requestId"] = self.requestId ?: @"";
+    event[@"binding"] = [self binding];
+    event[@"terminal"] = @(terminal);
+    __weak typeof(self) weakSelf = self;
+    // A generation failure can finish before NSURLSession has retained its delegate. Keep the
+    // operation alive until the queued terminal callback runs, while progress remains weak.
+    SlockFeedbackDiagnosticsUploadOperation *terminalOwner = terminal ? self : nil;
+    SlockBridgeRunOnMain(^{
+        SlockFeedbackDiagnosticsUploadOperation *owner = terminalOwner ?: weakSelf;
+        if (!owner) return;
+        [owner.lock lock];
+        BOOL invalidated = owner.cancelled;
+        [owner.lock unlock];
+        if (!invalidated && callback) callback(event);
+    });
+}
+
+- (void)emitFailure:(NSString *)reason {
+    [self emit:@{ @"type" : @"failed", @"reason" : reason ?: @"upload_failed" } terminal:YES];
+    NSString *path = self.archivePath;
+    if (path.length > 0) [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    [self.session finishTasksAndInvalidate];
+}
+
+- (void)start {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSError *archiveError = nil;
+        NSDictionary *archive = SlockFeedbackDiagnosticsWriteArchive(^{
+            [self.lock lock];
+            BOOL cancelled = self.cancelled;
+            [self.lock unlock];
+            return cancelled;
+        }, &archiveError);
+        if (!archive) {
+            [self emitFailure:archiveError.userInfo[@"tooLarge"] ? @"too_large" : @"generate_failed"];
+            return;
+        }
+        [self.lock lock];
+        if (self.cancelled) { [self.lock unlock]; [[NSFileManager defaultManager] removeItemAtPath:archive[@"path"] error:nil]; return; }
+        self.archivePath = archive[@"path"];
+        self.fileName = archive[@"fileName"];
+        self.fileSize = [archive[@"size"] unsignedLongLongValue];
+        [self.lock unlock];
+        NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/public/v2/apps/%@/feedback/presign", SlockHandsFeedbackBaseURL, SlockHandsFeedbackAppSlug]];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        request.HTTPMethod = @"POST";
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+        [request setValue:SlockHandsFeedbackClientKey forHTTPHeaderField:@"X-Hands-Client-Key"];
+        NSDictionary *body = @{ @"files" : @[ @{ @"filename" : self.fileName ?: @"diagnostics.zip",
+                                                 @"content_type" : SlockFeedbackDiagnosticsContentType,
+                                                 @"size" : @(self.fileSize) } ] };
+        request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+        NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+        configuration.timeoutIntervalForRequest = 30.0;
+        configuration.timeoutIntervalForResource = 600.0;
+        // Install and start the session while holding the same lock used by cancel(). This
+        // closes the archive-generation → NSURLSession creation gap: cancellation cannot see a
+        // nil session, delete the archive, and then have this block resurrect a presign request.
+        [self.lock lock];
+        if (self.cancelled) {
+            [self.lock unlock];
+            [[NSFileManager defaultManager] removeItemAtPath:archive[@"path"] error:nil];
+            [self.session invalidateAndCancel];
+            return;
+        }
+        self.session = [NSURLSession sessionWithConfiguration:configuration delegate:self delegateQueue:nil];
+        self.presignTask = [self.session dataTaskWithRequest:request];
+        [self.presignTask resume];
+        [self.lock unlock];
+    });
+}
+
+- (void)cancel {
+    [self.lock lock];
+    self.cancelled = YES;
+    self.callback = nil;
+    NSURLSessionTask *presignTask = self.presignTask;
+    NSURLSessionTask *uploadTask = self.uploadTask;
+    [self.lock unlock];
+    [presignTask cancel];
+    [uploadTask cancel];
+    [self.session invalidateAndCancel];
+    if (self.archivePath.length > 0) [[NSFileManager defaultManager] removeItemAtPath:self.archivePath error:nil];
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
+    if (task == self.presignTask) {
+        _presignStatus = [(NSHTTPURLResponse *)response statusCode];
+        [_presignData setLength:0];
+    } else if (task == self.uploadTask) {
+        _uploadStatus = [(NSHTTPURLResponse *)response statusCode];
+    }
+    completionHandler(NSURLSessionResponseAllow);
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    if (task == self.presignTask) [_presignData appendData:data];
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    if (task == self.presignTask) {
+        if (error || _presignStatus < 200 || _presignStatus >= 300) { [self emitFailure:@"upload_failed"]; return; }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:_presignData options:0 error:nil];
+        NSArray *uploads = [json isKindOfClass:NSDictionary.class] && [json[@"uploads"] isKindOfClass:NSArray.class] ? json[@"uploads"] : @[];
+        NSDictionary *upload = uploads.count == 1 && [uploads.firstObject isKindOfClass:NSDictionary.class] ? uploads.firstObject : nil;
+        NSString *attachmentId = SlockBridgeString(upload[@"attachment_id"]);
+        NSString *uploadURL = SlockBridgeString(upload[@"upload_url"]);
+        self.r2Key = SlockBridgeString(upload[@"r2_key"]);
+        long long expiresAt = [upload[@"expires_at"] longLongValue];
+        if (attachmentId.length == 0 || uploadURL.length == 0 ||
+            self.r2Key.length == 0 || self.r2Key.length > SlockFeedbackDiagnosticsMaxR2KeyLength ||
+            [self.r2Key rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
+            expiresAt <= 0) {
+            [self emitFailure:@"upload_failed"];
+            return;
+        }
+        NSURL *uploadURLValue = [NSURL URLWithString:uploadURL];
+        if (!uploadURLValue || ![uploadURLValue.scheme.lowercaseString isEqualToString:@"https"] ||
+            uploadURLValue.host.length == 0 ||
+            [uploadURL rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
+            [uploadURL rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+            [self emitFailure:@"upload_failed"];
+            return;
+        }
+        NSMutableURLRequest *put = [NSMutableURLRequest requestWithURL:uploadURLValue];
+        put.HTTPMethod = @"PUT";
+        [put setValue:SlockFeedbackDiagnosticsContentType forHTTPHeaderField:@"Content-Type"];
+        [self.lock lock];
+        if (self.cancelled || self.session != session) {
+            [self.lock unlock];
+            return;
+        }
+        self.uploadTask = [self.session uploadTaskWithRequest:put fromFile:[NSURL fileURLWithPath:self.archivePath]];
+        [self.uploadTask resume];
+        [self.lock unlock];
+        return;
+    }
+    if (task == self.uploadTask) {
+        NSString *path = self.archivePath;
+        if (error || _uploadStatus < 200 || _uploadStatus >= 300) {
+            [self emitFailure:@"upload_failed"];
+        } else {
+            [self emit:@{ @"type" : @"done", @"ref" : @{ @"r2_key" : self.r2Key ?: @"",
+                @"filename" : self.fileName ?: @"diagnostics.zip", @"content_type" : SlockFeedbackDiagnosticsContentType,
+                @"size" : @(self.fileSize) } } terminal:YES];
+        }
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        [self.session finishTasksAndInvalidate];
+    }
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+ didSendBodyData:(int64_t)bytesSent totalBytesSent:(int64_t)totalBytesSent totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend {
+    if (task != self.uploadTask || totalBytesExpectedToSend <= 0) return;
+    [self emit:@{ @"type" : @"progress", @"sent" : @(totalBytesSent), @"total" : @(totalBytesExpectedToSend) } terminal:NO];
+}
+
+@end
+
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
@@ -2923,6 +3326,9 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic, strong) NSMutableDictionary<NSString *, SlockThreadImageCompressionOperation *> *slock_threadImageCompressionOperations;
 @property(nonatomic, strong) NSRecursiveLock *slock_threadImageCompressionOperationsLock;
 @property(nonatomic) BOOL slock_threadImageCompressionDestroyed;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, SlockFeedbackDiagnosticsUploadOperation *> *slock_feedbackDiagnosticsOperations;
+@property(nonatomic, strong) NSRecursiveLock *slock_feedbackDiagnosticsOperationsLock;
+@property(nonatomic) BOOL slock_feedbackDiagnosticsDestroyed;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
 - (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
@@ -2950,6 +3356,10 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 - (BOOL)slock_isThreadImageCompressionDestroyed;
 - (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
 - (void)slock_dispatchThreadImageCompressionFailure:(KuiklyRenderCallback)callback;
+- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
+- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
+- (void)slock_cancelAllFeedbackDiagnosticsUploads;
+- (void)slock_destroyFeedbackDiagnosticsUploads;
 
 @end
 
@@ -2968,6 +3378,9 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         _slock_threadImageCompressionOperations = [NSMutableDictionary dictionary];
         _slock_threadImageCompressionOperationsLock = [[NSRecursiveLock alloc] init];
         _slock_threadImageCompressionDestroyed = NO;
+        _slock_feedbackDiagnosticsOperations = [NSMutableDictionary dictionary];
+        _slock_feedbackDiagnosticsOperationsLock = [[NSRecursiveLock alloc] init];
+        _slock_feedbackDiagnosticsDestroyed = NO;
     }
     return self;
 }
@@ -3029,6 +3442,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 }
 
 - (void)closePage:(NSDictionary *)args {
+    [self slock_cancelAllFeedbackDiagnosticsUploads];
     UIViewController *controller = [self slock_currentViewController];
     SlockBridgeRunOnMain(^{
         UINavigationController *navigationController = controller.navigationController;
@@ -3372,6 +3786,14 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         return;
     }
     NSString *action = SlockBridgeString(params[@"action"]);
+    if ([action isEqualToString:@"feedbackDiagnosticsStart"]) {
+        [self slock_startFeedbackDiagnosticsUpload:params callback:callback];
+        return;
+    }
+    if ([action isEqualToString:@"feedbackDiagnosticsCancel"]) {
+        [self slock_cancelFeedbackDiagnosticsUpload:params callback:callback];
+        return;
+    }
     if ([action isEqualToString:@"getNotificationPermissionStatus"]) {
         [self slock_getNotificationPermissionStatusWithCallback:callback];
         return;
@@ -3404,6 +3826,94 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         return;
     }
     callback([self slock_settingsCapabilityResultForAction:action params:params]);
+}
+
+static BOOL SlockFeedbackDiagnosticsValidRequest(NSString *requestId, NSDictionary *binding) {
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"];
+    if (requestId.length == 0 || requestId.length > 128 ||
+        [requestId rangeOfCharacterFromSet:allowed.invertedSet].location != NSNotFound) return NO;
+    NSString *account = SlockBridgeString(binding[@"accountId"]);
+    long long sessionGeneration = [binding[@"sessionGeneration"] longLongValue];
+    long long webViewGeneration = [binding[@"webViewGeneration"] longLongValue];
+    NSCharacterSet *accountControlCharacters = NSCharacterSet.controlCharacterSet;
+    return account.length > 0 && account.length <= 256 &&
+        [account rangeOfCharacterFromSet:accountControlCharacters].location == NSNotFound &&
+        sessionGeneration >= 0 && webViewGeneration >= 0;
+}
+
+static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *binding) {
+    return @{ @"accountId" : SlockBridgeString(binding[@"accountId"]),
+              @"sessionGeneration" : @([binding[@"sessionGeneration"] longLongValue]),
+              @"webViewGeneration" : @([binding[@"webViewGeneration"] longLongValue]) };
+}
+
+- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback {
+    NSString *requestId = SlockBridgeString(params[@"requestId"]);
+    NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
+        ? params[@"binding"] : params;
+    if (!callback || !SlockFeedbackDiagnosticsValidRequest(requestId, binding)) return;
+    [self.slock_feedbackDiagnosticsOperationsLock lock];
+    if (self.slock_feedbackDiagnosticsDestroyed || self.slock_feedbackDiagnosticsOperations[requestId] != nil) {
+        [self.slock_feedbackDiagnosticsOperationsLock unlock];
+        callback(@{ @"status" : @"ok", @"requestId" : requestId, @"binding" : SlockFeedbackDiagnosticsBindingPayload(binding),
+                    @"type" : @"failed", @"reason" : @"generate_failed", @"terminal" : @YES });
+        return;
+    }
+    // A page replacement can start a new request before the old WebView's cancellation message
+    // arrives.  Retire every older native operation first; only one upload may own this bridge.
+    NSArray<SlockFeedbackDiagnosticsUploadOperation *> *staleOperations =
+        self.slock_feedbackDiagnosticsOperations.allValues.copy;
+    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
+    SlockFeedbackDiagnosticsUploadOperation *operation =
+        [[SlockFeedbackDiagnosticsUploadOperation alloc] initWithRequestId:requestId binding:binding callback:callback];
+    __weak typeof(self) weakSelf = self;
+    operation.onTerminal = ^(SlockFeedbackDiagnosticsUploadOperation *finished) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        [self.slock_feedbackDiagnosticsOperationsLock lock];
+        if (self.slock_feedbackDiagnosticsOperations[finished.requestId] == finished) {
+            [self.slock_feedbackDiagnosticsOperations removeObjectForKey:finished.requestId];
+        }
+        [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    };
+    self.slock_feedbackDiagnosticsOperations[requestId] = operation;
+    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    for (SlockFeedbackDiagnosticsUploadOperation *stale in staleOperations) [stale cancel];
+    [operation start];
+}
+
+- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback {
+    NSString *requestId = SlockBridgeString(params[@"requestId"]);
+    NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
+        ? params[@"binding"] : params;
+    [self.slock_feedbackDiagnosticsOperationsLock lock];
+    SlockFeedbackDiagnosticsUploadOperation *operation = self.slock_feedbackDiagnosticsOperations[requestId];
+    BOOL matches = operation != nil && [operation.accountId isEqualToString:SlockBridgeString(binding[@"accountId"])] &&
+        operation.sessionGeneration == [binding[@"sessionGeneration"] longLongValue] &&
+        operation.webViewGeneration == [binding[@"webViewGeneration"] longLongValue];
+    if (matches) [self.slock_feedbackDiagnosticsOperations removeObjectForKey:requestId];
+    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    if (matches) [operation cancel];
+    if (callback) callback(@{ @"status" : matches ? @"ok" : @"ignored", @"requestId" : requestId,
+                              @"binding" : SlockFeedbackDiagnosticsBindingPayload(binding ?: @{}),
+                              @"cancelled" : @(matches), @"terminal" : @YES });
+}
+
+- (void)slock_cancelAllFeedbackDiagnosticsUploads {
+    [self.slock_feedbackDiagnosticsOperationsLock lock];
+    NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
+    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
+    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    for (SlockFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
+}
+
+- (void)slock_destroyFeedbackDiagnosticsUploads {
+    [self.slock_feedbackDiagnosticsOperationsLock lock];
+    self.slock_feedbackDiagnosticsDestroyed = YES;
+    NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
+    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
+    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    for (SlockFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
 }
 
 - (NSDictionary *)slock_promoteFeedbackDraftAttachments:(NSDictionary *)params {
@@ -5315,6 +5825,12 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
+        // Self-host login: the socket still points at the previous server. Close every connection now, as the
+        // Android and HarmonyOS hosts do; the cleared session reconnects to the new environment after login.
+        [[SlockIosRealtimeHost shared] handleCommand:@{
+            @"action" : @"disconnect",
+            @"reason" : @"api_environment_changed",
+        }];
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"setApiEnvironment"]) {
@@ -5645,6 +6161,7 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 }
 
 - (void)dealloc {
+    [self slock_destroyFeedbackDiagnosticsUploads];
     NSArray<SlockThreadImageCompressionOperation *> *operations = @[];
     if (_slock_threadImageCompressionOperationsLock) {
         [_slock_threadImageCompressionOperationsLock lock];

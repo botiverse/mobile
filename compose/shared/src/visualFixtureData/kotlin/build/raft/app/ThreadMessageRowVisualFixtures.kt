@@ -1133,7 +1133,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 // #791 is a PR (not a known task) so it stays plain; only #787 chips.
                 knownMarkdownChannelNames = listOf("raft-mobile-reconcile"),
-                knownMarkdownMentionNames = listOf("artin", "Mahua", "赵梓淇"),
+                knownMarkdownMentionNames = listOf("artin", "Mahua", "王小明"),
                 knownMarkdownTaskNumbers = listOf(787),
                 messages =
                     listOf(
@@ -1148,12 +1148,12 @@ internal fun threadVisualFixture(
                             messageType = "Chat",
                             body =
                                 "@artin **slice-1 已合入 main** —— PR #791 squash → `80e3162da`。\n\n" +
-                                    "- 重跑那个 flaky job **绿了**（`realtimeReadStatePreservesPartialSummaryAndReconcilesAcceptedRewind` 重跑即过，坐实是 flake 不是我的），Android/OHOS host/OHOS shared 三端 compile+test 全绿、sign-off 过、iOS skip。\n" +
-                                    "- **披露 merge actor**：走 `gh` 身份 `bytemain`（≠ commit author `HanXin`），squash-merge、删了分支。\n" +
+                                    "- 重跑那个 flaky job **绿了**（`realtimeReadStatePreservesPartialSummary` 重跑即过，确认是 flake），Android/OHOS host/OHOS shared 三端 compile+test 全绿。\n" +
+                                    "- **披露 merge actor**：走 CI 身份 `release-bot` squash-merge，已删分支。\n" +
                                     "- 落地形态：flag `sync_core_messages_v1` **默认关 = 零行为变化**；开了才在旁边 shadow fold+persist（不可见、fail-open、eligibility 仍 false）。真实用户完全无感。\n" +
-                                    "- **AD2 的 mapper 解耦设计点**按你说的转 post-merge follow-up，我留着 observer-routed 方案等他定。\n" +
+                                    "- **mapper 解耦设计点**按你说的转 post-merge follow-up，我留着 observer-routed 方案等后续定。\n" +
                                     "- 我另外给 @Mahua 报了那个 flaky 测试（#787 的，main 上间歇误挂无关 PR）。\n\n" +
-                                    "**数据流接线地基这块落了。** 下一步 V2 归一化信封在 #raft-mobile-reconcile 跟 @赵梓淇 对齐字段（他是 canonical DRI）——赵定了形状我就落 mobile V2，然后翻 eligibility 就到你能\"试效果\"那步。"
+                                    "**数据流接线地基这块落了。** 下一步 V2 归一化信封在 #raft-mobile-reconcile 跟 @王小明 对齐字段（canonical DRI）——形状定了我就落 mobile V2，然后翻 eligibility 就到你能\"试效果\"那步。"
                         )
                     ),
                 members =
@@ -1173,11 +1173,11 @@ internal fun threadVisualFixture(
                             avatarLabel = "MA"
                         ),
                         KuiklyThreadMemberItem(
-                            id = "human-zhaoziqi",
-                            displayName = "赵梓淇",
-                            handle = "赵梓淇",
+                            id = "human-wangxiaoming",
+                            displayName = "王小明",
+                            handle = "王小明",
                             kind = "human",
-                            avatarLabel = "赵"
+                            avatarLabel = "王"
                         )
                     ),
                 showComposer = false,
@@ -1520,9 +1520,9 @@ internal fun threadVisualFixture(
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL ->
             // task #493: inline code containing an angle-bracket email
-            // (`artin <artin@cat.ms>`) is a classic markdown trap — parsers
+            // (`artin <artin@example.test>`) is a classic markdown trap — parsers
             // that autolink/HTML-strip inside code spans swallow the
-            // "<artin@cat.ms>" part. The specimen pins all three shapes so the
+            // "<artin@example.test>" part. The specimen pins all three shapes so the
             // capture proves: code keeps it literal, the bare form autolinks,
             // plain text stays text.
             KuiklyThreadScreenPayload(
@@ -1552,9 +1552,9 @@ internal fun threadVisualFixture(
                             timestampLabel = "07/15 18:05",
                             messageType = "Chat",
                             body =
-                                "Inline code keeps the email literal: `artin <artin@cat.ms>` end.\n\n" +
-                                    "Bare autolink form: <artin@cat.ms> end.\n\n" +
-                                    "Plain text form: artin@cat.ms end."
+                                "Inline code keeps the email literal: `artin <artin@example.test>` end.\n\n" +
+                                    "Bare autolink form: <artin@example.test> end.\n\n" +
+                                    "Plain text form: artin@example.test end."
                         )
                     ),
                 members = emptyList(),
@@ -1597,14 +1597,14 @@ internal fun threadVisualFixture(
                             timestampLabel = "07/22 04:32",
                             messageType = "Chat",
                             body =
-                                "对，create-raft-app模板很可能是同源问题，应该一起扫，不只修Stamp实例。\n\n" +
-                                    "我刚对Stamp源码确认了根因：它用 `new URL(\"/login/raft/callback\", c.req.url)` 生成callback。手机这次入站是`http://stamp.build/login/raft`，所以产出`return_to=http://stamp.build/login/raft/callback`；Raft OAuth client注册的是HTTPS exact URL，于是严格拒绝。桌面可能因HSTS/历史自动升HTTPS而没暴露。\n\n" +
-                                    "正确公共模板合同应是：\n" +
-                                    "- callback基于显式可信`PUBLIC_ORIGIN=https://...`（或经过严格allowlist的forwarded origin），绝不直接信任入站scheme/Host；\n" +
-                                    "- HTTP入口先308 HTTPS并加HSTS，但OAuth正确性不能依赖浏览器自动升级；\n" +
-                                    "- production禁止HTTP callback，localhost开发例外要显式限定；\n" +
-                                    "- 回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。\n\n" +
-                                    "临时可直接开 <https://stamp.build/login/raft>。@Argus 已在查Stamp+模板同类代码；应把hotfix落实例，同时把create-raft-app模板修掉，避免以后每个新app复制这个坑。"
+                                "对，模板仓库很可能是同源问题，应该一起扫，不只修单个实例。\n\n" +
+                                    "我刚对源码确认了根因：它用 `new URL(\"/login/callback\", c.req.url)` 生成 callback。手机这次入站是 `http://internal/login`，所以产出 `return_to=http://internal/login/callback`。\n\n" +
+                                    "正确的公共模板合同应是：\n" +
+                                    "- callback 基于显式可信 `PUBLIC_ORIGIN=https://...`（或经过严格 allowlist 的 forwarded origin），绝不直接信任入站 scheme/Host；\n" +
+                                    "- HTTP 入口先 308 HTTPS 并加 HSTS，但 OAuth 正确性不能依赖浏览器自动升级；\n" +
+                                    "- production 禁止 HTTP callback，localhost 开发例外要显式限定；\n" +
+                                    "- 回归测试从 `http://internal/`、反代 HTTP、恶意 Host 三种入站验证，最终 `return_to` 始终等于注册的外部 HTTPS callback。\n\n" +
+                                    "临时可直接开 <https://gateway.example.test/login>。@reviewer 已在查模板同类代码；应把 hotfix 落实例，同时把模板修掉，避免以后每个新 app 复制这个问题。"
                         )
                     ),
                 members = emptyList(),
@@ -1649,9 +1649,9 @@ internal fun threadVisualFixture(
                             messageType = "Chat",
                             body =
                                 "---\n\n" +
-                                    "明白，是我理解错了。你要的是一个**不需要先创建 share token 的稳定 latest release landing page**，" +
-                                    "类似 `/apps/<app>/latest`，打开永远展示当前最新版并可下载；不是让某条 `/share/<token>` 变成 rolling。\n\n" +
-                                    "我撤掉 PR #318 这套 rolling-share 设计，改做 app latest landing page，并复用现有 share 页的版本信息/下载体验。"
+                                    "更新：发布落地页改为**不需要先创建 share token 的固定最新版本页面**，" +
+                                    "路由 `/apps/<app>/latest` 始终展示当前最新版并提供下载；`/share/<token>` 保持为一次性分享页，不再做 rolling。\n\n" +
+                                    "相关改动见 PR #318，复用现有 share 页的版本信息/下载体验。"
                         )
                     ),
                 members = emptyList(),
@@ -1870,8 +1870,8 @@ internal fun threadVisualFixture(
                             timestampLabel = "07/22 06:00",
                             messageType = "Chat",
                             body =
-                                "@huxijin 情绪板已经准备完成，有空可以看下" +
-                                    "https://www.figma.com/design/TiPWa8K3dfNyNxvTrz1SN0/Raft-brand---Exploration?node-id=372-1396&t=I3oSfVqdbsEJjUIP-1"
+                                "@alice 情绪板已经准备完成，有空可以看下" +
+                                    "https://design.example.test/file/brand-exploration?node-id=372-1396&t=preview"
                         )
                     ),
                 members = emptyList(),

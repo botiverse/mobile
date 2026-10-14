@@ -24,7 +24,7 @@ class MemberAgentParserTest {
                   "userId":"user-cindy",
                   "name":"cindyz",
                   "displayName":"cindyz",
-                  "email":"cinryzh@gmail.com",
+                  "email":"cindyz@example.com",
                   "gravatarHash":"$hash",
                   "avatarUrl":null,
                   "role":"member",

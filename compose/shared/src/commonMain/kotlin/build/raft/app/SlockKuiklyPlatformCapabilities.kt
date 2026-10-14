@@ -131,6 +131,9 @@ internal expect fun slockSlugSlashCenteringOffsetDp(): Float
 // reads one ArrayBuffer, so all three targets are capped at 50MB until it streams.
 internal expect fun slockFeedbackAttachmentMaxBytes(): Long
 
+/** Stable host identity injected into the standalone feedback WebView session metadata. */
+internal expect fun slockFeedbackWebViewClientKind(): String
+
 /**
  * task #232: start-edge region (in dp) a [build.raft.app.components.TabPager]
  * must leave to the platform's own edge gesture. iOS injects its interactive

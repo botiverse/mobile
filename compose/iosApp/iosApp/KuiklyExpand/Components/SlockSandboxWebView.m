@@ -12,6 +12,9 @@ static NSString *const SlockSandboxWebViewCacheEnabledProp = @"cacheEnabled";
 static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
 static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
 static NSString *const SlockSandboxWebViewAllowedNavigationSchemesProp = @"allowedNavigationSchemes";
+static NSString *const SlockSandboxWebViewHostEventsEnabledProp = @"hostEventsEnabled";
+static NSString *const SlockSandboxWebViewHostMessageProp = @"hostMessage";
+static NSString *const SlockSandboxWebViewHostMessageName = @"raftHostPort";
 static NSString *const SlockSandboxWebViewNavigationCommandMethod = @"navigationCommand";
 static NSString *const SlockSandboxWebViewLoadCommitProp = @"loadCommit";
 static NSString *const SlockSandboxWebViewLoadSuccessProp = @"loadSuccess";
@@ -24,6 +27,7 @@ static NSString *const SlockSandboxWebViewCommandGoBack = @"goBack";
 static NSString *const SlockSandboxWebViewCommandGoForward = @"goForward";
 static NSString *const SlockSandboxWebViewCommandReload = @"reload";
 static NSString *const SlockSandboxWebViewCommandStop = @"stop";
+static NSString *const SlockSandboxWebViewCommandEvaluateJavaScriptPrefix = @"evaluateJavaScript:";
 
 static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     static NSArray<NSString *> *keyPaths;
@@ -34,7 +38,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     return keyPaths;
 }
 
-@interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate>
+@interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler>
 
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, copy) NSString *src;
@@ -62,6 +66,9 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 @property (nonatomic, copy) KuiklyRenderCallback navigationBlockedCallback;
 @property (nonatomic, copy) KuiklyRenderCallback urlChangeCallback;
 @property (nonatomic, copy) KuiklyRenderCallback navigationStateChangeCallback;
+@property (nonatomic, copy) KuiklyRenderCallback hostMessageCallback;
+@property (nonatomic, assign) BOOL hostEventsEnabled;
+- (BOOL)isSameOriginURL:(NSURL *)targetURL;
 
 @end
 
@@ -77,6 +84,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         _domStorageEnabled = NO;
         _cacheEnabled = NO;
         _ephemeral = YES;
+        _hostEventsEnabled = NO;
         _injectedJavaScript = @"";
         _allowedNavigationSchemes = [NSSet set];
         _currentURL = @"";
@@ -104,6 +112,11 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         [self updateCacheEnabled:[self boolFromValue:propValue defaultValue:NO]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewEphemeralProp]) {
         [self updateEphemeral:[self boolFromValue:propValue defaultValue:YES]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewHostEventsEnabledProp]) {
+        self.hostEventsEnabled = [self boolFromValue:propValue defaultValue:NO];
+        [self rebuildWebView];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewHostMessageProp]) {
+        self.hostMessageCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewInjectedJavaScriptProp]) {
         [self updateInjectedJavaScript:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewAllowedNavigationSchemesProp]) {
@@ -177,6 +190,27 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
     _navigationBlockedCallback = nil;
     _urlChangeCallback = nil;
     _navigationStateChangeCallback = nil;
+    _hostMessageCallback = nil;
+}
+
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (![message.name isEqualToString:SlockSandboxWebViewHostMessageName] || !self.hostEventsEnabled || !self.hostMessageCallback) return;
+    if (userContentController != self.webView.configuration.userContentController || !message.frameInfo.isMainFrame) return;
+    NSURL *expectedURL = [NSURL URLWithString:self.src];
+    WKSecurityOrigin *origin = message.frameInfo.securityOrigin;
+    NSString *scheme = expectedURL.scheme.lowercaseString;
+    if (!([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"])) return;
+    NSInteger defaultPort = [scheme isEqualToString:@"https"] ? 443 : 80;
+    NSInteger expectedPort = expectedURL.port ? expectedURL.port.integerValue : defaultPort;
+    NSInteger actualPort = origin.port > 0 ? origin.port : defaultPort;
+    if (![origin.protocol.lowercaseString isEqualToString:scheme] ||
+        ![origin.host.lowercaseString isEqualToString:expectedURL.host.lowercaseString] || actualPort != expectedPort) return;
+    NSURL *activeURL = self.webView.URL;
+    if (!self.allowNavigation && ![self isAllowedMainDocumentURL:activeURL]) return;
+    if (![message.body isKindOfClass:NSString.class]) return;
+    self.hostMessageCallback(@{ @"message" : message.body });
 }
 
 #pragma mark - WKNavigationDelegate
@@ -297,11 +331,17 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     configuration.websiteDataStore =
         self.ephemeral ? [WKWebsiteDataStore nonPersistentDataStore] : [WKWebsiteDataStore defaultDataStore];
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
+    if (self.hostEventsEnabled) {
+        [userContentController addScriptMessageHandler:self name:SlockSandboxWebViewHostMessageName];
+        // Diagnostics capability is installed only when a native uploader exists.
+        NSString *bridge = @"(function(){var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.raftHostPort;if(!h)return;Object.defineProperty(window,\"raftHostPort\",{value:{postMessage:function(m){h.postMessage(m);}},writable:false,configurable:false});Object.defineProperty(window,\"RaftHost\",{value:Object.freeze({version:\"raft-host-v1\",capabilities:[\"raft-feedback-v1\"],emit:function(k,p){if(typeof k===\"string\")h.postMessage(JSON.stringify({kind:k,payload:(p&&typeof p===\"object\"&&!Array.isArray(p))?p:{}}));}}),writable:false,configurable:false});})();";
+        [userContentController addUserScript:[[WKUserScript alloc] initWithSource:bridge injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
+    }
     if (self.allowScripts && self.injectedJavaScript.length > 0) {
         WKUserScript *script =
             [[WKUserScript alloc] initWithSource:self.injectedJavaScript
                                    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                                forMainFrameOnly:NO];
+                                forMainFrameOnly:!self.allowNavigation];
         [userContentController addUserScript:script];
     }
     configuration.userContentController = userContentController;
@@ -395,7 +435,14 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 }
 
 - (void)updateAllowNavigation:(BOOL)allowNavigation {
+    if (self.allowNavigation == allowNavigation) {
+        return;
+    }
     self.allowNavigation = allowNavigation;
+    // The auth user-script's main-frame scope is selected from this policy at configuration
+    // time. Rebuild when the policy changes so a previously broad script cannot survive into a
+    // fenced feedback document.
+    [self rebuildWebView];
 }
 
 - (void)updateDomStorageEnabled:(BOOL)domStorageEnabled {
@@ -462,6 +509,17 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 - (void)executeNavigationCommand:(NSString *)navigationCommand {
     NSString *command =
         [navigationCommand stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([command hasPrefix:SlockSandboxWebViewCommandEvaluateJavaScriptPrefix]) {
+        NSString *script = [command substringFromIndex:SlockSandboxWebViewCommandEvaluateJavaScriptPrefix.length];
+        NSURL *activeURL = self.webView.URL;
+        BOOL sameTrustedDocument = activeURL && [self isNavigationSchemeAllowedURL:activeURL] &&
+            [self isSameOriginURL:activeURL] &&
+            (self.allowNavigation || [self isAllowedMainDocumentURL:activeURL]);
+        if (sameTrustedDocument && script.length > 0) {
+            [self.webView evaluateJavaScript:script completionHandler:nil];
+        }
+        return;
+    }
     if ([command isEqualToString:SlockSandboxWebViewCommandGoBack]) {
         if (self.webView.canGoBack) {
             [self.webView goBack];
@@ -630,6 +688,21 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     BOOL samePath = [allowedPath isEqualToString:targetPath];
     BOOL sameQuery = [allowedQuery isEqualToString:targetQuery];
     return sameScheme && sameHost && samePath && sameQuery && [allowedPort isEqualToNumber:targetPort];
+}
+
+- (BOOL)isSameOriginURL:(NSURL *)targetURL {
+    if (!targetURL || !self.allowedURL) {
+        return NO;
+    }
+    NSString *allowedScheme = self.allowedURL.scheme.lowercaseString ?: @"";
+    NSString *targetScheme = targetURL.scheme.lowercaseString ?: @"";
+    NSString *allowedHost = self.allowedURL.host.lowercaseString ?: @"";
+    NSString *targetHost = targetURL.host.lowercaseString ?: @"";
+    NSInteger defaultPort = [allowedScheme isEqualToString:@"https"] ? 443 : 80;
+    NSInteger allowedPort = self.allowedURL.port ? self.allowedURL.port.integerValue : defaultPort;
+    NSInteger targetPort = targetURL.port ? targetURL.port.integerValue : defaultPort;
+    return [allowedScheme isEqualToString:targetScheme] &&
+        [allowedHost isEqualToString:targetHost] && allowedPort == targetPort;
 }
 
 - (void)notifyLoadFailure:(NSString *)reason {

@@ -315,7 +315,7 @@ class ThreadRenderSignatureTest {
             KuiklyThreadMessageItem(
                 id = "message-1",
                 authorId = authorId,
-                authorName = "赵梓淇",
+                authorName = "王小明",
                 authorHandle = authorId,
                 authorKind = "human"
             )
@@ -330,7 +330,7 @@ class ThreadRenderSignatureTest {
                                     listOf(
                                         MemberProfile(
                                             id = MemberId(authorId),
-                                            displayName = "赵梓淇",
+                                            displayName = "王小明",
                                             handle = authorId,
                                             kind = MemberKind.Human
                                         )
@@ -347,8 +347,8 @@ class ThreadRenderSignatureTest {
                                     listOf(
                                         MemberProfile(
                                             id = MemberId(authorId),
-                                            displayName = "赵梓淇",
-                                            handle = "zhao-ziqi",
+                                            displayName = "王小明",
+                                            handle = "wang-xiaoming",
                                             kind = MemberKind.Human
                                         )
                                     )
@@ -357,7 +357,7 @@ class ThreadRenderSignatureTest {
             )
 
         assertEquals(
-            "zhao-ziqi",
+            "wang-xiaoming",
             message.threadMentionHandle(membersState, ServerId("server-1"))
         )
     }
@@ -369,7 +369,7 @@ class ThreadRenderSignatureTest {
             KuiklyThreadMessageItem(
                 id = "message-1",
                 authorId = authorId,
-                authorName = "赵梓淇",
+                authorName = "王小明",
                 authorHandle = authorId,
                 authorKind = "human"
             )

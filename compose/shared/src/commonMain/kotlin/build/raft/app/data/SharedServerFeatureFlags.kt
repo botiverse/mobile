@@ -41,6 +41,7 @@ const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
 const val WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY: String = "enable_webview_onboarding_v0"
+const val PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY: String = "product_feedback_multi_app"
 /**
  * #94 Slack-aligned bottom navigation (home channels-only / dms / activity / more, order
  * user-configurable, floating Search). Default OFF everywhere (server-unresolved evaluates
@@ -128,6 +129,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
     WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
+    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
