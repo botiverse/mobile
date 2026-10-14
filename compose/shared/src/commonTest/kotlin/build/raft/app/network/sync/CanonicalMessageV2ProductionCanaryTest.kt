@@ -271,22 +271,41 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun aLateFrameOfTheOldConnectionIsNeverAppendedToTheNewWindow() = runBlocking {
+    fun aLateFrameOfAnOlderConnectionIsShownButNeverWrittenToTheNewWindow() = runBlocking {
         val fixture = Fixture(enabled = true)
         fixture.canary.noteTransportEpoch(partition, 1L)
         fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
         fixture.canary.noteTransportEpoch(partition, 2L)
-        fixture.accept(fixture.input("m3", 3L), transportEpoch = 2L)
+        fixture.accept(fixture.input("m104", 104L), transportEpoch = 2L)
         assertEquals(2, fixture.loaderCalls)
         assertEquals(0, fixture.store.incrementalCalls)
 
-        // m2 left the old socket before it closed; its coroutine only now reaches the writer.
+        // m110 left the old socket before it closed (105-109 were lost with it); its coroutine only now
+        // reaches the writer. Appending it after m104 would leave a hole.
+        assertEquals(
+            CanonicalMessageV2CanaryOutcome.NotSelected,
+            fixture.accept(fixture.input("m110", 110L), transportEpoch = 1L),
+            "an older connection's frame goes to the legacy display path only",
+        )
+        assertEquals(2, fixture.loaderCalls)
+        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(2, fixture.store.snapshotCalls)
+    }
+
+    @Test
+    fun theSameFrameAppendsUnderTheCurrentConnection() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.accept(fixture.input("m104", 104L), transportEpoch = 2L)
+
         assertEquals(
             CanonicalMessageV2CanaryOutcome.Committed,
-            fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L),
+            fixture.accept(fixture.input("m110", 110L), transportEpoch = 2L),
         )
-        assertEquals(3, fixture.loaderCalls, "a frame of another connection must take the snapshot path")
-        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(2, fixture.loaderCalls)
+        assertEquals(1, fixture.store.incrementalCalls)
     }
 
     @Test

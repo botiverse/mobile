@@ -172,8 +172,24 @@ internal class CanonicalMessageV2ProductionCanary(
                 // A frame that names its connection decides by that: the reconnect signal travels through
                 // another coroutine and may not have been recorded yet, or may already name a newer socket.
                 // Otherwise read the recorded epoch inside this scope's writer, at commit time.
-                val transportEpoch =
-                    frameTransportEpoch?.takeIf { it > 0L } ?: currentTransportEpoch(scope.partition)
+                val frameEpoch = frameTransportEpoch?.takeIf { it > 0L }
+                val committedEpoch = state.committedTransportEpoch
+                if (
+                    frameEpoch != null &&
+                    committedEpoch != null &&
+                    !state.restoredWithoutEpoch &&
+                    frameEpoch < committedEpoch
+                ) {
+                    // A late frame of an older socket: the window already continues from a newer
+                    // connection, and frames that socket lost may sit between. Show it, never write it.
+                    // Epochs only grow within a process on every host; a restart restores without one.
+                    logger(
+                        "canonical_v2_canary skip=stale_transport server=${scope.serverId} scope=${scope.scopeId} " +
+                            "frameEpoch=$frameEpoch committedEpoch=$committedEpoch",
+                    )
+                    return@writer CanonicalMessageV2CanaryOutcome.NotSelected
+                }
+                val transportEpoch = frameEpoch ?: currentTransportEpoch(scope.partition)
                 if (
                     foldInput.kind == CanonicalMessageFoldKind.New &&
                     state.cursor != null &&
@@ -253,8 +269,8 @@ internal class CanonicalMessageV2ProductionCanary(
      */
     suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
         if (transportEpoch <= 0L) return
-        // Any different value is a new connection: a rebuilt native transport restarts its numbering, so
-        // "only larger" would miss real reconnects. A late old signal costs at most one extra snapshot.
+        // Any different value is a new connection. Hosts number sockets increasingly within a process, but
+        // the signal stays tolerant: a late old signal costs at most one extra snapshot.
         selectionMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
     }
 
