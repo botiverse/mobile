@@ -216,10 +216,12 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
         assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
         owned.canary.awaitSnapshotJobs()
-        val canaryCursor = owned.store.cursors.getValue(scope)
+        // Task #168 device FAIL: the canary's own scope is no longer skipped — its catch-up page is written.
         owned.latest(page, limit = 200)
-        assertEquals(canaryCursor, owned.store.cursors.getValue(scope))
-        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=canary_owned" in it }, owned.logs.toString())
+        assertEquals(listOf(100L), owned.store.seqs(scope))
+        assertEquals(100L, owned.store.cursors.getValue(scope).newestLoadedSeq)
+        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=window_replaced" in it }, owned.logs.toString())
+        assertTrue(owned.logs.none { "canary_owned" in it }, owned.logs.toString())
     }
 
     @Test
@@ -234,7 +236,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun canaryOwnedScopeIsLeftToTheCanary() = runBlocking {
+    fun canaryOwnedScopeIsExtendedLikeAnyOtherScope() = runBlocking {
         val h = harness(channelIds = setOf("channel-1", "channel-2"), sameEngineForWriter = true)
         val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
             canary = h.canary,
@@ -246,14 +248,15 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
         h.canary.awaitSnapshotJobs()
         val canaryScope = SyncScopeKey(partition, "channel-1", "channel")
-        val canaryCursor = h.store.cursors.getValue(canaryScope)
-        // The canary's window edge is seq 7 (its snapshot page); offer an exactly adjacent page.
+        // The canary's window edge is seq 7 (its snapshot page); offer an exactly adjacent page. Task #168:
+        // the canary only writes realtime frames, so the page is written here.
         h.extend(ThreadDurablePageDirection.Older, anchorSeq = 7, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, channelId = "channel-1")
-        assertEquals(0, h.store.incrementals.size)
-        assertEquals(canaryCursor, h.store.cursors.getValue(canaryScope))
-        assertTrue(h.logs.any { "scope=channel-1 direction=older outcome=canary_owned" in it }, h.logs.toString())
+        assertEquals(1, h.store.incrementals.size)
+        assertEquals(listOf(5L, 7L), h.store.seqs(canaryScope))
+        assertEquals(5L, h.store.cursors.getValue(canaryScope).oldestLoadedSeq)
+        assertTrue(h.logs.any { "scope=channel-1 direction=older outcome=committed facts=1" in it }, h.logs.toString())
 
-        // Twin: a sibling scope on the same partition that the canary does not own is extended.
+        // Twin: a sibling scope on the same partition that the canary does not own is extended the same way.
         val sibling = SyncScopeKey(partition, "channel-2", "channel")
         h.seedWindow(sibling)
         h.extend(

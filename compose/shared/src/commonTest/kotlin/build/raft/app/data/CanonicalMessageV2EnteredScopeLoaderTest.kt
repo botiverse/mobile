@@ -119,7 +119,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     }
 
     @Test
-    fun theCanarysOwnScopeIsLeftToTheCanary() = runBlocking {
+    fun theCanarysOwnScopeIsWrittenToo() = runBlocking {
         val h = harness(flagOn = true, channelIds = setOf("channel-1", "channel-2"))
         // The canary selects channel-1 through its ordinary first-event path.
         val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
@@ -134,13 +134,15 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         assertEquals(1, h.store.snapshots.size)
         val pathsAfterCanary = h.network.paths.size
 
+        // Task #168: the canary only writes realtime frames; the enter page of its scope is written here.
         h.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(1, h.store.snapshots.size, "the canary-owned scope must not be rewritten by the enter path")
-        assertTrue(h.logs.any { "scope=channel-1 outcome=canary_owned" in it }, h.logs.toString())
+        assertEquals(2, h.store.snapshots.size, "the canary's scope is written by the enter path too")
+        assertEquals("channel-1", h.store.snapshots.last().scope.scopeId)
+        assertTrue(h.logs.none { "canary_owned" in it }, h.logs.toString())
 
-        // Positive control: a sibling scope on the same partition is written.
+        // Twin: a sibling scope on the same partition is written the same way.
         h.loader.loadOnEnter(partition, "channel-2") { true }
-        assertEquals(2, h.store.snapshots.size)
+        assertEquals(3, h.store.snapshots.size)
         assertEquals("channel-2", h.store.snapshots.last().scope.scopeId)
         assertTrue(h.network.paths.size > pathsAfterCanary)
     }

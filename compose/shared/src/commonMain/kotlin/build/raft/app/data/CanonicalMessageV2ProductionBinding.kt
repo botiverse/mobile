@@ -443,10 +443,14 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * 3. REST page must be a full-V2 top-level page (shared fetcher) — or, for a reply thread
  *    ([loadReplyThreadOnEnter], task #168 step 3), a full-V2 reply page of this thread whose parent
  *    the server confirmed;
- * 4. the canary owns this scope → leave it to the canary (checked again under the scope writer);
- * 5. `stillCurrent()` re-read under the scope writer, after the network round trip;
- * 6. `applySnapshot` bound to the partition generation captured before the fetch, so a partition
+ * 4. `stillCurrent()` re-read under the scope writer, after the network round trip;
+ * 5. `applySnapshot` bound to the partition generation captured before the fetch, so a partition
  *    cleared in between (sign-out) is refused by the engine rather than repopulated.
+ *
+ * The realtime canary's scope is written too (task #168: the canary only writes realtime frames, so a
+ * page skipped here was never written). The commit runs under the same scope writer as the canary, and
+ * right after it [CanonicalMessageV2ProductionCanary.onExternalCommit] tells the canary, inside that
+ * writer, that the window is no longer its own.
  */
 internal class CanonicalMessageV2EnteredScopeLoader(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -520,15 +524,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     return
                 }
             }
-            if (canary.isSelected(frame.scope)) {
-                log("canary_owned")
-                return
-            }
             generationEngine.withScopeWriter(frame.scope) {
-                if (canary.isSelected(frame.scope)) {
-                    log("canary_owned")
-                    return@withScopeWriter
-                }
                 if (!stillCurrent()) {
                     log("identity_changed")
                     return@withScopeWriter
@@ -538,13 +534,9 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     return@withScopeWriter
                 }
                 try {
-                    val outcome = when (generationEngine.applySnapshot(frame, expectedGeneration)) {
-                        CanonicalMessageV2CommitResult.Committed -> "committed facts=${frame.envelopes.size}"
-                        CanonicalMessageV2CommitResult.PartitionRevoked -> "partition_revoked"
-                        CanonicalMessageV2CommitResult.ScopeEvicted -> "scope_evicted"
-                        is CanonicalMessageV2CommitResult.BaselineRequired -> "baseline_required"
-                    }
-                    log(outcome)
+                    val result = generationEngine.applySnapshot(frame, expectedGeneration)
+                    log(result.wireOutcome(frame.envelopes.size))
+                    if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(frame.scope)
                 } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                     // A stale/cross-scope durable row must never escape the background enter job.
                     // The page already has its network-backed content; leave the durable window
@@ -573,11 +565,11 @@ internal class CanonicalMessageV2EnteredScopeLoader(
  *    `thread` when the caller passes a reply parent (task #168 step 3): none → `no_window` (only the
  *    enter snapshot creates a window), more than one → ambiguous; a thread window must name the
  *    caller's parent (`parent_mismatch` otherwise, re-checked under the scope writer);
- * 3. the canary owns the scope → leave it to the canary (it keeps its own cursor state);
+ * 3. (task #168) the canary's scope is written too: see step 8;
  * 4. the page converts as a whole (shared [CanonicalMessageV2RestSnapshotFetcher.convertPage],
  *    reply counts fetched here, outside the scope writer), belongs to this scope, has no duplicate
  *    ids, and lies entirely on the requested side of the anchor;
- * 5. under the scope writer: canary, `stillCurrent()` and flag rechecked; the stored scope is
+ * 5. under the scope writer: `stillCurrent()` and flag rechecked; the stored scope is
  *    restored (cursor + facts); the anchor must lie inside the stored window
  *    (`oldestLoadedSeq..newestLoadedSeq`) and its fact must be on disk. Since the window is
  *    contiguous and the page is the server's contiguous block next to the anchor, page ∪ window
@@ -589,7 +581,10 @@ internal class CanonicalMessageV2EnteredScopeLoader(
  *    cap prunes the oldest end, so the cursor's oldest edge is moved to the oldest fact that
  *    survives and `hasLoadedOldest` is cleared;
  * 7. `applyIncremental` with the UNION cursor (the engine overwrites the cursor wholesale), bound
- *    to the partition generation captured before the network call.
+ *    to the partition generation captured before the network call;
+ * 8. after a commit, still inside the scope writer the realtime canary serializes on,
+ *    [CanonicalMessageV2ProductionCanary.onExternalCommit]: a window the canary did not produce is never
+ *    appended onto blindly by the next realtime frame, and a pending canary snapshot never overwrites it.
  */
 internal class CanonicalMessageV2AdjacentPageWriter(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -634,7 +629,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             else -> return log("ambiguous_scope_kind")
         }
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
-        if (canary.isSelected(scope)) return log("canary_owned")
 
         // A reply page is converted under the parent its stored cursor names, and only when that is
         // the route's parent (re-checked against the restored cursor under the scope writer).
@@ -669,7 +663,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         if (!onRequestedSide) return log("wrong_side_of_anchor")
 
         generationEngine.withScopeWriter(scope) {
-            if (canary.isSelected(scope)) return@withScopeWriter log("canary_owned")
             if (!stillCurrent()) return@withScopeWriter log("identity_changed")
             if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
             try {
@@ -735,18 +728,12 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         }
                     }
                 }
-                val outcome = when (
-                    generationEngine.applyIncremental(
-                        CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
-                        expectedGeneration,
-                    )
-                ) {
-                    CanonicalMessageV2CommitResult.Committed -> "committed facts=${envelopes.size}"
-                    CanonicalMessageV2CommitResult.PartitionRevoked -> "partition_revoked"
-                    CanonicalMessageV2CommitResult.ScopeEvicted -> "scope_evicted"
-                    is CanonicalMessageV2CommitResult.BaselineRequired -> "baseline_required"
-                }
-                log(outcome)
+                val result = generationEngine.applyIncremental(
+                    CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
+                    expectedGeneration,
+                )
+                log(result.wireOutcome(envelopes.size))
+                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
@@ -754,7 +741,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     }
 
     /**
-     * Gap catch-up (task #168 step 1). Gates 1–4 are [extendWithAdjacentPage]'s (minus the
+     * Gap catch-up (task #168 step 1). Gates 1–3 are [extendWithAdjacentPage]'s (minus the
      * anchor side check: the latest page has no cursor). Under the scope writer the stored window is
      * restored and the join FACT is read: is any fact stored inside the window
      * (`oldestLoadedSeq..newestLoadedSeq`, on disk) one of the page's message ids.
@@ -765,7 +752,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
      *   `applySnapshot` with the page as the new window (the engine drops the old unpinned facts in
      *   the same transaction); a thread window keeps its stored parent. Logged as `window_replaced`
      *   with the old and new bounds.
-     * Either commit is one SQLite transaction: a failure leaves the stored window as it was.
+     * Either commit is one SQLite transaction: a failure leaves the stored window as it was. A committed
+     * one is reported to the realtime canary inside the same scope writer
+     * ([CanonicalMessageV2ProductionCanary.onExternalCommit]); the canary's scope is never skipped (task
+     * #168 device FAIL: the catch-up page of the canary channel never reached disk).
      */
     override suspend fun applyLatestPage(
         partition: DurablePartitionKey,
@@ -794,7 +784,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             else -> return log("ambiguous_scope_kind")
         }
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
-        if (canary.isSelected(scope)) return log("canary_owned")
         val storedParent = if (replyParent == null) {
             null
         } else {
@@ -825,7 +814,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         val reachedEnd = envelopes.size < requestedLimit
 
         generationEngine.withScopeWriter(scope) {
-            if (canary.isSelected(scope)) return@withScopeWriter log("canary_owned")
             if (!stillCurrent()) return@withScopeWriter log("identity_changed")
             if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
             try {
@@ -839,7 +827,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 val joined =
                     storedOldest != null && storedNewest != null &&
                         restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
-                val outcome = if (joined) {
+                val (outcome, result) = if (joined) {
                     checkNotNull(storedOldest)
                     checkNotNull(storedNewest)
                     val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
@@ -868,7 +856,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
                         expectedGeneration,
                     )
-                    "extended ${result.wireOutcome(envelopes.size)} newest=${cursor.newestLoadedSeq}"
+                    "extended ${result.wireOutcome(envelopes.size)} newest=${cursor.newestLoadedSeq}" to result
                 } else {
                     val cursor = PersistedCursor(
                         latestSeq = pageMax,
@@ -887,9 +875,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     )
                     "window_replaced old=${storedOldest ?: "none"}..${storedNewest ?: "none"} " +
                         "oldFacts=${restored.envelopes.size} new=$pageMin..$pageMax " +
-                        result.wireOutcome(envelopes.size)
+                        result.wireOutcome(envelopes.size) to result
                 }
                 log(outcome)
+                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
