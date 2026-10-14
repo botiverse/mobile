@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import build.raft.app.model.ServerId
 
 internal data class RealtimeRoomLeaseOwner(
     val shellInstanceId: String,
@@ -37,6 +38,7 @@ internal data class RealtimeRoomTransition(
  */
 internal class SharedRealtimeRoomLeaseRegistry(
     private val shellInstanceId: String,
+    @Suppress("unused") private val leaveAllowed: (serverId: String, roomId: String) -> Boolean = { _, _ -> true },
 ) {
     private val lock = SynchronizedObject()
     private val ownersByRoom = mutableMapOf<RoomKey, MutableSet<RealtimeRoomLeaseOwner>>()
@@ -93,6 +95,8 @@ internal class SharedRealtimeRoomLeaseRegistry(
         roomsByOwner.keys.toList().flatMap(::releaseOwnerLocked).distinct()
     }
 
+    fun markJoinedByUser(serverId: String, roomId: String) = Unit
+
     fun ownerCount(serverId: String, roomId: String): Int = synchronized(lock) {
         ownersByRoom[RoomKey(serverId, roomId)]?.size ?: 0
     }
@@ -121,3 +125,10 @@ internal class SharedRealtimeRoomLeaseRegistry(
         val roomId: String,
     )
 }
+
+// Red evidence: old behaviour, every final release leaves.
+internal fun realtimeRoomLeaveAllowed(
+    identity: SharedConversationIdentityProvider?,
+    serverId: String,
+    roomId: String,
+): Boolean = true
