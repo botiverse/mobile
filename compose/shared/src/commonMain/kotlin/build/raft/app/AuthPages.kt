@@ -275,20 +275,27 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    // Pre-auth flag: the cached answer renders at once; a fresh one may switch the page within the fetch timeout.
+    // Pre-auth flag: the cached answer renders at once. A fresh answer may switch the page only shortly after it
+    // opened and before the user touched it; otherwise it is just cached for the next login page.
     val apiBaseUrl = remember { sharedStores.apiEnvironmentStore.current().apiBaseUrl }
     var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
+    var loginPageInteracted by remember { mutableStateOf(false) }
     LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
         if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
             val openedAt = TimeSource.Monotonic.markNow()
             val enabled = SlockMobileWebLoginGate.refresh(apiBaseUrl)
-            if (openedAt.elapsedNow().inWholeMilliseconds <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS) {
+            if (
+                shouldApplyFreshLoginPageChoice(
+                    elapsedMs = openedAt.elapsedNow().inWholeMilliseconds,
+                    interacted = loginPageInteracted,
+                )
+            ) {
                 webLoginGateEnabled = enabled
             }
         }
     }
     if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
-        WebLoginScreen(pager, bridge, authDataSource)
+        WebLoginScreen(pager, bridge, authDataSource, onInteraction = { loginPageInteracted = true })
         return
     }
     val linkNavigator =
@@ -309,6 +316,16 @@ private fun LoginScreen() {
         authRuntimeCapabilities.socialAuthProviders(
             applePlatformSupported = slockPlatformSupportsAppleSignIn()
         )
+    }
+    val openedEmail = remember { emailFieldValue.text }
+    val openedPassword = remember { passwordFieldValue.text }
+    LaunchedEffect(emailFieldValue.text, passwordFieldValue.text, pendingLogin, pendingSocialAuth, socialSubmittingProvider) {
+        if (
+            emailFieldValue.text != openedEmail || passwordFieldValue.text != openedPassword ||
+            pendingLogin != null || pendingSocialAuth != null || socialSubmittingProvider != null
+        ) {
+            loginPageInteracted = true
+        }
     }
     val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
@@ -481,6 +498,10 @@ private fun LoginScreen() {
  * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the
  * `mobile_web_login_v0` decision kept on this device is not off (Android, iOS); otherwise email/social login.
  */
+/** A fresh pre-auth answer replaces the visible login page only within the window and before any user input. */
+internal fun shouldApplyFreshLoginPageChoice(elapsedMs: Long, interacted: Boolean): Boolean =
+    !interacted && elapsedMs <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
+
 internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =
     capabilities.webLoginOnly || (capabilities.webLoginSupported && webLoginGateEnabled)
 

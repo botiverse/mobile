@@ -28,4 +28,10 @@ class AuthWebLoginRouteTest {
         store.seedFromAuthPageData(JSONObject().put("pageName", LOGIN_PAGE).put(AUTH_WEB_LOGIN_SUPPORTED_KEY, true))
         assertTrue(store.seedFromAuthPageData(JSONObject().put("pageName", LOGIN_PAGE)).webLoginSupported)
     }
+
+    @Test fun freshAnswerSwitchesThePageOnlyBeforeInputAndWithinTheWindow() {
+        assertTrue(shouldApplyFreshLoginPageChoice(elapsedMs = 500, interacted = false))
+        assertFalse(shouldApplyFreshLoginPageChoice(elapsedMs = 500, interacted = true))
+        assertFalse(shouldApplyFreshLoginPageChoice(elapsedMs = 2_500, interacted = false))
+    }
 }
