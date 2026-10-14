@@ -391,7 +391,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             limit: Int,
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
-        ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, stillCurrent)
+        ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, null, stillCurrent)
     }
 
     /**

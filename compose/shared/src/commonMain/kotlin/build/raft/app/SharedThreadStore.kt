@@ -129,6 +129,7 @@ import build.raft.app.network.sync.windowEnvelopes
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
+import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
@@ -2119,9 +2120,10 @@ internal class SharedThreadDataSource(
         }
 
     /**
-     * Durable last-known first frame for a top-level route (channel / DM), read from the
-     * `sync-core.messages.v2` partition of [context]'s identity. Returns `null` for every
-     * non-positive case (no reader, reply-thread route, unrenderable route, incomplete identity,
+     * Durable last-known first frame for a top-level route (channel / DM) or, task #168 step 3, a
+     * reply-thread route with its typed parent, read from the `sync-core.messages.v2` partition of
+     * [context]'s identity. Returns `null` for every non-positive case (no reader, reply route
+     * without its typed parent or whose stored parent differs, unrenderable route, incomplete identity,
      * identity moved during the disk read, flag off, no baseline, projection produced nothing) so the
      * caller falls through to the ordinary loading shell. The returned payload is a stand-in, not an
      * authority: paging is closed and `durableLastKnown` is set so the first network content slice
@@ -2137,20 +2139,47 @@ internal class SharedThreadDataSource(
     internal suspend fun loadEnteredScopeSnapshotIfCurrent(
         routeIdentity: ThreadRouteIdentity,
         context: ReplyCacheProducerContext,
+        replyParent: ThreadDurableReplyParent? = null,
     ): Boolean {
         val loader = enteredScopeSnapshotLoader ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
-        when (routeIdentity.surfaceKind) {
-            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> Unit
-            else -> return false
-        }
+        val admission = durableScopeAdmission(routeIdentity, replyParent) ?: return false
         val channelId = routeIdentity.timelineChannelId ?: return false
         val partition =
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return false
         if (!isCurrentReplyCacheProvenance(context.provenance)) return false
-        loader.loadOnEnter(partition, channelId) { isCurrentReplyCacheProvenance(context.provenance) }
+        val stillCurrent = { isCurrentReplyCacheProvenance(context.provenance) }
+        when (admission) {
+            DurableScopeAdmission.TopLevel -> loader.loadOnEnter(partition, channelId, stillCurrent)
+            is DurableScopeAdmission.ReplyThread ->
+                loader.loadReplyThreadOnEnter(partition, channelId, admission.parent, stillCurrent)
+        }
         return true
+    }
+
+    /**
+     * Which durable V2 scope family a route may use (task #168 step 3): channel / DM routes the
+     * top-level window; a reply-thread route its `thread` scope, and only with its typed parent
+     * (parent channel + root message). Anything else has no durable scope (`null`).
+     */
+    private fun durableScopeAdmission(
+        routeIdentity: ThreadRouteIdentity,
+        replyParent: ThreadDurableReplyParent?,
+    ): DurableScopeAdmission? =
+        when (routeIdentity.surfaceKind) {
+            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> DurableScopeAdmission.TopLevel
+            KuiklyThreadSurfaceKind.ReplyThread ->
+                replyParent
+                    ?.takeIf { it.parentChannelId != routeIdentity.timelineChannelId }
+                    ?.let(DurableScopeAdmission::ReplyThread)
+            else -> null
+        }
+
+    private sealed interface DurableScopeAdmission {
+        data object TopLevel : DurableScopeAdmission
+
+        data class ReplyThread(val parent: ThreadDurableReplyParent) : DurableScopeAdmission
     }
 
     /**
@@ -2165,13 +2194,11 @@ internal class SharedThreadDataSource(
         direction: ThreadDurablePageDirection,
         anchorSeq: Long,
         rawPage: RawMessagePage,
+        replyParent: ThreadDurableReplyParent? = null,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
-        when (routeIdentity.surfaceKind) {
-            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> Unit
-            else -> return false
-        }
+        val admission = durableScopeAdmission(routeIdentity, replyParent) ?: return false
         val channelId = routeIdentity.timelineChannelId ?: return false
         val partition =
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -2184,6 +2211,7 @@ internal class SharedThreadDataSource(
             anchorSeq = anchorSeq,
             rawMessages = rawPage.messages,
             requestedLimit = rawPage.requestedLimit,
+            replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -2195,18 +2223,18 @@ internal class SharedThreadDataSource(
     ): KuiklyThreadScreenPayload? {
         val reader = durableLastKnownReader ?: return null
         if (!routeIdentity.canRenderTimelineCandidates) return null
-        val allowedScopeKinds =
-            when (routeIdentity.surfaceKind) {
-                KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
-                KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
-                else -> return null
-            }
+        val admission = durableScopeAdmission(routeIdentity, routePayload.durableReplyParentOrNull()) ?: return null
+        val allowedScopeKinds = routeIdentity.durableScopeKinds()
         val channelId = routeIdentity.timelineChannelId ?: return null
         val partition =
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return null
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
-        val frame = reader.read(partition, channelId) ?: return null
+        val frame =
+            when (admission) {
+                DurableScopeAdmission.TopLevel -> reader.read(partition, channelId)
+                is DurableScopeAdmission.ReplyThread -> reader.readReplyThread(partition, channelId, admission.parent)
+            } ?: return null
         // The disk read suspended; a sign-out / account switch in between must not let identity A's
         // rows act under identity B's route. Rendering is ALSO refused by the commit gate in start()
         // (`withCurrentReplyCacheProvenance`), but `seedThreadAuthorProfiles` runs upstream of that
@@ -2279,6 +2307,7 @@ internal class SharedThreadDataSource(
         context: ReplyCacheProducerContext,
         beforeSeq: Long,
         expectedOwnerScopeId: String?,
+        replyParent: ThreadDurableReplyParent? = null,
     ): SharedThreadDurableOlderPage? {
         val channelId = routeIdentity.timelineChannelId
         fun refuse(reason: String): SharedThreadDurableOlderPage? {
@@ -2291,19 +2320,24 @@ internal class SharedThreadDataSource(
         val ownerScopeId = context.provenance.threadPayloadOwnerScopeId
         if (ownerScopeId == null || ownerScopeId != expectedOwnerScopeId) return refuse("owner_changed")
         if (!routeIdentity.canRenderTimelineCandidates) return refuse("not_renderable")
-        val allowedScopeKinds =
-            when (routeIdentity.surfaceKind) {
-                KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
-                KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
-                else -> return refuse("not_top_level")
-            }
+        val admission =
+            durableScopeAdmission(routeIdentity, replyParent)
+                ?: return refuse(
+                    if (routeIdentity.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
+                )
+        val allowedScopeKinds = routeIdentity.durableScopeKinds()
         if (channelId == null) return refuse("no_channel")
         val partition =
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return refuse("no_partition")
         if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
         val pageSize = threadPageSize(partition.serverId)
-        val page = reader.readBefore(partition, channelId, beforeSeq, pageSize) ?: return refuse("no_frame")
+        val page =
+            when (admission) {
+                DurableScopeAdmission.TopLevel -> reader.readBefore(partition, channelId, beforeSeq, pageSize)
+                is DurableScopeAdmission.ReplyThread ->
+                    reader.readReplyThreadBefore(partition, channelId, admission.parent, beforeSeq, pageSize)
+            } ?: return refuse("no_frame")
         if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
         if (page.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
         val messages =
@@ -2322,7 +2356,7 @@ internal class SharedThreadDataSource(
         diagnosticsLogger(
             "thread_durable_older_page threadId=$channelId served=${messages.size} reason=" +
                 (if (page.hasOlderStored) "more_stored" else if (page.hasLoadedOldest) "reached_oldest" else "window_end") +
-                " beforeSeq=$beforeSeq canLoadMoreBefore=$canLoadMoreBefore"
+                " beforeSeq=$beforeSeq canLoadMoreBefore=$canLoadMoreBefore scopeKind=${page.scope.scopeKind}"
         )
         return SharedThreadDurableOlderPage(
             messages = messages,
@@ -6528,8 +6562,9 @@ internal class SharedThreadStore(
         // never touches the visible payload, and closing the screen cancels it.
         producerContext?.let { context ->
             enteredScopeSnapshotJob?.cancel()
+            val replyParent = routeContextPayload.durableReplyParentOrNull()
             enteredScopeSnapshotJob =
-                scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, context) }
+                scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, context, replyParent) }
         }
         delay(SharedThreadFirstFrameDelayMillis)
         if (
@@ -7031,6 +7066,7 @@ internal class SharedThreadStore(
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
+        launchReplyThreadEnteredScopeSnapshotAfterResolution(basePayload, committedPayload, refreshProducerContext)
         launchReplyOriginHydrationIfNeeded(basePayload, staleToken)
         if (!resolvingInitialAccessAtStart && !retryingReadOnlyParentAccess) {
             launchBackgroundHomeContextHydration(basePayload)
@@ -7044,6 +7080,30 @@ internal class SharedThreadStore(
                     !basePayload.needsReplyThreadStreamResolution(),
             launchMembersHydration = nextPayload.hasRenderableThreadContent()
         )
+    }
+
+    /**
+     * Offline cache write entry for a reply thread opened before its stream was known (task #168
+     * step 3): `start()` could not name the thread scope, so the enter snapshot is requested once the
+     * first canonical refresh committed a payload that resolved it. A route that already had its
+     * stream at `start()` was requested there and is not requested again.
+     */
+    private fun launchReplyThreadEnteredScopeSnapshotAfterResolution(
+        basePayload: KuiklyThreadScreenPayload,
+        committedPayload: KuiklyThreadScreenPayload?,
+        context: ReplyCacheProducerContext,
+    ) {
+        val baseIdentity = basePayload.resolveThreadRouteIdentity()
+        if (baseIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || baseIdentity.timelineChannelId != null) {
+            return
+        }
+        val resolved = committedPayload ?: return
+        val resolvedIdentity = resolved.resolveThreadRouteIdentity()
+        if (resolvedIdentity.timelineChannelId == null) return
+        val replyParent = resolved.durableReplyParentOrNull() ?: basePayload.durableReplyParentOrNull()
+        enteredScopeSnapshotJob?.cancel()
+        enteredScopeSnapshotJob =
+            scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(resolvedIdentity, context, replyParent) }
     }
 
     private fun queueAuxiliaryHydration(
@@ -8615,6 +8675,7 @@ internal class SharedThreadStore(
     ) {
         val durablePage = fetched.durablePage ?: return
         val routeIdentity = routePayload.resolveThreadRouteIdentity()
+        val replyParent = routePayload.durableReplyParentOrNull()
         scope.launch {
             try {
                 dataSource.extendDurableWindowIfCurrent(
@@ -8623,6 +8684,7 @@ internal class SharedThreadStore(
                     direction = direction,
                     anchorSeq = anchorSeq,
                     rawPage = durablePage.rawPage,
+                    replyParent = replyParent,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -8654,6 +8716,7 @@ internal class SharedThreadStore(
                 beforeSeq = beforeSeq,
                 // The stand-in on screen belongs to the owner it was read for; another owner never pages it.
                 expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                replyParent = existing.durableReplyParentOrNull(),
             ) ?: return false
         var applied = false
         reducePayloadPatch { currentPayload ->
@@ -11618,6 +11681,30 @@ private fun KuiklyThreadScreenPayload.isDurableEmptyStandIn(): Boolean =
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     resolveThreadRouteIdentity().timelineChannelId
+
+/**
+ * The typed parent a reply-thread route names (task #168 step 3): its parent channel and root
+ * message, read the same way [resolveThreadRouteIdentity] reads them. `null` for any other surface
+ * or an incomplete reply identity, which has no durable thread scope.
+ */
+internal fun KuiklyThreadScreenPayload.durableReplyParentOrNull(): ThreadDurableReplyParent? {
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return null
+    val rootMessage =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadDurableReplyParent(parentChannelId = parentChannel, rootMessageId = rootMessage)
+}
+
+/** The durable V2 scope kinds a route's surface may be shown from (task #168 step 3 adds `thread`). */
+private fun ThreadRouteIdentity.durableScopeKinds(): Set<String> =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
+        KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
+        KuiklyThreadSurfaceKind.ReplyThread -> setOf("thread")
+        else -> emptySet()
+    }
 
 private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolean =
     matchesResolvedReplyThreadTimeline(

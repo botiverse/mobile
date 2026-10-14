@@ -9,8 +9,9 @@ import kotlinx.serialization.json.JsonArray
  * [ThreadDurableLastKnownReader].
  *
  * Scope is deliberately narrow: only the channel being entered, whole-page replacement, no
- * difference stitching, no reply threads (no V2 writer for them yet). The loader never selects or
- * widens the production canary; a scope the canary currently owns is left to the canary.
+ * difference stitching. Reply threads have their own entry ([loadReplyThreadOnEnter], task #168).
+ * The loader never selects or widens the production canary; a scope the canary currently owns is
+ * left to the canary.
  *
  * `stillCurrent` is re-read after the network round trip and before the write, so an identity
  * change while the request was in flight cannot land identity A's page under identity B's key.
@@ -22,7 +23,31 @@ internal fun interface ThreadEnteredScopeSnapshotLoader {
         channelId: SyncScopeId,
         stillCurrent: () -> Boolean,
     )
+
+    /**
+     * Task #168 step 3: the reply-thread twin of [loadOnEnter]. Same admission (flag, one in flight
+     * per scope, partition generation captured before the fetch, `stillCurrent` re-read under the
+     * scope writer), but the scope is the `thread` scope [threadChannelId] under [replyParent], and
+     * the server must confirm that parent before anything is written. Implementations that do not
+     * persist reply threads write nothing.
+     */
+    suspend fun loadReplyThreadOnEnter(
+        partition: DurablePartitionKey,
+        threadChannelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent,
+        stillCurrent: () -> Boolean,
+    ) = Unit
 }
+
+/**
+ * The typed parent of a reply thread as the route knows it (task #168 step 3): the top-level channel
+ * the root message lives in and the root message itself. A `thread` scope is read or written only
+ * when its stored cursor names exactly this parent.
+ */
+internal data class ThreadDurableReplyParent(
+    val parentChannelId: SyncScopeId,
+    val rootMessageId: String,
+)
 
 /** Which edge of the stored window a paging page would extend. */
 internal enum class ThreadDurablePageDirection(val wireName: String) {
@@ -47,6 +72,11 @@ internal enum class ThreadDurablePageDirection(val wireName: String) {
  * Every non-positive case writes nothing and logs one line.
  */
 internal fun interface ThreadDurablePageExtender {
+    /**
+     * [replyParent] selects the scope family explicitly: `null` = a top-level channel / DM window;
+     * non-null = the reply thread [channelId] whose stored cursor must name exactly that parent
+     * (task #168 step 3). Never both.
+     */
     suspend fun extendWithAdjacentPage(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
@@ -54,6 +84,7 @@ internal fun interface ThreadDurablePageExtender {
         anchorSeq: Long,
         rawMessages: JsonArray,
         requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
         stillCurrent: () -> Boolean,
     )
 }

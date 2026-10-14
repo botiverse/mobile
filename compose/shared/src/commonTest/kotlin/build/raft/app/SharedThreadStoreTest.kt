@@ -148,6 +148,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
 import build.raft.app.network.sync.ThreadDurablePageExtender
+import build.raft.app.network.sync.ThreadDurableReplyParent
+import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.DurablePartitionKey
@@ -14705,7 +14707,8 @@ class SharedThreadStoreTest {
         assertTrue(extender.calls.isEmpty(), extender.calls.toString())
         scope.cancel()
 
-        // Admission: a reply-thread route is not a V2 top-level window even with a raw page.
+        // Admission: a reply-thread route without its typed parent is not admitted even with a raw
+        // page (with its parent it is offered as a thread scope: SharedThreadStoreReplyThreadDurableTest).
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
@@ -14740,6 +14743,80 @@ class SharedThreadStoreTest {
         assertEquals(1, extender.calls.size)
     }
 
+    @Test
+    fun replyRouteOpenedBeforeItsStreamIsKnownRequestsTheThreadSnapshotOnceResolved() = runBlocking {
+        // Task #168 step 3: `start()` cannot name the thread scope of an unresolved reply route; the
+        // enter snapshot is requested once the first refresh resolved the stream.
+        suspend fun replyLoadsFor(route: KuiklyThreadScreenPayload): List<Pair<String, ThreadDurableReplyParent>> {
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(coroutineContext + scopeJob)
+            val loads = mutableListOf<Pair<String, ThreadDurableReplyParent>>()
+            val loader =
+                object : ThreadEnteredScopeSnapshotLoader {
+                    override suspend fun loadOnEnter(
+                        partition: DurablePartitionKey,
+                        channelId: String,
+                        stillCurrent: () -> Boolean
+                    ) = Unit
+
+                    override suspend fun loadReplyThreadOnEnter(
+                        partition: DurablePartitionKey,
+                        threadChannelId: String,
+                        replyParent: ThreadDurableReplyParent,
+                        stillCurrent: () -> Boolean
+                    ) {
+                        loads += threadChannelId to replyParent
+                    }
+                }
+            val repository =
+                FakeConversationRepository(
+                    threadResult =
+                        DataResult.Content(
+                            threadSnapshot(
+                                threadId = "thread-m1",
+                                conversation =
+                                    conversationSummary("thread-m1").copy(
+                                        kind = ConversationKind.Thread,
+                                        channelId = ChannelId("channel-1"),
+                                        thread =
+                                            ThreadConversation(
+                                                parentChannelId = ChannelId("channel-1"),
+                                                parentMessageId = MessageId("m1"),
+                                                streamChannelId = ChannelId("thread-m1")
+                                            )
+                                    )
+                            )
+                        )
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = FakeThreadApi(),
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                            conversationRepository = repository,
+                            enteredScopeSnapshotLoader = loader
+                        ),
+                    scope = scope
+                )
+            store.accept(SharedThreadIntent.Start(route))
+            withTimeout(5_000L) { while (loads.isEmpty()) yield() }
+            repeat(20) { yield() }
+            scopeJob.cancelAndJoin()
+            return loads.toList()
+        }
+
+        val parent = ThreadDurableReplyParent(parentChannelId = "channel-1", rootMessageId = "m1")
+        val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val unresolvedRoute = resolvedRoute.copy(sourceThreadId = null, streamChannelId = null)
+        assertEquals(null, unresolvedRoute.resolveThreadRouteIdentity().timelineChannelId)
+        assertEquals(listOf("thread-m1" to parent), replyLoadsFor(unresolvedRoute))
+        // Twin: the identical route with its stream already known is requested by start() alone,
+        // exactly once.
+        assertEquals(listOf("thread-m1" to parent), replyLoadsFor(resolvedRoute))
+    }
+
     private class RecordingDurablePageExtender : ThreadDurablePageExtender {
         data class Call(
             val partition: DurablePartitionKey,
@@ -14752,6 +14829,7 @@ class SharedThreadStoreTest {
         )
 
         val calls = mutableListOf<Call>()
+        val replyParents = mutableListOf<ThreadDurableReplyParent?>()
 
         override suspend fun extendWithAdjacentPage(
             partition: DurablePartitionKey,
@@ -14760,8 +14838,10 @@ class SharedThreadStoreTest {
             anchorSeq: Long,
             rawMessages: JsonArray,
             requestedLimit: Int,
+            replyParent: ThreadDurableReplyParent?,
             stillCurrent: () -> Boolean
         ) {
+            replyParents += replyParent
             calls +=
                 Call(
                     partition = partition,

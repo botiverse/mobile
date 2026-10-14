@@ -92,6 +92,12 @@ interface CanonicalMessageV2Store {
      * [SyncScopeKey] it may restore. Empty means "no baseline", never "unknown".
      */
     suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> = emptyList()
+
+    /**
+     * The committed cursor of [scope] alone, without decoding its facts (task #168 step 3: a reply
+     * thread page needs its stored parent before it can be converted). `null` = no baseline.
+     */
+    suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = restore(scope).cursor
 }
 
 data class CanonicalMessageV2StoreWriteResult(
@@ -248,6 +254,12 @@ class CanonicalMessageV2GenerationEngine(
     /** Pass-through of [CanonicalMessageV2Store.baselinedScopeKinds]; reads only, no coordinator effect. */
     suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
         store.baselinedScopeKinds(partition, scopeId)
+
+    /** Pass-through of [CanonicalMessageV2Store.readCursor]; reads only, no coordinator effect. */
+    suspend fun storedCursor(scope: SyncScopeKey): PersistedCursor? {
+        requireV2Scope(scope)
+        return store.readCursor(scope)
+    }
 
     private suspend fun <T> withPartitionMutation(
         partition: DurablePartitionKey,
@@ -416,7 +428,18 @@ internal class SqlDelightCanonicalMessageV2Store(
             requireEnvelopeMatchesScope(scope, envelope)
             envelope
         }
-        val cursor = database.queries.selectSyncCursor(
+        val cursor = selectCursor(scope)
+        if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope)
+        return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor)
+    }
+
+    override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? {
+        requireV2Scope(scope)
+        return selectCursor(scope)
+    }
+
+    private fun selectCursor(scope: SyncScopeKey): PersistedCursor? =
+        database.queries.selectSyncCursor(
             environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
@@ -436,9 +459,6 @@ internal class SqlDelightCanonicalMessageV2Store(
                 rootMessageId = it.rootMessageId,
             )
         }
-        if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope)
-        return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor)
-    }
 
     override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> {
         requireV2Scope(scope)
