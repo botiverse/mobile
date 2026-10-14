@@ -62,6 +62,11 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
     private val canary: CanonicalMessageV2ProductionCanary,
     private val authStore: SlockAuthSessionStore,
     networkClient: SlockNetworkClient,
+    /**
+     * Task #168: whether [RealtimeGrantRecord] is still the current grant of its slot. The snapshot loads in
+     * the background, after the frame was displayed; one whose grant was revoked meanwhile is not committed.
+     */
+    private val isGrantCurrent: suspend (RealtimeGrantRecord) -> Boolean,
     private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2OwnerGateway {
     private val fetcher = CanonicalMessageV2RestSnapshotFetcher(networkClient, logger)
@@ -96,6 +101,9 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
         )
         if (fetched is CanonicalMessageV2SnapshotLoadResult.Loaded && !authMatches(grant)) {
             return unavailable("canonical_v2_auth_changed")
+        }
+        if (fetched is CanonicalMessageV2SnapshotLoadResult.Loaded && !isGrantCurrent(grant)) {
+            return unavailable("canonical_v2_grant_revoked")
         }
         return fetched
     }

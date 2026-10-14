@@ -211,8 +211,11 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             canary = owned.canary,
             authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
             networkClient = owned.network,
+            isGrantCurrent = { true },
         )
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        owned.canary.awaitSnapshotJobs()
         val canaryCursor = owned.store.cursors.getValue(scope)
         owned.latest(page, limit = 200)
         assertEquals(canaryCursor, owned.store.cursors.getValue(scope))
@@ -237,8 +240,11 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             canary = h.canary,
             authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
             networkClient = h.network,
+            isGrantCurrent = { true },
         )
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        h.canary.awaitSnapshotJobs()
         val canaryScope = SyncScopeKey(partition, "channel-1", "channel")
         val canaryCursor = h.store.cursors.getValue(canaryScope)
         // The canary's window edge is seq 7 (its snapshot page); offer an exactly adjacent page.

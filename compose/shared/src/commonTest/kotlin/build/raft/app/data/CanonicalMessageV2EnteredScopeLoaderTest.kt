@@ -126,8 +126,11 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
             canary = h.canary,
             authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
             networkClient = h.network,
+            isGrantCurrent = { true },
         )
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
+        h.canary.awaitSnapshotJobs()
         assertEquals(1, h.store.snapshots.size)
         val pathsAfterCanary = h.network.paths.size
 

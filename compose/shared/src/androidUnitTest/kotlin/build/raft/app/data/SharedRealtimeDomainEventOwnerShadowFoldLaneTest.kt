@@ -472,6 +472,41 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
+    fun pendingV2CanaryProjectsExactlyOnceAfterCurrentGrantCheck() = runBlocking {
+        var currentGrantChecks = 0
+        var legacyRunnerChecks = 0
+        val projected = mutableListOf<RealtimeEvent>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                currentGrantChecks += 1
+                block()
+                true
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                legacyRunnerChecks += 1
+                block(CurrentMessageCommitContext(scopeKey.partition))
+                true
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, _, _ -> CanonicalMessageV2CanaryOutcome.Pending },
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { _, event -> projected += event },
+            ),
+        )
+
+        val event = messageNewWithCanonical("v2-pending", 1L)
+
+        // Task #168: Pending = the write belongs to a background snapshot. Displayed now, the same way.
+        assertTrue(owner.accept(testGrant(), event, source = "test"))
+        assertEquals(1, currentGrantChecks)
+        assertEquals(0, legacyRunnerChecks)
+        assertEquals<List<RealtimeEvent>>(listOf(event), projected)
+    }
+
+    @Test
     fun everyEntryHandsTheFramesTransportEpochToTheDurableCanary() = runBlocking {
         val seen = mutableListOf<Long?>()
         val owner = SharedRealtimeDomainEventOwner(
