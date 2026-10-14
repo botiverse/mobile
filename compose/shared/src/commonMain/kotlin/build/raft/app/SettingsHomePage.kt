@@ -10592,7 +10592,7 @@ private fun SettingsPushStatusCard(
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_notifications_background_realtime_title),
-                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail),
+                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, slockPlatformProductName()),
                 checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                 enabled = !foregroundKeepAliveBusy,
                 onCheckedChange = onForegroundKeepAlivePreferenceChange
@@ -10669,7 +10669,7 @@ private fun settingsNotificationPermissionDetail(
         SettingsNotificationPermissionCopy.Allowed ->
             stringResource(MR.strings.settings_notifications_permission_allowed_detail)
         SettingsNotificationPermissionCopy.Needed ->
-            stringResource(MR.strings.settings_notifications_permission_open_settings)
+            stringResource(MR.strings.settings_notifications_permission_open_settings, slockPlatformProductName())
         SettingsNotificationPermissionCopy.Unavailable ->
             stringResource(MR.strings.settings_notifications_permission_unavailable_detail)
     }
@@ -16428,11 +16428,11 @@ internal data class SettingsAboutPayloadCopy(
     val buildUnknown: String = "Build unknown",
     val actions: String = "Actions",
     val checkUpdate: String = "Check for update",
-    val checkUpdateDetail: String = "Checks for a newer Android build and opens the installer when available.",
+    val checkUpdateDetail: String = "Checks for a newer mobile build and opens the installer when available.",
     val checking: String = "Checking",
     val check: String = "Check",
     val licenses: String = "Open Source Licenses",
-    val licensesDetail: String = "Review third-party libraries included in the Android app package.",
+    val licensesDetail: String = "Review third-party libraries included in the app package.",
     val open: String = "Open",
     val copyEnvironment: String = "Copy environment info",
     val copyEnvironmentDetail: String = "Copy the same sanitized environment used for diagnostics and feedback.",
@@ -16457,11 +16457,11 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         buildUnknown = stringResource(MR.strings.settings_about_state_build_unknown),
         actions = stringResource(MR.strings.settings_about_section_actions),
         checkUpdate = stringResource(MR.strings.settings_about_action_check_update),
-        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail),
+        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail, slockPlatformProductName()),
         checking = stringResource(MR.strings.settings_about_state_checking),
         check = stringResource(MR.strings.settings_about_action_check),
         licenses = stringResource(MR.strings.settings_open_source_licenses_title),
-        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail),
+        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail, slockPlatformProductName()),
         open = stringResource(MR.strings.settings_state_open),
         copyEnvironment = stringResource(MR.strings.settings_about_action_copy_environment),
         copyEnvironmentDetail = stringResource(MR.strings.settings_about_copy_environment_detail),
@@ -16779,14 +16779,14 @@ private fun SharedSettingsAboutSnapshot.buildSummary(): String =
 internal data class SettingsOpenSourceLicensesPayloadCopy(
     val title: String = "Open Source Licenses",
     val detail: (Int, String) -> String = { count, source -> "$count libraries from $source" },
-    val defaultSource: String = "Android release runtime",
+    val defaultSource: String = "Release runtime",
     val sectionLicenses: String = "Licenses",
     val loading: String = "Loading",
-    val loadingDetail: String = "Loading generated Android package license metadata.",
+    val loadingDetail: String = "Loading generated package license metadata.",
     val wait: String = "Wait",
     val unavailable: String = "Unavailable",
     val emptyTitle: String = "No licenses found",
-    val emptyDetail: String = "The generated Android package license asset did not include any dependencies.",
+    val emptyDetail: String = "The generated package license asset did not include any dependencies.",
     val empty: String = "Empty",
     val libraries: String = "Libraries",
     val numberedLibraries: (Int) -> String = { section -> "Libraries $section" },
@@ -16805,14 +16805,14 @@ private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesP
     return SettingsOpenSourceLicensesPayloadCopy(
         title = stringResource(MR.strings.settings_open_source_licenses_title),
         detail = { count, source -> detailTemplate.replaceLocalizedFormatArgs(count, source) },
-        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source),
+        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source, slockPlatformProductName()),
         sectionLicenses = stringResource(MR.strings.settings_licenses_title),
         loading = stringResource(MR.strings.settings_open_source_licenses_state_loading),
-        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail),
+        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail, slockPlatformProductName()),
         wait = stringResource(MR.strings.settings_open_source_licenses_state_wait),
         unavailable = stringResource(MR.strings.settings_open_source_licenses_action_unavailable),
         emptyTitle = stringResource(MR.strings.settings_open_source_licenses_empty_title),
-        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail),
+        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail, slockPlatformProductName()),
         empty = stringResource(MR.strings.settings_open_source_licenses_state_empty),
         libraries = stringResource(MR.strings.settings_open_source_licenses_section_libraries),
         numberedLibraries = { section -> numberedLibrariesTemplate.replaceLocalizedFormatArgs(section) },

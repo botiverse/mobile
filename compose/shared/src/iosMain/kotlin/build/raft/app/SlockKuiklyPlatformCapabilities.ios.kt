@@ -67,6 +67,8 @@ internal actual fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolea
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
+internal actual fun slockPlatformProductName(): String = "iOS"
+
 // The current semantic metadata deliberately avoids Kuikly's legacy inline-code
 // marker, so iOS receives the same ordinary wrapping background span as Android.
 // TextKit wraps that span without shared U+200B compatibility characters.

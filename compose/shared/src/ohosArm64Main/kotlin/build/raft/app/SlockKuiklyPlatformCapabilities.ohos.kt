@@ -54,6 +54,8 @@ internal actual fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolea
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 
+internal actual fun slockPlatformProductName(): String = "HarmonyOS"
+
 // task #401 A-bridge: core-render-ohos has no slockInlineCode chip yet, so
 // wrap long code runs via markdown-layer zero-width spaces. Threshold matches
 // the Android render's char-level atomization (runs longer than 16 chars).

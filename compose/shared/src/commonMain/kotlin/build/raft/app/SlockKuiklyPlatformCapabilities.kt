@@ -87,6 +87,13 @@ internal expect fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolea
 // the launch payload.)
 internal expect fun slockReleaseNotesAppSlug(): String
 
+/**
+ * Product name used in shared settings copy that describes the installed host.
+ * The copy stays localized in common resources while the platform name is
+ * supplied by the concrete Android, iOS, or HarmonyOS host.
+ */
+internal expect fun slockPlatformProductName(): String
+
 // task #401 temporary char-wrap bridge. The markdown layer interleaves U+200B
 // break opportunities into long inline-code runs only on platforms whose
 // ordinary background spans do not already wrap at character boundaries.
