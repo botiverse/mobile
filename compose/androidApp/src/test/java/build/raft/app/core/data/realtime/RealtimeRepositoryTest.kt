@@ -636,6 +636,38 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun eachSocketsConnectedListenersRunBeforeAnyOfItsFramesReachRawListeners() {
+        // Task #168: the Android host writes the new socket's transport epoch in the connected listener and
+        // stamps it on frames fanned out from raw listeners; this order is what keeps a new socket's frame
+        // from carrying the previous socket's epoch.
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val order = mutableListOf<String>()
+        client.observeConnected { order += "connected" }
+        client.observeRawEvents { _, eventName, _ -> order += "raw:$eventName" }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Connect, null)
+        transport.receive(RealtimeSocketEvents.MessageNew, mapOf("serverId" to "server-1"))
+        transport.receive(RealtimeSocketEvents.Connect, null)
+        transport.receive(RealtimeSocketEvents.MessageNew, mapOf("serverId" to "server-1"))
+
+        assertEquals(
+            listOf(
+                "connected",
+                "raw:${RealtimeSocketEvents.MessageNew}",
+                "connected",
+                "raw:${RealtimeSocketEvents.MessageNew}",
+            ),
+            order,
+        )
+    }
+
+    @Test
     fun clientDoesNotFanOutStableHeartbeatToRawListeners() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
