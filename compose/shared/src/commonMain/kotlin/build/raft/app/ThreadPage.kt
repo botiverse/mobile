@@ -1777,6 +1777,12 @@ internal data class KuiklyThreadScreenPayload(
      */
     val durableLastKnown: Boolean = false,
     /**
+     * Task #168: the durable stand-in shows the stored window down to the conversation's first
+     * message (the window's cursor has loaded the oldest and nothing older is stored), so the top of
+     * the list is the real beginning, not an offline cut. Meaningful only with [durableLastKnown].
+     */
+    val durableReachedOldest: Boolean = false,
+    /**
      * True while the last main timeline load (not a page of older/newer messages) failed transiently —
      * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery
      * never mistakes a paging failure or a permission answer for it (LiBai #2782).
@@ -21621,20 +21627,23 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
-        durableLastKnown = timelineSlice.durableLastKnown
+        durableLastKnown = timelineSlice.durableLastKnown,
+        durableReachedOldest = timelineSlice.durableReachedOldest
     )
 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
     secondaryLabel: String? = null,
-    durableLastKnown: Boolean = false
+    durableLastKnown: Boolean = false,
+    durableReachedOldest: Boolean = false
 ): ThreadHistoryStatusSpec =
     when {
         // Task #168 step 2b: a stand-in whose stored window still has older pages pages like any frame.
         canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
         // Task #1125: an offline stand-in frame with paging closed is NOT the beginning of the
-        // conversation. Say what is true instead of claiming a boundary the frame cannot prove.
-        durableLastKnown -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
+        // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
+        // unless the stored window itself reaches the start (task #168): then it is the beginning.
+        durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
         else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
     }
 
