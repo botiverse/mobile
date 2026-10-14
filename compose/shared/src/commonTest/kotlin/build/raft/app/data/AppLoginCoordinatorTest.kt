@@ -48,6 +48,28 @@ class AppLoginCoordinatorTest {
         assertNotNull(coordinator.start("generation", verifier, challenge, "raft-alpha://login/callback"))
         assertEquals("app_shell", coordinator.complete("raft-alpha://login/callback", "request-1", "code", ""))
     }
+    @Test fun everyExitBranchLogsItsReason() = runBlocking {
+        val logs = mutableListOf<String>()
+        var available = false
+        val runtime = Runtime()
+        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { if (available) runtime else null }, { 0 }, logs::add)
+        available = true
+        coordinator.start("generation", verifier, challenge, uri)
+        available = false
+        assertEquals("retry", coordinator.complete(uri, "request-1", "code", ""))
+        available = true
+        runtime.environment = "staging"
+        assertEquals("login_error", coordinator.complete(uri, "request-1", "code", ""))
+        assertEquals("ignored", coordinator.complete(uri, "request-1", "code", ""))
+        assertEquals(
+            listOf(
+                "app_login_complete result=retry reason=runtime_unavailable",
+                "app_login_complete result=login_error reason=environment_changed",
+                "app_login_complete result=ignored reason=no_pending",
+            ),
+            logs,
+        )
+    }
     @Test fun expiredOrEnvironmentChangedRequestsNeverExchange() = runBlocking {
         for (changed in listOf(false, true)) {
             val runtime = Runtime()

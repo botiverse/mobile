@@ -28,6 +28,7 @@ internal class AppLoginCoordinator(
     private val store: SlockKeyValueStore,
     private val runtime: () -> AppLoginRuntime?,
     private val now: () -> Long = ::defaultNowMillis,
+    private val logger: (String) -> Unit = {},
 ) {
     private val mutex = Mutex()
     private val pkce = Regex("^[A-Za-z0-9_-]{43,128}$")
@@ -57,19 +58,36 @@ internal class AppLoginCoordinator(
     }
 
     suspend fun complete(returnUri: String, requestId: String, code: String, error: String): String = mutex.withLock {
-        val pending = pending() ?: return@withLock "ignored"
-        if (pending.returnUri != returnUri || pending.requestId != requestId) return@withLock "ignored"
-        val active = runtime() ?: return@withLock "retry"
-        if (active.environment != pending.environment || now() - pending.startedAt !in -60_000L until 600_000L ||
-            !pkce.matches(pending.verifier)) {
+        // One diagnostics line per exit: on a device the branches are otherwise indistinguishable.
+        fun exit(result: String, reason: String): String {
+            logger("app_login_complete result=$result reason=$reason")
+            return result
+        }
+        val pending = pending() ?: return@withLock exit("ignored", "no_pending")
+        if (pending.returnUri != returnUri) return@withLock exit("ignored", "return_uri_mismatch")
+        if (pending.requestId != requestId) return@withLock exit("ignored", "request_id_mismatch")
+        val active = runtime() ?: return@withLock exit("retry", "runtime_unavailable")
+        val age = now() - pending.startedAt
+        val refusal =
+            when {
+                active.environment != pending.environment -> "environment_changed"
+                age !in -60_000L until 600_000L -> "expired ageMs=$age"
+                !pkce.matches(pending.verifier) -> "verifier_invalid"
+                else -> null
+            }
+        if (refusal != null) {
             clear()
-            return@withLock "login_error"
+            return@withLock exit("login_error", refusal)
         }
         // Remove before exchanging: duplicate callbacks and process restarts cannot reuse a consumed code.
         clear()
-        if (error.isNotBlank() || code.isBlank()) return@withLock "login_error"
-        if (runCatchingPreservingCancellation { active.complete(code, pending.verifier) }.getOrDefault(false)) "app_shell"
-        else "login_error"
+        if (error.isNotBlank()) return@withLock exit("login_error", "callback_error")
+        if (code.isBlank()) return@withLock exit("login_error", "callback_no_code")
+        val exchanged =
+            runCatchingPreservingCancellation { active.complete(code, pending.verifier) }
+                .onFailure { logger("app_login_complete exchange_threw type=${it::class.simpleName}") }
+                .getOrDefault(false)
+        if (exchanged) exit("app_shell", "exchanged") else exit("login_error", "exchange_failed")
     }
 }
 
@@ -79,11 +97,41 @@ internal object SlockAppLogin {
             SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
             runtime = {
                 SlockSharedStoreRegistry.currentOrNull()?.let { provider ->
-                    createAppLoginRuntime(provider.apiEnvironmentStore, provider.authStore, provider.avatarCacheRuntime)
-                }
+                    createAppLoginRuntime(
+                        provider.apiEnvironmentStore,
+                        provider.authStore,
+                        provider.avatarCacheRuntime,
+                        diagnosticsLogger = ::logAppLogin,
+                    )
+                } ?: appScopeAppLoginRuntime()
             },
+            logger = ::logAppLogin,
         )
     }
+
+    private fun logAppLogin(message: String) = slockLogInfo("SlockAppLogin", message)
+
+    /**
+     * No shared store provider yet: the browser callback can arrive before the app shell is (re)created
+     * (Android hands it to MainActivity in the browser's task, which restarts the shell). Exchange with the
+     * same app-scope auth and environment storage the provider reads, as the Android social OAuth callback
+     * already does; the login page picks the stored session up when it comes back.
+     */
+    private fun appScopeAppLoginRuntime(): AppLoginRuntime? =
+        runCatching {
+            val environments =
+                SharedApiEnvironmentStore(
+                    SlockSharedKeyValueStoreProvider.create(SharedApiEnvironmentStore.Namespace, "API environment").store
+                )
+            val sessions =
+                KeyValueAuthSessionStore(
+                    SlockSharedAuthSessionKeyValueStoreProvider.create().store,
+                    diagnosticsLogger = ::logAppLogin,
+                )
+            logAppLogin("app_login_runtime source=app_scope")
+            createAppLoginRuntime(environments, sessions, diagnosticsLogger = ::logAppLogin)
+        }.onFailure { logAppLogin("app_login_app_scope_runtime_failed type=${it::class.simpleName}") }
+            .getOrNull()
     suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String) =
         coordinator.start(generation, verifier, challenge, returnUri)
     suspend fun cancel(generation: String) = coordinator.cancel(generation)
@@ -98,20 +146,37 @@ internal fun createAppLoginRuntime(
     environmentStore: SharedApiEnvironmentStore,
     authStore: SlockAuthSessionStore,
     avatarCacheRuntime: SlockAvatarCacheRuntime? = null,
-    transportFactory: (String) -> SlockAuthTransport = { SharedSlockAuthTransport(baseUrl = it) },
+    diagnosticsLogger: (String) -> Unit = {},
+    transportFactory: (String) -> SlockAuthTransport = {
+        SharedSlockAuthTransport(baseUrl = it, warningLogger = diagnosticsLogger)
+    },
 ): AppLoginRuntime {
     val snapshot = environmentStore.current()
     val identity = appLoginEnvironmentIdentity(snapshot)
     // Capture the actual endpoints, not just "custom". Hydration must use the
     // same API as the exchange even if the environment changes while suspended.
-    val auth = SharedAuthDataSource(transportFactory(snapshot.apiBaseUrl), authStore)
+    val auth = SharedAuthDataSource(transportFactory(snapshot.apiBaseUrl), authStore, diagnosticsLogger)
         .withAvatarCacheRuntime(avatarCacheRuntime, UnsupportedSlockAvatarNativeCache) { snapshot.apiBaseUrl }
     fun isCurrent() = appLoginEnvironmentIdentity(environmentStore.current()) == identity
     return object : AppLoginRuntime {
         override val environment = identity
         override suspend fun start(returnUri: String, challenge: String): SharedAuthResult<AuthAppLoginStartResponse> =
             if (isCurrent()) auth.startAppLogin(returnUri, challenge) else SharedAuthResult.Unauthenticated
-        override suspend fun complete(code: String, verifier: String): Boolean =
-            isCurrent() && auth.completeAppLogin(code, verifier, ::isCurrent) is SharedAuthResult.Success
+        override suspend fun complete(code: String, verifier: String): Boolean {
+            if (!isCurrent()) {
+                diagnosticsLogger("app_login_exchange result=skipped reason=environment_changed")
+                return false
+            }
+            val result = auth.completeAppLogin(code, verifier, ::isCurrent)
+            diagnosticsLogger(
+                "app_login_exchange result=" +
+                    when (result) {
+                        is SharedAuthResult.Success -> "success"
+                        is SharedAuthResult.Failure -> "failure code=${result.code}"
+                        SharedAuthResult.Unauthenticated -> "unauthenticated"
+                    }
+            )
+            return result is SharedAuthResult.Success
+        }
     }
 }

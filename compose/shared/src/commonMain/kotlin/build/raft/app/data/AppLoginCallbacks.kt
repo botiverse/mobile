@@ -95,16 +95,19 @@ object SlockAppLoginBridge {
             return false
         }
         scope.launch {
-            repeat(APP_LOGIN_CALLBACK_RETRIES) {
+            repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
                 val result =
                     runCatchingPreservingCancellation { SlockAppLogin.complete(returnUri, requestId, code, error) }
+                        .onFailure { slockLogInfo("SlockAppLogin", "app_login_callback_threw type=${it::class.simpleName}") }
                         .getOrDefault("login_error")
                 if (result != "retry") {
+                    slockLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
                     if (result != "ignored") SlockWebLoginCompletion.publish(result)
                     return@launch
                 }
                 delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
             }
+            slockLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
             SlockWebLoginCompletion.publish("login_error")
         }
         return true
