@@ -1,49 +1,96 @@
 package build.raft.app.data
 
-/**
- * Android/iOS browser web login (the HarmonyOS login flow) instead of the email/social login page.
- * Default ON; the server turns it off with an explicit decision (artin 2026-10-14).
- */
-const val MOBILE_WEB_LOGIN_FEATURE_FLAG_KEY: String = "mobile_web_login_v0"
-
-/** Server evaluation reason for a key that has no flag row at all: not a decision. */
-private const val MISSING_FLAG_REASON = "missing_flag"
-
-private const val WEB_LOGIN_DECISION_KEY = "webLoginDecision"
-private const val WEB_LOGIN_DECISION_ON = "on"
-private const val WEB_LOGIN_DECISION_OFF = "off"
+import build.raft.app.network.SlockHttpExecutor
+import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.createPlatformSlockHttpExecutor
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * The login page renders before sign-in, and feature flags are only evaluated for a signed-in account
- * (`/api/feature-flags` requires auth). So the last explicit decision for [MOBILE_WEB_LOGIN_FEATURE_FLAG_KEY]
- * is kept per device and survives logout: once the server turns the flag off, every device that has been
- * online since shows the email/social login on its next login page. A device with no decision (fresh install,
- * the flag row missing) uses web login.
+ * Android/iOS show the browser web login (the HarmonyOS login flow) by default. Turning this pre-auth flag
+ * ON brings back the email/social login page. It is inverted on purpose: the public flag endpoint answers
+ * `false` for unknown, unmarked and disabled keys alike, so a pre-auth flag must be "off by default, server
+ * turns on" (slock spec v3 "登录前可评估的 Feature Flag").
  */
-class MobileWebLoginGate(private val store: SlockKeyValueStore) {
-    fun isEnabled(): Boolean = store.getString(WEB_LOGIN_DECISION_KEY) != WEB_LOGIN_DECISION_OFF
+const val MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY: String = "mobile_legacy_login_v0"
 
-    /** One online evaluation of the flag. `missing_flag` is no decision and clears a stored one. */
-    fun record(enabled: Boolean, reason: String?) {
-        val value =
-            when {
-                reason == MISSING_FLAG_REASON -> null
-                enabled -> WEB_LOGIN_DECISION_ON
-                else -> WEB_LOGIN_DECISION_OFF
-            }
-        store.putString(WEB_LOGIN_DECISION_KEY, value)
+private const val LEGACY_LOGIN_DECISION_PREFIX = "legacyLogin:"
+private const val LEGACY_LOGIN_ON = "on"
+private const val LEGACY_LOGIN_OFF = "off"
+
+/** Budget for one fetch; a later answer is still cached for the next login page. */
+private const val MOBILE_LEGACY_LOGIN_FETCH_TIMEOUT_MS = 10_000L
+
+/** A fresh answer may switch the visible login page only this soon after it opened, never mid-typing. */
+internal const val MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS = 2_000L
+
+/**
+ * The login page renders before sign-in, so the decision comes from `GET /api/public/feature-flags`
+ * (no auth). The last answer is cached per API base URL (official and self-hosted servers decide separately)
+ * and used when the request fails, times out or 404s (server without the endpoint). With no answer ever,
+ * web login is used.
+ */
+class MobileWebLoginGate internal constructor(
+    private val store: SlockKeyValueStore,
+    private val fetchLegacyLogin: suspend (apiBaseUrl: String) -> Boolean?,
+) {
+    fun isEnabled(apiBaseUrl: String): Boolean = store.getString(decisionKey(apiBaseUrl)) != LEGACY_LOGIN_ON
+
+    /** Fetches a fresh answer, caches it, and returns whether web login is enabled. */
+    suspend fun refresh(apiBaseUrl: String): Boolean {
+        val legacy = fetchLegacyLogin(apiBaseUrl) ?: return isEnabled(apiBaseUrl)
+        store.putString(decisionKey(apiBaseUrl), if (legacy) LEGACY_LOGIN_ON else LEGACY_LOGIN_OFF)
+        return !legacy
     }
+
+    private fun decisionKey(apiBaseUrl: String) = LEGACY_LOGIN_DECISION_PREFIX + apiBaseUrl.trimEnd('/')
+}
+
+/** `{"flags":{"<key>":true|false}}` → the value; anything else (other status, shape or key missing) → null. */
+internal fun parsePublicFeatureFlag(code: Int, bodyText: String?, key: String): Boolean? {
+    if (code !in 200..299 || bodyText.isNullOrBlank()) return null
+    return runCatching {
+        (Json.parseToJsonElement(bodyText).jsonObject["flags"] as? JsonObject)
+            ?.get(key)
+            ?.jsonPrimitive
+            ?.booleanOrNull
+    }.getOrNull()
+}
+
+internal suspend fun fetchPublicLegacyLoginFlag(executor: SlockHttpExecutor, apiBaseUrl: String): Boolean? {
+    if (apiBaseUrl.isBlank()) return null
+    val response =
+        runCatchingPreservingCancellation {
+            executor.execute(
+                priority = SlockRequestPriority.Foreground,
+                url = "${apiBaseUrl.trimEnd('/')}/public/feature-flags" +
+                    "?keys=$MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY&platform=mobile",
+                method = "GET",
+                headers = emptyMap(),
+                bodyText = null,
+                jsonBody = false,
+            )
+        }.getOrNull() ?: return null
+    return parsePublicFeatureFlag(response.code, response.bodyText, MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY)
 }
 
 /** Process-wide gate over the app-scope store that also holds the pending browser login. */
 object SlockMobileWebLoginGate {
     private val gate by lazy {
-        MobileWebLoginGate(SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store)
+        val executor = createPlatformSlockHttpExecutor {}
+        MobileWebLoginGate(
+            SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
+        ) { apiBaseUrl ->
+            withTimeoutOrNull(MOBILE_LEGACY_LOGIN_FETCH_TIMEOUT_MS) { fetchPublicLegacyLoginFlag(executor, apiBaseUrl) }
+        }
     }
 
-    fun isEnabled(): Boolean = runCatching { gate.isEnabled() }.getOrDefault(true)
+    fun isEnabled(apiBaseUrl: String): Boolean = runCatching { gate.isEnabled(apiBaseUrl) }.getOrDefault(true)
 
-    fun record(enabled: Boolean, reason: String?) {
-        runCatching { gate.record(enabled, reason) }
-    }
+    suspend fun refresh(apiBaseUrl: String): Boolean =
+        runCatchingPreservingCancellation { gate.refresh(apiBaseUrl) }.getOrElse { isEnabled(apiBaseUrl) }
 }

@@ -20,6 +20,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
+import build.raft.app.data.MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
 import build.raft.app.data.SlockMobileWebLoginGate
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
@@ -88,6 +89,7 @@ import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
+import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
 
 const val LOGIN_PAGE = "compose_login"
@@ -273,7 +275,18 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    val webLoginGateEnabled = remember { SlockMobileWebLoginGate.isEnabled() }
+    // Pre-auth flag: the cached answer renders at once; a fresh one may switch the page within the fetch timeout.
+    val apiBaseUrl = remember { sharedStores.apiEnvironmentStore.current().apiBaseUrl }
+    var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
+    LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
+        if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
+            val openedAt = TimeSource.Monotonic.markNow()
+            val enabled = SlockMobileWebLoginGate.refresh(apiBaseUrl)
+            if (openedAt.elapsedNow().inWholeMilliseconds <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS) {
+                webLoginGateEnabled = enabled
+            }
+        }
+    }
     if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
         WebLoginScreen(pager, bridge, authDataSource)
         return

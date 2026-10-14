@@ -2073,10 +2073,6 @@ internal class SlockSharedStoreProvider private constructor(
                                 )
                                 ?.let(::logNetworkKmmRemoteConfig)
                         }
-                        if (key == MOBILE_WEB_LOGIN_FEATURE_FLAG_KEY) {
-                            // Kept per device: the login page renders before any evaluation is possible.
-                            SlockMobileWebLoginGate.record(enabled, reason)
-                        }
                         if (key == MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
                             dohFallbackPolicy.reevaluate("evaluation")
                                 ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
