@@ -13,8 +13,11 @@ private val SlockNetworkRequestLifetimeOrigin = TimeSource.Monotonic.markNow()
  * App-owned classification for lifecycle retirement.
  *
  * Uploads and message sends are process-bound long-running work: a page or Activity visibility
- * edge must not cancel them and turn their server outcome unknown. Other requests keep the
- * existing visibility-scoped retirement contract. This coordinator never replays any class.
+ * edge must not cancel them and turn their server outcome unknown. So are the one-time auth code
+ * exchanges: they run right as the app returns from the browser, i.e. exactly at a visibility edge,
+ * and their code cannot be used twice (Android build 39: cancelled 18-34 ms after it was sent).
+ * Other requests keep the existing visibility-scoped retirement contract. This coordinator never
+ * replays any class.
  */
 internal enum class SlockNetworkMethodClass {
     Read,
@@ -32,6 +35,9 @@ internal fun slockNetworkMethodClass(
         return SlockNetworkMethodClass.Read
     }
     val path = url.substringBefore('?').trimEnd('/')
+    if (normalizedMethod == "POST" && ONE_TIME_AUTH_CODE_EXCHANGE_PATHS.any(path::endsWith)) {
+        return SlockNetworkMethodClass.ProcessMutation
+    }
     return if (
         serverScoped && normalizedMethod == "POST" &&
         (path.endsWith("/api/messages") || path.endsWith("/api/attachments/upload"))
@@ -41,6 +47,10 @@ internal fun slockNetworkMethodClass(
         SlockNetworkMethodClass.Mutation
     }
 }
+
+/** Not server-scoped (no server yet); matched by suffix so a self-hosted API base path works too. */
+private val ONE_TIME_AUTH_CODE_EXCHANGE_PATHS =
+    listOf("/auth/app-login/complete", "/auth/mobile/oauth/complete")
 
 internal fun interface SlockNetworkRequestCancelHandle {
     fun cancel()

@@ -51,6 +51,25 @@ class SlockNetworkRequestLifetimeCoordinatorTest {
     }
 
     @Test
+    fun oneTimeAuthCodeExchangesAreProcessBoundEvenWithoutAServer() {
+        for (url in listOf(
+            "https://api.raft.build/api/auth/app-login/complete",
+            "https://raft.example.com/custom/api/auth/app-login/complete",
+            "https://api.raft.build/api/auth/mobile/oauth/complete",
+        )) {
+            assertEquals(SlockNetworkMethodClass.ProcessMutation, slockNetworkMethodClass("POST", url, serverScoped = false), url)
+        }
+        assertEquals(
+            SlockNetworkMethodClass.Mutation,
+            slockNetworkMethodClass("POST", "https://api.raft.build/api/auth/app-login/start", serverScoped = false),
+        )
+        assertEquals(
+            SlockNetworkMethodClass.Read,
+            slockNetworkMethodClass("GET", "https://api.raft.build/api/auth/app-login/complete", serverScoped = false),
+        )
+    }
+
+    @Test
     fun lifecycleRotationCompletesOldAwaitImmediatelyAndFencesLateSuccess() = runBlocking {
         var now = 1_000L
         val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { now })
