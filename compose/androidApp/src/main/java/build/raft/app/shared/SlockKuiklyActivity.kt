@@ -800,6 +800,7 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        requestHighestSupportedDisplayMode()
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         pendingAttachmentSaveAs =
@@ -832,6 +833,40 @@ open class SlockKuiklyActivity :
             attachKuiklyHostAfterHoldFirstDraw()
         } else {
             attachKuiklyHost()
+        }
+    }
+
+    /**
+     * High-refresh-rate support: adaptive-refresh devices (120Hz panels) cap
+     * third-party windows at 60Hz unless the window explicitly requests a
+     * display mode. Pick the highest-refresh [Display.Mode] that keeps the
+     * current resolution so SurfaceFlinger is allowed to run this window at
+     * 90/120Hz. Kuikly's `KRVsyncModule` follows `Choreographer`, which then
+     * ticks at the unlocked rate. No-op below API 23 or when the panel exposes
+     * a single mode.
+     */
+    private fun requestHighestSupportedDisplayMode() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val currentDisplay =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION") windowManager.defaultDisplay
+                }
+                        ?: return
+        val currentMode = currentDisplay.mode ?: return
+        val bestMode =
+                currentDisplay.supportedModes
+                        ?.filter {
+                            it.physicalWidth == currentMode.physicalWidth &&
+                                    it.physicalHeight == currentMode.physicalHeight
+                        }
+                        ?.maxByOrNull { it.refreshRate }
+                        ?: return
+        if (bestMode.modeId != currentMode.modeId && bestMode.refreshRate > currentMode.refreshRate) {
+            val attrs = window.attributes
+            attrs.preferredDisplayModeId = bestMode.modeId
+            window.attributes = attrs
         }
     }
 
