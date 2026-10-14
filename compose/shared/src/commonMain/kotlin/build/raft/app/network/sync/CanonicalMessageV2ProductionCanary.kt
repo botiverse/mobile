@@ -726,8 +726,8 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 
     /**
-     * Task #168: a writer outside the canary that does not register a baseline (adjacent page, gap catch-up,
-     * an enter that could not register) has just committed into [scope]. MUST be called inside
+     * Task #168: a writer outside the canary that moves the newest edge without a baseline (newer adjacent
+     * page, gap catch-up, an enter that could not register) has just committed into [scope]. MUST be called inside
      * `generationEngine.withScopeWriter(scope)`, right after that commit returned `Committed`, so it is
      * serialized with every canary write of the scope.
      *
@@ -745,6 +745,22 @@ internal class CanonicalMessageV2ProductionCanary(
             val state = stateByScope[scope] ?: return@withLock
             state.cursor = generationEngine.currentCursor(scope)
             markDiscontinuousLocked(scope, state, "external_commit")
+        }
+    }
+
+    /**
+     * Task #168: an older adjacent page has just committed into [scope] (inside its scope writer). It only
+     * moved the oldest edge — the newest edge, where realtime frames are appended, is the one this window
+     * already had — so continuity is unchanged; only the cached cursor is refreshed.
+     */
+    suspend fun onOlderPageCommitted(scope: SyncScopeKey): Unit = withContext(NonCancellable) {
+        stateMutex.withLock {
+            val state = stateByScope[scope] ?: return@withLock
+            state.cursor = generationEngine.currentCursor(scope)
+            logger(
+                "canonical_v2_canary older_page server=${scope.serverId} scope=${scope.scopeId} " +
+                    "continuity=${if (state.discontinuous) "discontinuous" else "continuous"}",
+            )
         }
     }
 

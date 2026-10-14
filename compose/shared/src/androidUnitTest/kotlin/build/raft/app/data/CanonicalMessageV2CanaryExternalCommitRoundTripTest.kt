@@ -44,8 +44,9 @@ import kotlin.test.assertTrue
  * realtime frames — the catch-up page after 210 offline messages never reached disk and the offline cold
  * start showed the pre-disconnect page. On the real SQLite store:
  * - the three writers write a realtime window exactly like any other scope;
- * - task #168 step 3: after a paging / catch-up commit (#3008 kept) the window is display only for realtime
- *   frames — no background re-snapshot — until the next enter snapshot makes it continuous again;
+ * - task #168 step 3: an older page keeps the window's realtime continuity (it only moves the oldest edge);
+ *   after a newer page / catch-up commit (#3008 kept) the window is display only for realtime frames — no
+ *   background re-snapshot — until the next enter snapshot makes it continuous again;
  * - an external commit while an enter snapshot is in flight keeps that enter's window display only.
  */
 class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
@@ -124,9 +125,10 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     }
 
     @Test
-    fun anAdjacentPageOnARealtimeWindowIsWrittenAndTheWindowBecomesDisplayOnly() = withFreshDatabase { database ->
+    fun anOlderPageOnARealtimeWindowIsWrittenAndTheWindowKeepsAppending() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
+            rig.canary.noteTransportEpoch(partition, 1L)
             rig.enter(pageOf(10L, 20L, 30L))
             val incrementalsBefore = rig.store.incrementalWrites
             rig.extend(ThreadDurablePageDirection.Older, anchorSeq = 10L, pageOf(5L, 8L), limit = 3)
@@ -136,9 +138,31 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             assertTrue(rig.logs.any { it.startsWith("canonical_v2_adjacent_page ") && "outcome=committed facts=2" in it }, rig.logs.toString())
             assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
 
+            // Task #168: the viewed channel keeps its realtime cache while the user scrolls up.
             val paths = rig.networkPaths()
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(40L))
+            assertEquals(listOf(5L, 8L, 10L, 20L, 30L, 40L), rig.coldStartSeqs())
+            assertEquals(5L, rig.coldStartCursor()?.oldestLoadedSeq, "the append kept the page's oldest edge")
+            assertEquals(paths, rig.networkPaths())
+        }
+    }
+
+    @Test
+    fun aNewerPageOnARealtimeWindowIsWrittenAndTheWindowBecomesDisplayOnly() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        runBlocking {
+            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.enter(pageOf(10L, 20L, 30L))
+            rig.extend(ThreadDurablePageDirection.Newer, anchorSeq = 30L, pageOf(35L, 38L), limit = 3)
+            assertEquals(listOf(10L, 20L, 30L, 35L, 38L), rig.coldStartSeqs())
+            assertTrue(rig.logs.any { it.startsWith("canonical_v2_adjacent_page ") && "outcome=committed facts=2" in it }, rig.logs.toString())
+
+            // Same epoch, same next frame as the older twin: the newest edge moved, so display only.
+            val paths = rig.networkPaths()
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(scope))
             assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, rig.accept(40L))
-            assertEquals(listOf(5L, 8L, 10L, 20L, 30L), rig.coldStartSeqs())
+            assertEquals(listOf(10L, 20L, 30L, 35L, 38L), rig.coldStartSeqs())
             assertEquals(paths, rig.networkPaths())
         }
     }

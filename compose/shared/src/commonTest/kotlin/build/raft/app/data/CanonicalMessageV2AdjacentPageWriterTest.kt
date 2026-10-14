@@ -244,8 +244,8 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(listOf(5L, 7L), h.store.seqs(canaryScope))
         assertEquals(5L, h.store.cursors.getValue(canaryScope).oldestLoadedSeq)
         assertTrue(h.logs.any { "scope=channel-1 direction=older outcome=committed facts=1" in it }, h.logs.toString())
-        // #3008 kept for the paging writer (task #168 step 3): display only until the next enter.
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, h.canary.continuityOf(canaryScope))
+        // Task #168: an older page only moves the oldest edge; the realtime window stays continuous.
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(canaryScope))
 
         // Twin: a sibling scope on the same partition that the canary does not own is extended the same way.
         val sibling = SyncScopeKey(partition, "channel-2", "channel")

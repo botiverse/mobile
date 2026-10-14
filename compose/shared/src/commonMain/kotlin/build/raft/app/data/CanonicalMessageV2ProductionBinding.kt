@@ -587,10 +587,12 @@ internal class CanonicalMessageV2EnteredScopeLoader(
  *    survives and `hasLoadedOldest` is cleared;
  * 7. `applyIncremental` with the UNION cursor (the engine overwrites the cursor wholesale), bound
  *    to the partition generation captured before the network call;
- * 8. after a commit, still inside the scope writer the realtime canary serializes on,
- *    [CanonicalMessageV2ProductionCanary.onExternalCommit]: nothing proves this page is continuous with the
- *    realtime stream, so the window is display-only for realtime frames until the next enter commit
- *    (#3008; task #168 step 3 keeps it for paging and catch-up).
+ * 8. after a commit, still inside the scope writer the realtime canary serializes on: an OLDER page only
+ *    moves the oldest edge, so the window keeps its realtime continuity
+ *    ([CanonicalMessageV2ProductionCanary.onOlderPageCommitted]); a NEWER page (and the gap catch-up)
+ *    moves the newest edge, which nothing proves continuous with the realtime stream, so the window is
+ *    display-only for realtime frames until the next enter commit
+ *    ([CanonicalMessageV2ProductionCanary.onExternalCommit], #3008).
  */
 internal class CanonicalMessageV2AdjacentPageWriter(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -739,7 +741,17 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     expectedGeneration,
                 )
                 log(result.wireOutcome(envelopes.size))
-                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
+                if (result == CanonicalMessageV2CommitResult.Committed) {
+                    when (direction) {
+                        // Task #168: an older page only moves the oldest edge; realtime frames are appended
+                        // at the newest edge, serialized with it by this same scope writer. The window
+                        // stays continuous (the channel the user is viewing keeps its realtime cache).
+                        ThreadDurablePageDirection.Older -> canary.onOlderPageCommitted(scope)
+                        // A newer page moves the newest edge: nothing proves it continuous with the
+                        // realtime stream (#3008).
+                        ThreadDurablePageDirection.Newer -> canary.onExternalCommit(scope)
+                    }
+                }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
