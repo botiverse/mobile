@@ -3,75 +3,70 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.data.commitEnterBaselineForTest
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
+/**
+ * The #2991 transport-epoch rules on the task #168 step 3 canary: a window comes only from an enter
+ * snapshot (committed under the epoch recorded when it was requested); every realtime frame of another
+ * connection makes it display only until the next enter — nothing re-snapshots in the background.
+ */
 class CanonicalMessageV2ProductionCanaryTest {
     private val partition =
         DurablePartitionKey("server-1", "principal-1", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
+    private val scope = SyncScopeKey(partition, "channel-1", "channel")
 
     @Test
     fun flagOffDoesZeroV2Work() = runBlocking {
         val fixture = Fixture(enabled = false)
 
-        assertEquals(
-            CanonicalMessageV2CanaryOutcome.NotSelected,
-            fixture.accept(fixture.input("m1", 1L)),
-        )
-        assertEquals(0, fixture.loaderCalls)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 1L)))
         assertEquals(0, fixture.store.snapshotCalls)
         assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2CanaryMode.Off, fixture.canary.modeFor("server-1", "channel-1"))
+        assertEquals(0, fixture.store.reads)
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(scope))
     }
 
     @Test
-    fun firstEventBaselinesThenNextNewEventCommitsIncrementally() = runBlocking {
+    fun aScopeWithoutAWindowIsDisplayOnlyWithoutTouchingTheStore() = runBlocking {
         val fixture = Fixture(enabled = true)
-
-        // Task #168: the baselining frame never waits for its snapshot; the fixture lets the job finish.
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-        assertEquals(1, fixture.loaderCalls)
-        assertEquals(1, fixture.store.snapshotCalls)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
+        assertEquals(0, fixture.store.snapshotCalls)
         assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(0, fixture.store.reads, "the display path never waits for a store lookup")
+    }
+
+    @Test
+    fun anEnteredWindowAppendsTheNextNewIncrementally() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enter(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m2", 2L)))
-        assertEquals(1, fixture.loaderCalls)
         assertEquals(1, fixture.store.snapshotCalls)
         assertEquals(1, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2CanaryMode.SoleApply, fixture.canary.modeFor("server-1", "channel-1"))
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope))
     }
 
     @Test
-    fun onlyOneScopeOnAnEnabledServerIsSelected() = runBlocking {
+    fun everyWindowedChannelIsWrittenNotOnlyOne() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
+        fixture.enter(1L)
+        fixture.enter(1L, channelId = "channel-2")
 
-        val other = fixture.input("m2", 2L, channelId = "channel-2")
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(other))
-        assertEquals(1, fixture.loaderCalls)
-        assertEquals(CanonicalMessageV2CanaryMode.ShadowOnly, fixture.canary.modeFor("server-1", "channel-2"))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m2", 2L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("n2", 2L, channelId = "channel-2")))
+        assertEquals(2, fixture.store.incrementalCalls)
     }
 
     @Test
-    fun updateUsesAuthoritativeSnapshotInsteadOfInventingMissingFullV2Fields() = runBlocking {
+    fun unsupportedProducerMetadataMakesTheWindowDiscontinuous() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-
-        val update = fixture.input("m1", 2L, kind = CanonicalMessageFoldKind.Updated)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(update))
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(2, fixture.store.snapshotCalls)
-        assertEquals(0, fixture.store.incrementalCalls)
-    }
-
-    @Test
-    fun unsupportedProducerMetadataCannotEnterIncrementalSoleApply() = runBlocking {
-        val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-        fixture.loaderFailure = "snapshot_not_full_v6"
+        fixture.enter(1L)
         val unsupported = fixture.input("m2", 2L).copy(
             row = fixture.input("m2", 2L).row.copy(
                 actionMetadata = buildJsonObject {
@@ -81,46 +76,32 @@ class CanonicalMessageV2ProductionCanaryTest {
             ),
         )
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(unsupported))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(unsupported))
         assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
-    }
-
-    @Test
-    fun failedSnapshotWritesNothingAndCanRetry() = runBlocking {
-        val fixture = Fixture(enabled = true)
-        fixture.loaderFailure = "network_down"
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-        assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
-        assertEquals(0, fixture.store.snapshotCalls)
-
-        fixture.loaderFailure = null
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(1, fixture.store.snapshotCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(scope))
+        // The window now misses m2: m3 must not be appended after m1.
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m3", 3L)))
+        assertEquals(0, fixture.store.incrementalCalls)
     }
 
     @Test
     fun flagRevokeClearsTheWindowWithoutANetworkBarrierAndReturnsTheScopeToLegacy() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
-        assertEquals(1, fixture.store.restore(SyncScopeKey(partition, "channel-1", "channel")).envelopes.size)
+        fixture.enter(1L)
+        assertEquals(1, fixture.store.restore(scope).envelopes.size)
 
-        // Task #168: the revoke never loads (it used to snapshot inline, then clear what it wrote).
         fixture.enabled = false
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 2L)))
-        assertEquals(1, fixture.loaderCalls)
-        assertEquals(1, fixture.store.snapshotCalls)
-        assertEquals(emptyList(), fixture.store.restore(SyncScopeKey(partition, "channel-1", "channel")).envelopes)
-        assertEquals(CanonicalMessageV2CanaryMode.Off, fixture.canary.modeFor("server-1", "channel-1"))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
+        assertEquals(emptyList(), fixture.store.restore(scope).envelopes)
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(scope))
     }
 
     @Test
-    fun threadScopeCannotBecomeTheTopLevelCanary() = runBlocking {
+    fun aThreadReplyIsNeverWrittenByTheRealtimePath() = runBlocking {
         val fixture = Fixture(enabled = true)
-        val threadInput = fixture.input("reply-1", 1L).copy(
-            row = fixture.input("reply-1", 1L).row.copy(
+        fixture.enter(1L)
+        val threadInput = fixture.input("reply-1", 2L).copy(
+            row = fixture.input("reply-1", 2L).row.copy(
                 conversationContext = CanonicalConversationContextWire(
                     channelType = "thread",
                     parentChannelId = "channel-1",
@@ -131,198 +112,199 @@ class CanonicalMessageV2ProductionCanaryTest {
         )
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(threadInput))
-        assertEquals(0, fixture.loaderCalls)
+        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope))
     }
 
     @Test
-    fun reconnectSnapshotsBeforeTheNextFrameInsteadOfAppendingAcrossTheGap() = runBlocking {
+    fun aReconnectMakesTheWindowDisplayOnlyUntilTheNextEnter() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L))
+        fixture.connect(1L)
+        fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
         assertEquals(1, fixture.store.incrementalCalls)
 
         // m3 is delivered while the socket is down and never reaches the writer; the socket comes back as epoch 2.
-        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.connect(2L)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(2, fixture.loaderCalls, "the first frame after a reconnect must re-snapshot")
-        assertEquals(2, fixture.store.snapshotCalls)
-        assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m5", 5L)))
+        assertEquals(1, fixture.store.incrementalCalls, "m4 / m5 must not be appended after m2")
+        assertEquals(1, fixture.store.snapshotCalls, "no background re-snapshot (task #168 step 3)")
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(scope))
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m5", 5L)))
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(2, fixture.store.incrementalCalls, "after the snapshot the window is continuous again")
+        // The user opens the channel: its enter snapshot (requested under epoch 2) is the new baseline.
+        fixture.enter(5L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m6", 6L)))
+        assertEquals(2, fixture.store.incrementalCalls)
     }
 
     @Test
     fun withoutAReconnectTheNextFrameStaysIncremental() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L))
+        fixture.connect(1L)
+        fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
-        // A repeated or late signal for the same or an older epoch is not a reconnect.
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        // A repeated signal for the same epoch is not a reconnect.
+        fixture.connect(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(1, fixture.loaderCalls)
         assertEquals(2, fixture.store.incrementalCalls)
     }
 
     @Test
-    fun aRestoredWindowSnapshotsBeforeItsFirstFrameAfterProcessRestart() = runBlocking {
+    fun aRestoredWindowIsDisplayOnlyAfterProcessRestartUntilOpened() = runBlocking {
         val store = FakeStore()
         val beforeRestart = Fixture(enabled = true, store = store)
-        beforeRestart.accept(beforeRestart.input("m1", 1L))
+        beforeRestart.enter(1L)
         beforeRestart.accept(beforeRestart.input("m2", 2L))
+        assertEquals(1, store.incrementalCalls)
 
         // New process: same durable store, fresh canary and engine. Frames may have been missed meanwhile.
         val afterRestart = Fixture(enabled = true, store = store)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, afterRestart.accept(afterRestart.input("m4", 4L)))
-        assertEquals(1, afterRestart.loaderCalls, "restore() must not append straight onto the old window")
-        assertEquals(1, store.incrementalCalls)
-    }
+        val readsBefore = store.reads
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.input("m4", 4L)))
+        assertEquals(1, store.incrementalCalls, "a restored window is never appended onto")
+        assertEquals(readsBefore, store.reads, "and the frame never waited for a store lookup")
 
-    @Test
-    fun aFailedSnapshotAfterReconnectKeepsTheMarkAndNeverFallsBackToAppending() = runBlocking {
-        val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L))
-        fixture.accept(fixture.input("m2", 2L))
-        fixture.canary.noteTransportEpoch(partition, 2L)
-
-        fixture.loaderFailure = "offline"
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
-        assertEquals(1, fixture.store.incrementalCalls, "a failed snapshot must not degrade into an append")
-
-        fixture.loaderFailure = null
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m5", 5L)))
-        assertEquals(3, fixture.loaderCalls, "the next frame retries the snapshot")
-        assertEquals(1, fixture.store.incrementalCalls)
+        afterRestart.enter(4L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, afterRestart.accept(afterRestart.input("m5", 5L)))
+        assertEquals(2, store.incrementalCalls)
     }
 
     @Test
     fun aReconnectOnAnotherServerOrAccountDoesNotTouchThisWindow() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L))
-        fixture.accept(fixture.input("m2", 2L))
+        fixture.connect(1L)
+        fixture.enter(1L)
 
         fixture.canary.noteTransportEpoch(partition.copy(serverId = "server-2"), 2L)
         fixture.canary.noteTransportEpoch(partition.copy(principalId = "principal-2"), 2L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(1, fixture.loaderCalls)
-        assertEquals(2, fixture.store.incrementalCalls)
+        assertEquals(1, fixture.store.incrementalCalls)
     }
 
     @Test
     fun aRestartedTransportCountingFromOneIsStillAReconnect() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 5L)
-        fixture.accept(fixture.input("m1", 1L))
-        fixture.accept(fixture.input("m2", 2L))
+        fixture.connect(5L)
+        fixture.enter(1L)
 
         // The native transport object was rebuilt (server switch, re-login) and numbers from 1 again.
-        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.connect(1L)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(2, fixture.loaderCalls, "a smaller epoch is a different connection too")
-        assertEquals(1, fixture.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(0, fixture.store.incrementalCalls, "a smaller recorded epoch is a different connection too")
     }
 
     @Test
-    fun aReconnectWhileTheSnapshotLoadsForcesAnotherSnapshot() = runBlocking {
+    fun aReconnectDuringTheEnterFetchKeepsTheNewWindowDisplayOnly() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        // The socket reconnects while the baseline request is in flight: that snapshot predates epoch 2.
-        fixture.duringLoad = {
-            fixture.duringLoad = null
-            fixture.canary.noteTransportEpoch(partition, 2L)
-        }
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
+        fixture.connect(1L)
+        // The request is sent under epoch 1; the socket reconnects as epoch 2 before the page commits.
+        fixture.enter(1L, beforeCommit = { fixture.connect(2L) })
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m2", 2L)))
-        assertEquals(2, fixture.loaderCalls, "the next frame must not append to a snapshot taken before the reconnect")
-        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
+        assertEquals(0, fixture.store.incrementalCalls, "the page predates epoch 2")
+
+        // Twin: no reconnect during the fetch.
+        val twin = Fixture(enabled = true)
+        twin.connect(1L)
+        twin.enter(1L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, twin.accept(twin.input("m2", 2L)))
     }
 
     @Test
-    fun aFrameFromTheNewConnectionSnapshotsEvenWhenItBeatsTheReconnectSignal() = runBlocking {
+    fun anEnterRightAfterAReconnectIsDisplayOnlyUntilRoomsJoinedArrivedForThatConnection() = runBlocking {
+        // Before rooms:joined the page may predate the connect-time room join: display only.
+        val before = Fixture(enabled = true)
+        before.connect(2L, roomsJoined = false)
+        before.enter(1L)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, before.canary.continuityOf(scope))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, before.accept(before.input("m2", 2L)))
+        assertEquals(0, before.store.incrementalCalls)
+
+        // rooms:joined recorded for an OLDER connection only: still display only.
+        val older = Fixture(enabled = true)
+        older.connect(1L)
+        older.connect(2L, roomsJoined = false)
+        older.enter(1L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, older.accept(older.input("m2", 2L)))
+        assertEquals(0, older.store.incrementalCalls)
+
+        // Twin: the same open once rooms:joined arrived for the current connection appends.
+        val after = Fixture(enabled = true)
+        after.connect(2L, roomsJoined = false)
+        after.canary.noteRoomsJoined(partition, 2L)
+        after.enter(1L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, after.accept(after.input("m2", 2L)))
+        assertEquals(1, after.store.incrementalCalls)
+    }
+
+    @Test
+    fun aCatchUpBaselineIsRegisteredOnlyForAMemberWhoseConnectionSawRoomsJoined() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.connect(2L, roomsJoined = false)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "before rooms:joined")
+        fixture.canary.noteRoomsJoined(partition, 2L)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = true), "non-member")
+        val registered = fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false)
+        assertEquals(2L, registered?.epochAtRequest)
+        // A partition reset forgets rooms:joined with the epoch.
+        fixture.canary.abandonEnterBaseline(registered!!)
+        fixture.resetPartition()
+        fixture.connect(2L, roomsJoined = false)
+        assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "after a reset")
+    }
+
+    @Test
+    fun aFrameFromTheNewConnectionIsDisplayOnlyEvenWhenItBeatsTheReconnectSignal() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.connect(1L)
+        fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L)
         assertEquals(1, fixture.store.incrementalCalls)
 
         // The socket came back as epoch 2, but its first frame is processed before the epoch-2 signal.
-        assertEquals(
-            CanonicalMessageV2CanaryOutcome.Pending,
-            fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L),
-        )
-        assertEquals(2, fixture.loaderCalls, "a frame of a newer connection must re-snapshot without waiting for the signal")
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L))
         assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
 
-        // The late signal and the next frame of the same connection: the snapshot already belongs to epoch 2.
-        fixture.canary.noteTransportEpoch(partition, 2L)
-        assertEquals(
-            CanonicalMessageV2CanaryOutcome.Committed,
-            fixture.accept(fixture.input("m5", 5L), transportEpoch = 2L),
-        )
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(2, fixture.store.incrementalCalls)
+        fixture.connect(2L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m5", 5L), transportEpoch = 2L))
+        assertEquals(1, fixture.store.incrementalCalls, "still display only: only an enter makes it continuous again")
     }
 
     @Test
-    fun aLateFrameOfAnOlderConnectionIsShownButNeverWrittenToTheNewWindow() = runBlocking {
+    fun aLateFrameOfAnOlderConnectionIsShownButNeverWrittenAndChangesNothing() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
-        fixture.canary.noteTransportEpoch(partition, 2L)
-        fixture.accept(fixture.input("m104", 104L), transportEpoch = 2L)
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(0, fixture.store.incrementalCalls)
+        fixture.connect(2L)
+        fixture.enter(104L)
 
-        // m110 left the old socket before it closed (105-109 were lost with it); its coroutine only now
-        // reaches the writer. Appending it after m104 would leave a hole.
+        // m110 left the old socket before it closed; its coroutine only now reaches the writer.
         assertEquals(
             CanonicalMessageV2CanaryOutcome.NotSelected,
             fixture.accept(fixture.input("m110", 110L), transportEpoch = 1L),
             "an older connection's frame goes to the legacy display path only",
         )
-        assertEquals(2, fixture.loaderCalls)
         assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(2, fixture.store.snapshotCalls)
-    }
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope), "no state change")
 
-    @Test
-    fun theSameFrameAppendsUnderTheCurrentConnection() = runBlocking {
-        val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
-        fixture.canary.noteTransportEpoch(partition, 2L)
-        fixture.accept(fixture.input("m104", 104L), transportEpoch = 2L)
-
-        assertEquals(
-            CanonicalMessageV2CanaryOutcome.Committed,
-            fixture.accept(fixture.input("m110", 110L), transportEpoch = 2L),
-        )
-        assertEquals(2, fixture.loaderCalls)
+        // Twin: the same frame under the current connection is appended.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m110", 110L), transportEpoch = 2L))
         assertEquals(1, fixture.store.incrementalCalls)
     }
 
     @Test
     fun framesWithoutATransportEpochStillFollowTheReconnectSignal() = runBlocking {
         val fixture = Fixture(enabled = true)
-        fixture.canary.noteTransportEpoch(partition, 1L)
-        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.connect(1L)
+        fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
         assertEquals(1, fixture.store.incrementalCalls)
 
-        fixture.canary.noteTransportEpoch(partition, 2L)
-        fixture.accept(fixture.input("m4", 4L))
-        assertEquals(2, fixture.loaderCalls)
+        fixture.connect(2L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(1, fixture.store.incrementalCalls)
     }
 
@@ -336,47 +318,37 @@ class CanonicalMessageV2ProductionCanaryTest {
             isEnabledForServer = { this.enabled },
             generationEngine = engine,
         )
-        var loaderCalls = 0
-        var loaderFailure: String? = null
-        var duringLoad: (suspend () -> Unit)? = null
 
-        /**
-         * Returns what [CanonicalMessageV2ProductionCanary.accept] returned, after any background snapshot it
-         * started has finished (task #168: accept itself never waits for one).
-         */
+        suspend fun resetPartition() = engine.clearPartition(partition)
+
         suspend fun accept(
             input: CanonicalMessageFoldInput,
             transportEpoch: Long? = null,
         ): CanonicalMessageV2CanaryOutcome =
-            acceptWithoutWaiting(input, transportEpoch).also { canary.awaitSnapshotJobs() }
+            canary.accept(partition = partition, foldInput = input, frameTransportEpoch = transportEpoch)
 
-        suspend fun acceptWithoutWaiting(
-            input: CanonicalMessageFoldInput,
-            transportEpoch: Long?,
-        ): CanonicalMessageV2CanaryOutcome =
-            canary.accept(
-                partition = partition,
-                foldInput = input,
-                frameTransportEpoch = transportEpoch,
-                snapshotLoader = CanonicalMessageV2SnapshotLoader { request ->
-                    loaderCalls += 1
-                    duringLoad?.invoke()
-                    loaderFailure?.let { return@CanonicalMessageV2SnapshotLoader CanonicalMessageV2SnapshotLoadResult.Unavailable(it) }
-                    val context = CanonicalConversationContextWire(channelType = request.scope.scopeKind)
-                    val envelope = input.toCanonicalMessageV2Envelope(
-                        partition = partition,
-                        replyCount = 0,
-                        producerContextOverride = context,
-                    ) ?: error("fixture input must normalize")
-                    CanonicalMessageV2SnapshotLoadResult.Loaded(
-                        CanonicalMessageV2SnapshotFrame(
-                            scope = request.scope,
-                            envelopes = listOf(envelope),
-                            cursor = cursor(envelope.fact.seq),
-                        ),
-                    )
-                },
-            )
+        private var connected = false
+
+        /** The socket (re)connected as [epoch]; [roomsJoined]: the server's `rooms:joined` arrived on it. */
+        suspend fun connect(epoch: Long, roomsJoined: Boolean = true) {
+            canary.noteTransportEpoch(partition, epoch)
+            if (roomsJoined) canary.noteRoomsJoined(partition, epoch)
+            connected = true
+        }
+
+        /** The user opens the channel: its enter page (one message at [seq]) commits as the baseline. */
+        suspend fun enter(seq: Long, channelId: String = "channel-1", beforeCommit: suspend () -> Unit = {}) {
+            if (!connected) connect(1L)
+            val target = SyncScopeKey(partition, channelId, "channel")
+            val envelope = requireNotNull(input("e$seq", seq, channelId).toCanonicalMessageV2Envelope(partition, replyCount = 0))
+            val frame = CanonicalMessageV2SnapshotFrame(target, listOf(envelope), cursor(seq))
+            val baseline = requireNotNull(canary.beginEnterBaseline(partition, channelId, nonMember = false))
+            beforeCommit()
+            engine.withScopeWriter(target) {
+                assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applySnapshot(frame))
+                canary.onEnterCommitted(baseline, frame)
+            }
+        }
 
         fun input(
             id: String,
@@ -405,6 +377,9 @@ class CanonicalMessageV2ProductionCanaryTest {
     private class FakeStore : CanonicalMessageV2Store {
         var snapshotCalls = 0
         var incrementalCalls = 0
+
+        /** Every read the canary could make on a frame's display path. */
+        var reads = 0
         private val restored = mutableMapOf<SyncScopeKey, RestoredCanonicalMessageV2Scope>()
 
         override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
@@ -423,8 +398,25 @@ class CanonicalMessageV2ProductionCanaryTest {
             return CanonicalMessageV2StoreWriteResult()
         }
 
-        override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
-            restored[scope] ?: RestoredCanonicalMessageV2Scope(emptyList(), null)
+        override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope {
+            reads += 1
+            return restored[scope] ?: RestoredCanonicalMessageV2Scope(emptyList(), null)
+        }
+
+        override suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> {
+            reads += 1
+            return emptyList()
+        }
+
+        override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? {
+            reads += 1
+            return restored[scope]?.cursor
+        }
+
+        override suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean {
+            reads += 1
+            return restored[scope]?.envelopes.orEmpty().any { it.fact.id == factId }
+        }
 
         override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> {
             restored.remove(scope)

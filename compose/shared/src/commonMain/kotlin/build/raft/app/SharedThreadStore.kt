@@ -121,6 +121,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -151,6 +152,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -2230,6 +2233,21 @@ internal class SharedThreadDataSource(
         context: ReplyCacheProducerContext,
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent? = null,
+        baseline: CanonicalMessageV2EnterBaseline? = null,
+    ): Boolean =
+        try {
+            applyDurableLatestPage(routeIdentity, context, rawPage, replyParent, baseline)
+        } finally {
+            // No-op once the page committed under it; otherwise the frames it buffered were never written.
+            baseline?.let { abandonDurableLatestPageBaseline(it) }
+        }
+
+    private suspend fun applyDurableLatestPage(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        rawPage: RawMessagePage,
+        replyParent: ThreadDurableReplyParent?,
+        baseline: CanonicalMessageV2EnterBaseline?,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
@@ -2239,14 +2257,42 @@ internal class SharedThreadDataSource(
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return false
         if (!isCurrentReplyCacheProvenance(context.provenance)) return false
-        extender.applyLatestPage(
+        extender.applyLatestPageAfterBaseline(
             partition = partition,
             channelId = channelId,
             rawMessages = rawPage.messages,
             requestedLimit = rawPage.requestedLimit,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+            // The writer uses it only for this exact partition + top-level channel.
+            baseline = baseline,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
+    }
+
+    /**
+     * Task #168 step 3: the realtime baseline of a gap catch-up of the viewed channel / DM, registered
+     * BEFORE its latest-page fetch (frames of the channel during the fetch are buffered, then replayed when
+     * the page commits). `null` = none (not a top-level route, no identity, or the writer refused: not a
+     * member, or the connection has not seen `rooms:joined`): the catch-up commits as before.
+     */
+    internal suspend fun beginDurableLatestPageBaselineIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        replyParent: ThreadDurableReplyParent? = null,
+    ): CanonicalMessageV2EnterBaseline? {
+        val extender = durablePageExtender ?: return null
+        if (!routeIdentity.canRenderTimelineCandidates) return null
+        if (durableScopeAdmission(routeIdentity, replyParent) != DurableScopeAdmission.TopLevel) return null
+        val channelId = routeIdentity.timelineChannelId ?: return null
+        val resolution = readReplyResolutionScope() ?: return null
+        val partition =
+            resolution.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return null
+        if (!isCurrentReplyCacheProvenance(resolution.provenance)) return null
+        return extender.beginLatestPageBaseline(partition, channelId)
+    }
+
+    internal suspend fun abandonDurableLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) {
+        withContext(NonCancellable) { durablePageExtender?.abandonLatestPageBaseline(baseline) }
     }
 
     internal suspend fun durableLastKnownPayloadIfCurrent(
@@ -9188,6 +9234,9 @@ internal class SharedThreadStore(
         // Copied from this recovery's state while it is live: a resume that coalesced into it may have set it.
         var backfillRequested = false
         var durableOffer: SharedThreadPageFetchResult? = null
+        // Task #168 step 3: registered before the first fetch; handed to the durable write or abandoned.
+        var durableBaseline: CanonicalMessageV2EnterBaseline? = null
+        var recoveryCompleted = false
         try {
             val requestPayload =
                 realtimeGapRecoveryMutex.withLock {
@@ -9216,6 +9265,11 @@ internal class SharedThreadStore(
             // Two steps, one outcome (nothing is committed before the decision is final): the cheap page
             // first; only when the anchor is not on it, the enter snapshot's page. Either step failing
             // ends the recovery with no timeline change.
+            durableBaseline =
+                dataSource.beginDurableLatestPageBaselineIfCurrent(
+                    initial.resolveThreadRouteIdentity(),
+                    initial.durableReplyParentOrNull(),
+                )
             val narrow = dataSource.fetchGapCatchUpLatestPage(requestPayload, wide = false)
             val anchorOnNarrowPage =
                 narrow is DataResult.Content &&
@@ -9365,7 +9419,9 @@ internal class SharedThreadStore(
                         }
                         // The durable window is offered the page whenever it brought something the
                         // timeline lacked (an all-known page — the common heartbeat case — writes nothing).
-                        if (added > 0) durableOffer = catchUpResult.data
+                        // With a realtime baseline registered the page is always offered: committing it is
+                        // what makes the viewed channel's window continuous again (task #168 step 3).
+                        if (added > 0 || durableBaseline != null) durableOffer = catchUpResult.data
                     }
                     is DataResult.Empty -> {
                         reducePayloadPatch(cachePayload = true) { latestPayload ->
@@ -9393,7 +9449,10 @@ internal class SharedThreadStore(
                     }
                 }
             }
+            recoveryCompleted = true
         } finally {
+            // A failure or cancellation never reaches the durable write below.
+            if (!recoveryCompleted) durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
             realtimeGapRecoveryMutex.withLock {
                 val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
                 if (active?.backfillAfterRecovery == true) backfillRequested = true
@@ -9412,7 +9471,12 @@ internal class SharedThreadStore(
                 }
             }
         }
-        durableOffer?.let { fetched -> launchDurableLatestPageWrite(initial, fetched) }
+        val offer = durableOffer
+        if (offer != null) {
+            launchDurableLatestPageWrite(initial, offer, durableBaseline)
+        } else {
+            durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
+        }
         if (!mergedNewArrivals && !backfillRequested) return
         val latest = _state.value.payload
         if (
@@ -9447,17 +9511,25 @@ internal class SharedThreadStore(
     private fun launchDurableLatestPageWrite(
         routePayload: KuiklyThreadScreenPayload,
         fetched: SharedThreadPageFetchResult,
+        baseline: CanonicalMessageV2EnterBaseline? = null,
     ) {
-        val durablePage = fetched.durablePage ?: return
         val routeIdentity = routePayload.resolveThreadRouteIdentity()
         val replyParent = routePayload.durableReplyParentOrNull()
-        scope.launch {
+        // With a baseline, UNDISPATCHED: the body (and its finally) always runs, so the baseline is always
+        // closed even when the scope is already cancelled. Without one, unchanged.
+        scope.launch(start = if (baseline != null) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT) {
             try {
+                val durablePage = fetched.durablePage
+                if (durablePage == null) {
+                    baseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
+                    return@launch
+                }
                 dataSource.applyDurableLatestPageIfCurrent(
                     routeIdentity = routeIdentity,
                     context = durablePage.context,
                     rawPage = durablePage.rawPage,
                     replyParent = replyParent,
+                    baseline = baseline,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation

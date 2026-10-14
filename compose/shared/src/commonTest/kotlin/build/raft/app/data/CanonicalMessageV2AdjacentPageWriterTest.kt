@@ -7,7 +7,8 @@ import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
-import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
+import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
+import build.raft.app.network.sync.toCanonicalMessageV2Envelope
 import build.raft.app.network.sync.CanonicalMessageV2CommitResult
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
@@ -207,21 +208,17 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
 
         val owned = harness(sameEngineForWriter = true)
-        val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = owned.canary,
-            authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
-            networkClient = owned.network,
-            isGrantCurrent = { true },
-        )
-        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
-        owned.canary.awaitSnapshotJobs()
+        // A continuous realtime window (committed by an enter snapshot, task #168 step 3).
+        owned.enterWindow(foldInput("channel-1"))
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, owned.canary.continuityOf(scope))
         // Task #168 device FAIL: the canary's own scope is no longer skipped — its catch-up page is written.
         owned.latest(page, limit = 200)
         assertEquals(listOf(100L), owned.store.seqs(scope))
         assertEquals(100L, owned.store.cursors.getValue(scope).newestLoadedSeq)
         assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=window_replaced" in it }, owned.logs.toString())
         assertTrue(owned.logs.none { "canary_owned" in it }, owned.logs.toString())
+        // #3008 kept for the catch-up writer: nothing proves the page continuous with the realtime stream.
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, owned.canary.continuityOf(scope))
     }
 
     @Test
@@ -238,23 +235,17 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     @Test
     fun canaryOwnedScopeIsExtendedLikeAnyOtherScope() = runBlocking {
         val h = harness(channelIds = setOf("channel-1", "channel-2"), sameEngineForWriter = true)
-        val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = h.canary,
-            authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
-            networkClient = h.network,
-            isGrantCurrent = { true },
-        )
-        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
-        h.canary.awaitSnapshotJobs()
+        h.enterWindow(foldInput("channel-1"))
         val canaryScope = SyncScopeKey(partition, "channel-1", "channel")
-        // The canary's window edge is seq 7 (its snapshot page); offer an exactly adjacent page. Task #168:
+        // The realtime window's edge is seq 7 (its enter page); offer an exactly adjacent page. Task #168:
         // the canary only writes realtime frames, so the page is written here.
         h.extend(ThreadDurablePageDirection.Older, anchorSeq = 7, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, channelId = "channel-1")
         assertEquals(1, h.store.incrementals.size)
         assertEquals(listOf(5L, 7L), h.store.seqs(canaryScope))
         assertEquals(5L, h.store.cursors.getValue(canaryScope).oldestLoadedSeq)
         assertTrue(h.logs.any { "scope=channel-1 direction=older outcome=committed facts=1" in it }, h.logs.toString())
+        // Task #168: an older page only moves the oldest edge; the realtime window stays continuous.
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(canaryScope))
 
         // Twin: a sibling scope on the same partition that the canary does not own is extended the same way.
         val sibling = SyncScopeKey(partition, "channel-2", "channel")
@@ -441,6 +432,23 @@ class CanonicalMessageV2AdjacentPageWriterTest {
                 ),
             )
             assertEquals(CanonicalMessageV2CommitResult.Committed, result)
+        }
+
+        /** The enter snapshot of [input]'s channel (one fact), through the canary's baseline API. */
+        suspend fun enterWindow(input: CanonicalMessageFoldInput) {
+            val envelope = requireNotNull(input.toCanonicalMessageV2Envelope(partition, replyCount = 0))
+            val frame = CanonicalMessageV2SnapshotFrame(
+                scope = SyncScopeKey(partition, input.row.channelId, "channel"),
+                envelopes = listOf(envelope),
+                cursor = PersistedCursor(
+                    latestSeq = envelope.fact.seq,
+                    oldestLoadedSeq = envelope.fact.seq,
+                    newestLoadedSeq = envelope.fact.seq,
+                    hasLoadedOldest = false,
+                    hasLoadedNewest = true,
+                ),
+            )
+            assertEquals(CanonicalMessageV2CommitResult.Committed, commitEnterBaselineForTest(canary, writerEngine, frame))
         }
 
         suspend fun extend(

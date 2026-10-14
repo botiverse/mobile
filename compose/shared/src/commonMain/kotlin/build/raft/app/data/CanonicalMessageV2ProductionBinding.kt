@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.model.ServerId
+import build.raft.app.slockLogInfo
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
 import build.raft.app.network.sync.CanonicalConversationContextV2
@@ -20,8 +21,7 @@ import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoadResult
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoader
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotRequest
+import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.PersistedCursor
 import build.raft.app.network.sync.ProductionFace
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -41,6 +41,17 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
+/**
+ * Task #168: the log sink of the canary and of the enter / paging / catch-up writers. Their lines already
+ * start with their own tag (`canonical_v2_canary`, `canonical_v2_enter_snapshot`, `canonical_v2_adjacent_page`,
+ * `canonical_v2_latest_page`), so nothing is prepended (a prefixing logger produced
+ * `canonical_v2_adjacent_page canonical_v2_latest_page …` on device).
+ */
+internal fun canonicalMessageV2SelfTaggedLogger(
+    platformTag: String,
+    sink: (tag: String, message: String) -> Unit = { tag, message -> slockLogInfo(tag, message) },
+): (String) -> Unit = { message -> sink(platformTag, message) }
+
 internal fun interface CanonicalMessageV2OwnerGateway {
     /** [transportEpoch]: the realtime connection that delivered the frame, when the host names it (task #168). */
     suspend fun accept(
@@ -58,64 +69,28 @@ internal fun interface CanonicalMessageV2OwnerGateway {
     suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {}
 }
 
+/**
+ * The realtime half of the durable canary (task #168 step 3): hands every frame to the canary with the
+ * connection that delivered it. Never touches the network — a window is only ever created by the enter
+ * snapshot, and a realtime frame never requests one.
+ */
 internal class ProviderBackedCanonicalMessageV2OwnerGateway(
     private val canary: CanonicalMessageV2ProductionCanary,
-    private val authStore: SlockAuthSessionStore,
-    networkClient: SlockNetworkClient,
-    /**
-     * Task #168: whether [RealtimeGrantRecord] is still the current grant of its slot. The snapshot loads in
-     * the background, after the frame was displayed; one whose grant was revoked meanwhile is not committed.
-     */
-    private val isGrantCurrent: suspend (RealtimeGrantRecord) -> Boolean,
-    private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2OwnerGateway {
-    private val fetcher = CanonicalMessageV2RestSnapshotFetcher(networkClient, logger)
-
     override suspend fun accept(
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
         transportEpoch: Long?,
-    ): CanonicalMessageV2CanaryOutcome {
-        val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        return canary.accept(
-            partition = partition,
+    ): CanonicalMessageV2CanaryOutcome =
+        canary.accept(
+            partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
             foldInput = foldInput,
-            snapshotLoader = CanonicalMessageV2SnapshotLoader { request -> loadSnapshot(grant, request) },
             frameTransportEpoch = transportEpoch,
         )
-    }
 
     override suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {
         canary.noteTransportEpoch(grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID), transportEpoch)
     }
-
-    private suspend fun loadSnapshot(
-        grant: RealtimeGrantRecord,
-        snapshotRequest: CanonicalMessageV2SnapshotRequest,
-    ): CanonicalMessageV2SnapshotLoadResult {
-        if (!authMatches(grant)) return unavailable("canonical_v2_auth_mismatch")
-        val fetched = fetcher.fetch(
-            partition = snapshotRequest.scope.partition,
-            scopeId = snapshotRequest.scope.scopeId,
-            expectedScopeKind = snapshotRequest.scope.scopeKind,
-        )
-        if (fetched is CanonicalMessageV2SnapshotLoadResult.Loaded && !authMatches(grant)) {
-            return unavailable("canonical_v2_auth_changed")
-        }
-        if (fetched is CanonicalMessageV2SnapshotLoadResult.Loaded && !isGrantCurrent(grant)) {
-            return unavailable("canonical_v2_grant_revoked")
-        }
-        return fetched
-    }
-
-    private suspend fun authMatches(grant: RealtimeGrantRecord): Boolean {
-        val session = authStore.readSession() ?: return false
-        return session.user.id == grant.principalId &&
-            session.servers.any { it.id == grant.serverId }
-    }
-
-    private fun unavailable(diagnostic: String): CanonicalMessageV2SnapshotLoadResult.Unavailable =
-        CanonicalMessageV2SnapshotLoadResult.Unavailable(diagnostic)
 }
 
 /**
@@ -447,10 +422,16 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * 5. `applySnapshot` bound to the partition generation captured before the fetch, so a partition
  *    cleared in between (sign-out) is refused by the engine rather than repopulated.
  *
- * The realtime canary's scope is written too (task #168: the canary only writes realtime frames, so a
- * page skipped here was never written). The commit runs under the same scope writer as the canary, and
- * right after it [CanonicalMessageV2ProductionCanary.onExternalCommit] tells the canary, inside that
- * writer, that the window is no longer its own.
+ * Task #168 step 3: the enter snapshot is the realtime canary's ONLY baseline. For a top-level channel it
+ * registers a pending baseline with the canary BEFORE the fetch
+ * ([CanonicalMessageV2ProductionCanary.beginEnterBaseline]: request epoch, room-leave count, membership),
+ * so realtime frames of the channel that arrive during the fetch are displayed and buffered instead of
+ * being written and then wiped by this commit (hole A). Right after the commit, inside the same scope
+ * writer, [CanonicalMessageV2ProductionCanary.onEnterCommitted] replays them and makes the window
+ * continuous — unless the user is not a member of the channel ([isKnownNonMember]: the server joins a
+ * non-member's room asynchronously on open, so the page may miss messages that are never pushed either).
+ * Any path that does not commit abandons the baseline. A reply-thread enter keeps #3008's
+ * [CanonicalMessageV2ProductionCanary.onExternalCommit].
  */
 internal class CanonicalMessageV2EnteredScopeLoader(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -458,6 +439,11 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     private val fetcher: CanonicalMessageV2RestSnapshotFetcher,
     private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
+    /**
+     * Whether the conversation directory says the user is NOT a member of (serverId, channelId). Unknown =
+     * `false` (treated as a member: auto-joined at connect, like #2994's leave rule).
+     */
+    private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
 ) : ThreadEnteredScopeSnapshotLoader {
     private val inFlightMutex = Mutex()
     private val inFlight = mutableSetOf<Pair<DurablePartitionKey, SyncScopeId>>()
@@ -506,6 +492,13 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             log("in_flight")
             return
         }
+        // Registered before the fetch (hole A); a reply thread is not a realtime canary scope.
+        val baseline: CanonicalMessageV2EnterBaseline? =
+            if (replyThread) {
+                null
+            } else {
+                canary.beginEnterBaseline(partition, scopeId, nonMember = isKnownNonMember(partition.serverId, scopeId))
+            }
         try {
             val expectedGeneration = generationEngine.partitionGeneration(partition)
             val frame = when (val fetched = fetch()) {
@@ -536,7 +529,17 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 try {
                     val result = generationEngine.applySnapshot(frame, expectedGeneration)
                     log(result.wireOutcome(frame.envelopes.size))
-                    if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(frame.scope)
+                    if (result == CanonicalMessageV2CommitResult.Committed) {
+                        if (baseline != null && frame.scope.scopeKind in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS) {
+                            canary.onEnterCommitted(
+                                baseline,
+                                frame,
+                                nonMemberAtCommit = isKnownNonMember(partition.serverId, scopeId),
+                            )
+                        } else {
+                            canary.onExternalCommit(frame.scope)
+                        }
+                    }
                 } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                     // A stale/cross-scope durable row must never escape the background enter job.
                     // The page already has its network-backed content; leave the durable window
@@ -545,6 +548,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 }
             }
         } finally {
+            // No-op once committed; otherwise the frames buffered meanwhile were never written.
+            baseline?.let { canary.abandonEnterBaseline(it) }
             inFlightMutex.withLock { inFlight.remove(key) }
         }
     }
@@ -582,9 +587,12 @@ internal class CanonicalMessageV2EnteredScopeLoader(
  *    survives and `hasLoadedOldest` is cleared;
  * 7. `applyIncremental` with the UNION cursor (the engine overwrites the cursor wholesale), bound
  *    to the partition generation captured before the network call;
- * 8. after a commit, still inside the scope writer the realtime canary serializes on,
- *    [CanonicalMessageV2ProductionCanary.onExternalCommit]: a window the canary did not produce is never
- *    appended onto blindly by the next realtime frame, and a pending canary snapshot never overwrites it.
+ * 8. after a commit, still inside the scope writer the realtime canary serializes on: an OLDER page only
+ *    moves the oldest edge, so the window keeps its realtime continuity
+ *    ([CanonicalMessageV2ProductionCanary.onOlderPageCommitted]); a NEWER page (and the gap catch-up)
+ *    moves the newest edge, which nothing proves continuous with the realtime stream, so the window is
+ *    display-only for realtime frames until the next enter commit
+ *    ([CanonicalMessageV2ProductionCanary.onExternalCommit], #3008).
  */
 internal class CanonicalMessageV2AdjacentPageWriter(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -594,7 +602,22 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     private val logger: (String) -> Unit = {},
     /** Must equal the store's [CanonicalMessageV2RetentionPolicy.maxFactsPerScope]. */
     private val maxFactsPerScope: Int = CanonicalMessageV2RetentionPolicy().maxFactsPerScope,
+    /** Same rule as the enter loader's: unknown = member. */
+    private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
 ) : ThreadDurablePageExtender {
+    override suspend fun beginLatestPageBaseline(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+    ): CanonicalMessageV2EnterBaseline? {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        if (channelId.isBlank() || channelId != channelId.trim()) return null
+        if (!isEnabledForServer(partition.serverId)) return null
+        return canary.beginCatchUpBaseline(partition, channelId, nonMember = isKnownNonMember(partition.serverId, channelId))
+    }
+
+    override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) =
+        canary.abandonEnterBaseline(baseline)
+
     override suspend fun extendWithAdjacentPage(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
@@ -733,7 +756,17 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     expectedGeneration,
                 )
                 log(result.wireOutcome(envelopes.size))
-                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
+                if (result == CanonicalMessageV2CommitResult.Committed) {
+                    when (direction) {
+                        // Task #168: an older page only moves the oldest edge; realtime frames are appended
+                        // at the newest edge, serialized with it by this same scope writer. The window
+                        // stays continuous (the channel the user is viewing keeps its realtime cache).
+                        ThreadDurablePageDirection.Older -> canary.onOlderPageCommitted(scope)
+                        // A newer page moves the newest edge: nothing proves it continuous with the
+                        // realtime stream (#3008).
+                        ThreadDurablePageDirection.Newer -> canary.onExternalCommit(scope)
+                    }
+                }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
@@ -764,8 +797,45 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
         stillCurrent: () -> Boolean,
+    ) = applyLatestPageAfterBaseline(partition, channelId, rawMessages, requestedLimit, replyParent, null, stillCurrent)
+
+    /**
+     * Task #168 step 3: with a [baseline] (registered before the fetch, only for a member channel whose
+     * connection had seen `rooms:joined`), the committed page is the window's new realtime baseline: frames
+     * buffered during the fetch are replayed and the window is continuous again
+     * ([CanonicalMessageV2ProductionCanary.onEnterCommitted]). Without one, #3008's external commit.
+     * The baseline is abandoned on every path that does not commit.
+     */
+    override suspend fun applyLatestPageAfterBaseline(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
+        baseline: CanonicalMessageV2EnterBaseline?,
+        stillCurrent: () -> Boolean,
+    ) {
+        try {
+            applyLatestPageInternal(partition, channelId, rawMessages, requestedLimit, replyParent, baseline, stillCurrent)
+        } finally {
+            baseline?.let { canary.abandonEnterBaseline(it) }
+        }
+    }
+
+    private suspend fun applyLatestPageInternal(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
+        baseline: CanonicalMessageV2EnterBaseline?,
+        stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        // A baseline is only ever for this exact top-level channel of this partition.
+        val ownBaseline = baseline?.takeIf {
+            replyParent == null && it.partition == partition && it.scopeId == channelId
+        }
         val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
         fun log(outcome: String) {
             logger("canonical_v2_latest_page server=${partition.serverId} scope=$channelId$kindLabel outcome=$outcome")
@@ -827,6 +897,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 val joined =
                     storedOldest != null && storedNewest != null &&
                         restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
+                var committedFrame: CanonicalMessageV2SnapshotFrame? = null
                 val (outcome, result) = if (joined) {
                     checkNotNull(storedOldest)
                     checkNotNull(storedNewest)
@@ -856,6 +927,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
                         expectedGeneration,
                     )
+                    // What the window holds now, for the baseline replay: the page under the union cursor.
+                    committedFrame = CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor)
                     "extended ${result.wireOutcome(envelopes.size)} newest=${cursor.newestLoadedSeq}" to result
                 } else {
                     val cursor = PersistedCursor(
@@ -869,16 +942,26 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                         parentScopeId = stored.parentScopeId.takeIf { replyParent != null },
                         rootMessageId = stored.rootMessageId.takeIf { replyParent != null },
                     )
-                    val result = generationEngine.applySnapshot(
-                        CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor),
-                        expectedGeneration,
-                    )
+                    val frame = CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor)
+                    val result = generationEngine.applySnapshot(frame, expectedGeneration)
+                    committedFrame = frame
                     "window_replaced old=${storedOldest ?: "none"}..${storedNewest ?: "none"} " +
                         "oldFacts=${restored.envelopes.size} new=$pageMin..$pageMax " +
                         result.wireOutcome(envelopes.size) to result
                 }
                 log(outcome)
-                if (result == CanonicalMessageV2CommitResult.Committed) canary.onExternalCommit(scope)
+                if (result == CanonicalMessageV2CommitResult.Committed) {
+                    val frame = committedFrame
+                    if (ownBaseline != null && frame != null) {
+                        canary.onEnterCommitted(
+                            ownBaseline,
+                            frame,
+                            nonMemberAtCommit = isKnownNonMember(partition.serverId, channelId),
+                        )
+                    } else {
+                        canary.onExternalCommit(scope)
+                    }
+                }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }

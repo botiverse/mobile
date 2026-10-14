@@ -6,7 +6,7 @@ import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
-import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
+import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
@@ -119,32 +119,34 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     }
 
     @Test
-    fun theCanarysOwnScopeIsWrittenToo() = runBlocking {
+    fun everyEnteredChannelBecomesAContinuousRealtimeWindow() = runBlocking {
         val h = harness(flagOn = true, channelIds = setOf("channel-1", "channel-2"))
-        // The canary selects channel-1 through its ordinary first-event path.
-        val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = h.canary,
-            authStore = InMemorySlockAuthSessionStore(canonicalV2TestSession()),
-            networkClient = h.network,
-            isGrantCurrent = { true },
-        )
-        // Task #168: the canary's snapshot loads in the background; wait for it before looking at the store.
-        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(canonicalV2TestGrant(), foldInput("channel-1")))
-        h.canary.awaitSnapshotJobs()
-        assertEquals(1, h.store.snapshots.size)
-        val pathsAfterCanary = h.network.paths.size
+        val first = SyncScopeKey(partition, "channel-1", "channel")
+        val second = SyncScopeKey(partition, "channel-2", "channel")
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, h.canary.continuityOf(first))
 
-        // Task #168: the canary only writes realtime frames; the enter page of its scope is written here.
+        // Task #168 step 3: the enter snapshot is the canary's only baseline, for every channel (no single slot).
         h.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(2, h.store.snapshots.size, "the canary's scope is written by the enter path too")
-        assertEquals("channel-1", h.store.snapshots.last().scope.scopeId)
+        h.loader.loadOnEnter(partition, "channel-2") { true }
+        assertEquals(listOf("channel-1", "channel-2"), h.store.snapshots.map { it.scope.scopeId })
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(first))
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(second))
+        assertEquals(setOf(first, second), h.canary.windowedScopes(partition))
         assertTrue(h.logs.none { "canary_owned" in it }, h.logs.toString())
 
-        // Twin: a sibling scope on the same partition is written the same way.
-        h.loader.loadOnEnter(partition, "channel-2") { true }
+        // Re-entering an already continuous channel writes it again (every entry refreshes).
+        h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(3, h.store.snapshots.size)
-        assertEquals("channel-2", h.store.snapshots.last().scope.scopeId)
-        assertTrue(h.network.paths.size > pathsAfterCanary)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(first))
+    }
+
+    @Test
+    fun aFailedEnterLeavesNoWindowBehind() = runBlocking {
+        val h = harness(flagOn = true, pageBody = canonicalV2TestThinPage())
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(0, h.store.snapshots.size)
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, h.canary.continuityOf(SyncScopeKey(partition, "channel-1", "channel")))
+        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, h.logs.toString())
     }
 
     @Test
@@ -248,6 +250,11 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = engine)
+        // The connection's rooms:joined arrived: an entered member channel becomes continuous (task #168 step 3).
+        runBlocking {
+            canary.noteTransportEpoch(partition, 1L)
+            canary.noteRoomsJoined(partition, 1L)
+        }
         val logs = mutableListOf<String>()
         val loader = CanonicalMessageV2EnteredScopeLoader(
             canary = canary,

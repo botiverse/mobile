@@ -149,6 +149,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
 import build.raft.app.network.sync.ThreadDurablePageExtender
+import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
@@ -14858,6 +14859,37 @@ class SharedThreadStoreTest {
         /** Task #168 step 1: gap catch-up latest pages, as (channel, message ids, limit, stillCurrent). */
         val latestCalls = mutableListOf<Triple<String, List<String?>, Pair<Int, Boolean>>>()
 
+        /** Task #168 step 3: what [beginLatestPageBaseline] hands out (null = refuse, the default). */
+        var baselineToRegister: ((DurablePartitionKey, String) -> CanonicalMessageV2EnterBaseline)? = null
+
+        /** Ordered: `begin`, `apply:<baseline handed?>`, `abandon`, plus whatever the test appends. */
+        val baselineEvents = mutableListOf<String>()
+        var onBegin: (() -> Unit)? = null
+
+        override suspend fun beginLatestPageBaseline(partition: DurablePartitionKey, channelId: String): CanonicalMessageV2EnterBaseline? {
+            onBegin?.invoke()
+            val baseline = baselineToRegister?.invoke(partition, channelId) ?: return null
+            baselineEvents += "begin"
+            return baseline
+        }
+
+        override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) {
+            baselineEvents += "abandon"
+        }
+
+        override suspend fun applyLatestPageAfterBaseline(
+            partition: DurablePartitionKey,
+            channelId: String,
+            rawMessages: JsonArray,
+            requestedLimit: Int,
+            replyParent: ThreadDurableReplyParent?,
+            baseline: CanonicalMessageV2EnterBaseline?,
+            stillCurrent: () -> Boolean,
+        ) {
+            baselineEvents += "apply:${baseline != null}"
+            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, stillCurrent)
+        }
+
         override suspend fun applyLatestPage(
             partition: DurablePartitionKey,
             channelId: String,
@@ -15086,6 +15118,63 @@ class SharedThreadStoreTest {
             offered(listOf(anchor, message(id = "m12", seq = 12, body = "gap body"))),
         )
         assertEquals(emptyList(), offered(listOf(anchor)), "an all-known page (the heartbeat case) writes nothing")
+    }
+
+    @Test
+    fun aCatchUpRegistersItsRealtimeBaselineBeforeItsFetchAndHandsItToTheDurableWrite() = runBlocking {
+        suspend fun run(fail: Boolean): Pair<List<String>, Int> {
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(coroutineContext + scopeJob)
+            val repository = FakeConversationRepository()
+            val anchor = message(id = "m1", seq = 10, body = "repository body")
+            val raw =
+                RawMessagePage(
+                    messages = Json.parseToJsonElement("""[{"id":"m1"}]""") as JsonArray,
+                    requestedLimit = SharedThreadPaging.DefaultPageSize
+                )
+            val extender = RecordingDurablePageExtender()
+            extender.baselineToRegister = { partition, channelId ->
+                CanonicalMessageV2EnterBaseline(
+                    partition = partition,
+                    scopeId = channelId,
+                    epochAtRequest = 2L,
+                    roomLeaveCountAtRequest = 0L,
+                    nonMemberAtRequest = false,
+                    roomsJoinedAtRequest = true,
+                    source = "catch_up",
+                )
+            }
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = FakeThreadApi(),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                    conversationRepository = repository,
+                    durablePageExtender = extender
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+            store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+            repository.latestResult =
+                if (fail) {
+                    DataResult.Error(ScreenError(code = "thread_gap_catchup_network", retryable = true))
+                } else {
+                    // An all-known page: offered anyway, because only its commit restores continuity.
+                    DataResult.Content(threadSnapshot(messages = listOf(anchor)).copy(rawMessagePage = RawMessagePageWitness(raw)))
+                }
+            extender.onBegin = { extender.baselineEvents += "fetches_before_begin=${repository.latestRequests.size}" }
+            store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+            withTimeout(5_000) { while (repository.latestRequests.isEmpty()) delay(10) }
+            delay(20)
+            scopeJob.cancelAndJoin()
+            return extender.baselineEvents.toList() to extender.latestCalls.size
+        }
+        val (committed, writes) = run(fail = false)
+        assertEquals(listOf("fetches_before_begin=0", "begin", "apply:true", "abandon"), committed, "registered before the fetch")
+        assertEquals(1, writes)
+        // Twin: the same catch-up whose fetch fails abandons the baseline and writes nothing.
+        val (failed, failedWrites) = run(fail = true)
+        assertEquals(listOf("fetches_before_begin=0", "begin", "abandon"), failed)
+        assertEquals(0, failedWrites)
     }
 
     @Test

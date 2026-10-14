@@ -76,6 +76,12 @@ data class CanonicalMessageV2IncrementalFrame(
      * newer (edited / reacted, from a snapshot or a later frame), so a late `New` never overwrites it.
      */
     val insertOnly: Boolean = false,
+    /**
+     * Task #168: a realtime write keeps the scope's stored `updatedAtMs`, so retention ranks scopes by the last
+     * USER-driven write (enter / paging / catch-up): a busy channel nobody opens never pushes out a quiet
+     * channel the user reads. A scope without a stored cursor gets `now` as before.
+     */
+    val preserveUpdatedAt: Boolean = false,
 )
 
 data class RestoredCanonicalMessageV2Scope(
@@ -103,6 +109,10 @@ interface CanonicalMessageV2Store {
      * thread page needs its stored parent before it can be converted). `null` = no baseline.
      */
     suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = restore(scope).cursor
+
+    /** Task #168: whether fact [factId] is stored in [scope], without decoding the scope's facts. */
+    suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean =
+        restore(scope).envelopes.any { it.fact.id == factId }
 }
 
 data class CanonicalMessageV2StoreWriteResult(
@@ -266,6 +276,12 @@ class CanonicalMessageV2GenerationEngine(
     suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
         store.baselinedScopeKinds(partition, scopeId)
 
+    /** Pass-through of [CanonicalMessageV2Store.containsFact]; reads only, no coordinator effect. */
+    suspend fun storedFactExists(scope: SyncScopeKey, factId: String): Boolean {
+        requireV2Scope(scope)
+        return store.containsFact(scope, factId)
+    }
+
     /** Pass-through of [CanonicalMessageV2Store.readCursor]; reads only, no coordinator effect. */
     suspend fun storedCursor(scope: SyncScopeKey): PersistedCursor? {
         requireV2Scope(scope)
@@ -322,10 +338,17 @@ internal class SqlDelightCanonicalMessageV2Store(
     private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2Store {
     override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) =
-        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true, insertOnly = false)
+        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true, insertOnly = false, preserveUpdatedAt = false)
 
     override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
-        applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = false, insertOnly = frame.insertOnly)
+        applyFrame(
+            frame.scope,
+            frame.envelopes,
+            frame.cursor,
+            rebaseline = false,
+            insertOnly = frame.insertOnly,
+            preserveUpdatedAt = frame.preserveUpdatedAt,
+        )
 
     private suspend fun applyFrame(
         scope: SyncScopeKey,
@@ -333,6 +356,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         cursor: PersistedCursor,
         rebaseline: Boolean,
         insertOnly: Boolean,
+        preserveUpdatedAt: Boolean,
     ): CanonicalMessageV2StoreWriteResult {
         requireV2Scope(scope)
         require(envelopes.map { it.fact.id }.distinct().size == envelopes.size) { "duplicate V2 fact id in frame" }
@@ -341,6 +365,8 @@ internal class SqlDelightCanonicalMessageV2Store(
         val evictedScopes = mutableSetOf<SyncScopeKey>()
         var committedCursor: PersistedCursor? = null
         database.transaction {
+            // Read before anything is written in this transaction (task #168 retention rank).
+            val keptUpdatedAtMs = if (preserveUpdatedAt) selectCursorUpdatedAtMs(scope) else null
             if (rebaseline) {
                 queries.clearUnpinnedCanonicalFactsForScope(
                     environmentId = scope.environmentId,
@@ -406,7 +432,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 newestLoadedSeq = written.newestLoadedSeq,
                 hasLoadedOldest = if (written.hasLoadedOldest) 1L else 0L,
                 hasLoadedNewest = if (written.hasLoadedNewest) 1L else 0L,
-                updatedAtMs = now(),
+                updatedAtMs = keptUpdatedAtMs ?: now(),
                 epoch = written.epoch,
                 parentScopeKind = written.parentScopeKind,
                 parentScopeId = written.parentScopeId,
@@ -458,6 +484,29 @@ internal class SqlDelightCanonicalMessageV2Store(
         requireV2Scope(scope)
         return selectCursor(scope)
     }
+
+    override suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean {
+        requireV2Scope(scope)
+        return database.queries.countCanonicalFactInScope(
+            id = factId,
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsOne() == 1L
+    }
+
+    private fun selectCursorUpdatedAtMs(scope: SyncScopeKey): Long? =
+        database.queries.selectSyncCursor(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            scopeId = scope.scopeId,
+        ).executeAsOneOrNull()?.updatedAtMs
 
     private fun selectCursor(scope: SyncScopeKey): PersistedCursor? =
         database.queries.selectSyncCursor(

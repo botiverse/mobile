@@ -39,6 +39,12 @@ internal data class RealtimeRoomTransition(
 internal class SharedRealtimeRoomLeaseRegistry(
     private val shellInstanceId: String,
     /**
+     * Task #168: told of every `leave:channel` transition this registry emits (called under its lock; must
+     * not block). The offline cache stops appending that room's frames: the socket no longer receives them.
+     * Declared before [leaveAllowed] so existing trailing-lambda callers keep binding to [leaveAllowed].
+     */
+    private val onLeave: (serverId: String, roomId: String) -> Unit = { _, _ -> },
+    /**
      * Whether the last release of a room may send `leave:channel`. The server subscribes every socket to
      * all channels and DMs the user belongs to when it connects (that is how unread counts arrive), so a
      * leave for one of those silently stops its realtime messages until the next reconnect. Only rooms the
@@ -109,6 +115,11 @@ internal class SharedRealtimeRoomLeaseRegistry(
         joinedByUser += RoomKey(serverId, cleanRoomId)
     }
 
+    /** Whether the user joined [roomId] from a page in this shell (task #168 membership lookup). */
+    fun isJoinedByUser(serverId: String, roomId: String): Boolean = synchronized(lock) {
+        RoomKey(serverId, roomId.trim()) in joinedByUser
+    }
+
     fun ownerCount(serverId: String, roomId: String): Int = synchronized(lock) {
         ownersByRoom[RoomKey(serverId, roomId)]?.size ?: 0
     }
@@ -122,6 +133,7 @@ internal class SharedRealtimeRoomLeaseRegistry(
             if (owners.isEmpty()) {
                 ownersByRoom -= key
                 if (key !in joinedByUser && leaveAllowed(key.serverId, key.roomId)) {
+                    onLeave(key.serverId, key.roomId)
                     transitions +=
                         RealtimeRoomTransition(
                             action = RealtimeRoomTransitionAction.Leave,
