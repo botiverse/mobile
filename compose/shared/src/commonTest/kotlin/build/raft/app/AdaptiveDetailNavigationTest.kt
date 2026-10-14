@@ -26,6 +26,25 @@ class AdaptiveDetailNavigationTest {
     private fun SharedAdaptiveWorkspaceSession.source(): SlockAdaptiveDetailCloseRequest =
         SlockAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
 
+    @Test fun returningToTheShellOnAPhoneClearsTheViewedConversation() {
+        // A pushed conversation page closed: nothing in the shell is being viewed, so Home must count
+        // unread for the channel that was open (it otherwise waits for the next server summary).
+        assertNull(SharedAdaptiveWorkspaceSession().selectedConversationWhenShellReturns(desktopModeOnLargeScreen = false))
+        assertNull(SharedAdaptiveWorkspaceSession().selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
+        // Desktop mode off on a large screen: a parked selection is not on screen either.
+        assertNull(session().selectedConversationWhenShellReturns(desktopModeOnLargeScreen = false))
+    }
+
+    @Test fun returningToTheShellKeepsADetailStillShownBesideTheList() {
+        val split = session()
+        assertEquals(SlockAdaptiveWorkspacePresentation.Split, split.workspace!!.presentation)
+        assertEquals("channel", split.selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
+
+        val closed = split.backFromDetail(split.source())
+        assertNull(closed.workspace!!.selection)
+        assertNull(closed.selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
+    }
+
     @Test fun replyReplacesOnlyDetailAndBackRestoresParentWithFreshGeneration() {
         val root = session()
         val opened = root.navigateDetail(root.source(), reply, "server")

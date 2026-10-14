@@ -5,6 +5,7 @@ import build.raft.app.SlockAdaptiveDetailIdentity
 import build.raft.app.SlockAdaptiveDetailSelection
 import build.raft.app.SlockAdaptivePaneLayout
 import build.raft.app.SlockAdaptiveWorkspaceIntent
+import build.raft.app.SlockAdaptiveWorkspacePresentation
 import build.raft.app.SlockAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
@@ -129,3 +130,25 @@ internal fun SharedAdaptiveWorkspaceSession.hasVisibleDetailBackHistory(): Boole
     workspace?.parentVisible == true && detailHistory?.let {
         it.owner == workspace.selection && it.previous.isNotEmpty()
     } == true
+
+/**
+ * The conversation Home should treat as "being viewed" once the app shell page is visible again.
+ *
+ * Home suppresses realtime unread increments for its selected conversation. On a phone (and with desktop
+ * mode off) an opened conversation is a pushed page; when the shell is visible again that page is gone, so
+ * nothing is being viewed and the selection must clear, or the last opened channel never gains unread until
+ * the next server summary. A detail still showing inside the shell (desktop mode, split or detail-only)
+ * keeps its list selection.
+ */
+internal fun SharedAdaptiveWorkspaceSession.selectedConversationWhenShellReturns(
+    desktopModeOnLargeScreen: Boolean,
+): String? {
+    val current = workspace ?: return null
+    if (!desktopModeOnLargeScreen || current.selection == null) return null
+    return when (current.presentation) {
+        SlockAdaptiveWorkspacePresentation.Split,
+        SlockAdaptiveWorkspacePresentation.DetailOnly -> detailListSelectionId()
+        SlockAdaptiveWorkspacePresentation.ListOnly,
+        SlockAdaptiveWorkspacePresentation.Inactive -> null
+    }
+}
