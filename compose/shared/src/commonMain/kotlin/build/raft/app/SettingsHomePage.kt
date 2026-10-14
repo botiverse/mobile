@@ -20,6 +20,7 @@ import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.detailListSelectionId
+import build.raft.app.data.selectedConversationWhenShellReturns
 import build.raft.app.data.hasVisibleDetailBackHistory
 
 import build.raft.app.data.NetworkSlockThreadApi
@@ -4023,6 +4024,22 @@ private fun SlockAppShellReadyContent(
             "SlockForegroundPerf",
             "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
         )
+    }
+    // Home counts no realtime unread for its selected conversation. A conversation opened as a pushed page
+    // (phone, or desktop mode off) is closed once this shell page is visible again, so clear the selection
+    // then; a detail still shown inside the shell keeps its list selection.
+    var appShellPageWasHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(pageVisible) {
+        if (!pageVisible) {
+            appShellPageWasHidden = true
+            return@LaunchedEffect
+        }
+        if (!appShellPageWasHidden) return@LaunchedEffect
+        appShellPageWasHidden = false
+        val selection =
+            adaptiveWorkspaceStore.snapshot().selectedConversationWhenShellReturns(desktopModeOnLargeScreen)
+        bridge.log("app_shell_return_selection selected=${selection.orEmpty()}")
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(selection))
     }
     LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
         if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
