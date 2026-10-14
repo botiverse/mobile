@@ -860,19 +860,27 @@ open class SlockKuiklyActivity :
                 }
                         ?: return
         val currentMode = currentDisplay.mode ?: return
-        val bestMode =
-                currentDisplay.supportedModes
-                        ?.filter {
-                            it.physicalWidth == currentMode.physicalWidth &&
-                                    it.physicalHeight == currentMode.physicalHeight
-                        }
-                        ?.maxByOrNull { it.refreshRate }
+        val current =
+                DisplayModeSpec(
+                        modeId = currentMode.modeId,
+                        physicalWidth = currentMode.physicalWidth,
+                        physicalHeight = currentMode.physicalHeight,
+                        refreshRate = currentMode.refreshRate,
+                )
+        val supported =
+                currentDisplay.supportedModes?.map {
+                    DisplayModeSpec(
+                            modeId = it.modeId,
+                            physicalWidth = it.physicalWidth,
+                            physicalHeight = it.physicalHeight,
+                            refreshRate = it.refreshRate,
+                    )
+                }
                         ?: return
-        if (bestMode.modeId != currentMode.modeId && bestMode.refreshRate > currentMode.refreshRate) {
-            val attrs = window.attributes
-            attrs.preferredDisplayModeId = bestMode.modeId
-            window.attributes = attrs
-        }
+        val bestMode = selectHighestRefreshSameResolutionMode(current, supported) ?: return
+        val attrs = window.attributes
+        attrs.preferredDisplayModeId = bestMode.modeId
+        window.attributes = attrs
     }
 
     private fun installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded() {
