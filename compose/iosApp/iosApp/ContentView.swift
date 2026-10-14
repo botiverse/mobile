@@ -50,6 +50,8 @@ struct ContentView: View {
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = slockIosOAuthProviders
+        // Browser web login is available; the shared gate decides whether it replaces the login page.
+        data["slockWebLoginSupported"] = true
         if destination.pageName == "compose_slock_app_shell" {
             data["slockNativeTabBarRenderer"] = appTabBarRenderer()
         }

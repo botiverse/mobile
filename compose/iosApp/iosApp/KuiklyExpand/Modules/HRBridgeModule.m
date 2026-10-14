@@ -3806,6 +3806,17 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         [self slock_openNotificationSettingsWithCallback:callback];
         return;
     }
+    if ([action isEqualToString:@"appLoginPrepare"]) {
+        callback([[SlockIosMobileOAuthHost shared] prepareAppLogin]);
+        return;
+    }
+    if ([action isEqualToString:@"appLoginOpen"]) {
+        [[SlockIosMobileOAuthHost shared] openAppLoginWithUrl:SlockBridgeString(params[@"authorizationUrl"])
+                                                   completion:^(NSDictionary *result) {
+            callback(result);
+        }];
+        return;
+    }
     if ([action isEqualToString:@"mobileOAuthLink"]) {
         NSString *provider = SlockBridgeString(params[@"providerId"]);
         [[SlockIosMobileOAuthHost shared] startWithProvider:provider

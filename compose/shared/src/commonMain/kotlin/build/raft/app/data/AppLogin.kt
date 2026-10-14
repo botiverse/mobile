@@ -5,7 +5,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-internal const val SLOCK_APP_LOGIN_MMKV_NAMESPACE = "slockAppLogin"
+const val SLOCK_APP_LOGIN_MMKV_NAMESPACE = "slockAppLogin"
 
 /** Pure browser login handoff; independent of provider OAuth and account linking. */
 @Serializable
@@ -39,7 +39,7 @@ internal class AppLoginCoordinator(
     suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String): String? = mutex.withLock {
         clear()
         if (generation.isBlank() || !pkce.matches(verifier) || !pkce.matches(challenge) ||
-            returnUri !in setOf("raft://login/callback", "raft-debug://login/callback")) return@withLock null
+            returnUri !in APP_LOGIN_RETURN_URIS) return@withLock null
         val active = runtime() ?: return@withLock null
         val startedAt = now()
         val result = active.start(returnUri, challenge)

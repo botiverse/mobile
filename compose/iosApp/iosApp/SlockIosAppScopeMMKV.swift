@@ -8,6 +8,7 @@ private let slockApiEnvironmentNamespace = "slock_api_server_environment"
 private let slockPushRegistrationNamespace = "slockPushRegistration"
 private let slockActivityUnreadNamespace = "slockActivityUnread"
 private let slockIosMobileOAuthNamespace = "slockIosMobileOAuth"
+private let slockAppLoginNamespace = "slockAppLogin"
 
 final class SlockIosMMKVKeyValueStore: NSObject, SlockKeyValueStore {
     private let namespace: String
@@ -49,7 +50,8 @@ enum SlockIosAppScopeMMKV {
             slockApiEnvironmentNamespace,
             slockPushRegistrationNamespace,
             slockActivityUnreadNamespace,
-            slockIosMobileOAuthNamespace
+            slockIosMobileOAuthNamespace,
+            slockAppLoginNamespace
         ].forEach { namespace in
             SlockSharedKeyValueStoreProvider.shared.installAppScopeFactory(
                 namespace: namespace,

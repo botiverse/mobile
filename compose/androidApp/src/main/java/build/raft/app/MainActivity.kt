@@ -12,6 +12,7 @@ import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import build.raft.app.shared.withAndroidShellRouteOwner
+import build.raft.app.data.SlockAppLoginBridge
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
     private fun handleLaunchIntent(intent: Intent?) {
         if (
             !handleExternalShareIntent(intent) &&
+            !handleAppLoginCallback(intent) &&
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
@@ -298,6 +300,30 @@ class MainActivity : ComponentActivity() {
                 SharedAuthResult.Unauthenticated ->
                     Toast.makeText(this@MainActivity, getString(R.string.google_sign_in_failed_toast), Toast.LENGTH_SHORT).show()
             }
+        }
+        return true
+    }
+
+    /**
+     * Browser web login callback (`<scheme>://login/callback`). The shared coordinator owns the pending
+     * request and the exchange; the login page observes the result. A live shell is simply revealed so
+     * its login page keeps its state; otherwise the shell starts and picks the result up.
+     */
+    private fun handleAppLoginCallback(intent: Intent?): Boolean {
+        val uri = intent?.data ?: return false
+        if (!uri.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) ||
+            !uri.host.equals("login", ignoreCase = true)
+        ) {
+            return false
+        }
+        val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        val accepted = SlockAppLoginBridge.completeCallbackUri(uri.toString())
+        setIntent(Intent(this, MainActivity::class.java))
+        SlockAppLog.d("SlockAuth", "app_login_callback accepted=$accepted liveShell=$hasLiveShellInTask")
+        if (hasLiveShellInTask) {
+            finish()
+        } else {
+            openSharedShell(Intent(this, MainActivity::class.java))
         }
         return true
     }

@@ -20,6 +20,8 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
+import build.raft.app.data.MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
+import build.raft.app.data.SlockMobileWebLoginGate
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -87,6 +89,7 @@ import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
+import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
 
 const val LOGIN_PAGE = "compose_login"
@@ -99,6 +102,8 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
+/** Page data from hosts that implement browser web login next to the email/social login (Android, iOS). */
+internal const val AUTH_WEB_LOGIN_SUPPORTED_KEY = "slockWebLoginSupported"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
@@ -270,8 +275,27 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    if (authRuntimeCapabilities.webLoginOnly) {
-        WebLoginScreen(pager, bridge, authDataSource)
+    // Pre-auth flag: the cached answer renders at once. A fresh answer may switch the page only shortly after it
+    // opened and before the user touched it; otherwise it is just cached for the next login page.
+    val apiBaseUrl = remember { sharedStores.apiEnvironmentStore.current().apiBaseUrl }
+    var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
+    var loginPageInteracted by remember { mutableStateOf(false) }
+    LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
+        if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
+            val openedAt = TimeSource.Monotonic.markNow()
+            val enabled = SlockMobileWebLoginGate.refresh(apiBaseUrl)
+            if (
+                shouldApplyFreshLoginPageChoice(
+                    elapsedMs = openedAt.elapsedNow().inWholeMilliseconds,
+                    interacted = loginPageInteracted,
+                )
+            ) {
+                webLoginGateEnabled = enabled
+            }
+        }
+    }
+    if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
+        WebLoginScreen(pager, bridge, authDataSource, onInteraction = { loginPageInteracted = true })
         return
     }
     val linkNavigator =
@@ -417,6 +441,7 @@ private fun LoginScreen() {
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = { nextValue ->
+            loginPageInteracted = true
             applyAuthTextFieldValue(
                 nextValue = nextValue,
                 updateOwner = { emailFieldValue = it },
@@ -427,6 +452,7 @@ private fun LoginScreen() {
             )
         },
         onPasswordChange = { nextValue ->
+            loginPageInteracted = true
             applyAuthTextFieldValue(
                 nextValue = nextValue,
                 updateOwner = { passwordFieldValue = it },
@@ -436,9 +462,16 @@ private fun LoginScreen() {
                 },
             )
         },
-        onSubmit = { submitLogin() },
-        onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
+        onSubmit = {
+            loginPageInteracted = true
+            submitLogin()
+        },
+        onSubmitValues = { emailValue, passwordValue ->
+            loginPageInteracted = true
+            submitLogin(emailValue, passwordValue)
+        },
         onSocialSignIn = { provider ->
+            loginPageInteracted = true
             state = state.copy(submitting = false, errorMessage = null)
             errorPresentation = null
             socialSubmittingProvider = provider
@@ -459,6 +492,17 @@ private fun LoginScreen() {
         },
     )
 }
+
+/** A fresh pre-auth answer replaces the visible login page only within the window and before any user input. */
+internal fun shouldApplyFreshLoginPageChoice(elapsedMs: Long, interacted: Boolean): Boolean =
+    !interacted && elapsedMs <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
+
+/**
+ * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the pre-auth
+ * `mobile_legacy_login_v0` flag is not on (Android, iOS); otherwise email/social login.
+ */
+internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =
+    capabilities.webLoginOnly || (capabilities.webLoginSupported && webLoginGateEnabled)
 
 private data class PendingLogin(
     val nonce: Int,
@@ -2169,6 +2213,9 @@ internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
 ): SharedAuthRuntimeCapabilities {
     seedWebLoginOnly(if (pageData.has("slockWebLoginOnly")) pageData.optBoolean("slockWebLoginOnly", false) else null)
+    seedWebLoginSupported(
+        if (pageData.has(AUTH_WEB_LOGIN_SUPPORTED_KEY)) pageData.optBoolean(AUTH_WEB_LOGIN_SUPPORTED_KEY, false) else null
+    )
     return seedSocialProviders(
         if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
             pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)

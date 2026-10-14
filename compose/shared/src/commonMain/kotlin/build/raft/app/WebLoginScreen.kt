@@ -28,7 +28,12 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuthDataSource) {
+internal fun WebLoginScreen(
+    pager: Pager,
+    bridge: BridgeModule,
+    auth: SharedAuthDataSource,
+    onInteraction: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     val platform = remember(bridge) {
         BridgeSettingsPlatformCapabilities(bridge, "", scope.kuiklyBridgeCallContext())
@@ -67,7 +72,10 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
             AuthError(if (failed) stringResource(MR.strings.auth_web_login_failed) else null)
             AuthTermsAgreement(
                 checked = consentAccepted,
-                onCheckedChange = { consentAccepted = it },
+                onCheckedChange = {
+                    onInteraction()
+                    consentAccepted = it
+                },
                 onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
                 onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
             )
@@ -77,6 +85,7 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
                 enabled = consentAccepted && !starting,
                 loading = starting,
                 onClick = {
+                    onInteraction()
                     startWebLoginWithConsent(consentAccepted, starting) {
                         starting = true
                         failed = false
