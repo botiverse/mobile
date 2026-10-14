@@ -80,8 +80,9 @@ internal fun <T> SlockTabbedScaffold(
     // HorizontalPager sharing the same selected index with keepItemAlive = true
     // so the 2-3 thread mode tabs render real content during swipe transitions
     // and stay alive across back-and-forth swipes without reload or loading
-    // placeholder flicker. Platform edge-back avoidance is injected via
-    // slockPlatformTabPagerStartEdgeInsetDp (iOS 24dp).
+    // placeholder flicker. Platform gesture policy is injected via
+    // slockPlatformTabPagerStartEdgeInsetDp. iOS uses 0dp; native back-gesture
+    // arbitration yields to the pager while it can consume the drag.
     TabPager(
         selectedIndex = slockTabbedScaffoldPageIndex(tabs, selectedKey),
         onSelectedIndexChange = { index ->
