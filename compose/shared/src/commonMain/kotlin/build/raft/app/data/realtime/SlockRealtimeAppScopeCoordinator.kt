@@ -24,8 +24,17 @@ interface SlockRealtimeAppScopeConnection {
     fun disconnect()
     fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
+    /**
+     * [transportEpoch] (task #168): the epoch of the socket that delivered the frame, bound on the socket
+     * thread before the frame enters any queue; null when that socket posted no transport signal.
+     */
     fun observeRawEvents(
-        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: String) -> Unit
+        listener: (
+            context: RealtimeSocketConnectionContext,
+            eventName: String,
+            rawPayload: String,
+            transportEpoch: Long?,
+        ) -> Unit
     ): RealtimeSubscription
 }
 
@@ -36,6 +45,7 @@ interface SlockRealtimeAppScopeSink {
         witness: RealtimeConnectionWitnessToken,
         eventName: String,
         rawPayload: String,
+        transportEpoch: Long?,
     )
     suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
@@ -611,6 +621,7 @@ class SlockRealtimeAppScopeCoordinator(
         context: RealtimeSocketConnectionContext,
         eventName: String,
         rawPayload: String,
+        transportEpoch: Long? = null,
     ) {
         val decision = engine.onRawEventForConnection(context.serverId.value, eventName, rawPayload)
         if (decision.shouldFanOut) {
@@ -618,7 +629,8 @@ class SlockRealtimeAppScopeCoordinator(
                 serverId = context.serverId,
                 witness = context.witness,
                 eventName = decision.eventName,
-                rawPayload = decision.rawPayload
+                rawPayload = decision.rawPayload,
+                transportEpoch = transportEpoch,
             )
         }
         if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
@@ -637,9 +649,9 @@ class SlockRealtimeAppScopeRuntime(
             }
         }
     private val rawEventSubscription: RealtimeSubscription =
-        connection.observeRawEvents { context, eventName, rawPayload ->
+        connection.observeRawEvents { context, eventName, rawPayload, transportEpoch ->
             dispatch {
-                coordinator.onRawEvent(context, eventName, rawPayload)
+                coordinator.onRawEvent(context, eventName, rawPayload, transportEpoch)
             }
         }
 

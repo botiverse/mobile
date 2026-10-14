@@ -136,6 +136,23 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
+    fun coordinatorFansOutTheEpochBoundWhenTheSocketReceivedTheFrame() = runBlocking {
+        // Task #168: an old socket's frame keeps the epoch it was received under, even when it is fanned out
+        // after a reconnect, so the durable canary can refuse to append it to the newer window.
+        val connection = FakeAppScopeConnection()
+        val sink = FakeAppScopeSink()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
+        val context = RealtimeSocketConnectionContext(ServerId("server-1"), witness())
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = context.witness)
+
+        coordinator.onRawEvent(context, RealtimeSocketEvents.MessageNew, """{"id":"m110"}""", transportEpoch = 1L)
+        coordinator.onRawEvent(context, RealtimeSocketEvents.MessageNew, """{"id":"m111"}""", transportEpoch = 2L)
+        coordinator.onRawEvent(context, RealtimeSocketEvents.MessageNew, """{"id":"m112"}""")
+
+        assertEquals(listOf<Long?>(1L, 2L, null), sink.fanOutTransportEpochs)
+    }
+
+    @Test
     fun coordinatorGatesAgainstCapturedConnectionServerBeforeFanout() = runBlocking {
         val connection = FakeAppScopeConnection()
         val sink = FakeAppScopeSink()
@@ -507,13 +524,14 @@ class SlockRealtimeAppScopePolicyTest {
             RealtimeSubscription { }
 
         override fun observeRawEvents(
-            listener: (RealtimeSocketConnectionContext, String, String) -> Unit
+            listener: (RealtimeSocketConnectionContext, String, String, Long?) -> Unit
         ): RealtimeSubscription =
             RealtimeSubscription { }
     }
 
     private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
         val fanOutEventNames = mutableListOf<String>()
+        val fanOutTransportEpochs = mutableListOf<Long?>()
 
         override fun log(message: String) = Unit
 
@@ -521,9 +539,11 @@ class SlockRealtimeAppScopePolicyTest {
             serverId: ServerId,
             witness: RealtimeConnectionWitnessToken,
             eventName: String,
-            rawPayload: String
+            rawPayload: String,
+            transportEpoch: Long?,
         ) {
             fanOutEventNames += eventName
+            fanOutTransportEpochs += transportEpoch
         }
 
         override suspend fun maybePostBackgroundUnreadNotification(

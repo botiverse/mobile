@@ -5490,16 +5490,19 @@ private fun SlockAppShellReadyContent(
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
                     val witness = eventData.realtimeConnectionWitnessOrNull() ?: return@launch
                     val grant = realtimeCallbackGate.resolveExistingGrant(witness, serverId) ?: return@launch
+                    // Task #168: the connection that delivered this frame, when the host names it. The durable
+                    // canary decides reconnects by it, so frame/signal order across coroutines does not matter.
+                    val frameTransportEpoch =
+                        eventData
+                            .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                            .takeIf { it > 0L }
                     val activeSelectedServerId = selectedServerStore.selectedServerId.value
                     val processAccepted =
                         sharedStores.processRealtimeDomainEventOwner().acceptProcessMutation(
                             grant,
                             event,
                             source = "process_realtime",
-                            presenceTransportEpoch =
-                                eventData
-                                    .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
-                                    .takeIf { it > 0L }
+                            presenceTransportEpoch = frameTransportEpoch
                         )
                     if (!processAccepted) return@launch
                     RealtimeCursorPolicy.appliedSeqForEvent(event)
@@ -5542,7 +5545,8 @@ private fun SlockAppShellReadyContent(
                             appShellRealtimeDomainEventOwner.acceptHomeUnreadProjection(
                                 shellGrant,
                                 event,
-                                source = "app_shell_background_server"
+                                source = "app_shell_background_server",
+                                transportEpoch = frameTransportEpoch,
                             )
                         } else {
                             bridge.log(
@@ -5608,7 +5612,12 @@ private fun SlockAppShellReadyContent(
                         )
                         return@launch
                     }
-                    val projected = appShellRealtimeDomainEventOwner.accept(shellGrant, event, source = "app_shell")
+                    val projected = appShellRealtimeDomainEventOwner.accept(
+                        shellGrant,
+                        event,
+                        source = "app_shell",
+                        transportEpoch = frameTransportEpoch,
+                    )
                     if (!projected) return@launch
                     sharedStores.realtimeAuthorityProvider.runIfCurrentGrant(grant) {
                         if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {

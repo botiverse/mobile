@@ -418,7 +418,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             },
         )
         owner.installCanonicalMessageV2OwnerGateway(
-            CanonicalMessageV2OwnerGateway { _, _ -> CanonicalMessageV2CanaryOutcome.Committed },
+            CanonicalMessageV2OwnerGateway { _, _, _ -> CanonicalMessageV2CanaryOutcome.Committed },
         )
         owner.registerGuardedSinks(
             RealtimeGuardedDomainEventSinks(
@@ -451,7 +451,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             },
         )
         owner.installCanonicalMessageV2OwnerGateway(
-            CanonicalMessageV2OwnerGateway { _, _ ->
+            CanonicalMessageV2OwnerGateway { _, _, _ ->
                 CanonicalMessageV2CanaryOutcome.Held("snapshot_failed")
             },
         )
@@ -465,6 +465,34 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         assertEquals(0, currentGrantChecks)
         assertEquals(0, legacyRunnerChecks)
         assertTrue(projected.isEmpty())
+    }
+
+    @Test
+    fun everyEntryHandsTheFramesTransportEpochToTheDurableCanary() = runBlocking {
+        val seen = mutableListOf<Long?>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                block()
+                true
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                block(CurrentMessageCommitContext(scopeKey.partition))
+                true
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, _, transportEpoch ->
+                seen += transportEpoch
+                CanonicalMessageV2CanaryOutcome.Committed
+            },
+        )
+
+        owner.acceptProcessMutation(testGrant(), messageNewWithCanonical("p", 1L), "test", presenceTransportEpoch = 7L)
+        owner.accept(testGrant(), messageNewWithCanonical("s", 2L), "test", transportEpoch = 8L)
+        owner.acceptHomeUnreadProjection(testGrant(), messageNewWithCanonical("b", 3L), "test", transportEpoch = 9L)
+        owner.accept(testGrant(), messageNewWithCanonical("n", 4L), "test")
+
+        assertEquals(listOf<Long?>(7L, 8L, 9L, null), seen)
     }
 
     private fun testGrant() = RealtimeGrantRecord(

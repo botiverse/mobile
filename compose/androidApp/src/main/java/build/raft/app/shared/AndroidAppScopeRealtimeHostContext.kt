@@ -55,14 +55,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 ) : SlockRealtimeHostContext {
     // Task #167: same signal iOS posts. Shared consumers (the durable message canary, agent-activity seq) need
     // to know a new socket started before they see its frames.
-    private val presenceTransportEpochs = AtomicLong(0L)
+    // Task #168: frames also carry the epoch of the socket that is current when they are fanned out, so the
+    // canary does not depend on the signal reaching it first. 0 = this socket posted no signal.
+    @Volatile private var currentPresenceTransportEpoch = 0L
     private val connectedSubscription =
         client.observeConnected { context -> postPresenceTransportConnected(context) }
 
     private fun postPresenceTransportConnected(context: RealtimeSocketConnectionContext) {
+        currentPresenceTransportEpoch = 0L
         val witness = context.witness
         if (witness.scopeLeaseId.isBlank()) return
         val epoch = presenceTransportEpochs.incrementAndGet()
+        currentPresenceTransportEpoch = epoch
         log("presence_transport_connected serverId=${context.serverId.value} presenceEpoch=$epoch")
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.EventName,
@@ -113,10 +117,23 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         repository.observeEvents(listener)
 
     override fun observeRawEvents(
-        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: String) -> Unit
+        listener: (
+            context: RealtimeSocketConnectionContext,
+            eventName: String,
+            rawPayload: String,
+            transportEpoch: Long?,
+        ) -> Unit
     ): RealtimeSubscription =
         client.observeRawEvents { context, eventName, rawPayload ->
-            listener(context, eventName, rawPayload.toRealtimeRawPayloadString())
+            // Task #168: bind the epoch here, on the socket thread inside the transport fence, where the
+            // connected listener of this socket has already run and no later socket's can have. Read later on
+            // main, an old socket's frame could pick up a newer epoch and be appended as current.
+            listener(
+                context,
+                eventName,
+                rawPayload.toRealtimeRawPayloadString(),
+                currentPresenceTransportEpoch.takeIf { it > 0L },
+            )
         }
 
     override fun log(message: String) {
@@ -127,15 +144,23 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         serverId: ServerId,
         witness: RealtimeConnectionWitnessToken,
         eventName: String,
-        rawPayload: String
+        rawPayload: String,
+        transportEpoch: Long?,
     ) {
         // task #354: raw server events (potentially multi-MiB) go to the
         // dedicated ingest topic consumed only by the canonical AppShell
         // store owner, so a large payload is decoded once instead of once
         // per open page. Lifecycle/action signals keep the broadcast topic.
+        // The epoch was bound when the socket thread received the frame (observeRawEvents), not read now.
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.RawIngestEventName,
-            eventData = realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
+            eventData =
+                realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
+                    .also { payload ->
+                        transportEpoch
+                            ?.takeIf { it > 0L }
+                            ?.let { payload.put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, it) }
+                    }
         )
     }
 
@@ -161,6 +186,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
     companion object {
         private const val LOG_TAG = "SlockKuiklyRealtime"
+
+        // Process-wide: a rebuilt host context must not restart at 1 and reuse an epoch a durable window
+        // already committed under (that would read as the same connection).
+        private val presenceTransportEpochs = AtomicLong(0L)
 
         fun create(
             context: Context,
