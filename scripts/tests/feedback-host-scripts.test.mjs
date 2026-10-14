@@ -81,6 +81,25 @@ for (const [platform, script] of [['android', android], ['ios', ios]]) {
   });
 }
 
+test('feedback bootstrap maps navigator.language to the host locale contract', () => {
+  // The Web host rejects any locale outside ['en', 'zh-CN'], so raw values like
+  // 'en-US' or 'zh-cn' must be normalized by the bootstrap, not passed through.
+  for (const [raw, expected] of [['en-US', 'en'], ['en', 'en'], ['zh-cn', 'zh-CN'], ['zh-CN', 'zh-CN'], ['zh-Hans-CN', 'zh-CN'], ['ja', 'en'], ['', 'en']]) {
+    const window = { raftHostPort: { postMessage: () => {} } };
+    window.top = window;
+    window.self = window;
+    const context = vm.createContext({
+      window,
+      navigator: { language: raw },
+      localStorage: { setItem: () => {}, removeItem: () => {} },
+      location: { origin: 'https://example.test', pathname: '/feedback/', search: '' },
+      URL,
+    });
+    vm.runInContext(bootstrap, context, { filename: `feedback-bootstrap-locale-${raw || 'empty'}.js` });
+    assert.equal(window.RaftFeedback.session.locale, expected, `navigator.language=${raw}`);
+  }
+});
+
 test('feedback bootstrap does not materialize a session in a child frame', () => {
   const window = { top: {}, self: {}, raftHostPort: { postMessage: () => { throw new Error('child frame must not post'); } } };
   const context = vm.createContext({

@@ -1082,7 +1082,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
           if ($trustedUrl) { try { var trusted = new URL($trustedUrl); var bootstrapPath = '/__raft_mobile_bootstrap__'; if (location.origin !== trusted.origin || (location.pathname !== trusted.pathname && location.pathname !== bootstrapPath) || (location.pathname !== bootstrapPath && location.search !== trusted.search)) return; } catch (_) { return; } }
           var port = window.raftHostPort;
           var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
-          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:(navigator.language || 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
+          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:((navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh-CN' : 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
           function post(kind, payload) {
             if (!port) return;
             try { port.postMessage(JSON.stringify({kind:kind, payload:payload || binding})); } catch (_) {}
