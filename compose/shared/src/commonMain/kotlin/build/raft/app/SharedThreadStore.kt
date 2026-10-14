@@ -4284,26 +4284,28 @@ internal class SharedThreadDataSource(
         )
 
     /**
-     * Task #168 step 1: the gap catch-up page (disconnect / resume / in-foreground realtime gap).
+     * Task #168 step 1: one step of the gap catch-up (disconnect / resume / in-foreground realtime gap).
      *
-     * ONE `messages/channel/{id}?limit=[SharedThreadGapCatchUpPageLimit]` with no cursor — the same
-     * latest page the enter snapshot persists, so it carries full nodes (the `/messages/sync` delta
-     * rows lack `randomId` and can never reach the durable V2 cache, and the delta has no completeness
-     * signal). Whether the page joins the visible timeline is decided by the caller from an explicit
+     * An uncursored `messages/channel/{id}?limit=` latest page: full nodes, the same shape the enter
+     * snapshot persists (the `/messages/sync` delta rows lack `randomId` and can never reach the
+     * durable V2 cache, and the delta has no completeness signal). [wide] = `false` asks for the thread
+     * page size (the cheap common case), `true` for [SharedThreadGapCatchUpPageLimit] (the enter
+     * snapshot's page). Whether a page joins the timeline is decided by the caller from an explicit
      * fact (does the page contain the anchor message), never by seq arithmetic.
      */
     suspend fun fetchGapCatchUpLatestPage(
         basePayload: KuiklyThreadScreenPayload,
+        wide: Boolean,
     ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
             basePayload = basePayload,
-            source = "gap_catchup",
-            pageSizeOverride = SharedThreadGapCatchUpPageLimit,
+            source = if (wide) "gap_catchup_wide" else "gap_catchup",
+            pageSizeOverride = SharedThreadGapCatchUpPageLimit.takeIf { wide },
             repositoryCall = { repository, threadId, pageSize ->
                 repository.loadLatestMessages(threadId, pageSize)
             },
             call = { threadId, pageSize ->
-                api.channelMessages(threadId, limit = pageSize)
+                api.gapCatchUpChannelMessages(threadId, limit = pageSize)
             }
         )
 
@@ -9153,11 +9155,12 @@ internal class SharedThreadStore(
     }
 
     /**
-     * Gap catch-up (task #168 step 1, product decision "option A"): ONE latest-page request
-     * ([SharedThreadDataSource.fetchGapCatchUpLatestPage]), no loop. Small vs large gap is the
-     * explicit FACT "does the page contain the anchor message" — the newest server-backed message
-     * this timeline had when the request was made ([gapCatchUpAnchorMessageId]). Seqs are
-     * server-global and never decide it.
+     * Gap catch-up (task #168 step 1, product decision "option A"): at most TWO latest-page requests
+     * ([SharedThreadDataSource.fetchGapCatchUpLatestPage]) — the thread page size first, the 200 page
+     * only when the anchor is not on it — and never a loop. Small vs large gap is the explicit FACT
+     * "does the page contain the anchor message" — the newest server-backed message this timeline had
+     * when the request was made ([gapCatchUpAnchorMessageId]). Seqs are server-global and never decide
+     * it. The page that ended the decision is the one merged / shown / offered to the durable window.
      *
      * - Anchor on the page (small gap): the page overlaps the timeline, so it is merged as before
      *   (no hole). The durable window is offered the page and extends its newest edge.
@@ -9168,8 +9171,8 @@ internal class SharedThreadStore(
      *   ([jumpToLatest]) or newer paging takes them forward without yanking the viewport. The
      *   durable window is replaced by the page either way (`window_replaced`).
      *
-     * The single response either commits under the recovery mutex or nothing changes: a failure,
-     * a stale route or a cancellation leaves the timeline (and the durable window) as it was.
+     * The final response either commits under the recovery mutex or nothing changes: a failure at
+     * either step, a stale route or a cancellation leaves the timeline (and the durable window) as it was.
      */
     private suspend fun runRealtimeGapRecovery(
         initial: KuiklyThreadScreenPayload,
@@ -9210,7 +9213,21 @@ internal class SharedThreadStore(
                 } ?: return
             val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
             val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
-            val result = dataSource.fetchGapCatchUpLatestPage(requestPayload)
+            // Two steps, one outcome (nothing is committed before the decision is final): the cheap page
+            // first; only when the anchor is not on it, the enter snapshot's page. Either step failing
+            // ends the recovery with no timeline change.
+            val narrow = dataSource.fetchGapCatchUpLatestPage(requestPayload, wide = false)
+            val anchorOnNarrowPage =
+                narrow is DataResult.Content &&
+                    anchorMessageId != null &&
+                    narrow.data.payload.messages.any { message -> message.id == anchorMessageId }
+            val result =
+                if (narrow is DataResult.Content && !anchorOnNarrowPage && narrow.data.payload.messages.isNotEmpty()) {
+                    dataSource.fetchGapCatchUpLatestPage(requestPayload, wide = true)
+                } else {
+                    narrow
+                }
+            val catchUpSteps = if (result === narrow) 1 else 2
             realtimeGapRecoveryMutex.withLock {
                 val recovery =
                     realtimeGapRecoveryState
@@ -9340,7 +9357,7 @@ internal class SharedThreadStore(
                         diagnosticsLogger?.invoke(
                             "thread_gap_catchup threadId=${initial.sourceThreadId.orEmpty()} " +
                                 "decision=${decision.wireName} anchorOnPage=${anchorMessageId != null && pageMessages.any { it.id == anchorMessageId }} " +
-                                "pageMessages=${pageMessages.size} added=$added applied=$applied"
+                                "steps=$catchUpSteps pageMessages=${pageMessages.size} added=$added applied=$applied"
                         )
                         if (!applied) return@withLock
                         if (decision != GapCatchUpDecision.DetachFromTail && added > 0) {

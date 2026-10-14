@@ -44,6 +44,13 @@ internal interface SlockThreadApi {
         afterSeq: Long? = null
     ): ThreadApiResult<ThreadMessagesPage>
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): ThreadApiResult<ThreadMessagesPage>
+
+    /**
+     * Task #168 step 1: the gap catch-up's latest page — the same `messages/channel/{id}?limit=` request
+     * as an uncursored [channelMessages], named separately so the catch-up is its own call site.
+     */
+    suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): ThreadApiResult<ThreadMessagesPage> =
+        channelMessages(threadId = threadId, limit = limit)
     suspend fun messageContext(messageId: String, channelId: String? = null): ThreadApiResult<SharedMessagesPayload>
     suspend fun sendMessage(
         channelId: String,
@@ -80,7 +87,13 @@ internal class SlockThreadApiClient(
         afterSeq: Long?
     ): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq)
-            .mapThreadBody(
+            .toChannelMessagesPage()
+
+    override suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): ThreadApiResult<ThreadMessagesPage> =
+        transport.gapCatchUpChannelMessages(threadId = threadId, limit = limit).toChannelMessagesPage()
+
+    private suspend fun HomeNetworkResponse.toChannelMessagesPage(): ThreadApiResult<ThreadMessagesPage> =
+        mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
                 diagnosticsLogger = diagnosticsLogger

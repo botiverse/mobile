@@ -14880,15 +14880,25 @@ class SharedThreadStoreTest {
     // These stores run on the test's own runBlocking loop (no Dispatchers.Unconfined): the store's
     // launched jobs interleave only at suspension points, as on production's Main confinement.
 
+    private class GapCatchUpOutcome(
+        val payload: KuiklyThreadScreenPayload,
+        val logs: List<String>,
+        val requestLimits: List<Int>,
+    )
+
+    /** Screen shows m10 (seq 10); [pages] answer the catch-up steps in order (narrow, then wide). */
     private suspend fun gapCatchUpOutcome(
-        catchUpPage: String,
+        vararg pages: Pair<Int, String>,
         followsLatest: Boolean = true,
-    ): Pair<KuiklyThreadScreenPayload, List<String>> = coroutineScope {
+    ): GapCatchUpOutcome = coroutineScope {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val logs = mutableListOf<String>()
         val api = FakeThreadApi(bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false))
-        api.catchUpBodyTexts.addLast(catchUpPage)
+        pages.forEach { (code, body) ->
+            api.catchUpResponseCodes.addLast(code)
+            api.catchUpBodyTexts.addLast(body)
+        }
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
@@ -14899,11 +14909,10 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
         store.setViewportFollowsLatest(followsLatest)
         store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-        assertEquals(1, api.catchUpCalls)
         assertEquals(0, api.messageSyncCalls, "gap recovery never reads the /messages/sync delta")
         val payload = store.state.value.payload
         scopeJob.cancelAndJoin()
-        payload to logs
+        GapCatchUpOutcome(payload, logs, api.catchUpLimits.toList())
     }
 
     @Test
@@ -14912,24 +14921,67 @@ class SharedThreadStoreTest {
         // same size. Only the id at seq 10 differs — page A carries the anchor m10, page B does not.
         // Any decision made from counts or seq comparisons answers both the same way; only the anchor
         // fact separates "attach at the newest edge" from "show the newest page".
-        val (merged, mergeLogs) =
-            gapCatchUpOutcome(pageResponse(Triple("m10", 10L, "current body"), Triple("m12", 12L, "gap body")))
-        assertEquals(listOf("m10", "m12"), merged.messages.map { it.id })
-        assertEquals(false, merged.canLoadMoreAfter)
-        assertEquals("idle", merged.newerMessagesStatus)
-        assertTrue(mergeLogs.any { "thread_gap_catchup" in it && "decision=merge anchorOnPage=true" in it }, mergeLogs.toString())
+        val pageA = pageResponse(Triple("m10", 10L, "current body"), Triple("m12", 12L, "gap body"))
+        val merged = gapCatchUpOutcome(200 to pageA)
+        assertEquals(listOf("m10", "m12"), merged.payload.messages.map { it.id })
+        assertEquals(false, merged.payload.canLoadMoreAfter)
+        assertEquals("idle", merged.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(SharedThreadPaging.DefaultPageSize),
+            merged.requestLimits,
+            "the anchor is on the cheap page: exactly one request, of the thread page size",
+        )
+        assertTrue(
+            merged.logs.any { "thread_gap_catchup" in it && "decision=merge anchorOnPage=true steps=1" in it },
+            merged.logs.toString(),
+        )
 
-        val (replaced, replaceLogs) =
-            gapCatchUpOutcome(pageResponse(Triple("x10", 10L, "other body"), Triple("m12", 12L, "gap body")))
+        val pageB = pageResponse(Triple("x10", 10L, "other body"), Triple("m12", 12L, "gap body"))
+        val replaced = gapCatchUpOutcome(200 to pageB, 200 to pageB)
         assertEquals(
             listOf("x10", "m12"),
-            replaced.messages.map { it.id },
-            "the anchor is not on the page: the timeline is replaced by the newest page, m10 is gone",
+            replaced.payload.messages.map { it.id },
+            "the anchor is on neither page: the timeline is replaced by the newest page, m10 is gone",
         )
-        assertEquals(false, replaced.canLoadMoreAfter)
-        assertEquals("content", replaced.status)
-        assertEquals("idle", replaced.newerMessagesStatus)
-        assertTrue(replaceLogs.any { "decision=replace anchorOnPage=false" in it }, replaceLogs.toString())
+        assertEquals(listOf(SharedThreadPaging.DefaultPageSize, SharedThreadGapCatchUpPageLimit), replaced.requestLimits)
+        assertEquals(false, replaced.payload.canLoadMoreAfter)
+        assertEquals("content", replaced.payload.status)
+        assertEquals("idle", replaced.payload.newerMessagesStatus)
+        assertTrue(replaced.logs.any { "decision=replace anchorOnPage=false steps=2" in it }, replaced.logs.toString())
+    }
+
+    @Test
+    fun anchorOnlyOnTheWidePageIsMergedAfterTwoRequests() = runBlocking {
+        // The cheap page (m12..m14) misses the anchor; the 200 page reaches back to it, so the gap is
+        // small after all: merged at the newest edge, no replacement.
+        val outcome =
+            gapCatchUpOutcome(
+                200 to pageRangeResponse(12L..14L),
+                200 to pageResponse(
+                    Triple("m10", 10L, "current body"),
+                    Triple("m11", 11L, "body-11"),
+                    Triple("m12", 12L, "body-12"),
+                    Triple("m13", 13L, "body-13"),
+                    Triple("m14", 14L, "body-14"),
+                ),
+            )
+        assertEquals(listOf(SharedThreadPaging.DefaultPageSize, SharedThreadGapCatchUpPageLimit), outcome.requestLimits)
+        assertEquals(listOf("m10", "m11", "m12", "m13", "m14"), outcome.payload.messages.map { it.id })
+        assertEquals(false, outcome.payload.canLoadMoreAfter)
+        assertTrue(outcome.logs.any { "decision=merge anchorOnPage=true steps=2" in it }, outcome.logs.toString())
+    }
+
+    @Test
+    fun aFailedSecondStepChangesNothing() = runBlocking {
+        // The cheap page misses the anchor and the wide request fails: the cheap page is never
+        // committed on its own, the timeline is exactly what it was.
+        val outcome = gapCatchUpOutcome(200 to pageRangeResponse(500L..502L), 500 to "{}")
+        assertEquals(listOf(SharedThreadPaging.DefaultPageSize, SharedThreadGapCatchUpPageLimit), outcome.requestLimits)
+        assertEquals(listOf("m10"), outcome.payload.messages.map { it.id })
+        assertEquals(listOf("current body"), outcome.payload.messages.map { it.body })
+        assertEquals(false, outcome.payload.canLoadMoreAfter)
+        assertEquals("error", outcome.payload.newerMessagesStatus)
+        assertTrue(outcome.logs.none { "thread_gap_catchup " in it && "decision=" in it }, outcome.logs.toString())
     }
 
     @Test
@@ -14938,6 +14990,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val logs = mutableListOf<String>()
         val api = FakeThreadApi(bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false))
+        api.catchUpBodyTexts.addLast(pageRangeResponse(500L..502L))
         api.catchUpBodyTexts.addLast(pageRangeResponse(500L..502L))
         val dataSource =
             testSharedThreadDataSource(
@@ -14954,7 +15007,8 @@ class SharedThreadStoreTest {
         assertEquals(listOf("m10"), kept.messages.map { it.id }, "the reader's timeline is not yanked")
         assertTrue(kept.canLoadMoreAfter, "detached from the tail: the ↓ button / newer paging take them forward")
         assertEquals("idle", kept.newerMessagesStatus)
-        assertTrue(logs.any { "decision=detach anchorOnPage=false" in it }, logs.toString())
+        assertTrue(logs.any { "decision=detach anchorOnPage=false steps=2" in it }, logs.toString())
+        assertEquals(2, api.catchUpCalls)
 
         // Twin of the scrolled-up user: the ↓ tap (jumpToLatest) shows the newest page like channel open.
         api.bodyText = pageRangeResponse(500L..502L)
@@ -15004,7 +15058,7 @@ class SharedThreadStoreTest {
             val raw =
                 RawMessagePage(
                     messages = Json.parseToJsonElement(page.joinToString(prefix = "[", postfix = "]") { """{"id":"${it.id.value}"}""" }) as JsonArray,
-                    requestedLimit = SharedThreadGapCatchUpPageLimit
+                    requestedLimit = SharedThreadPaging.DefaultPageSize
                 )
             repository.latestResult = DataResult.Content(threadSnapshot(messages = page).copy(rawMessagePage = RawMessagePageWitness(raw)))
             val extender = RecordingDurablePageExtender()
@@ -15021,14 +15075,14 @@ class SharedThreadStoreTest {
             store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
             withTimeout(5_000) { while (repository.latestRequests.isEmpty()) delay(10) }
             delay(20)
-            assertEquals(listOf(SharedThreadGapCatchUpPageLimit), repository.latestLimits)
+            assertEquals(listOf(SharedThreadPaging.DefaultPageSize), repository.latestLimits, "anchor on the cheap page: one request")
             scopeJob.cancelAndJoin()
             return extender.latestCalls
         }
         // The default repository snapshot shows m1 (seq 10).
         val anchor = message(id = "m1", seq = 10, body = "repository body")
         assertEquals(
-            listOf(Triple("channel-1", listOf<String?>("m1", "m12"), SharedThreadGapCatchUpPageLimit to true)),
+            listOf(Triple("channel-1", listOf<String?>("m1", "m12"), SharedThreadPaging.DefaultPageSize to true)),
             offered(listOf(anchor, message(id = "m12", seq = 12, body = "gap body"))),
         )
         assertEquals(emptyList(), offered(listOf(anchor)), "an all-known page (the heartbeat case) writes nothing")
@@ -16571,8 +16625,9 @@ class SharedThreadStoreTest {
         var maxConcurrentReadAllCalls: Int = 0
         val beforeSeqs: MutableList<Long> = mutableListOf()
         val afterSeqs: MutableList<Long> = mutableListOf()
-        /** Task #168 step 1: gap catch-up latest-page requests (no cursor, catch-up page limit). */
+        /** Task #168 step 1: gap catch-up latest-page requests ([gapCatchUpChannelMessages]). */
         var catchUpCalls: Int = 0
+        val catchUpLimits: MutableList<Int> = mutableListOf()
         val channelMessageLimits: MutableList<Int> = mutableListOf()
         var messageSyncCalls: Int = 0
         val channelIds: MutableList<String> = mutableListOf()
@@ -16599,7 +16654,7 @@ class SharedThreadStoreTest {
         var releaseCatchUp: CompletableDeferred<Unit>? = null
         val catchUpStartedSignals = ArrayDeque<CompletableDeferred<Unit>>()
         val catchUpReleases = ArrayDeque<CompletableDeferred<Unit>>()
-        /** Latest pages served to the gap catch-up, in order; [newerBodyText] once drained. */
+        /** Latest pages served to the gap catch-up steps, in order; [newerBodyText] once drained. */
         val catchUpBodyTexts = ArrayDeque<String>()
         val catchUpResponseCodes = ArrayDeque<Int>()
 
@@ -16609,16 +16664,6 @@ class SharedThreadStoreTest {
             beforeSeq: Long?,
             afterSeq: Long?
         ): HomeNetworkResponse {
-            if (beforeSeq == null && afterSeq == null && limit == SharedThreadGapCatchUpPageLimit) {
-                val startedSignal = catchUpStartedSignals.removeFirstOrNull()
-                val callRelease = catchUpReleases.removeFirstOrNull()
-                val responseBody = catchUpBodyTexts.removeFirstOrNull() ?: newerBodyText
-                catchUpCalls += 1
-                startedSignal?.complete(Unit)
-                catchUpStarted?.complete(Unit)
-                (callRelease ?: releaseCatchUp)?.await()
-                return HomeNetworkResponse(code = catchUpResponseCodes.removeFirstOrNull() ?: 200, bodyText = responseBody)
-            }
             channelMessageCalls += 1
             channelIds += threadId
             channelMessageLimits += limit
@@ -16643,6 +16688,18 @@ class SharedThreadStoreTest {
                 }
                 else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
             }
+        }
+
+        override suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): HomeNetworkResponse {
+            val startedSignal = catchUpStartedSignals.removeFirstOrNull()
+            val callRelease = catchUpReleases.removeFirstOrNull()
+            val responseBody = catchUpBodyTexts.removeFirstOrNull() ?: newerBodyText
+            catchUpCalls += 1
+            catchUpLimits += limit
+            startedSignal?.complete(Unit)
+            catchUpStarted?.complete(Unit)
+            (callRelease ?: releaseCatchUp)?.await()
+            return HomeNetworkResponse(code = catchUpResponseCodes.removeFirstOrNull() ?: 200, bodyText = responseBody)
         }
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
