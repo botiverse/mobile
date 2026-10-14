@@ -235,7 +235,9 @@ class CanonicalMessageV2DurableOwnerTest {
                 now = { now },
                 retention = CanonicalMessageV2RetentionPolicy(
                     maxFactsPerScope = 2,
-                    maxScopesPerPartition = 2,
+                    // Channel / DM scopes only (task #168 step 3: thread scopes have their own cap), so
+                    // channel-b alone pushes channel-a out, and its reply scope goes with it.
+                    maxScopesPerPartition = 1,
                     maxFactsPerPartition = 20,
                     maxBytesPerPartition = 1_000_000.0,
                     scopeTtlMs = 1_000,

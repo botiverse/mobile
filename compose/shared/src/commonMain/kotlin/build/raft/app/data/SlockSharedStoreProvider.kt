@@ -2108,7 +2108,12 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                 )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
-            val canonicalMessageV2Store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis)
+            val canonicalMessageV2Store =
+                SqlDelightCanonicalMessageV2Store(
+                    database,
+                    now = ::defaultNowMillis,
+                    logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_retention"),
+                )
             val canonicalMessageV2GenerationEngine =
                 CanonicalMessageV2GenerationEngine(
                     coordinator = CanonicalMessageV2BaselineCoordinator(),

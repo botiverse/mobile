@@ -307,6 +307,8 @@ internal class SqlDelightCanonicalMessageV2Store(
     private val now: () -> Long,
     private val faultHook: PersistFaultHook = PersistFaultHook.Never,
     private val retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
+    /** One `scope_evicted` line per retention eviction (scope, scopeKind, reason). */
+    private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2Store {
     override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) =
         applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true)
@@ -391,6 +393,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 parentScopeId = cursor.parentScopeId,
                 rootMessageId = cursor.rootMessageId,
             )
+            touchParentScopeInsideTransaction(scope, cursor)
             pruneScopeInsideTransaction(scope)
             evictedScopes += prunePartitionInsideTransaction(scope.partition)
             if (faultHook.shouldKillAt(PersistFaultPoint.BeforeCommit)) {
@@ -541,38 +544,117 @@ internal class SqlDelightCanonicalMessageV2Store(
         }
     }
 
+    /**
+     * A reply-thread write is a use of its parent scope (task #168 step 3): the parent channel / DM
+     * cursor's `updatedAtMs` moves with it, in the same transaction, so a thread write can never make
+     * its own parent the least-recently-written scope and cascade-evict itself with it.
+     */
+    private fun touchParentScopeInsideTransaction(scope: SyncScopeKey, cursor: PersistedCursor) {
+        if (scope.scopeKind != THREAD_SCOPE_KIND) return
+        val parentKind = cursor.parentScopeKind ?: return
+        val parentId = cursor.parentScopeId ?: return
+        database.queries.touchSyncCursorUpdatedAt(
+            updatedAtMs = now(),
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = parentKind,
+            scopeId = parentId,
+        )
+    }
+
+    /**
+     * Partition retention (task #168 step 3: thread scopes have their own budget). Scopes are ranked
+     * by `updatedAtMs`, newest first, and evicted in this order:
+     * 1. `ttl`: any scope not written within [CanonicalMessageV2RetentionPolicy.scopeTtlMs];
+     * 2. `thread_cap`: thread scopes beyond [CanonicalMessageV2RetentionPolicy.maxThreadScopesPerPartition],
+     *    least recently written first — never a channel to make room for a thread;
+     * 3. `fact_cap` / `byte_cap`: while the partition is over a cap, the least recently written
+     *    THREAD scope goes first;
+     * 4. channel / DM scopes, newest first, exactly as before threads existed: a scope is kept while it
+     *    fits [CanonicalMessageV2RetentionPolicy.maxScopesPerPartition] (counting channel / DM scopes
+     *    only) and the remaining fact / byte budget (`scope_cap` / `fact_cap` / `byte_cap`).
+     * Evicting a channel / DM also evicts the reply threads that depend on it (`parent_evicted`).
+     */
     private fun prunePartitionInsideTransaction(partition: DurablePartitionKey): Set<SyncScopeKey> {
         val cutoff = now() - retention.scopeTtlMs
         val evictedScopes = mutableSetOf<SyncScopeKey>()
-        var retainedScopes = 0
-        var retainedFacts = 0L
-        var retainedBytes = 0.0
-        database.queries.selectCanonicalScopeRetentionStats(
+        val stats = database.queries.selectCanonicalScopeRetentionStats(
             environmentId = partition.environmentId,
             serverId = partition.serverId,
             principalId = partition.principalId,
             consumerId = partition.consumerId,
-        ).executeAsList().forEach { scopeStats ->
-            val scope = SyncScopeKey(
-                partition = partition,
-                scopeId = scopeStats.scopeId,
-                scopeKind = scopeStats.scopeKind,
+        ).executeAsList().map { row ->
+            ScopeRetentionStats(
+                scope = SyncScopeKey(partition = partition, scopeId = row.scopeId, scopeKind = row.scopeKind),
+                updatedAtMs = row.updatedAtMs,
+                factCount = row.factCount,
+                byteCount = row.byteCount,
             )
-            if (scope in evictedScopes) return@forEach
-            val withinBounds =
-                scopeStats.updatedAtMs >= cutoff &&
-                    retainedScopes < retention.maxScopesPerPartition &&
-                    retainedFacts + scopeStats.factCount <= retention.maxFactsPerPartition &&
-                    retainedBytes + scopeStats.byteCount <= retention.maxBytesPerPartition
-            if (withinBounds) {
+        }
+        fun evict(stat: ScopeRetentionStats, reason: String) {
+            if (stat.scope in evictedScopes) return
+            logEviction(stat.scope, reason)
+            val before = evictedScopes.toSet()
+            evictScopeAndDependentRepliesInsideTransaction(stat.scope, evictedScopes)
+            (evictedScopes - before - stat.scope).forEach { logEviction(it, "parent_evicted") }
+        }
+
+        // 1. ttl
+        stats.filter { it.updatedAtMs < cutoff }.forEach { evict(it, "ttl") }
+        // 2. thread cap (stats are newest first)
+        val threads = stats.filter { it.scope.scopeKind == THREAD_SCOPE_KIND && it.scope !in evictedScopes }
+        threads.drop(retention.maxThreadScopesPerPartition).forEach { evict(it, "thread_cap") }
+        // 3. fact / byte pressure is relieved by threads first, least recently written first.
+        fun live() = stats.filter { it.scope !in evictedScopes }
+        while (true) {
+            val alive = live()
+            val reason = when {
+                alive.sumOf { it.factCount } > retention.maxFactsPerPartition -> "fact_cap"
+                alive.sumOf { it.byteCount } > retention.maxBytesPerPartition -> "byte_cap"
+                else -> null
+            } ?: break
+            val victim = alive.lastOrNull { it.scope.scopeKind == THREAD_SCOPE_KIND } ?: break
+            evict(victim, reason)
+        }
+        // 4. channel / DM scopes: the pre-thread greedy pass, with the surviving threads' facts and
+        //    bytes already spent from the budget.
+        val keptThreads = live().filter { it.scope.scopeKind == THREAD_SCOPE_KIND }
+        var retainedScopes = 0
+        var retainedFacts = keptThreads.sumOf { it.factCount }
+        var retainedBytes = keptThreads.sumOf { it.byteCount }
+        stats.filter { it.scope.scopeKind != THREAD_SCOPE_KIND }.forEach { stat ->
+            if (stat.scope in evictedScopes) return@forEach
+            val reason = when {
+                retainedScopes >= retention.maxScopesPerPartition -> "scope_cap"
+                retainedFacts + stat.factCount > retention.maxFactsPerPartition -> "fact_cap"
+                retainedBytes + stat.byteCount > retention.maxBytesPerPartition -> "byte_cap"
+                else -> null
+            }
+            if (reason == null) {
                 retainedScopes += 1
-                retainedFacts += scopeStats.factCount
-                retainedBytes += scopeStats.byteCount
+                retainedFacts += stat.factCount
+                retainedBytes += stat.byteCount
             } else {
-                evictScopeAndDependentRepliesInsideTransaction(scope, evictedScopes)
+                evict(stat, reason)
             }
         }
         return evictedScopes
+    }
+
+    private data class ScopeRetentionStats(
+        val scope: SyncScopeKey,
+        val updatedAtMs: Long,
+        val factCount: Long,
+        val byteCount: Double,
+    )
+
+    private fun logEviction(scope: SyncScopeKey, reason: String) {
+        logger(
+            "outcome=scope_evicted server=${scope.serverId} scope=${scope.scopeId} " +
+                "scopeKind=${scope.scopeKind} reason=$reason",
+        )
     }
 
     private fun evictScopeAndDependentRepliesInsideTransaction(
@@ -630,7 +712,10 @@ internal class SqlDelightCanonicalMessageV2Store(
 
 internal data class CanonicalMessageV2RetentionPolicy(
     val maxFactsPerScope: Int = 500,
+    /** Channel / DM scopes only; thread scopes have [maxThreadScopesPerPartition]. */
     val maxScopesPerPartition: Int = 64,
+    /** Reply-thread scopes (task #168 step 3); evicted before any channel / DM scope. */
+    val maxThreadScopesPerPartition: Int = 24,
     val maxFactsPerPartition: Long = 20_000,
     val maxBytesPerPartition: Double = 32.0 * 1024.0 * 1024.0,
     val scopeTtlMs: Long = 30L * 24L * 60L * 60L * 1_000L,
@@ -638,6 +723,7 @@ internal data class CanonicalMessageV2RetentionPolicy(
     init {
         require(maxFactsPerScope > 0)
         require(maxScopesPerPartition > 0)
+        require(maxThreadScopesPerPartition > 0)
         require(maxFactsPerPartition >= maxFactsPerScope)
         require(maxBytesPerPartition > 0.0)
         require(scopeTtlMs > 0L)
@@ -675,6 +761,8 @@ internal fun requireV2Scope(scope: SyncScopeKey) {
         "V2 must not read or write the V1 durable partition"
     }
 }
+
+private const val THREAD_SCOPE_KIND: String = "thread"
 
 private fun requireEnvelopeMatchesScope(scope: SyncScopeKey, envelope: CanonicalMessageEnvelopeV2) {
     val diagnostic = validateCanonicalMessageV2(envelope, scope.serverId)
