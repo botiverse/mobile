@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 class CanonicalMessageV2ProductionCanaryTest {
     private val partition =
@@ -32,7 +31,8 @@ class CanonicalMessageV2ProductionCanaryTest {
     fun firstEventBaselinesThenNextNewEventCommitsIncrementally() = runBlocking {
         val fixture = Fixture(enabled = true)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        // Task #168: the baselining frame never waits for its snapshot; the fixture lets the job finish.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
         assertEquals(1, fixture.loaderCalls)
         assertEquals(1, fixture.store.snapshotCalls)
         assertEquals(0, fixture.store.incrementalCalls)
@@ -47,7 +47,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun onlyOneScopeOnAnEnabledServerIsSelected() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
 
         val other = fixture.input("m2", 2L, channelId = "channel-2")
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(other))
@@ -58,10 +58,10 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun updateUsesAuthoritativeSnapshotInsteadOfInventingMissingFullV2Fields() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
 
         val update = fixture.input("m1", 2L, kind = CanonicalMessageFoldKind.Updated)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(update))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(update))
         assertEquals(2, fixture.loaderCalls)
         assertEquals(2, fixture.store.snapshotCalls)
         assertEquals(0, fixture.store.incrementalCalls)
@@ -70,7 +70,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun unsupportedProducerMetadataCannotEnterIncrementalSoleApply() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
         fixture.loaderFailure = "snapshot_not_full_v6"
         val unsupported = fixture.input("m2", 2L).copy(
             row = fixture.input("m2", 2L).row.copy(
@@ -81,8 +81,9 @@ class CanonicalMessageV2ProductionCanaryTest {
             ),
         )
 
-        assertIs<CanonicalMessageV2CanaryOutcome.Held>(fixture.accept(unsupported))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(unsupported))
         assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
     }
 
     @Test
@@ -90,26 +91,28 @@ class CanonicalMessageV2ProductionCanaryTest {
         val fixture = Fixture(enabled = true)
         fixture.loaderFailure = "network_down"
 
-        val held = fixture.accept(fixture.input("m1", 1L))
-        assertIs<CanonicalMessageV2CanaryOutcome.Held>(held)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
         assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
         assertEquals(0, fixture.store.snapshotCalls)
 
         fixture.loaderFailure = null
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
         assertEquals(2, fixture.loaderCalls)
         assertEquals(1, fixture.store.snapshotCalls)
     }
 
     @Test
-    fun flagRevokeRebaselinesBeforeReturningScopeToLegacy() = runBlocking {
+    fun flagRevokeClearsTheWindowWithoutANetworkBarrierAndReturnsTheScopeToLegacy() = runBlocking {
         val fixture = Fixture(enabled = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(1, fixture.store.restore(SyncScopeKey(partition, "channel-1", "channel")).envelopes.size)
 
+        // Task #168: the revoke never loads (it used to snapshot inline, then clear what it wrote).
         fixture.enabled = false
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 2L)))
-        assertEquals(2, fixture.loaderCalls)
-        assertEquals(2, fixture.store.snapshotCalls)
+        assertEquals(1, fixture.loaderCalls)
+        assertEquals(1, fixture.store.snapshotCalls)
+        assertEquals(emptyList(), fixture.store.restore(SyncScopeKey(partition, "channel-1", "channel")).envelopes)
         assertEquals(CanonicalMessageV2CanaryMode.Off, fixture.canary.modeFor("server-1", "channel-1"))
     }
 
@@ -142,7 +145,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         // m3 is delivered while the socket is down and never reaches the writer; the socket comes back as epoch 2.
         fixture.canary.noteTransportEpoch(partition, 2L)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(2, fixture.loaderCalls, "the first frame after a reconnect must re-snapshot")
         assertEquals(2, fixture.store.snapshotCalls)
         assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
@@ -175,7 +178,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
         // New process: same durable store, fresh canary and engine. Frames may have been missed meanwhile.
         val afterRestart = Fixture(enabled = true, store = store)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, afterRestart.accept(afterRestart.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, afterRestart.accept(afterRestart.input("m4", 4L)))
         assertEquals(1, afterRestart.loaderCalls, "restore() must not append straight onto the old window")
         assertEquals(1, store.incrementalCalls)
     }
@@ -189,11 +192,12 @@ class CanonicalMessageV2ProductionCanaryTest {
         fixture.canary.noteTransportEpoch(partition, 2L)
 
         fixture.loaderFailure = "offline"
-        assertIs<CanonicalMessageV2CanaryOutcome.Held>(fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryMode.Broken, fixture.canary.modeFor("server-1", "channel-1"))
         assertEquals(1, fixture.store.incrementalCalls, "a failed snapshot must not degrade into an append")
 
         fixture.loaderFailure = null
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m5", 5L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m5", 5L)))
         assertEquals(3, fixture.loaderCalls, "the next frame retries the snapshot")
         assertEquals(1, fixture.store.incrementalCalls)
     }
@@ -223,7 +227,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         // The native transport object was rebuilt (server switch, re-login) and numbers from 1 again.
         fixture.canary.noteTransportEpoch(partition, 1L)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(2, fixture.loaderCalls, "a smaller epoch is a different connection too")
         assertEquals(1, fixture.store.incrementalCalls)
     }
@@ -237,9 +241,9 @@ class CanonicalMessageV2ProductionCanaryTest {
             fixture.duringLoad = null
             fixture.canary.noteTransportEpoch(partition, 2L)
         }
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m1", 1L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m1", 1L)))
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m2", 2L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m2", 2L)))
         assertEquals(2, fixture.loaderCalls, "the next frame must not append to a snapshot taken before the reconnect")
         assertEquals(0, fixture.store.incrementalCalls)
     }
@@ -254,7 +258,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
         // The socket came back as epoch 2, but its first frame is processed before the epoch-2 signal.
         assertEquals(
-            CanonicalMessageV2CanaryOutcome.Committed,
+            CanonicalMessageV2CanaryOutcome.Pending,
             fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L),
         )
         assertEquals(2, fixture.loaderCalls, "a frame of a newer connection must re-snapshot without waiting for the signal")
@@ -336,9 +340,19 @@ class CanonicalMessageV2ProductionCanaryTest {
         var loaderFailure: String? = null
         var duringLoad: (suspend () -> Unit)? = null
 
+        /**
+         * Returns what [CanonicalMessageV2ProductionCanary.accept] returned, after any background snapshot it
+         * started has finished (task #168: accept itself never waits for one).
+         */
         suspend fun accept(
             input: CanonicalMessageFoldInput,
             transportEpoch: Long? = null,
+        ): CanonicalMessageV2CanaryOutcome =
+            acceptWithoutWaiting(input, transportEpoch).also { canary.awaitSnapshotJobs() }
+
+        suspend fun acceptWithoutWaiting(
+            input: CanonicalMessageFoldInput,
+            transportEpoch: Long?,
         ): CanonicalMessageV2CanaryOutcome =
             canary.accept(
                 partition = partition,

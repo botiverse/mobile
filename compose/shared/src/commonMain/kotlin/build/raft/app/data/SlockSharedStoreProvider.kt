@@ -769,6 +769,9 @@ internal class SlockSharedStoreProvider private constructor(
             canary = canonicalMessageV2Canary,
             authStore = sessionStore,
             networkClient = client,
+            // Read-only grant check (empty block): a background snapshot whose grant was revoked while it
+            // loaded (socket drop, server switch, re-login) is never committed (task #168).
+            isGrantCurrent = { grant -> realtimeAuthorityProvider.runIfCurrentGrant(grant) {} },
             logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
         )
 
@@ -2887,7 +2890,10 @@ internal class SharedRealtimeDomainEventOwner(
         when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput, transportEpoch)) {
             // Held = the durable write failed (nothing was written). Display must not fail with it
             // (task #168): the event takes the same post-canary legacy path as a committed one.
+            // Pending = the durable write belongs to the scope's background snapshot: the canary returned
+            // without loading anything, so the event is displayed now under the grant it arrived with.
             CanonicalMessageV2CanaryOutcome.Committed,
+            CanonicalMessageV2CanaryOutcome.Pending,
             is CanonicalMessageV2CanaryOutcome.Held,
             ->
                 return runIfCurrentGrant(grant) {

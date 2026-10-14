@@ -7,6 +7,7 @@ import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
+import build.raft.app.network.sync.CanonicalMessageV2CanaryMode
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
@@ -28,16 +29,19 @@ class CanonicalMessageV2ProductionBindingTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
+        val canary = CanonicalMessageV2ProductionCanary(
+            isEnabledForServer = { false },
+            generationEngine = engine,
+        )
         val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = CanonicalMessageV2ProductionCanary(
-                isEnabledForServer = { false },
-                generationEngine = engine,
-            ),
+            canary = canary,
             authStore = InMemorySlockAuthSessionStore(null),
             networkClient = network,
+            isGrantCurrent = { true },
         )
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, gateway.accept(grant(), input()))
+        canary.awaitSnapshotJobs()
         assertEquals(emptyList(), network.paths)
         assertEquals(0, store.snapshots.size)
     }
@@ -49,9 +53,11 @@ class CanonicalMessageV2ProductionBindingTest {
             canonicalV2TestThreadParentPage(),
             threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
         )
-        val gateway = gateway(store, network)
+        val (gateway, canary) = gateway(store, network)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(grant(), input()))
+        // Task #168: the snapshot loads in the background; accept never waits for it.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(grant(), input()))
+        canary.awaitSnapshotJobs()
         assertEquals(
             listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
             network.paths,
@@ -67,32 +73,54 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun threadParentWithoutSummaryCannotEnterSoleApply() = runBlocking {
         val store = RecordingStore()
-        val gateway = gateway(
+        val (gateway, canary) = gateway(
             store,
             RecordingNetworkClient(canonicalV2TestThreadParentPage(), threadSummariesBody = "{}"),
         )
 
-        assertIs<CanonicalMessageV2CanaryOutcome.Held>(gateway.accept(grant(), input()))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(grant(), input()))
+        canary.awaitSnapshotJobs()
         assertEquals(0, store.snapshots.size)
+        assertEquals(CanonicalMessageV2CanaryMode.Broken, canary.modeFor("server-1", "channel-1"))
+    }
+
+    @Test
+    fun aSnapshotWhoseGrantWasRevokedWhileItLoadedIsNeverCommitted() = runBlocking {
+        val store = RecordingStore()
+        val network = RecordingNetworkClient(
+            canonicalV2TestThreadParentPage(),
+            threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
+        )
+        // The socket dropped / the server was switched while the page was in flight.
+        val (gateway, canary) = gateway(store, network, isGrantCurrent = { false })
+
+        assertEquals(CanonicalMessageV2CanaryOutcome.Pending, gateway.accept(grant(), input()))
+        canary.awaitSnapshotJobs()
+        assertEquals(3, network.paths.size, "the same page was fetched as in the committed twin")
+        assertEquals(0, store.snapshots.size)
+        assertEquals(CanonicalMessageV2CanaryMode.Broken, canary.modeFor("server-1", "channel-1"))
     }
 
     private fun gateway(
         store: RecordingStore,
         network: RecordingNetworkClient,
-    ): ProviderBackedCanonicalMessageV2OwnerGateway {
+        isGrantCurrent: suspend (RealtimeGrantRecord) -> Boolean = { true },
+    ): Pair<ProviderBackedCanonicalMessageV2OwnerGateway, CanonicalMessageV2ProductionCanary> {
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
+        val canary = CanonicalMessageV2ProductionCanary(
+            isEnabledForServer = { true },
+            generationEngine = engine,
+        )
         return ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = CanonicalMessageV2ProductionCanary(
-                isEnabledForServer = { true },
-                generationEngine = engine,
-            ),
+            canary = canary,
             authStore = InMemorySlockAuthSessionStore(session()),
             networkClient = network,
-        )
+            isGrantCurrent = isGrantCurrent,
+        ) to canary
     }
 
     private fun input() = CanonicalMessageFoldInput(
