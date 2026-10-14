@@ -3297,6 +3297,65 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     });
 }
 
+- (void)syncDesktopShortcuts:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *rawShortcuts = SlockBridgeString(params[@"shortcuts"]);
+    SlockBridgeRunOnMain(^{
+        if (rawShortcuts.length == 0) {
+            [UIApplication sharedApplication].shortcutItems = @[];
+            NSLog(@"[%@][info] syncDesktopShortcuts cleared", SlockBridgeDefaultLogTag);
+            return;
+        }
+        NSData *data = [rawShortcuts dataUsingEncoding:NSUTF8StringEncoding];
+        if (!data) {
+            return;
+        }
+        NSError *error = nil;
+        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+        if (error || ![json isKindOfClass:[NSArray class]]) {
+            NSLog(@"[%@][warn] syncDesktopShortcuts JSON parse failed: %@", SlockBridgeDefaultLogTag, error);
+            return;
+        }
+        NSArray *items = (NSArray *)json;
+        NSMutableArray<UIApplicationShortcutItem *> *shortcutItems = [NSMutableArray arrayWithCapacity:items.count];
+        for (id rawItem in items) {
+            if (![rawItem isKindOfClass:[NSDictionary class]]) continue;
+            NSDictionary *item = (NSDictionary *)rawItem;
+            NSString *type = SlockBridgeString(item[@"id"]);
+            NSString *title = SlockBridgeString(item[@"title"]);
+            NSString *subtitle = SlockBridgeString(item[@"subtitle"]);
+            NSString *serverId = SlockBridgeString(item[@"serverId"]);
+            NSString *targetId = SlockBridgeString(item[@"targetId"]);
+            NSString *targetKind = SlockBridgeString(item[@"targetKind"]);
+
+            if (type.length == 0 || title.length == 0 || targetId.length == 0 || serverId.length == 0) {
+                continue;
+            }
+
+            NSDictionary *userInfo = @{
+                @"slockShortcutServerId": serverId,
+                @"slockShortcutTargetId": targetId,
+                @"slockShortcutTargetKind": targetKind.length > 0 ? targetKind : @"channel",
+                @"slockShortcutTitle": title
+            };
+
+            UIApplicationShortcutIcon *icon = [UIApplicationShortcutIcon iconWithType:UIApplicationShortcutIconTypeCompose];
+            UIApplicationShortcutItem *shortcutItem =
+                [[UIApplicationShortcutItem alloc] initWithType:type
+                                                 localizedTitle:title
+                                              localizedSubtitle:subtitle.length > 0 ? subtitle : nil
+                                                           icon:icon
+                                                       userInfo:userInfo];
+            [shortcutItems addObject:shortcutItem];
+            if (shortcutItems.count >= 4) {
+                break;
+            }
+        }
+        [UIApplication sharedApplication].shortcutItems = shortcutItems;
+        NSLog(@"[%@][info] syncDesktopShortcuts updated count=%lu", SlockBridgeDefaultLogTag, (unsigned long)shortcutItems.count);
+    });
+}
+
 - (void)avatarCacheCapability:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];

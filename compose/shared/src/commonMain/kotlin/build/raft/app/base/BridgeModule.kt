@@ -890,6 +890,16 @@ internal class BridgeModule : Module() {
         callNativeMethod("appBadge", methodArgs, null)
     }
 
+    fun syncDesktopShortcuts(shortcuts: List<build.raft.app.data.SlockDesktopShortcutItem>) {
+        syncDesktopShortcuts(build.raft.app.data.SlockDesktopShortcutContract.serializeList(shortcuts))
+    }
+
+    fun syncDesktopShortcuts(shortcutsJson: String) {
+        val methodArgs = JSONObject()
+        methodArgs.put("shortcuts", shortcutsJson)
+        callNativeMethod(SYNC_DESKTOP_SHORTCUTS, methodArgs, null)
+    }
+
     suspend fun socialAuth(provider: String): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
@@ -1422,6 +1432,7 @@ internal class BridgeModule : Module() {
         const val URL_DECODE = "urlDecode"
         const val SHOW_PHOTO_BROWSER = "showPhotoBrowser"
         const val HUMAN_VERIFICATION = "humanVerification"
+        const val SYNC_DESKTOP_SHORTCUTS = "syncDesktopShortcuts"
     }
 
 }

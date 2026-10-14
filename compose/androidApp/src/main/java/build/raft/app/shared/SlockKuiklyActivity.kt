@@ -68,11 +68,16 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
+import build.raft.app.MainActivity
 import build.raft.app.BuildConfig
+import build.raft.app.data.SlockDesktopShortcutContract
 import build.raft.app.SlockHostStrings
 import build.raft.app.releaseSlockShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
@@ -2970,6 +2975,20 @@ open class SlockKuiklyActivity :
                     } else {
                         JSONObject(SlockKuiklyPageData.fromText(intent?.getStringExtra(KEY_PAGE_DATA)).text)
                     }
+            if (intent?.hasExtra(SlockDesktopShortcutContract.KeyTargetId) == true) {
+                intent.getStringExtra(SlockDesktopShortcutContract.KeyServerId)?.let {
+                    rawPageData.put(SlockDesktopShortcutContract.KeyServerId, it)
+                }
+                intent.getStringExtra(SlockDesktopShortcutContract.KeyTargetId)?.let {
+                    rawPageData.put(SlockDesktopShortcutContract.KeyTargetId, it)
+                }
+                intent.getStringExtra(SlockDesktopShortcutContract.KeyTargetKind)?.let {
+                    rawPageData.put(SlockDesktopShortcutContract.KeyTargetKind, it)
+                }
+                intent.getStringExtra(SlockDesktopShortcutContract.KeyLaunchId)?.let {
+                    rawPageData.put(SlockDesktopShortcutContract.KeyLaunchId, it)
+                }
+            }
             return SlockKuiklyPageData.fromJson(rawPageData)
         }
 
@@ -4361,6 +4380,10 @@ internal class SlockKuiklyBridgeModule(
                 slockAndroidBridgeUrlDecode(payload.optString("string"))
             }
             "currentTimestamp" -> System.currentTimeMillis().toString()
+            "syncDesktopShortcuts" -> {
+                syncDesktopShortcuts(params)
+                null
+            }
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
                 null
@@ -4696,6 +4719,55 @@ internal class SlockKuiklyBridgeModule(
             Toast.makeText(appContext, content, Toast.LENGTH_SHORT).show()
         }
         return null
+    }
+
+    private fun syncDesktopShortcuts(params: String?) {
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull() ?: return
+        val rawShortcuts = request.optString("shortcuts")
+        val shortcuts = SlockDesktopShortcutContract.deserializeList(rawShortcuts)
+        SlockKuiklyThreadAdapter.execute("sync-desktop-shortcuts") {
+            try {
+                if (shortcuts.isEmpty()) {
+                    ShortcutManagerCompat.removeAllDynamicShortcuts(appContext)
+                    SlockAppLog.d("SlockDesktopShortcut", "dynamic_shortcuts_cleared")
+                    return@execute
+                }
+                val shortcutInfos = shortcuts.take(4).mapNotNull { item ->
+                    val targetId = item.targetId.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val serverId = item.serverId.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val title = item.title.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+
+                    val launchId = "${serverId}_${targetId}_${System.currentTimeMillis()}"
+                    val launchIntent = Intent(appContext, MainActivity::class.java).apply {
+                        action = Intent.ACTION_VIEW
+                        putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                        val pageData = JSONObject().apply {
+                            put(SlockDesktopShortcutContract.KeyServerId, serverId)
+                            put(SlockDesktopShortcutContract.KeyTargetId, targetId)
+                            put(SlockDesktopShortcutContract.KeyTargetKind, item.targetKind)
+                            put(SlockDesktopShortcutContract.KeyLaunchId, launchId)
+                        }
+                        putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
+                        putExtra(SlockDesktopShortcutContract.KeyServerId, serverId)
+                        putExtra(SlockDesktopShortcutContract.KeyTargetId, targetId)
+                        putExtra(SlockDesktopShortcutContract.KeyTargetKind, item.targetKind)
+                        putExtra(SlockDesktopShortcutContract.KeyLaunchId, launchId)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }
+
+                    ShortcutInfoCompat.Builder(appContext, item.id)
+                        .setShortLabel(title)
+                        .setLongLabel(title)
+                        .setIcon(IconCompat.createWithResource(appContext, R.mipmap.ic_launcher))
+                        .setIntent(launchIntent)
+                        .build()
+                }
+                ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcutInfos)
+                SlockAppLog.d("SlockDesktopShortcut", "dynamic_shortcuts_updated count=${shortcutInfos.size}")
+            } catch (e: Throwable) {
+                SlockAppLog.w("SlockDesktopShortcut", "dynamic_shortcuts_update_failed error=${e.message}")
+            }
+        }
     }
 
     private fun copyToPasteboard(params: String?) {

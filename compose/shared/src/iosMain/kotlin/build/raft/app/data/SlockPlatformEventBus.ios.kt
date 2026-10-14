@@ -13,6 +13,7 @@ private const val SlockPlatformEventSourceIosHost = "ios_host"
 private object IosSlockPlatformEventDispatcher {
     private var realtimeObserver: NSObjectProtocol? = null
     private var systemNotificationOpenObserver: NSObjectProtocol? = null
+    private var desktopShortcutOpenObserver: NSObjectProtocol? = null
 
     fun ensureNativeIngress() {
         if (realtimeObserver == null) {
@@ -47,6 +48,25 @@ private object IosSlockPlatformEventDispatcher {
                     }
                     SlockEnhancedNotifyCenter.post(
                         eventName = SlockSystemNotificationContract.OpenEventName,
+                        eventData = notification.toEventData(),
+                        crossProcess = false,
+                        source = SlockPlatformEventSourceIosHost
+                    )
+                }
+        }
+        if (desktopShortcutOpenObserver == null) {
+            desktopShortcutOpenObserver =
+                NSNotificationCenter.defaultCenter.addObserverForName(
+                    name = SlockDesktopShortcutContract.OpenEventName,
+                    `object` = null,
+                    queue = null
+                ) { notification ->
+                    notification ?: return@addObserverForName
+                    if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
+                        return@addObserverForName
+                    }
+                    SlockEnhancedNotifyCenter.post(
+                        eventName = SlockDesktopShortcutContract.OpenEventName,
                         eventData = notification.toEventData(),
                         crossProcess = false,
                         source = SlockPlatformEventSourceIosHost

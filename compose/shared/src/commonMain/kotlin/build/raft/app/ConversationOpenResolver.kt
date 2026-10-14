@@ -19,7 +19,8 @@ internal enum class ConversationOpenSource {
     Markdown,
     ParentConversation,
     AuthResume,
-    HistoryForward
+    HistoryForward,
+    AppShortcut
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -366,6 +367,7 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
         ConversationOpenSource.Markdown,
         ConversationOpenSource.ParentConversation,
         ConversationOpenSource.AuthResume -> messageId
+        ConversationOpenSource.AppShortcut -> null
     }?.takeIf { it.isNotBlank() }
 
 private fun InboxItem.toActivityOpenThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {

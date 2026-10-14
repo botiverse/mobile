@@ -16,7 +16,8 @@ import kotlinx.atomicfu.locks.synchronized
 internal data class WindowNavigationIntent(
     val serverId: String,
     val sourceIdentity: ConversationOpenSourceMessageIdentity,
-    val source: String
+    val source: String,
+    val launchId: String? = null
 ) {
     val key: String =
         listOf(
@@ -28,7 +29,9 @@ internal data class WindowNavigationIntent(
             sourceIdentity.parentChannelId.orEmpty(),
             sourceIdentity.parentMessageId.orEmpty(),
             sourceIdentity.messageId.orEmpty()
-        ).joinToString("|")
+        ).let { base ->
+            if (launchId.isNullOrBlank()) base else base + launchId
+        }.joinToString("|")
 
     init {
         require(serverId.isNotBlank()) { "Window navigation requires a server id" }

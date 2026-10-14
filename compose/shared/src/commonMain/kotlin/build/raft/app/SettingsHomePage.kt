@@ -2967,7 +2967,46 @@ private fun SlockAppShellReadyContent(
                         .initialServerId
             )
         }
+    val desktopShortcutWindowNavigationIntent =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.appShellDesktopShortcutNavigationIntent(
+                fallbackServerId =
+                    pager.pageData.params
+                        .slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                        .initialServerId
+            )
+        }
     var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
+    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
+        val subscription =
+            eventBus.observe(build.raft.app.data.SlockDesktopShortcutContract.OpenEventName) { eventData ->
+                val intent = eventData.appShellDesktopShortcutEventNavigationIntent()
+                if (intent == null) {
+                    bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
+                    return@observe
+                }
+                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                bridge.log(
+                    "window_navigation_received source=app_shortcut enqueued=$enqueued " +
+                        "targetServerId=${intent.serverId}"
+                )
+                desktopShortcutNavigationTick += 1
+            }
+        eventBus.post(
+            eventName = build.raft.app.data.SlockDesktopShortcutContract.OpenReadyEventName,
+            eventData = JSONObject(),
+            source = "app_shell_desktop_shortcut_navigation_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = build.raft.app.data.SlockDesktopShortcutContract.OpenNotReadyEventName,
+                eventData = JSONObject(),
+                source = "app_shell_desktop_shortcut_navigation_not_ready"
+            )
+            subscription.close()
+        }
+    }
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(SlockSystemNotificationContract.OpenEventName) { eventData ->
@@ -3855,6 +3894,18 @@ private fun SlockAppShellReadyContent(
                     fallback.isStale
                 }
         )
+    }
+    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu.
+    LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed || readySession == null) {
+            bridge.syncDesktopShortcuts(emptyList())
+            return@LaunchedEffect
+        }
+        val content = homeState.content as? SharedHomeContentState.Content
+        if (content != null) {
+            val shortcuts = build.raft.app.data.extractTopPinnedDesktopShortcuts(content.snapshot, maxCount = 4)
+            bridge.syncDesktopShortcuts(shortcuts)
+        }
     }
     LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
@@ -4755,7 +4806,9 @@ private fun SlockAppShellReadyContent(
     // recreation or duplicate PendingIntent cannot replay the route.
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
+        desktopShortcutWindowNavigationIntent?.key,
         systemNotificationNavigationTick,
+        desktopShortcutNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
         homeState.content,
@@ -4766,6 +4819,7 @@ private fun SlockAppShellReadyContent(
     ) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
         val content = homeState.content as? SharedHomeContentState.Content
         val readiness =
             WindowNavigationReadiness(
@@ -23542,6 +23596,35 @@ internal fun JSONObject?.appShellSystemNotificationNavigationIntent(): WindowNav
             it.optString(AppShellNotificationKindKey).trim() in setOf("channel", "dm", "thread")
         }
         ?.appShellWindowNavigationIntent(fallbackServerId = null)
+
+internal fun JSONObject.appShellDesktopShortcutNavigationIntent(fallbackServerId: String?): WindowNavigationIntent? {
+    val targetId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyTargetId).trim().takeIf { it.isNotBlank() } ?: return null
+    val serverId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyServerId).trim().takeIf { it.isNotBlank() }
+        ?: fallbackServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return null
+    val targetKind = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyTargetKind).trim().lowercase()
+    val launchId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyLaunchId).trim().takeIf { it.isNotBlank() }
+    val conversationKind = if (targetKind == build.raft.app.data.SlockDesktopShortcutContract.TargetKindChannel) {
+        ConversationKind.Channel
+    } else {
+        ConversationKind.DirectMessage
+    }
+    return WindowNavigationIntent(
+        serverId = serverId,
+        sourceIdentity = ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.AppShortcut,
+            messageId = null,
+            channelId = targetId,
+            threadChannelId = targetId,
+            conversationKind = conversationKind
+        ),
+        source = "app_shortcut",
+        launchId = launchId
+    )
+}
+
+internal fun JSONObject?.appShellDesktopShortcutEventNavigationIntent(): WindowNavigationIntent? =
+    this?.appShellDesktopShortcutNavigationIntent(fallbackServerId = null)
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest,

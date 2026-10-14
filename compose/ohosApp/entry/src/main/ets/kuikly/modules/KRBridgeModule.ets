@@ -226,6 +226,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
   static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
   static readonly APP_BADGE = "appBadge";
+  static readonly SYNC_DESKTOP_SHORTCUTS = "syncDesktopShortcuts";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static readonly HANDS_FEEDBACK_MAX_ATTACHMENTS = 3;
@@ -385,6 +386,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.APP_BADGE: {
         this.appBadge(params);
+        break;
+      }
+      case KRBridgeModule.SYNC_DESKTOP_SHORTCUTS: {
+        this.syncDesktopShortcuts(params);
         break;
       }
       default: {
@@ -1289,6 +1294,17 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         "warn"
       );
     });
+  }
+
+  private syncDesktopShortcuts(params: KRAny) {
+    const records = this.parseRecord(params);
+    const rawShortcuts = typeof records["shortcuts"] === 'string' ? records["shortcuts"] as string : "";
+    SlockOhosDiagnostics.record(
+      "HRBridgeModule",
+      `syncDesktopShortcuts payloadLength=${rawShortcuts.length}`,
+      Date.now(),
+      "info"
+    );
   }
 
   private performanceScene(params: KRAny) {
