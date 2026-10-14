@@ -1459,6 +1459,8 @@ internal data class SharedThreadDurableOlderPage(
     val messages: List<KuiklyThreadMessageItem>,
     val pageSize: Int,
     val canLoadMoreBefore: Boolean,
+    /** The page reaches the conversation's first message: nothing older is stored and the window starts there. */
+    val reachedOldest: Boolean,
 )
 
 internal data class SharedThreadPageFetchResult(
@@ -2287,6 +2289,7 @@ internal class SharedThreadDataSource(
             durableLastKnown = true,
             messages = messages,
             canLoadMoreBefore = canLoadMoreBefore,
+            durableReachedOldest = !canLoadMoreBefore,
             canLoadMoreAfter = false,
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
@@ -2362,6 +2365,7 @@ internal class SharedThreadDataSource(
             messages = messages,
             pageSize = pageSize,
             canLoadMoreBefore = canLoadMoreBefore,
+            reachedOldest = !canLoadMoreBefore,
         )
     }
 
@@ -8729,7 +8733,7 @@ internal class SharedThreadStore(
             applied = true
             currentPayload
                 .mergePagedMessages(pageMessages = page.messages, before = true, pageSize = page.pageSize)
-                .copy(canLoadMoreBefore = page.canLoadMoreBefore)
+                .copy(canLoadMoreBefore = page.canLoadMoreBefore, durableReachedOldest = page.reachedOldest)
         }
         if (!applied) {
             diagnosticsLogger?.invoke(

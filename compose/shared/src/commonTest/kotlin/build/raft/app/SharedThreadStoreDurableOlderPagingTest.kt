@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -61,12 +63,21 @@ class SharedThreadStoreDurableOlderPagingTest {
             assertEquals((oldestShown..120).map { "body $it" }, paged.messages.map { it.body })
             assertTrue(paged.durableLastKnown, "pages read from disk keep the payload marked as the stand-in")
             assertTrue(paged.canLoadMoreBefore)
+            assertFalse(paged.durableReachedOldest)
             assertEquals("idle", paged.olderMessagesStatus)
         }
+        assertFalse(standIn.durableReachedOldest)
+        assertEquals(MR.strings.thread_state_loading_older.desc(), threadOlderMessagesStatusSpec(standIn).label)
         store.accept(SharedThreadIntent.LoadOlder)
         val last = store.state.value.payload
         assertEquals((1..120).map { "body $it" }, last.messages.map { it.body })
         assertFalse(last.canLoadMoreBefore, "window exhausted and the cursor says it reaches the channel start")
+        assertTrue(last.durableReachedOldest, "the stored window reaches the conversation's first message")
+        assertEquals(
+            MR.strings.thread_state_beginning_conversation.desc(),
+            threadOlderMessagesStatusSpec(last).label,
+            "the real beginning is labelled as such, not as an offline cut",
+        )
         assertEquals(1, api.channelMessageCalls, "no older page went to the network")
         assertEquals(3, logs.count { "thread_durable_older_page" in it && "served=30" in it }, logs.toString())
         assertTrue(logs.any { "served=30 reason=reached_oldest" in it }, logs.toString())
@@ -95,6 +106,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         val failed = store.state.value.payload
         assertEquals("error", failed.olderMessagesStatus)
         assertTrue(failed.canLoadMoreBefore, "the retry row stays available")
+        assertFalse(failed.durableReachedOldest, "same arithmetic, but the window does not reach the start")
         assertEquals(120, failed.messages.size)
         assertTrue(logs.any { "served=0 reason=exhausted" in it }, logs.toString())
         scopeJob.cancelAndJoin()
@@ -112,6 +124,11 @@ class SharedThreadStoreDurableOlderPagingTest {
         closed.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(30, closed.state.value.payload.messages.size)
         assertFalse(closed.state.value.payload.canLoadMoreBefore)
+        assertTrue(closed.state.value.payload.durableReachedOldest)
+        assertEquals(
+            MR.strings.thread_state_beginning_conversation.desc(),
+            threadOlderMessagesStatusSpec(closed.state.value.payload).label,
+        )
         closedScopeJob.cancelAndJoin()
 
         // Twin: the same 30 facts, but the window does not reach the start.
@@ -124,6 +141,7 @@ class SharedThreadStoreDurableOlderPagingTest {
             )
         open.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(open.state.value.payload.canLoadMoreBefore)
+        assertFalse(open.state.value.payload.durableReachedOldest)
         openScopeJob.cancelAndJoin()
     }
 

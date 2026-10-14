@@ -42,7 +42,9 @@ internal data class ThreadTimelineSlice(
     /** Task #232 arrival provenance projected from the payload; see [KuiklyThreadScreenPayload.gapRefillMessageIds]. */
     val gapRefillMessageIds: Set<String> = emptySet(),
     /** Task #1125: the frame is the offline durable stand-in (see [KuiklyThreadScreenPayload.durableLastKnown]). */
-    val durableLastKnown: Boolean = false
+    val durableLastKnown: Boolean = false,
+    /** Task #168: the stand-in reaches the conversation's start (see [KuiklyThreadScreenPayload.durableReachedOldest]). */
+    val durableReachedOldest: Boolean = false
 )
 
 internal data class ThreadInlineSearchMatch(
@@ -77,6 +79,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         sourceThreadId = sourceThreadId,
         gapRefillMessageIds = gapRefillMessageIds,
         durableLastKnown = durableLastKnown,
+        durableReachedOldest = durableReachedOldest,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         showReplyActions = showReplyActions,

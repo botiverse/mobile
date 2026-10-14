@@ -85,6 +85,11 @@ class ThreadOfflineLastKnownTipTest {
             MR.strings.thread_offline_older_unavailable.desc(),
             threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true).label
         )
+        // Task #168: a stand-in whose stored window reaches the conversation's first message IS the beginning.
+        assertEquals(
+            MR.strings.thread_state_beginning_conversation.desc(),
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true).label
+        )
         // The slice-level overload reads the flag from the slice.
         val slice =
             KuiklyThreadScreenPayload(
