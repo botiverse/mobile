@@ -244,6 +244,65 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(0, fixture.store.incrementalCalls)
     }
 
+    @Test
+    fun aFrameFromTheNewConnectionSnapshotsEvenWhenItBeatsTheReconnectSignal() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L)
+        assertEquals(1, fixture.store.incrementalCalls)
+
+        // The socket came back as epoch 2, but its first frame is processed before the epoch-2 signal.
+        assertEquals(
+            CanonicalMessageV2CanaryOutcome.Committed,
+            fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L),
+        )
+        assertEquals(2, fixture.loaderCalls, "a frame of a newer connection must re-snapshot without waiting for the signal")
+        assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
+
+        // The late signal and the next frame of the same connection: the snapshot already belongs to epoch 2.
+        fixture.canary.noteTransportEpoch(partition, 2L)
+        assertEquals(
+            CanonicalMessageV2CanaryOutcome.Committed,
+            fixture.accept(fixture.input("m5", 5L), transportEpoch = 2L),
+        )
+        assertEquals(2, fixture.loaderCalls)
+        assertEquals(2, fixture.store.incrementalCalls)
+    }
+
+    @Test
+    fun aLateFrameOfTheOldConnectionIsNeverAppendedToTheNewWindow() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.accept(fixture.input("m3", 3L), transportEpoch = 2L)
+        assertEquals(2, fixture.loaderCalls)
+        assertEquals(0, fixture.store.incrementalCalls)
+
+        // m2 left the old socket before it closed; its coroutine only now reaches the writer.
+        assertEquals(
+            CanonicalMessageV2CanaryOutcome.Committed,
+            fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L),
+        )
+        assertEquals(3, fixture.loaderCalls, "a frame of another connection must take the snapshot path")
+        assertEquals(0, fixture.store.incrementalCalls)
+    }
+
+    @Test
+    fun framesWithoutATransportEpochStillFollowTheReconnectSignal() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.canary.noteTransportEpoch(partition, 1L)
+        fixture.accept(fixture.input("m1", 1L), transportEpoch = 1L)
+        fixture.accept(fixture.input("m2", 2L))
+        assertEquals(1, fixture.store.incrementalCalls)
+
+        fixture.canary.noteTransportEpoch(partition, 2L)
+        fixture.accept(fixture.input("m4", 4L))
+        assertEquals(2, fixture.loaderCalls)
+        assertEquals(1, fixture.store.incrementalCalls)
+    }
+
     private inner class Fixture(var enabled: Boolean = true, val store: FakeStore = FakeStore()) {
         private val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
@@ -258,10 +317,14 @@ class CanonicalMessageV2ProductionCanaryTest {
         var loaderFailure: String? = null
         var duringLoad: (suspend () -> Unit)? = null
 
-        suspend fun accept(input: CanonicalMessageFoldInput): CanonicalMessageV2CanaryOutcome =
+        suspend fun accept(
+            input: CanonicalMessageFoldInput,
+            transportEpoch: Long? = null,
+        ): CanonicalMessageV2CanaryOutcome =
             canary.accept(
                 partition = partition,
                 foldInput = input,
+                frameTransportEpoch = transportEpoch,
                 snapshotLoader = CanonicalMessageV2SnapshotLoader { request ->
                     loaderCalls += 1
                     duringLoad?.invoke()

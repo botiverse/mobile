@@ -104,6 +104,7 @@ internal class CanonicalMessageV2ProductionCanary(
         partition: DurablePartitionKey,
         foldInput: CanonicalMessageFoldInput,
         snapshotLoader: CanonicalMessageV2SnapshotLoader,
+        frameTransportEpoch: Long? = null,
     ): CanonicalMessageV2CanaryOutcome {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         val partitionGeneration = generationEngine.partitionGeneration(partition)
