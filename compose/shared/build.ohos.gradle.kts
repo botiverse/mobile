@@ -161,6 +161,7 @@ kotlin {
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
+                implementation("org.jetbrains.kotlinx:atomicfu:0.23.2-KBA-001")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.4")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0-ohos")

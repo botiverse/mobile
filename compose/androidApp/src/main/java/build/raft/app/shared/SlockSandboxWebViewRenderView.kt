@@ -18,6 +18,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
+import androidx.webkit.WebMessageCompat
+import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.tencent.kuikly.core.render.android.expand.component.KRView
@@ -42,6 +44,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var injectedJavaScript: String = ""
     private var pendingRuntimeJavaScript: String = ""
     private var allowedNavigationSchemes: Set<String> = emptySet()
+    private var hostEventsEnabled: Boolean = false
     private var currentUrl: String = ""
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
@@ -53,6 +56,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var navigationBlockedCallback: KuiklyRenderCallback? = null
     private var urlChangeCallback: KuiklyRenderCallback? = null
     private var navigationStateChangeCallback: KuiklyRenderCallback? = null
+    private var hostMessageCallback: KuiklyRenderCallback? = null
+    private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     private var documentStartScriptHandler: ScriptHandler? = null
     private val bootstrapNavigationFence = WebViewBootstrapNavigationFence()
 
@@ -104,6 +109,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateAllowedNavigationSchemes(propValue.toString())
                 true
             }
+            PROP_HOST_EVENTS_ENABLED -> {
+                updateHostEventsEnabled(propValue.toBooleanValue(default = false))
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -123,6 +132,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             EVENT_NAVIGATION_STATE_CHANGE -> {
                 navigationStateChangeCallback = propValue as? KuiklyRenderCallback
                 notifyNavigationState(force = true)
+                true
+            }
+            EVENT_HOST_MESSAGE -> {
+                hostMessageCallback = propValue as? KuiklyRenderCallback
                 true
             }
             else -> super.setProp(propKey, propValue)
@@ -167,6 +180,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateAllowedNavigationSchemes("")
                 true
             }
+            PROP_HOST_EVENTS_ENABLED -> {
+                updateHostEventsEnabled(false)
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -185,6 +202,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             EVENT_NAVIGATION_STATE_CHANGE -> {
                 navigationStateChangeCallback = null
+                true
+            }
+            EVENT_HOST_MESSAGE -> {
+                hostMessageCallback = null
                 true
             }
             else -> super.resetProp(propKey)
@@ -219,6 +240,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         navigationBlockedCallback = null
         urlChangeCallback = null
         navigationStateChangeCallback = null
+        hostMessageCallback = null
+        removeHostMessageListener()
         pendingRuntimeJavaScript = ""
         removeDocumentStartScript()
         Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.redactedUrlForLog()}")
@@ -533,6 +556,15 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (src.isNotBlank()) installDocumentStartScript(src)
     }
 
+    private fun updateHostEventsEnabled(next: Boolean) {
+        if (destroyed || hostEventsEnabled == next) return
+        hostEventsEnabled = next
+        if (src.isNotBlank()) {
+            pendingRuntimeJavaScript = ""
+            loadAllowedSrc(src)
+        }
+    }
+
     private fun updateAllowedNavigationSchemes(next: String) {
         if (destroyed) return
         val normalized =
@@ -586,7 +618,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         val activeUrl = currentUrl.ifBlank { lastSuccessfulUrl }
         val sourceOrigin = documentStartScriptOriginRule(src)
         val activeOrigin = documentStartScriptOriginRule(activeUrl)
-        if (sourceOrigin == null || activeOrigin != sourceOrigin) {
+        if (sourceOrigin == null || activeOrigin != sourceOrigin ||
+            (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl))) {
             Log.i(
                 LOG_TAG,
                 "runtime_js result=dropped reason=document_not_ready sameOrigin=${sourceOrigin != null && activeOrigin == sourceOrigin}"
@@ -658,6 +691,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         currentIsLoading = true
         notifyNavigationState()
         val documentStartInstalled = installDocumentStartScript(normalized)
+        installHostMessageListener(normalized)
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
             val bootstrapDocumentUrl = injectedJavaScriptBootstrapBaseUrl(normalized) ?: normalized
             bootstrapNavigationFence.begin(targetUrl = normalized)
@@ -711,13 +745,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private fun isAllowedMainDocumentUrl(url: String): Boolean {
         if (src.isBlank() && url == ABOUT_BLANK_URL) return true
         if (url == loadedSrc) return true
-        val allowed = allowedUri ?: return false
-        val target = runCatching { Uri.parse(url) }.getOrNull() ?: return false
-        return target.scheme == allowed.scheme &&
-            target.host == allowed.host &&
-            target.port == allowed.port &&
-            target.path == allowed.path &&
-            target.encodedQuery == allowed.encodedQuery
+        return isExactMainDocumentUrl(allowedUri, url)
     }
 
     private fun notifyLoadFailure(reason: String) {
@@ -807,9 +835,37 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             injectedJavaScript.isNotBlank() &&
             !documentStartInstalled
 
+    private fun installHostMessageListener(targetUrl: String) {
+        removeHostMessageListener()
+        if (!hostEventsEnabled || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        val originRule = documentStartScriptOriginRule(targetUrl) ?: return
+        runCatching {
+            val listener = object : WebViewCompat.WebMessageListener {
+                override fun onPostMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
+                    if (!isMainFrame || sourceOrigin.toString() != originRule) return
+                    // The origin allowlist is necessary but insufficient for fenced feedback:
+                    // same-origin history routes must not retain access to the native bridge.
+                    val activeUrl = view.url.orEmpty()
+                    if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
+                    val raw = message.data ?: return
+                    hostMessageCallback?.invoke(mapOf("message" to raw))
+                }
+            }
+            hostMessageListener = listener
+            WebViewCompat.addWebMessageListener(webView, "raftHostPort", setOf(originRule), listener)
+            Log.i(LOG_TAG, "host_message_listener installed origin=${originRule.redactedUrlForLog()}")
+        }.onFailure { Log.w(LOG_TAG, "host_message_listener unavailable", it) }
+    }
+
+    private fun removeHostMessageListener() {
+        runCatching { WebViewCompat.removeWebMessageListener(webView, "raftHostPort") }
+        hostMessageListener = null
+    }
+
     private fun installDocumentStartScript(targetUrl: String): Boolean {
         removeDocumentStartScript()
-        val script = injectedJavaScript.takeIf { allowScripts && domStorageEnabled && it.isNotBlank() } ?: return false
+        val authScript = injectedJavaScript.takeIf { allowScripts && domStorageEnabled && it.isNotBlank() } ?: ""
+        val script = (hostBridgeScript.takeIf { hostEventsEnabled && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) } .orEmpty() + "\n" + authScript).trim().takeIf { it.isNotBlank() } ?: return false
         val originRule = documentStartScriptOriginRule(targetUrl) ?: return false
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
         return runCatching {
@@ -833,7 +889,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     private fun isRestrictedGenericMode(): Boolean =
-        allowedNavigationSchemes.isNotEmpty() && injectedJavaScript.isBlank()
+        // Feedback carries an in-memory bearer in its bootstrap. Never forward page console
+        // output for a fenced settings document: hostile page code can otherwise print the
+        // bearer and have it copied into logcat. Generic restricted previews also stay silent.
+        allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
 
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
@@ -897,6 +956,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"
         private const val PROP_ALLOWED_NAVIGATION_SCHEMES = "allowedNavigationSchemes"
+        private const val PROP_HOST_EVENTS_ENABLED = "hostEventsEnabled"
         private const val METHOD_NAVIGATION_COMMAND = "navigationCommand"
         private const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
         private const val MAX_RUNTIME_JAVA_SCRIPT_LENGTH = 64 * 1024
@@ -905,18 +965,46 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         private const val EVENT_URL_CHANGE = "urlChange"
         private const val EVENT_NAVIGATION_STATE_CHANGE = "navigationStateChange"
+        private const val EVENT_HOST_MESSAGE = "hostMessage"
         private const val COMMAND_GO_BACK = "goBack"
         private const val COMMAND_GO_FORWARD = "goForward"
         private const val COMMAND_RELOAD = "reload"
         private const val COMMAND_STOP = "stop"
+        private const val hostBridgeScript = """
+            (function(){'use strict';
+              var port = null;
+              try { port = window.raftHostPort; } catch (_) {}
+              Object.defineProperty(window, 'RaftHost', { value: Object.freeze({ version: 'raft-host-v1', capabilities: ['raft-feedback-v1'], emit: function(kind, payload) {
+                if (typeof kind !== 'string' || !port) return;
+                try { port.postMessage(JSON.stringify({kind: kind, payload: (payload && typeof payload === 'object' && !Array.isArray(payload)) ? payload : {}})); } catch (_) {}
+              } }), writable: false, configurable: false });
+            })();
+        """
 
         private fun String.isEventProp(): Boolean =
             this == EVENT_LOAD_SUCCESS ||
                 this == EVENT_LOAD_FAILURE ||
                 this == EVENT_NAVIGATION_BLOCKED ||
                 this == EVENT_URL_CHANGE ||
-                this == EVENT_NAVIGATION_STATE_CHANGE
+                this == EVENT_NAVIGATION_STATE_CHANGE ||
+                this == EVENT_HOST_MESSAGE
     }
+}
+
+/** Exact scheme/authority/path/query comparison used after same-origin history updates. */
+internal fun isExactMainDocumentUrl(allowed: Uri?, targetUrl: String): Boolean {
+    return isExactMainDocumentUrl(allowed?.toString(), targetUrl)
+}
+
+/** Pure-URL form used by JVM tests without depending on Android framework stubs. */
+internal fun isExactMainDocumentUrl(allowedUrl: String?, targetUrl: String): Boolean {
+    val allowed = runCatching { URI(allowedUrl ?: return false) }.getOrNull() ?: return false
+    val target = runCatching { URI(targetUrl) }.getOrNull() ?: return false
+    return target.scheme == allowed.scheme &&
+        target.host == allowed.host &&
+        target.port == allowed.port &&
+        target.path == allowed.path &&
+        target.rawQuery == allowed.rawQuery
 }
 
 internal fun documentStartScriptOriginRule(targetUrl: String): String? =

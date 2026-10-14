@@ -60,6 +60,7 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyAppUpdateEvents
@@ -7006,7 +7007,12 @@ private fun SlockAppShellReadyContent(
                                     SettingsDestinationComputers -> pager.openSettingsComputersPage(storeScope)
                                     SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
                                     SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-                                    SettingsDestinationHandsFeedback -> pager.openSettingsHandsFeedbackPage(storeScope)
+                                    SettingsDestinationHandsFeedback ->
+                                        if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                            pager.openSettingsFeedbackWebViewPage(storeScope)
+                                        } else {
+                                            pager.openSettingsHandsFeedbackPage(storeScope)
+                                        }
                                     else -> {
                                         val page = SettingsNativeDetailPage.fromKey(key)
                                         if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
