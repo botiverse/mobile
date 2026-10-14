@@ -53,20 +53,25 @@ static inline bool SlockInteractivePopGestureShouldBegin(SlockInteractivePopGest
         return false;
     }
     double multiplier = input.isLeftToRight ? 1.0 : -1.0;
-    double horizontal = fabs(input.velocityX) > 1.0 ? input.velocityX : input.translationX;
-    double vertical = fabs(input.velocityX) > 1.0 ? input.velocityY : input.translationY;
+    // A vertical velocity is still valid motion. Checking only velocityX would
+    // fall back to an earlier horizontal translation and steal a vertical drag.
+    bool hasVelocity = fabs(input.velocityX) > 1.0 || fabs(input.velocityY) > 1.0;
+    double horizontal = hasVelocity ? input.velocityX : input.translationX;
+    double vertical = hasVelocity ? input.velocityY : input.translationY;
     return (horizontal * multiplier) > 0.0 && fabs(horizontal) > fabs(vertical);
 }
 
 /**
- * Inside the edge strip the back swipe wins: content pans (pagers, lists) wait for it to fail.
- * Outside the strip nothing waits, so content gestures behave exactly as before.
+ * Admitted back touches get priority over UIScrollView's own content pans
+ * (pagers, lists), which wait for direction/scroll-conflict checks. Custom
+ * recognizers retain their arbitration. Full-screen pages include the content
+ * area; edge-only pages retain the leading-edge strip.
  */
 static inline bool SlockInteractivePopShouldBeRequiredToFailBy(
     bool touchBeganInEdgeZone,
-    bool otherIsContentPan
+    bool otherIsContentScrollPan
 ) {
-    return touchBeganInEdgeZone && otherIsContentPan;
+    return touchBeganInEdgeZone && otherIsContentScrollPan;
 }
 
 #endif /* SlockInteractivePopGestureAdmission_h */

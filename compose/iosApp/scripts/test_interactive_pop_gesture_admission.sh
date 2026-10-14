@@ -13,7 +13,6 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 grep -Fq 'renderViewController.fd_interactivePopAllowsFullScreen = YES;' "$NAVIGATION_SOURCE"
 grep -Fq 'SlockInteractivePopHorizontalScrollCanConsumeDirection' "$NAVIGATION_SOURCE"
 grep -Fq 'self.touchView = touch.view;' "$NAVIGATION_SOURCE"
-grep -Fq 'self.touchBeganInPhysicalEdgeZone' "$NAVIGATION_SOURCE"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
@@ -60,6 +59,10 @@ int main(void) {
     touch = edgeTouch(); touch.allowsFullScreen = true; touch.touchLocationX = 195.0;
     assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
 
+    // Full-screen admission also arms child-pan ordering at the center.
+    assert(SlockInteractivePopShouldBeRequiredToFailBy(
+        SlockInteractivePopTouchBeginsInEdgeZone(touch), true));
+
     // A page-specific limit replaces the default strip width
     touch = edgeTouch(); touch.maxAllowedInitialDistance = 60.0; touch.touchLocationX = 55.0;
     assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
@@ -102,11 +105,15 @@ int main(void) {
     input = rightSwipe(); input.translationX = 5.0; input.translationY = 30.0; input.velocityX = 10.0; input.velocityY = 100.0;
     assert(!SlockInteractivePopGestureShouldBegin(input));
 
+    // Current vertical motion must not fall back to earlier horizontal drift.
+    input = rightSwipe(); input.translationX = 30.0; input.translationY = 0.0; input.velocityX = 0.0; input.velocityY = 300.0;
+    assert(!SlockInteractivePopGestureShouldBegin(input));
+
     // Low velocity falls back to translation
     input = rightSwipe(); input.velocityX = 0.5; input.velocityY = 0.1; input.translationX = 15.0; input.translationY = 2.0;
     assert(SlockInteractivePopGestureShouldBegin(input));
 
-    // Inside the strip content pans wait for the pop; outside nothing waits
+    // Admitted content pans wait for pop; rejected touches keep content control.
     assert(SlockInteractivePopShouldBeRequiredToFailBy(true, true));
     assert(!SlockInteractivePopShouldBeRequiredToFailBy(false, true));
     assert(!SlockInteractivePopShouldBeRequiredToFailBy(true, false));

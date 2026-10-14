@@ -62,6 +62,7 @@
 		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
 		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
 		A17400010000000000000001 /* SlockMediaAudioSessionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A17400020000000000000001 /* SlockMediaAudioSessionTests.m */; };
+		A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300020000000000000001 /* SlockInteractivePopGestureTests.m */; };
 		A15900010000000000000001 /* SlockImageLoaderTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A15900020000000000000001 /* SlockImageLoaderTests.m */; };
 		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
 		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
@@ -164,6 +165,7 @@
 		FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderComponentExpandHandler.m; sourceTree = "<group>"; };
 		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
 		A17400020000000000000001 /* SlockMediaAudioSessionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockMediaAudioSessionTests.m; sourceTree = "<group>"; };
+		A19300020000000000000001 /* SlockInteractivePopGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockInteractivePopGestureTests.m; sourceTree = "<group>"; };
 		A15900020000000000000001 /* SlockImageLoaderTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockImageLoaderTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
@@ -325,6 +327,7 @@
 				J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */,
 				A15900020000000000000001 /* SlockImageLoaderTests.m */,
 				A17400020000000000000001 /* SlockMediaAudioSessionTests.m */,
+				A19300020000000000000001 /* SlockInteractivePopGestureTests.m */,
 				J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */,
 			);
 			path = iosAppTests;
@@ -816,6 +819,7 @@
 				J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */,
 				A15900010000000000000001 /* SlockImageLoaderTests.m in Sources */,
 				A17400010000000000000001 /* SlockMediaAudioSessionTests.m in Sources */,
+				A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */,
 				J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

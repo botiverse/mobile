@@ -30,7 +30,6 @@
 
 @property (nonatomic, weak) UINavigationController *navigationController;
 @property (nonatomic, assign) BOOL touchBeganInEdgeZone;
-@property (nonatomic, assign) BOOL touchBeganInPhysicalEdgeZone;
 @property (nonatomic, weak) UIView *touchView;
 
 @end
@@ -163,13 +162,12 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
     // Text inputs keep selection/focus gestures. Child horizontal scroll views are
-    // allowed to arbitrate by UIKit; the full-screen page policy only admits the
-    // back direction once the pager has released it.
+    // considered after direction is known; admitted content pans wait for pop
+    // to either accept the back direction or yield to consumable scrolling.
     if (gestureRecognizer.numberOfTouches > 0) return YES;
     self.touchView = touch.view;
     if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
         self.touchBeganInEdgeZone = NO;
-        self.touchBeganInPhysicalEdgeZone = NO;
         return NO;
     }
     UINavigationController *navigationController = self.navigationController;
@@ -186,8 +184,6 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
     self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
-    admission.allowsFullScreen = NO;
-    self.touchBeganInPhysicalEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
     return YES;
 }
 
@@ -204,10 +200,12 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .velocityY = velocity.y,
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-    double horizontal = fabs(velocity.x) > 1.0 ? velocity.x : translation.x;
-    BOOL movingRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight
-        ? horizontal > 0.0
-        : horizontal < 0.0;
+    if (!SlockInteractivePopGestureShouldBegin(admission)) {
+        return NO;
+    }
+    // Admission has established the back direction: physically right in LTR,
+    // left in RTL. Scroll consumption is expressed in physical coordinates.
+    BOOL movingRight = admission.isLeftToRight;
     if (SlockInteractivePopHorizontalScrollCanConsumeDirection(
             self.touchView,
             gestureRecognizer.view,
@@ -215,19 +213,26 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         )) {
         return NO;
     }
-    return SlockInteractivePopGestureShouldBegin(admission);
+    return YES;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
 {
     UIView *rootView = self.navigationController.view;
-    BOOL otherIsContentPan =
-        [otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class] &&
-        ![otherGestureRecognizer isKindOfClass:UIScreenEdgePanGestureRecognizer.class] &&
-        otherGestureRecognizer.view != nil &&
-        otherGestureRecognizer.view != gestureRecognizer.view &&
-        [otherGestureRecognizer.view isDescendantOfView:rootView];
-    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInPhysicalEdgeZone, otherIsContentPan);
+    UIScrollView *scrollView =
+        [otherGestureRecognizer.view isKindOfClass:UIScrollView.class]
+            ? (UIScrollView *)otherGestureRecognizer.view
+            : nil;
+    BOOL otherIsContentScrollPan =
+        scrollView != nil &&
+        otherGestureRecognizer == scrollView.panGestureRecognizer &&
+        scrollView != gestureRecognizer.view &&
+        [scrollView isDescendantOfView:rootView];
+    // Order only each scroll view's own pan. A pager at its leading boundary
+    // can otherwise prevent admitted pop; when direction/consumption rejects
+    // pop, the waiting scroll pan proceeds. Custom gestures keep their existing
+    // arbitration rather than being forced to wait for navigation.
+    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentScrollPan);
 }
 
 @end
@@ -340,7 +345,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     if (renderViewController) {
         // Every pushed Kuikly page can be returned from. The admission policy
         // still requires a navigation stack above root; text-input and native
-        // horizontal-scroll conflicts are rejected at touch-down above.
+        // horizontal-scroll conflicts are rejected by the gesture delegate.
         renderViewController.fd_interactivePopAllowsFullScreen = YES;
     }
     [self fd_setConversationForwardGestureEnabled:
