@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 interface SlockAuthTransport {
+    /** Unauthenticated `GET <baseUrl>/version` used by the private-deployment save-time gate. */
+    suspend fun serverVersion(): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun startAppLogin(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun login(bodyText: String): AuthNetworkResponse

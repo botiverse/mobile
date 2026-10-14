@@ -598,7 +598,8 @@ class SharedSettingsDataSource(
     private val onHttp3UserChoiceChanged: (() -> String?)? = null,
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
-    private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null
+    private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
+    private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
     private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -1401,6 +1402,15 @@ class SharedSettingsDataSource(
 
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
         apiEnvironmentStore?.let { store ->
+            if (SharedApiEnvironmentStore.predefined.none { it.key == request.key }) {
+                when (serverVersionProbe(request.apiBaseUrl)) {
+                    is ServerVersionProbe.Compatible -> Unit
+                    is ServerVersionProbe.Incompatible, ServerVersionProbe.MissingVersion ->
+                        return DataResult.Error(ScreenError("settings_environment_server_outdated", retryable = false))
+                    ServerVersionProbe.Unreachable ->
+                        return DataResult.Error(ScreenError("settings_environment_server_unreachable", retryable = true))
+                }
+            }
             val before = store.current()
             val after =
                 store.save(request)

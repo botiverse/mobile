@@ -1064,6 +1064,9 @@ class SharedSlockAuthTransport internal constructor(
         warningLogger = warningLogger
     )
 
+    override suspend fun serverVersion(): AuthNetworkResponse =
+        request(path = "version", method = "GET")
+
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 

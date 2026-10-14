@@ -85,6 +85,7 @@ enum class ErrorPresentationKey {
     AttachmentTooLarge,
     TooManyAttempts,
     ResponseUnreadable,
+    ServerVersionIncompatible,
     Generic,
     EmptyNoChannels,
     EmptyNoMessages,
@@ -227,6 +228,8 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             ErrorPresentationKey.TooManyAttempts
         "contract" in lower || "parse" in lower || "mismatch" in lower ->
             ErrorPresentationKey.ResponseUnreadable
+        "outdated" in lower || "incompatible" in lower ->
+            ErrorPresentationKey.ServerVersionIncompatible
         else -> null
     }
 }

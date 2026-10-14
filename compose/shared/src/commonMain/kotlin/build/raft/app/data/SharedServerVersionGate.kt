@@ -1,0 +1,75 @@
+package build.raft.app.data
+
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+
+/** Result of probing a candidate private deployment before it is saved as the custom environment. */
+sealed interface ServerVersionProbe {
+    /** The deployment reported a version at or above the client baseline. */
+    data class Compatible(val version: String) : ServerVersionProbe
+
+    /** The deployment reported a version below the client baseline. */
+    data class Incompatible(val version: String) : ServerVersionProbe
+
+    /** The endpoint could not be reached or returned a non-2xx response. */
+    data object Unreachable : ServerVersionProbe
+
+    /** The endpoint answered 2xx but carried no usable `version` field. */
+    data object MissingVersion : ServerVersionProbe
+}
+
+/**
+ * Save-time gate for private (self-hosted) deployments. The client only accepts a
+ * custom environment whose server reports a `version` at or above the open-source
+ * baseline this client is built from. `revision` hashes are never compared.
+ */
+internal object SharedServerVersionGate {
+    /**
+     * Lowest server version a private deployment may run. Tracks the open-source
+     * release line of this client; bump when the release baseline moves.
+     */
+    const val MIN_SERVER_VERSION = "1.13.0"
+
+    /** Numeric triple compare; non-numeric input never passes. */
+    fun parseVersion(text: String): List<Int>? {
+        val core = text.trim().removePrefix("v").substringBefore('-').substringBefore('+')
+        val parts = core.split('.')
+        if (parts.isEmpty() || parts.any { it.isEmpty() || it.any { c -> !c.isDigit() } }) return null
+        return parts.map { it.toInt() }
+    }
+
+    fun isVersionAtLeast(version: String, baseline: String): Boolean {
+        val v = parseVersion(version) ?: return false
+        val b = parseVersion(baseline) ?: return false
+        for (i in 0 until maxOf(v.size, b.size)) {
+            val diff = v.getOrElse(i) { 0 } - b.getOrElse(i) { 0 }
+            if (diff != 0) return diff > 0
+        }
+        return true
+    }
+
+    /**
+     * GETs `<apiBaseUrl>/version` without auth (contract: 200 JSON with a `version`
+     * string). Network errors, non-2xx, malformed JSON and a missing/invalid field
+     * all refuse the save — a deployment that cannot prove its version is rejected.
+     */
+    suspend fun probe(
+        apiBaseUrl: String,
+        transportFactory: (String) -> SlockAuthTransport = { SharedSlockAuthTransport(baseUrl = it) }
+    ): ServerVersionProbe {
+        val base = apiBaseUrl.trim().trimEnd('/')
+        if (base.isEmpty()) return ServerVersionProbe.Unreachable
+        val response =
+            runCatchingPreservingCancellation { transportFactory("$base/").serverVersion() }
+                .getOrNull() ?: return ServerVersionProbe.Unreachable
+        if (response.code !in 200..299) return ServerVersionProbe.Unreachable
+        val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return ServerVersionProbe.MissingVersion
+        val version =
+            runCatching { JSONObject(body).optString("version").trim() }.getOrNull().orEmpty()
+        if (parseVersion(version) == null) return ServerVersionProbe.MissingVersion
+        return if (isVersionAtLeast(version, MIN_SERVER_VERSION)) {
+            ServerVersionProbe.Compatible(version)
+        } else {
+            ServerVersionProbe.Incompatible(version)
+        }
+    }
+}

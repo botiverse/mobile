@@ -43,6 +43,7 @@ internal fun localizedErrorPresentationStrings(): ErrorPresentationStrings =
             ErrorPresentationKey.AttachmentTooLarge to stringResource(MR.strings.error_attachment_too_large),
             ErrorPresentationKey.TooManyAttempts to stringResource(MR.strings.error_too_many_attempts),
             ErrorPresentationKey.ResponseUnreadable to stringResource(MR.strings.error_response_unreadable),
+            ErrorPresentationKey.ServerVersionIncompatible to stringResource(MR.strings.error_server_version_incompatible),
             ErrorPresentationKey.Generic to stringResource(MR.strings.error_generic),
             ErrorPresentationKey.EmptyNoChannels to stringResource(MR.strings.empty_no_channels),
             ErrorPresentationKey.EmptyNoMessages to stringResource(MR.strings.empty_no_messages),
