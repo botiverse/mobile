@@ -40,6 +40,14 @@ class AppLoginCoordinatorTest {
         assertEquals("ignored", restarted.complete(uri, "request-1", "code", ""))
         assertEquals(1, runtime.exchanges)
     }
+    @Test fun internalChannelSchemesAreAcceptedAndUnknownSchemesRejected() = runBlocking {
+        val runtime = Runtime()
+        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
+        assertNull(coordinator.start("generation", verifier, challenge, "raft-evil://login/callback"))
+        assertEquals(0, runtime.starts)
+        assertNotNull(coordinator.start("generation", verifier, challenge, "raft-alpha://login/callback"))
+        assertEquals("app_shell", coordinator.complete("raft-alpha://login/callback", "request-1", "code", ""))
+    }
     @Test fun expiredOrEnvironmentChangedRequestsNeverExchange() = runBlocking {
         for (changed in listOf(false, true)) {
             val runtime = Runtime()

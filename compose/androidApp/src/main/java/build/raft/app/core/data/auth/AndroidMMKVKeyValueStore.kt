@@ -6,6 +6,7 @@ import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
 import build.raft.app.data.SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
+import build.raft.app.data.SLOCK_APP_LOGIN_MMKV_NAMESPACE
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SlockKeyValueStore
 import build.raft.app.data.SlockLocalPreferenceStore
@@ -208,7 +209,8 @@ fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
         SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
         SlockLocalPreferenceStore.KuiklyNamespace,
         SharedApiEnvironmentStore.Namespace,
-        SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
+        SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE,
+        SLOCK_APP_LOGIN_MMKV_NAMESPACE
     ).forEach { namespace ->
         SlockSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
             AndroidAppScopeKeyValueStores.get(appContext, namespace)

@@ -24,6 +24,9 @@ object AndroidMobileOAuth {
     const val AppEnv = "dev"
     val ReturnUri: String
         get() = "${BuildConfig.OAUTH_CALLBACK_SCHEME}://oauth/callback"
+    /** Browser web login return URI; the shared [build.raft.app.data.APP_LOGIN_RETURN_URIS] allowlist. */
+    val AppLoginReturnUri: String
+        get() = "${BuildConfig.OAUTH_CALLBACK_SCHEME}://login/callback"
     const val ModeLogin = "login"
     const val ModeLink = "link"
     private const val VerifierByteCount = 32

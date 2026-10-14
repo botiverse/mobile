@@ -3156,6 +3156,8 @@ open class SlockKuiklyActivity :
                     putKuiklyVerificationFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
                         put("slockSocialAuthProviders", "google,github")
+                        // Browser web login is available; the shared gate decides whether it replaces this page.
+                        put("slockWebLoginSupported", true)
                     }
                 }
 
@@ -5684,6 +5686,8 @@ internal class SlockKuiklyBridgeModule(
                         "sendTestNotification" -> sendTestNotificationCapability()
                         "postUnreadNotification" -> postUnreadNotificationCapability(request)
                         "mobileOAuthLink" -> return startMobileOAuthLink(request, callback)
+                        "appLoginPrepare" -> prepareAppLoginCapability()
+                        "appLoginOpen" -> openAppLoginCapability(request)
                         else -> mapOf("status" to "error", "code" to "settings_capability_unknown")
                     }
                 }.getOrElse { throwable ->
@@ -5694,6 +5698,35 @@ internal class SlockKuiklyBridgeModule(
                     )
                 }
         callback?.invoke(result)
+    }
+
+    /** Browser web login (the HarmonyOS flow): PKCE for the shared coordinator, which keeps the verifier. */
+    private fun prepareAppLoginCapability(): Map<String, Any> {
+        val pkce = AndroidMobileOAuth.createPkce()
+        return mapOf(
+                "status" to "prepared",
+                "generation" to UUID.randomUUID().toString(),
+                "codeVerifier" to pkce.codeVerifier,
+                "codeChallenge" to pkce.codeChallenge,
+                "returnUri" to AndroidMobileOAuth.AppLoginReturnUri
+        )
+    }
+
+    private fun openAppLoginCapability(request: JSONObject): Map<String, Any> {
+        val authorizationUrl = request.optString("authorizationUrl").trim()
+        if (!authorizationUrl.startsWith("https://")) {
+            return mapOf("status" to "error", "code" to "settings_mobile_oauth_url_invalid")
+        }
+        val intent =
+                Intent(Intent.ACTION_VIEW, Uri.parse(authorizationUrl)).apply {
+                    addCategory(Intent.CATEGORY_BROWSABLE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+        return runCatching { appContext.startActivity(intent) }
+                .fold(
+                        onSuccess = { mapOf("status" to "started") },
+                        onFailure = { mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_failed") }
+                )
     }
 
     private fun startMobileOAuthLink(request: JSONObject, callback: KuiklyRenderCallback?) {

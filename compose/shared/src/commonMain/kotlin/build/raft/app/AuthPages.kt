@@ -20,6 +20,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
+import build.raft.app.data.SlockMobileWebLoginGate
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -99,6 +100,8 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
+/** Page data from hosts that implement browser web login next to the email/social login (Android, iOS). */
+internal const val AUTH_WEB_LOGIN_SUPPORTED_KEY = "slockWebLoginSupported"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
 private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
@@ -270,7 +273,8 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    if (authRuntimeCapabilities.webLoginOnly) {
+    val webLoginGateEnabled = remember { SlockMobileWebLoginGate.isEnabled() }
+    if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
         WebLoginScreen(pager, bridge, authDataSource)
         return
     }
@@ -459,6 +463,13 @@ private fun LoginScreen() {
         },
     )
 }
+
+/**
+ * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the
+ * `mobile_web_login_v0` decision kept on this device is not off (Android, iOS); otherwise email/social login.
+ */
+internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =
+    capabilities.webLoginOnly || (capabilities.webLoginSupported && webLoginGateEnabled)
 
 private data class PendingLogin(
     val nonce: Int,
@@ -2169,6 +2180,9 @@ internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
 ): SharedAuthRuntimeCapabilities {
     seedWebLoginOnly(if (pageData.has("slockWebLoginOnly")) pageData.optBoolean("slockWebLoginOnly", false) else null)
+    seedWebLoginSupported(
+        if (pageData.has(AUTH_WEB_LOGIN_SUPPORTED_KEY)) pageData.optBoolean(AUTH_WEB_LOGIN_SUPPORTED_KEY, false) else null
+    )
     return seedSocialProviders(
         if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
             pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)

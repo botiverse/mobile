@@ -320,6 +320,7 @@ class SlockKuiklyNotificationLaunchTest {
         assertEquals("notification-app-shell-channel-1-msg-42", pageData.getString("instanceId"))
         assertEquals("server-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
         assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
+        assertEquals(true, pageData.optBoolean("slockWebLoginSupported", false))
         assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
         assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID))
         assertEquals("msg-42", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))

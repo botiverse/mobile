@@ -4,6 +4,7 @@ internal actual fun slockRequiresAppScopeKeyValueStore(namespace: String): Boole
     namespace == SLOCK_AUTH_SESSION_MMKV_NAMESPACE ||
         namespace == SlockLocalPreferenceStore.KuiklyNamespace ||
         namespace == SharedApiEnvironmentStore.Namespace ||
-        namespace == SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
+        namespace == SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE ||
+        namespace == SLOCK_APP_LOGIN_MMKV_NAMESPACE
 
 internal actual fun slockCreatePlatformAppScopeKeyValueStore(namespace: String): SlockKeyValueStore? = null

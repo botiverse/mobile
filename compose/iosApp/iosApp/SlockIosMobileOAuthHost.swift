@@ -384,7 +384,100 @@ final class SlockIosMobileOAuthHost: NSObject,
 
     @discardableResult
     func acceptCallbackURL(_ url: URL, source: String) -> Bool {
-        acceptCallback(url, expectedGeneration: nil, source: source)
+        if acceptAppLoginCallback(url, source: source) { return true }
+        return acceptCallback(url, expectedGeneration: nil, source: source)
+    }
+
+    /// Browser web login (the HarmonyOS flow): PKCE for the shared coordinator, which keeps the verifier.
+    @objc func prepareAppLogin() -> NSDictionary {
+        guard let pkce = createPkce(), let callbackScheme = configuredCallbackScheme() else {
+            return startError(code: "settings_mobile_oauth_pkce_failed", message: "Web sign-in could not be prepared.")
+        }
+        return [
+            "status": "prepared",
+            "generation": UUID().uuidString.lowercased(),
+            "codeVerifier": pkce.verifier,
+            "codeChallenge": pkce.challenge,
+            "returnUri": "\(callbackScheme)://login/callback",
+        ]
+    }
+
+    /// Opens the web login page in an auth session; its callback goes to the shared coordinator.
+    @objc(openAppLoginWithUrl:completion:)
+    func openAppLogin(url: String, completion: @escaping (NSDictionary) -> Void) {
+        runOnMain { [weak self] in
+            guard let self else { return }
+            guard
+                let authorizationUrl = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+                authorizationUrl.scheme?.lowercased() == "https",
+                let callbackScheme = self.configuredCallbackScheme()
+            else {
+                completion(self.startError(code: "settings_mobile_oauth_url_invalid", message: "Unable to open web sign-in."))
+                return
+            }
+            guard let anchor = self.currentPresentationWindow() else {
+                completion(self.startError(code: "settings_mobile_oauth_browser_failed", message: "Unable to open web sign-in."))
+                return
+            }
+            self.supersedeActiveSession()
+            let generation = "app-login-\(UUID().uuidString.lowercased())"
+            let authSession = ASWebAuthenticationSession(
+                url: authorizationUrl,
+                callbackURLScheme: callbackScheme
+            ) { [weak self] callbackUrl, error in
+                self?.runOnMain {
+                    guard let self else { return }
+                    if self.activeGeneration == generation {
+                        self.session = nil
+                        self.presentationWindow = nil
+                        self.activeGeneration = nil
+                    }
+                    if self.supersededGenerations.remove(generation) != nil { return }
+                    if let callbackUrl {
+                        _ = self.acceptAppLoginCallback(callbackUrl, source: "web_auth_session")
+                        return
+                    }
+                    let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+                    SlockIosDiagnosticsRecord(
+                        "info",
+                        "SlockIosAppLogin",
+                        "app_login_session_ended reason=\(cancelled ? "cancelled" : "failed")"
+                    )
+                }
+            }
+            authSession.presentationContextProvider = self
+            authSession.prefersEphemeralWebBrowserSession = false
+            self.presentationWindow = anchor
+            self.activeGeneration = generation
+            self.session = authSession
+            guard authSession.start() else {
+                self.session = nil
+                self.presentationWindow = nil
+                self.activeGeneration = nil
+                completion(self.startError(code: "settings_mobile_oauth_browser_failed", message: "Unable to open web sign-in."))
+                return
+            }
+            SlockIosDiagnosticsRecord("info", "SlockIosAppLogin", "app_login_browser_started")
+            completion(["status": "started"])
+        }
+    }
+
+    /// `<scheme>://login/callback`: validated and exchanged by the shared coordinator (duplicates are ignored there).
+    private func acceptAppLoginCallback(_ url: URL, source: String) -> Bool {
+        guard
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+            components.scheme?.lowercased() == configuredCallbackScheme(),
+            components.host?.lowercased() == "login"
+        else {
+            return false
+        }
+        let accepted = SlockAppLoginBridge.shared.completeCallbackUri(uri: url.absoluteString)
+        SlockIosDiagnosticsRecord(
+            "info",
+            "SlockIosAppLogin",
+            "app_login_callback source=\(safeSource(source)) accepted=\(accepted)"
+        )
+        return true
     }
 
     func resumeDeferredCallbackIfNeeded() {
