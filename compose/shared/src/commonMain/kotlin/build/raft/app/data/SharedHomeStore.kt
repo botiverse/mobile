@@ -1304,7 +1304,12 @@ internal class SharedHomeStore(
         synchronized(realtimeUnreadDirtyLock) { realtimeUnreadDirtyByLoad.clear() }
     }
 
-    private fun scheduleRealtimeUnreadReconcileLoad(round: Int) {
+    private fun scheduleRealtimeUnreadReconcileLoad(
+        round: Int,
+        sessionGeneration: Long,
+        accountId: String,
+        serverId: String?,
+    ) {
         if (round > MAX_REALTIME_UNREAD_RECONCILE_ROUNDS) {
             // The local counts stay as they are; the next ordinary load or foreground refresh reconciles.
             diagnosticsLogger("home_unread_reconcile_cap rounds=$MAX_REALTIME_UNREAD_RECONCILE_ROUNDS")
@@ -1313,14 +1318,27 @@ internal class SharedHomeStore(
         val finishing = loadJob
         scope.launch {
             finishing?.join()
-            // A load already in flight was sent after the message too; it will replace the counts.
-            if (loadJob?.isActive == true) return@launch
-            val session = authStore.readSession() ?: return@launch
-            if (_state.value.content !is SharedHomeContentState.Content) return@launch
+            // Re-check after the wait: a reset, account change or server switch meanwhile owns Home now,
+            // and the message that marked the load belonged to the old session/server.
+            val session = authStore.readSession()
+            val content = _state.value.content as? SharedHomeContentState.Content
+            val skipReason =
+                when {
+                    sessionGeneration != homeSessionGeneration.value -> "session_generation_changed"
+                    session == null || session.user.id != accountId -> "account_changed"
+                    serverId == null || session.currentServerId != serverId -> "server_changed"
+                    content == null || content.snapshot.server.id.value != serverId -> "content_changed"
+                    // A load already in flight was sent after the message too; it will replace the counts.
+                    loadJob?.isActive == true -> "load_in_flight"
+                    else -> null
+                }
+            if (skipReason != null) {
+                diagnosticsLogger("home_unread_reconcile_skip round=$round reason=$skipReason")
+                return@launch
+            }
             diagnosticsLogger("home_unread_reconcile_load round=$round")
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-            if (session.currentServerId == null) return@launch
             loadJob =
                 scope.launch {
                     val previousReason = stateDiagnosticsReason
@@ -1913,7 +1931,12 @@ internal class SharedHomeStore(
             // A message counted at any point while this load was in flight, including after its response
             // was frozen against the live counts, needs a load sent after it.
             if (endRealtimeUnreadWatch(realtimeUnreadToken) && sessionGeneration == homeSessionGeneration.value) {
-                scheduleRealtimeUnreadReconcileLoad(realtimeUnreadRound + 1)
+                scheduleRealtimeUnreadReconcileLoad(
+                    round = realtimeUnreadRound + 1,
+                    sessionGeneration = sessionGeneration,
+                    accountId = activeSession.user.id,
+                    serverId = activeServer?.value ?: activeSession.currentServerId,
+                )
             }
         }
     }

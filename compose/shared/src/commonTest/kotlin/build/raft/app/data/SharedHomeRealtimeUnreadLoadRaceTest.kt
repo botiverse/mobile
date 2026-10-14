@@ -114,18 +114,72 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
         scope.cancel()
     }
 
-    private fun homeStore(api: GatedHomeApi, scope: CoroutineScope): SharedHomeStore {
-        val session = StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
-            accessToken = "token-a",
-            refreshToken = "token-r",
-            selectedServerId = "server-1",
-            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock")),
+    @Test
+    fun aRacedLoadThatOutlivesASessionResetSchedulesNothing() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = GatedHomeApi(serverUnread = mutableListOf(3, 3, 0))
+        val store = homeStore(api, scope)
+        store.accept(SharedHomeIntent.Start)
+
+        val gate = api.blockNextLoad()
+        val refresh = async { store.accept(SharedHomeIntent.Refresh) }
+        withTimeout(1_000) { gate.started.await() }
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", message("m-a6", 6)))
+        store.reset()
+        gate.release.complete(Unit)
+        refresh.await()
+        delay(100)
+
+        assertEquals(2, api.loads, "the old session's raced load must not start a reconcile load")
+        scope.cancel()
+    }
+
+    @Test
+    fun aRacedLoadThatOutlivesAServerSwitchSchedulesNothingForTheNewServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = GatedHomeApi(serverUnread = mutableListOf(3, 3, 0))
+        val authStore = InMemorySlockAuthSessionStore(twoServerSession())
+        val store = homeStore(api, scope, authStore)
+        store.accept(SharedHomeIntent.Start)
+
+        val gate = api.blockNextLoad()
+        val refresh = async { store.accept(SharedHomeIntent.Refresh) }
+        withTimeout(1_000) { gate.started.await() }
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", message("m-a6", 6)))
+        authStore.updateSelectedServer(serverId = "server-2", serverSlug = "other")
+        gate.release.complete(Unit)
+        refresh.await()
+        delay(100)
+
+        assertEquals(2, api.loads, "a message on server-1 must not start a reconcile load on server-2")
+        scope.cancel()
+    }
+
+    private fun session() = StoredAuthSession(
+        user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+        accessToken = "token-a",
+        refreshToken = "token-r",
+        selectedServerId = "server-1",
+        servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock")),
+    )
+
+    private fun twoServerSession() =
+        session().copy(
+            servers = listOf(
+                StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"),
+                StoredAuthServer(id = "server-2", name = "Other", slug = "other"),
+            ),
         )
+
+    private fun homeStore(
+        api: GatedHomeApi,
+        scope: CoroutineScope,
+        authStore: InMemorySlockAuthSessionStore = InMemorySlockAuthSessionStore(session()),
+    ): SharedHomeStore {
         return SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(session),
+            authStore = authStore,
             dataSource = SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(session),
+                sessionStore = authStore,
                 api = api,
                 parseHome = { payload, _ -> DataResult.Content(home(payload.serverId, api.takeUnread())) },
             ),
