@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,7 +52,9 @@ internal fun WebLoginScreen(
     LaunchedEffect(completion) {
         when (completion) {
             "app_shell", "choose_server" -> {
-                when (val session = auth.currentSession()) {
+                // The exchange may have written the session through another store instance (no shell yet when
+                // the callback arrived); read it again for a moment instead of failing on the first miss.
+                when (val session = awaitStoredSession { auth.currentSession() }) {
                     is SharedAuthResult.Success -> pager.openPostAuthRoute(session.data)
                     else -> failed = true
                 }
@@ -115,4 +118,19 @@ internal fun WebLoginScreen(
             )
         }
     }
+}
+
+/** Reads the stored session until it appears or [attempts] run out ([delayMs] apart). */
+internal suspend fun <T> awaitStoredSession(
+    attempts: Int = 10,
+    delayMs: Long = 200L,
+    read: suspend () -> SharedAuthResult<T>,
+): SharedAuthResult<T> {
+    var last = read()
+    repeat(attempts - 1) {
+        if (last is SharedAuthResult.Success) return last
+        delay(delayMs)
+        last = read()
+    }
+    return last
 }

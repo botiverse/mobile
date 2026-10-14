@@ -70,7 +70,9 @@ internal class AppLoginCoordinator(
         val age = now() - pending.startedAt
         val refusal =
             when {
-                active.environment != pending.environment -> "environment_changed"
+                // The identity is key + API/socket/web addresses (no credentials): log both sides.
+                active.environment != pending.environment ->
+                    "environment_changed started=${pending.environment} callback=${active.environment}"
                 age !in -60_000L until 600_000L -> "expired ageMs=$age"
                 !pkce.matches(pending.verifier) -> "verifier_invalid"
                 else -> null

@@ -64,7 +64,7 @@ class AppLoginCoordinatorTest {
         assertEquals(
             listOf(
                 "app_login_complete result=retry reason=runtime_unavailable",
-                "app_login_complete result=login_error reason=environment_changed",
+                "app_login_complete result=login_error reason=environment_changed started=production callback=staging",
                 "app_login_complete result=ignored reason=no_pending",
             ),
             logs,
