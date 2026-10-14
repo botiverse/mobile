@@ -134,7 +134,14 @@ internal data class ParsedRuntimeFormV2(
      * Definition.revision: opaque token for this exact form build, echoed on every option-source
      * request as `?formRevision=`; a 409 `form_revision_stale` means the whole form must be refetched.
      */
-    val revision: String? = null
+    val revision: String? = null,
+    /**
+     * Edit only (`writeOnlyKeepRequiresUnchanged`), by field key: a blank secret keeps the stored
+     * value only while every listed (visible) field still equals its stored value. Malformed entries,
+     * non-secret keys and bound keys that are not fields of this form are dropped (slock v2.ts
+     * `keepRequiresUnchanged`). Empty when the form does not carry it.
+     */
+    val writeOnlyKeepRequiresUnchanged: Map<String, List<String>> = emptyMap()
 )
 
 private val runtimeFormV2Json = Json { ignoreUnknownKeys = true }
@@ -212,8 +219,21 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
         optionSources = optionSources,
         blockingFieldKeys = fields.filter { it.kind == RuntimeFormV2FieldKind.Unsupported && it.required }.map { it.key },
         values = root["values"] as? JsonObject,
-        revision = root["revision"].stringOrNull()?.takeIf { it.isNotEmpty() }
+        revision = root["revision"].stringOrNull()?.takeIf { it.isNotEmpty() },
+        writeOnlyKeepRequiresUnchanged = keepRequiresUnchanged(root["writeOnlyKeepRequiresUnchanged"], fields)
     )
+}
+
+/** `writeOnlyKeepRequiresUnchanged` by field key; anything malformed is ignored (tolerant, like slock v2.ts). */
+private fun keepRequiresUnchanged(value: JsonElement?, fields: List<RuntimeFormV2Field>): Map<String, List<String>> {
+    val entries = value as? JsonObject ?: return emptyMap()
+    val kinds = fields.associate { it.key to it.kind }
+    return entries.mapNotNull { (pointer, bound) ->
+        val key = propertyKey(pointer) ?: return@mapNotNull null
+        if (kinds[key] != RuntimeFormV2FieldKind.Secret || bound !is JsonArray) return@mapNotNull null
+        val keys = bound.mapNotNull { propertyKey(it.stringOrNull()) }.filter { it in kinds && it != key }
+        keys.takeIf { it.isNotEmpty() }?.let { key to it }
+    }.toMap()
 }
 
 /**
