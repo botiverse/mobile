@@ -34,7 +34,7 @@ internal object SharedServerVersionGate {
         val core = text.trim().removePrefix("v").substringBefore('-').substringBefore('+')
         val parts = core.split('.')
         if (parts.isEmpty() || parts.any { it.isEmpty() || it.any { c -> !c.isDigit() } }) return null
-        return parts.map { it.toInt() }
+        return parts.map { it.toIntOrNull() ?: return null }
     }
 
     fun isVersionAtLeast(version: String, baseline: String): Boolean {

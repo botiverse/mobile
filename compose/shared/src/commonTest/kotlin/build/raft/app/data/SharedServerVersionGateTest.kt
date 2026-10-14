@@ -33,6 +33,7 @@ class SharedServerVersionGateTest {
         assertNull(SharedServerVersionGate.parseVersion(""))
         assertNull(SharedServerVersionGate.parseVersion("1.x.0"))
         assertNull(SharedServerVersionGate.parseVersion("5c6f01bd"))
+        assertNull(SharedServerVersionGate.parseVersion("999999999999999999999.0.0"))
     }
 
     @Test
@@ -43,6 +44,7 @@ class SharedServerVersionGateTest {
         assertTrue(SharedServerVersionGate.isVersionAtLeast("2.0.0", "1.13.9"))
         assertFalse(SharedServerVersionGate.isVersionAtLeast("1.12.9", "1.13.0"))
         assertFalse(SharedServerVersionGate.isVersionAtLeast("unknown", "1.13.0"))
+        assertFalse(SharedServerVersionGate.isVersionAtLeast("999999999999999999999.0.0", "1.13.0"))
     }
 
     @Test
