@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
  * Round-trip content-integrity net for the markdown annotator (task #495).
  *
  * The task #493 bug class: a lexer token type with no dispatch branch is
- * silently DROPPED — `artin <artin@cat.ms>` rendered as "artin <>" because
+ * silently DROPPED — `artin <artin@example.test>` rendered as "artin <>" because
  * EMAIL_AUTOLINK had no branch (fixed in mobile#995). These tests parse real
  * message shapes and assert the human-visible content survives into the
  * rendered text. The static sibling is scripts/patrol/renderer_coverage.mjs,
@@ -29,9 +29,9 @@ import kotlin.test.assertTrue
 class MarkdownContentIntegrityTest {
     @Test
     fun emailInsideCodeSpanStaysVerbatim() {
-        val rendered = renderTopParagraphs("Inline: `artin <artin@cat.ms>` end.")
+        val rendered = renderTopParagraphs("Inline: `artin <artin@example.test>` end.")
         assertTrue(
-            rendered.any { it.contains("artin <artin@cat.ms>") },
+            rendered.any { it.contains("artin <artin@example.test>") },
             "code span must keep the angle-bracket email literal; got: $rendered"
         )
     }
@@ -47,9 +47,9 @@ class MarkdownContentIntegrityTest {
 
     @Test
     fun bareEmailAutolinkKeepsTheAddressText() {
-        val rendered = renderTopParagraphs("Bare: <artin@cat.ms> end.")
+        val rendered = renderTopParagraphs("Bare: <artin@example.test> end.")
         assertTrue(
-            rendered.any { it.contains("artin@cat.ms") },
+            rendered.any { it.contains("artin@example.test") },
             "email autolink text must survive rendering; got: $rendered"
         )
     }

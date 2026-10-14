@@ -1520,9 +1520,9 @@ internal fun threadVisualFixture(
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL ->
             // task #493: inline code containing an angle-bracket email
-            // (`artin <artin@cat.ms>`) is a classic markdown trap — parsers
+            // (`artin <artin@example.test>`) is a classic markdown trap — parsers
             // that autolink/HTML-strip inside code spans swallow the
-            // "<artin@cat.ms>" part. The specimen pins all three shapes so the
+            // "<artin@example.test>" part. The specimen pins all three shapes so the
             // capture proves: code keeps it literal, the bare form autolinks,
             // plain text stays text.
             KuiklyThreadScreenPayload(
@@ -1552,9 +1552,9 @@ internal fun threadVisualFixture(
                             timestampLabel = "07/15 18:05",
                             messageType = "Chat",
                             body =
-                                "Inline code keeps the email literal: `artin <artin@cat.ms>` end.\n\n" +
-                                    "Bare autolink form: <artin@cat.ms> end.\n\n" +
-                                    "Plain text form: artin@cat.ms end."
+                                "Inline code keeps the email literal: `artin <artin@example.test>` end.\n\n" +
+                                    "Bare autolink form: <artin@example.test> end.\n\n" +
+                                    "Plain text form: artin@example.test end."
                         )
                     ),
                 members = emptyList(),
