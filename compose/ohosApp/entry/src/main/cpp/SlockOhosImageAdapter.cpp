@@ -48,6 +48,11 @@ ImageSingleFlight g_image_flights;
 napi_threadsafe_function g_image_callback_dispatcher = nullptr;
 std::once_flag g_image_adapter_once;
 std::atomic<bool> g_image_http3_enabled{true};
+// Diagnostic counters keep the decode → cache → UI handoff observable without
+// retaining URLs or payloads. They are process-local and intentionally monotonic.
+std::atomic<uint64_t> g_image_load_success_count{0};
+std::atomic<uint64_t> g_image_cache_write_count{0};
+std::atomic<uint64_t> g_image_invalidate_apply_count{0};
 
 uint64_t HashUrl(const std::string &value) {
     uint64_t hash = 1469598103934665603ULL;
@@ -159,10 +164,10 @@ class PixelMapCache final {
         return existing->second.pixelMap;
     }
 
-    void Put(const std::string &key, SharedPixelMap pixel_map) {
+    bool Put(const std::string &key, SharedPixelMap pixel_map) {
         const size_t bytes = PixelMapAllocationBytes(pixel_map);
         if (!pixel_map || bytes == 0 || bytes > kMaxSinglePixelMapCacheBytes) {
-            return;
+            return false;
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
@@ -185,6 +190,7 @@ class PixelMapCache final {
             }
             order_.pop_back();
         }
+        return true;
     }
 
  private:
@@ -233,6 +239,11 @@ struct ImageFanoutTask final {
                 ArkUI_DrawableDescriptor *descriptor =
                     OH_ArkUI_DrawableDescriptor_CreateFromPixelMap(pixelMap.get());
                 if (descriptor != nullptr) {
+                    const uint64_t apply_count =
+                        g_image_invalidate_apply_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
+                                 "invalidate_apply count=%{public}llu urlHash=%{public}s",
+                                 static_cast<unsigned long long>(apply_count), UrlHash(subscriber.src).c_str());
                     subscriber.callback(subscriber.context, subscriber.src.c_str(), descriptor, nullptr);
                     OH_ArkUI_DrawableDescriptor_Dispose(descriptor);
                     continue;
@@ -345,7 +356,13 @@ void RunImageProducer(std::string key, uint64_t flight_id) {
 
     auto subscribers = response_state.pixelMap
         ? g_image_flights.CompleteWithPublication(key, flight_id, [&]() {
-              g_pixel_map_cache.Put(key, response_state.pixelMap);
+              if (g_pixel_map_cache.Put(key, response_state.pixelMap)) {
+                  const uint64_t cache_count =
+                      g_image_cache_write_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                  OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
+                               "cache_write count=%{public}llu urlHash=%{public}s",
+                               static_cast<unsigned long long>(cache_count), UrlHash(key).c_str());
+              }
           })
         : g_image_flights.Complete(key, flight_id);
     if (subscribers.empty()) {
@@ -354,6 +371,11 @@ void RunImageProducer(std::string key, uint64_t flight_id) {
 
     const std::string url_hash = UrlHash(key);
     if (response_state.pixelMap) {
+        const uint64_t load_count =
+            g_image_load_success_count.fetch_add(1, std::memory_order_relaxed) + 1;
+        OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
+                     "load_success count=%{public}llu urlHash=%{public}s",
+                     static_cast<unsigned long long>(load_count), url_hash.c_str());
         OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
                      "flight_success urlHash=%{public}s consumers=%{public}zu durationMs=%{public}.1f "
                      "http3Requested=%{public}d negotiatedProtocol=%{public}s",
