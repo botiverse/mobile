@@ -317,10 +317,17 @@ class MainActivity : ComponentActivity() {
             return false
         }
         val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        // The login page is not a registered app shell, so a login page waiting for this callback shows up
+        // only as "this trampoline is not the task root". Restarting the shell there would destroy the
+        // waiting page and race a fresh one against the exchange (build 38: "Unable to finish sign-in").
+        val revealsExistingScreen = hasLiveShellInTask || !isTaskRoot
         val accepted = SlockAppLoginBridge.completeCallbackUri(uri.toString())
         setIntent(Intent(this, MainActivity::class.java))
-        SlockAppLog.d("SlockAuth", "app_login_callback accepted=$accepted liveShell=$hasLiveShellInTask")
-        if (hasLiveShellInTask) {
+        SlockAppLog.d(
+            "SlockAuth",
+            "app_login_callback accepted=$accepted liveShell=$hasLiveShellInTask taskRoot=$isTaskRoot"
+        )
+        if (revealsExistingScreen) {
             finish()
         } else {
             openSharedShell(Intent(this, MainActivity::class.java))
