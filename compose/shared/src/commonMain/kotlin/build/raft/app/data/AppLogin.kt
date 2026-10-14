@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.slockLogInfo
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable

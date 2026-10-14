@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.slockLogInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
