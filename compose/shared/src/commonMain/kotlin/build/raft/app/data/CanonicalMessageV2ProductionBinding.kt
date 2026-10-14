@@ -46,8 +46,13 @@ internal fun interface CanonicalMessageV2OwnerGateway {
     suspend fun accept(
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
-        transportEpoch: Long? = null,
+        transportEpoch: Long?,
     ): CanonicalMessageV2CanaryOutcome
+
+    suspend fun accept(
+        grant: RealtimeGrantRecord,
+        foldInput: CanonicalMessageFoldInput,
+    ): CanonicalMessageV2CanaryOutcome = accept(grant, foldInput, null)
 
     /** Task #167: the transport behind [grant] (re)connected as [transportEpoch]; callers check the grant is current. */
     suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {}
