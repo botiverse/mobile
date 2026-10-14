@@ -82,7 +82,7 @@
     <string name="settings_error_join_link_load_prefix">Failed to load join link:&#160;</string>
     <string name="settings_billing_action_compare_plans">See all features and compare plans</string>
     <string name="settings_pwa_install_title">Install app</string>
-    <string name="settings_pwa_install_native_detail">Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.</string>
+    <string name="settings_pwa_install_native_detail">Install prompts are managed by web PWA APIs outside native builds. Native builds use their platform app install flow.</string>
     <string name="channel_create_error_not_created">Channel was not created.</string>
     <string name="common_error">Error</string>
     <string name="common_empty">Empty</string>
@@ -218,13 +218,13 @@
     <string name="settings_licenses_title">Licenses</string>
     <string name="settings_open_source_licenses_title">Open Source Licenses</string>
     <string name="settings_open_source_licenses_detail_libraries_from">%1$d libraries from %2$s</string>
-    <string name="settings_open_source_licenses_default_source">Android release runtime</string>
+    <string name="settings_open_source_licenses_default_source">%1$s release runtime</string>
     <string name="settings_open_source_licenses_state_loading">Loading</string>
-    <string name="settings_open_source_licenses_loading_detail">Loading generated Android package license metadata.</string>
+    <string name="settings_open_source_licenses_loading_detail">Loading generated %1$s package license metadata.</string>
     <string name="settings_open_source_licenses_state_wait">Wait</string>
     <string name="settings_open_source_licenses_action_unavailable">Unavailable</string>
     <string name="settings_open_source_licenses_empty_title">No licenses found</string>
-    <string name="settings_open_source_licenses_empty_detail">The generated Android package license asset did not include any dependencies.</string>
+    <string name="settings_open_source_licenses_empty_detail">The generated %1$s package license asset did not include any dependencies.</string>
     <string name="settings_open_source_licenses_state_empty">Empty</string>
     <string name="settings_open_source_licenses_section_libraries">Libraries</string>
     <string name="settings_open_source_licenses_section_libraries_numbered">Libraries %1$d</string>
@@ -1685,7 +1685,7 @@
     <string name="settings_notifications_message_title">Message notifications</string>
     <string name="settings_notifications_message_detail">Show a system notification for new unread messages while Raft is in the background.</string>
     <string name="settings_notifications_background_realtime_title">Background realtime</string>
-    <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. Android may still pause long-running sessions.</string>
+    <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. %1$s may still pause long-running sessions.</string>
     <string name="settings_notifications_offline_computers_title">Offline computer alerts</string>
     <string name="settings_notifications_offline_computers_detail">Show a Home alert when a registered computer is offline. Off by default.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>
@@ -1699,7 +1699,7 @@
     <string name="settings_notifications_permission_allowed">Notifications allowed</string>
     <string name="settings_notifications_permission_allowed_detail">Raft can post notifications on this device.</string>
     <string name="settings_notifications_permission_needed">Notification access needed</string>
-    <string name="settings_notifications_permission_open_settings">Open Android settings to review notification access.</string>
+    <string name="settings_notifications_permission_open_settings">Open %1$s settings to review notification access.</string>
     <string name="settings_notifications_permission_unavailable_detail">Notification permission controls are unavailable on this platform.</string>
     <string name="settings_notifications_request_permission">Request permission</string>
     <string name="settings_notifications_workspace">Workspace</string>
@@ -2004,9 +2004,9 @@
     <string name="settings_about_state_signed_out">Signed out</string>
     <string name="settings_about_state_checking">Checking</string>
     <string name="settings_about_action_check_update">Check for update</string>
-    <string name="settings_about_check_update_detail">Checks for a newer Android build and opens the installer when available.</string>
+    <string name="settings_about_check_update_detail">Checks for a newer %1$s build and opens the installer when available.</string>
     <string name="settings_about_action_check">Check</string>
-    <string name="settings_about_licenses_detail">Review third-party libraries included in the Android app package.</string>
+    <string name="settings_about_licenses_detail">Review third-party libraries included in the %1$s app package.</string>
     <string name="settings_about_action_copy_environment">Copy environment info</string>
     <string name="settings_about_copy_environment_detail">Copy the same sanitized environment used for diagnostics and feedback.</string>
     <string name="settings_about_action_copy">Copy</string>

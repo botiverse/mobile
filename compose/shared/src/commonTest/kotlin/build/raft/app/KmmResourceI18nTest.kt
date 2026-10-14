@@ -1054,6 +1054,24 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun platformSpecificSettingsCopyResourcesAcceptAPlatformName() {
+        listOf(
+            MR.strings.settings_notifications_background_realtime_detail,
+            MR.strings.settings_about_licenses_detail,
+            MR.strings.settings_open_source_licenses_default_source,
+            MR.strings.settings_open_source_licenses_loading_detail,
+            MR.strings.settings_open_source_licenses_empty_detail,
+            MR.strings.settings_notifications_permission_open_settings,
+            MR.strings.settings_about_check_update_detail
+        ).forEach { resource ->
+            assertTrue(
+                resource.format(listOf("iOS")) is ResourceFormattedStringDesc,
+                "platform-specific settings copy must expose a formatted resource"
+            )
+        }
+    }
+
+    @Test
     fun hostLayerStringResourcesAreGenerated() {
         // Native-host alert/toast copy resolves through the shared
         // SlockHostStrings facade on Android and iOS.

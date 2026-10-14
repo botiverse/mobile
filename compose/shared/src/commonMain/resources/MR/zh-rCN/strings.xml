@@ -82,7 +82,7 @@
     <string name="settings_error_join_link_load_prefix">无法加载加入链接：</string>
     <string name="settings_billing_action_compare_plans">查看全部功能并比较方案</string>
     <string name="settings_pwa_install_title">安装应用</string>
-    <string name="settings_pwa_install_native_detail">安装提示由网页端 PWA API 管理；Android 和鸿蒙原生版本使用各自平台的应用安装流程。</string>
+    <string name="settings_pwa_install_native_detail">安装提示由网页端 PWA API 管理；原生版本使用各自平台的应用安装流程。</string>
     <string name="channel_create_error_not_created">频道未创建。</string>
     <string name="common_error">出错了</string>
     <string name="common_empty">暂无内容</string>
@@ -218,13 +218,13 @@
     <string name="settings_licenses_title">许可</string>
     <string name="settings_open_source_licenses_title">开源许可</string>
     <string name="settings_open_source_licenses_detail_libraries_from">来自 %2$s 的 %1$d 个库</string>
-    <string name="settings_open_source_licenses_default_source">Android 发布运行时</string>
+    <string name="settings_open_source_licenses_default_source">%1$s 发布运行时</string>
     <string name="settings_open_source_licenses_state_loading">正在加载</string>
-    <string name="settings_open_source_licenses_loading_detail">正在加载已生成的 Android 包许可元数据。</string>
+    <string name="settings_open_source_licenses_loading_detail">正在加载已生成的 %1$s 包许可元数据。</string>
     <string name="settings_open_source_licenses_state_wait">请稍候</string>
     <string name="settings_open_source_licenses_action_unavailable">不可用</string>
     <string name="settings_open_source_licenses_empty_title">未找到许可</string>
-    <string name="settings_open_source_licenses_empty_detail">已生成的 Android 包许可资源未包含任何依赖。</string>
+    <string name="settings_open_source_licenses_empty_detail">已生成的 %1$s 包许可资源未包含任何依赖。</string>
     <string name="settings_open_source_licenses_state_empty">为空</string>
     <string name="settings_open_source_licenses_section_libraries">库</string>
     <string name="settings_open_source_licenses_section_libraries_numbered">库 %1$d</string>
@@ -1685,7 +1685,7 @@
     <string name="settings_notifications_message_title">消息通知</string>
     <string name="settings_notifications_message_detail">当 Raft 在后台时，为新的未读消息显示系统通知。</string>
     <string name="settings_notifications_background_realtime_title">后台实时连接</string>
-    <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。Android 仍可能暂停长时间运行的会话。</string>
+    <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。%1$s 仍可能暂停长时间运行的会话。</string>
     <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>
     <string name="settings_notifications_offline_computers_detail">当已注册的计算机离线时，在首页显示提醒。默认关闭。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>
@@ -1699,7 +1699,7 @@
     <string name="settings_notifications_permission_allowed">通知已允许</string>
     <string name="settings_notifications_permission_allowed_detail">Raft 可以在此设备上发送通知。</string>
     <string name="settings_notifications_permission_needed">需要通知访问权限</string>
-    <string name="settings_notifications_permission_open_settings">打开 Android 设置以查看通知权限。</string>
+    <string name="settings_notifications_permission_open_settings">打开 %1$s 设置以查看通知权限。</string>
     <string name="settings_notifications_permission_unavailable_detail">当前平台不支持通知权限控制。</string>
     <string name="settings_notifications_request_permission">请求权限</string>
     <string name="settings_notifications_workspace">工作空间</string>
@@ -2004,9 +2004,9 @@
     <string name="settings_about_state_signed_out">已退出登录</string>
     <string name="settings_about_state_checking">检查中</string>
     <string name="settings_about_action_check_update">检查更新</string>
-    <string name="settings_about_check_update_detail">检查是否有更新的 Android 构建，并在可用时打开安装程序。</string>
+    <string name="settings_about_check_update_detail">检查是否有更新的 %1$s 构建，并在可用时打开安装程序。</string>
     <string name="settings_about_action_check">检查</string>
-    <string name="settings_about_licenses_detail">查看 Android 应用包中包含的第三方库。</string>
+    <string name="settings_about_licenses_detail">查看 %1$s 应用包中包含的第三方库。</string>
     <string name="settings_about_action_copy_environment">复制环境信息</string>
     <string name="settings_about_copy_environment_detail">复制与诊断和反馈相同的脱敏环境信息。</string>
     <string name="settings_about_action_copy">复制</string>

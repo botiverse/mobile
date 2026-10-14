@@ -82,7 +82,7 @@
     <string name="settings_error_join_link_load_prefix">参加リンクを読み込めませんでした:&#160;</string>
     <string name="settings_billing_action_compare_plans">すべての機能を見てプランを比較</string>
     <string name="settings_pwa_install_title">アプリをインストール</string>
-    <string name="settings_pwa_install_native_detail">インストールの案内は、ネイティブビルド以外では Web PWA API が管理します。ネイティブの Android および OHOS ビルドは各プラットフォームのアプリインストールフローを使用します。</string>
+    <string name="settings_pwa_install_native_detail">インストールの案内は、ネイティブビルド以外では Web PWA API が管理します。ネイティブビルドは各プラットフォームのアプリインストールフローを使用します。</string>
     <string name="channel_create_error_not_created">チャンネルは作成されませんでした。</string>
     <string name="common_error">エラー</string>
     <string name="common_empty">空です</string>
@@ -218,13 +218,13 @@
     <string name="settings_licenses_title">ライセンス</string>
     <string name="settings_open_source_licenses_title">オープンソースライセンス</string>
     <string name="settings_open_source_licenses_detail_libraries_from">%2$s のライブラリ %1$d 件</string>
-    <string name="settings_open_source_licenses_default_source">Android リリースランタイム</string>
+    <string name="settings_open_source_licenses_default_source">%1$s リリースランタイム</string>
     <string name="settings_open_source_licenses_state_loading">読み込み中</string>
-    <string name="settings_open_source_licenses_loading_detail">生成された Android パッケージのライセンスメタデータを読み込んでいます。</string>
+    <string name="settings_open_source_licenses_loading_detail">生成された %1$s パッケージのライセンスメタデータを読み込んでいます。</string>
     <string name="settings_open_source_licenses_state_wait">待機</string>
     <string name="settings_open_source_licenses_action_unavailable">利用不可</string>
     <string name="settings_open_source_licenses_empty_title">ライセンスが見つかりません</string>
-    <string name="settings_open_source_licenses_empty_detail">生成された Android パッケージのライセンス情報に依存関係が含まれていませんでした。</string>
+    <string name="settings_open_source_licenses_empty_detail">生成された %1$s パッケージのライセンス情報に依存関係が含まれていませんでした。</string>
     <string name="settings_open_source_licenses_state_empty">空</string>
     <string name="settings_open_source_licenses_section_libraries">ライブラリ</string>
     <string name="settings_open_source_licenses_section_libraries_numbered">ライブラリ %1$d 件</string>
@@ -1674,7 +1674,7 @@
     <string name="settings_notifications_message_title">メッセージ通知</string>
     <string name="settings_notifications_message_detail">Raft がバックグラウンドにあるとき、新しい未読メッセージのシステム通知を表示します。</string>
     <string name="settings_notifications_background_realtime_title">バックグラウンドのリアルタイム接続</string>
-    <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。Android が長時間のセッションを一時停止する場合があります。</string>
+    <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。%1$s が長時間のセッションを一時停止する場合があります。</string>
     <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
     <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
@@ -1688,7 +1688,7 @@
     <string name="settings_notifications_permission_allowed">通知は許可されています</string>
     <string name="settings_notifications_permission_allowed_detail">Raft はこのデバイスに通知を送信できます。</string>
     <string name="settings_notifications_permission_needed">通知へのアクセスが必要です</string>
-    <string name="settings_notifications_permission_open_settings">Android の設定を開いて、通知へのアクセスを確認してください。</string>
+    <string name="settings_notifications_permission_open_settings">%1$s の設定を開いて、通知へのアクセスを確認してください。</string>
     <string name="settings_notifications_permission_unavailable_detail">このプラットフォームでは通知権限の操作を利用できません。</string>
     <string name="settings_notifications_request_permission">権限をリクエスト</string>
     <string name="settings_notifications_workspace">ワークスペース</string>
@@ -1993,9 +1993,9 @@
     <string name="settings_about_state_signed_out">ログアウト済み</string>
     <string name="settings_about_state_checking">確認中</string>
     <string name="settings_about_action_check_update">アップデートを確認</string>
-    <string name="settings_about_check_update_detail">新しい Android ビルドを確認し、利用可能な場合はインストーラーを開きます。</string>
+    <string name="settings_about_check_update_detail">新しい %1$s ビルドを確認し、利用可能な場合はインストーラーを開きます。</string>
     <string name="settings_about_action_check">確認</string>
-    <string name="settings_about_licenses_detail">Android アプリパッケージに含まれるサードパーティライブラリを確認します。</string>
+    <string name="settings_about_licenses_detail">%1$s アプリパッケージに含まれるサードパーティライブラリを確認します。</string>
     <string name="settings_about_action_copy_environment">環境情報をコピー</string>
     <string name="settings_about_copy_environment_detail">診断とフィードバックで使用されるものと同じサニタイズ済み環境情報をコピーします。</string>
     <string name="settings_about_action_copy">コピー</string>

@@ -50,6 +50,8 @@ internal actual fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolea
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
+internal actual fun slockPlatformProductName(): String = "Android"
+
 // Android char-wraps ordinary background spans natively. Edge-only boxes
 // provide the Web 4px inset without restoring the atomic legacy chip.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
