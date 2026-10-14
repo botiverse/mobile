@@ -1215,7 +1215,9 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun realtimeRoomLeaseRegistry(scope: SlockShellStoreScope): SharedRealtimeRoomLeaseRegistry =
         shellRealtimeRoomLeaseRegistries.getOrPut(scope) {
-            SharedRealtimeRoomLeaseRegistry(scope.shellInstanceId)
+            SharedRealtimeRoomLeaseRegistry(scope.shellInstanceId) { serverId, roomId ->
+                realtimeRoomLeaveAllowed(conversationIdentityProvider(scope), serverId, roomId)
+            }
         }
 
     fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =

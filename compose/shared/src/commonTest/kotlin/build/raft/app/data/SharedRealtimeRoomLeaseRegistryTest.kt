@@ -1,5 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ServerId
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -78,6 +82,86 @@ class SharedRealtimeRoomLeaseRegistryTest {
         assertEquals(setOf(leave("room-a"), leave("room-b")), registry.clear().toSet())
         assertTrue(registry.clear().isEmpty())
     }
+
+    @Test
+    fun closingAMemberRoomKeepsTheServerSubscriptionAndAPublicRoomLeaves() {
+        // The server subscribes the socket to every member channel on connect; leaving one would stop its
+        // realtime messages and unread counts until the next reconnect.
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId == "public-browsed" }
+        val page = owner("thread-pager-1", generation = 1)
+
+        assertEquals(
+            listOf(join("member-channel"), join("public-browsed")),
+            registry.acquire(page, listOf("member-channel", "public-browsed")),
+        )
+        assertEquals(listOf(leave("public-browsed")), registry.release(page))
+
+        // Reopening still joins both: the lease state is released either way.
+        assertEquals(
+            listOf(join("member-channel"), join("public-browsed")),
+            registry.acquire(page, listOf("member-channel", "public-browsed")),
+        )
+    }
+
+    @Test
+    fun aChannelTheUserJoinedFromThePageIsNeverLeft() {
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, _ -> true }
+        val page = owner("thread-pager-1", generation = 1)
+        registry.acquire(page, listOf("public-browsed"))
+
+        registry.markJoinedByUser("server-a", "public-browsed")
+
+        assertTrue(registry.release(page).isEmpty())
+    }
+
+    @Test
+    fun shellTeardownAlsoKeepsMemberRooms() {
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId == "public-browsed" }
+        registry.acquire(owner("thread-pager-1", generation = 1), listOf("member-channel", "public-browsed"))
+
+        assertEquals(listOf(leave("public-browsed")), registry.clear())
+    }
+
+    @Test
+    fun onlyAKnownNonMemberRoomMayBeLeft() {
+        val directory = FakeDirectory(
+            mapOf(
+                "member-channel" to projection("member-channel", joined = true),
+                "public-browsed" to projection("public-browsed", joined = false),
+            ),
+        )
+
+        assertEquals(false, realtimeRoomLeaveAllowed(directory, "server-a", "member-channel"))
+        assertEquals(true, realtimeRoomLeaveAllowed(directory, "server-a", "public-browsed"))
+        assertEquals(false, realtimeRoomLeaveAllowed(directory, "server-a", "unknown-room"), "unknown = keep")
+        assertEquals(false, realtimeRoomLeaveAllowed(null, "server-a", "public-browsed"), "no directory = keep")
+    }
+
+    private class FakeDirectory(
+        private val rows: Map<String, SharedConversationDirectoryProjection>,
+    ) : SharedConversationIdentityProvider {
+        override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> = emptyFlow()
+
+        override fun projectionFlow(
+            serverId: ServerId,
+            ids: Collection<String>,
+        ): Flow<Map<String, SharedConversationDirectoryProjection>> = emptyFlow()
+
+        override fun resolveProjection(serverId: ServerId, id: String): SharedConversationDirectoryProjection? =
+            rows[id]?.takeIf { it.serverId == serverId.value }
+    }
+
+    private fun projection(channelId: String, joined: Boolean): SharedConversationDirectoryProjection =
+        SharedConversationDirectoryProjection(
+            serverId = "server-a",
+            canonicalChannelId = channelId,
+            aliases = setOf(channelId),
+            conversationKind = ConversationKind.Channel,
+            surfaceKind = "channel",
+            channelKind = "public",
+            title = channelId,
+            joined = joined,
+        )
 
     private fun owner(consumer: String, generation: Long): RealtimeRoomLeaseOwner =
         RealtimeRoomLeaseOwner(

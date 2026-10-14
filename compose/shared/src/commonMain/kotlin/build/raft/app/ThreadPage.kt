@@ -11885,6 +11885,11 @@ private fun SharedThreadRouteContentContent(
                         when (val result = dataSource.joinChannel(channelId)) {
                             is DataResult.Content -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                                currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                    // Now a member: closing this page must not leave the room (the
+                                    // conversation directory may still list the channel as not joined).
+                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                }
                                 realtimeEvents.joinChannel(
                                     result.data.channelId.value,
                                     currentSession?.currentServerId
