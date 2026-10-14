@@ -744,7 +744,158 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             }
         }
     }
+
+    /**
+     * Gap catch-up (task #168 step 1). Gates 1–4 are [extendWithAdjacentPage]'s (minus the
+     * anchor side check: the latest page has no cursor). Under the scope writer the stored window is
+     * restored and the join FACT is read: is any fact stored inside the window
+     * (`oldestLoadedSeq..newestLoadedSeq`, on disk) one of the page's message ids.
+     * - Joined: `applyIncremental` with the union cursor — newest edge = the page's newest
+     *   (`hasLoadedNewest`, it is the latest page), oldest edge moves only when the page reaches
+     *   below it, and the retention cap moves the oldest edge exactly like a newer page.
+     * - Not joined (the gap was wider than the page, or the window is an empty baseline):
+     *   `applySnapshot` with the page as the new window (the engine drops the old unpinned facts in
+     *   the same transaction); a thread window keeps its stored parent. Logged as `window_replaced`
+     *   with the old and new bounds.
+     * Either commit is one SQLite transaction: a failure leaves the stored window as it was.
+     */
+    override suspend fun applyLatestPage(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        replyParent: ThreadDurableReplyParent?,
+        stillCurrent: () -> Boolean,
+    ) {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
+        fun log(outcome: String) {
+            logger("canonical_v2_latest_page server=${partition.serverId} scope=$channelId$kindLabel outcome=$outcome")
+        }
+        if (channelId.isBlank() || channelId != channelId.trim()) return log("invalid_channel_id")
+        if (!isEnabledForServer(partition.serverId)) return log("flag_off")
+        if (rawMessages.isEmpty()) return log("empty_page")
+        if (requestedLimit <= 0) return log("invalid_limit")
+
+        val allowedKinds =
+            if (replyParent == null) CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS else CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
+        val kinds = generationEngine.baselinedScopeKinds(partition, channelId).filter { it in allowedKinds }
+        val scopeKind = when (kinds.size) {
+            0 -> return log("no_window")
+            1 -> kinds.single()
+            else -> return log("ambiguous_scope_kind")
+        }
+        val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
+        if (canary.isSelected(scope)) return log("canary_owned")
+        val storedParent = if (replyParent == null) {
+            null
+        } else {
+            storedReplyParentOrNull(generationEngine.storedCursor(scope), replyParent)
+                ?: return log("parent_mismatch")
+        }
+
+        val expectedGeneration = generationEngine.partitionGeneration(partition)
+        val envelopes = when (
+            val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
+        ) {
+            is CanonicalMessageV2PageConversion.Converted -> converted.envelopes
+            is CanonicalMessageV2PageConversion.Refused -> return log(converted.diagnostic)
+        }
+        val foreign = envelopes.any { envelope ->
+            val envelopeScopeId = when (val context = envelope.context) {
+                is CanonicalConversationContextV2.TopLevel -> context.scope.scopeId.takeIf { replyParent == null }
+                is CanonicalConversationContextV2.Thread -> context.replyScope.scopeId.takeIf { replyParent != null }
+            }
+            envelopeScopeId != channelId
+        }
+        if (foreign) return log("foreign_scope")
+        if (envelopes.map { it.fact.id }.distinct().size != envelopes.size) return log("duplicate_fact")
+        val pageIds = envelopes.mapTo(mutableSetOf()) { it.fact.id }
+        val pageSeqs = envelopes.map { it.fact.seq }
+        val pageMin = pageSeqs.min()
+        val pageMax = pageSeqs.max()
+        val reachedEnd = envelopes.size < requestedLimit
+
+        generationEngine.withScopeWriter(scope) {
+            if (canary.isSelected(scope)) return@withScopeWriter log("canary_owned")
+            if (!stillCurrent()) return@withScopeWriter log("identity_changed")
+            if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
+            try {
+                val restored = generationEngine.restore(scope)
+                val stored = restored.cursor ?: return@withScopeWriter log("no_window")
+                if (replyParent != null && storedReplyParentOrNull(stored, replyParent) != storedParent) {
+                    return@withScopeWriter log("parent_mismatch")
+                }
+                val storedOldest = stored.oldestLoadedSeq
+                val storedNewest = stored.newestLoadedSeq
+                val joined =
+                    storedOldest != null && storedNewest != null &&
+                        restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
+                val outcome = if (joined) {
+                    checkNotNull(storedOldest)
+                    checkNotNull(storedNewest)
+                    val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
+                    val addedSeqs = envelopes.filter { it.fact.id !in storedIds }.map { it.fact.seq }
+                    val union = stored.copy(
+                        latestSeq = maxOf(stored.latestSeq ?: pageMax, pageMax),
+                        oldestLoadedSeq = minOf(storedOldest, pageMin),
+                        newestLoadedSeq = maxOf(storedNewest, pageMax),
+                        hasLoadedOldest = if (pageMin < storedOldest) reachedEnd else stored.hasLoadedOldest,
+                        hasLoadedNewest = true,
+                    )
+                    val cursor = if (restored.envelopes.size + addedSeqs.size > maxFactsPerScope) {
+                        val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
+                            .sortedDescending()
+                            .take(maxFactsPerScope)
+                            .min()
+                        if (survivingOldest > checkNotNull(union.oldestLoadedSeq)) {
+                            union.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
+                        } else {
+                            union
+                        }
+                    } else {
+                        union
+                    }
+                    val result = generationEngine.applyIncremental(
+                        CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
+                        expectedGeneration,
+                    )
+                    "extended ${result.wireOutcome(envelopes.size)} newest=${cursor.newestLoadedSeq}"
+                } else {
+                    val cursor = PersistedCursor(
+                        latestSeq = pageMax,
+                        oldestLoadedSeq = pageMin,
+                        newestLoadedSeq = pageMax,
+                        hasLoadedOldest = reachedEnd,
+                        hasLoadedNewest = true,
+                        epoch = null,
+                        parentScopeKind = stored.parentScopeKind.takeIf { replyParent != null },
+                        parentScopeId = stored.parentScopeId.takeIf { replyParent != null },
+                        rootMessageId = stored.rootMessageId.takeIf { replyParent != null },
+                    )
+                    val result = generationEngine.applySnapshot(
+                        CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor),
+                        expectedGeneration,
+                    )
+                    "window_replaced old=${storedOldest ?: "none"}..${storedNewest ?: "none"} " +
+                        "oldFacts=${restored.envelopes.size} new=$pageMin..$pageMax " +
+                        result.wireOutcome(envelopes.size)
+                }
+                log(outcome)
+            } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
+                log("poisoned fact=${poisoned.factId.orEmpty()}")
+            }
+        }
+    }
 }
+
+private fun CanonicalMessageV2CommitResult.wireOutcome(facts: Int): String =
+    when (this) {
+        CanonicalMessageV2CommitResult.Committed -> "committed facts=$facts"
+        CanonicalMessageV2CommitResult.PartitionRevoked -> "partition_revoked"
+        CanonicalMessageV2CommitResult.ScopeEvicted -> "scope_evicted"
+        is CanonicalMessageV2CommitResult.BaselineRequired -> "baseline_required"
+    }
 
 /** The stored cursor's parent, when it is exactly the route's [replyParent]; otherwise `null`. */
 private fun storedReplyParentOrNull(

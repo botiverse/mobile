@@ -1302,6 +1302,27 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None).hashCode(), older.hashCode())
     }
 
+    @Test
+    fun gapCatchUpLatestPageIsOneUncursoredChannelPageCarryingItsRawPage() = runBlocking {
+        // Task #168 step 1: the catch-up page is `messages/channel/{id}?limit=` with no cursor (never
+        // `messages/sync`), and it carries the raw full nodes for the durable window.
+        val pageBody =
+            """{"messages":[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}],"historyLimited":false}"""
+        val network = FakeConversationNetworkClient(responses = mapOf("GET messages/channel/channel-1" to pageBody))
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val latest = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.loadLatestMessages(ThreadId("channel-1"), limit = 200),
+        ).data
+        assertEquals(listOf("m7", "m8"), latest.messages.map { it.id.value })
+        val raw = assertNotNull(latest.rawMessagePage.page)
+        assertEquals(200, raw.requestedLimit)
+        assertTrue("senderName" in raw.messages.first().jsonObject, "the raw node, not the domain projection")
+        val request = network.requests.single()
+        assertEquals("messages/channel/channel-1", request.path)
+        assertEquals(listOf("limit" to "200"), request.query)
+    }
+
     private fun sampleStore(): SlockAuthSessionStore =
         InMemorySlockAuthSessionStore(
             StoredAuthSession(
