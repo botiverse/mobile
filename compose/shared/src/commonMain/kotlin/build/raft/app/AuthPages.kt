@@ -317,16 +317,6 @@ private fun LoginScreen() {
             applePlatformSupported = slockPlatformSupportsAppleSignIn()
         )
     }
-    val openedEmail = remember { emailFieldValue.text }
-    val openedPassword = remember { passwordFieldValue.text }
-    LaunchedEffect(emailFieldValue.text, passwordFieldValue.text, pendingLogin, pendingSocialAuth, socialSubmittingProvider) {
-        if (
-            emailFieldValue.text != openedEmail || passwordFieldValue.text != openedPassword ||
-            pendingLogin != null || pendingSocialAuth != null || socialSubmittingProvider != null
-        ) {
-            loginPageInteracted = true
-        }
-    }
     val routeMessage = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
     }
@@ -451,6 +441,7 @@ private fun LoginScreen() {
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = { nextValue ->
+            loginPageInteracted = true
             applyAuthTextFieldValue(
                 nextValue = nextValue,
                 updateOwner = { emailFieldValue = it },
@@ -461,6 +452,7 @@ private fun LoginScreen() {
             )
         },
         onPasswordChange = { nextValue ->
+            loginPageInteracted = true
             applyAuthTextFieldValue(
                 nextValue = nextValue,
                 updateOwner = { passwordFieldValue = it },
@@ -470,9 +462,16 @@ private fun LoginScreen() {
                 },
             )
         },
-        onSubmit = { submitLogin() },
-        onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
+        onSubmit = {
+            loginPageInteracted = true
+            submitLogin()
+        },
+        onSubmitValues = { emailValue, passwordValue ->
+            loginPageInteracted = true
+            submitLogin(emailValue, passwordValue)
+        },
         onSocialSignIn = { provider ->
+            loginPageInteracted = true
             state = state.copy(submitting = false, errorMessage = null)
             errorPresentation = null
             socialSubmittingProvider = provider
@@ -494,14 +493,14 @@ private fun LoginScreen() {
     )
 }
 
-/**
- * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the
- * `mobile_web_login_v0` decision kept on this device is not off (Android, iOS); otherwise email/social login.
- */
 /** A fresh pre-auth answer replaces the visible login page only within the window and before any user input. */
 internal fun shouldApplyFreshLoginPageChoice(elapsedMs: Long, interacted: Boolean): Boolean =
     !interacted && elapsedMs <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
 
+/**
+ * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the pre-auth
+ * `mobile_legacy_login_v0` flag is not on (Android, iOS); otherwise email/social login.
+ */
 internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =
     capabilities.webLoginOnly || (capabilities.webLoginSupported && webLoginGateEnabled)
 
