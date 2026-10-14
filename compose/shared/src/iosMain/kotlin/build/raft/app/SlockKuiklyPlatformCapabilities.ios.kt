@@ -101,5 +101,5 @@ internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024
 
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f
 
-/** TabPager releases first-page rightward drags to native full-screen back. */
-internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 1_000_000f
+/** Native pop arbitration yields to paging while it can consume the drag. */
+internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 0f
