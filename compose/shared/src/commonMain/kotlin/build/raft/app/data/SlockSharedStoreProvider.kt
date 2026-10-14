@@ -675,7 +675,7 @@ internal class SlockSharedStoreProvider private constructor(
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeDomainEventOwner.installCanonicalMessageV2OwnerGateway(
-            buildCanonicalMessageV2OwnerGateway(authStore, networkClient),
+            buildCanonicalMessageV2OwnerGateway(),
         )
         realtimeAuthorityProvider.start(threadSendScope)
         ProcessRealtimeIngressCoordinator(
@@ -767,19 +767,24 @@ internal class SlockSharedStoreProvider private constructor(
             logger = sharedInfoLogger("SyncCoreReactionShadow", "sync_core_reaction_shadow"),
         )
 
-    private fun buildCanonicalMessageV2OwnerGateway(
-        sessionStore: SlockAuthSessionStore,
-        client: SlockNetworkClient,
-    ): CanonicalMessageV2OwnerGateway =
-        ProviderBackedCanonicalMessageV2OwnerGateway(
-            canary = canonicalMessageV2Canary,
-            authStore = sessionStore,
-            networkClient = client,
-            // Read-only grant check (empty block): a background snapshot whose grant was revoked while it
-            // loaded (socket drop, server switch, re-login) is never committed (task #168).
-            isGrantCurrent = { grant -> realtimeAuthorityProvider.runIfCurrentGrant(grant) {} },
-            logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
-        )
+    /** Task #168 step 3: the realtime path never requests the network; one gateway shape for every owner. */
+    private fun buildCanonicalMessageV2OwnerGateway(): CanonicalMessageV2OwnerGateway =
+        ProviderBackedCanonicalMessageV2OwnerGateway(canary = canonicalMessageV2Canary)
+
+    /**
+     * Task #168 step 3: whether the user is known NOT to be a member of (serverId, channelId), read from every
+     * shell's conversation directory (the same projection #2994's room-leave rule reads). A row that says
+     * joined anywhere, a channel the user joined from a page in any shell, or no row at all = member.
+     */
+    internal fun isKnownNonMemberConversation(serverId: String, channelId: String): Boolean {
+        if (shellRealtimeRoomLeaseRegistries.entries().any { (_, registry) -> registry.isJoinedByUser(serverId, channelId) }) {
+            return false
+        }
+        val projections = shellConversationIdentityHubs.entries().mapNotNull { (_, hub) ->
+            hub.resolveProjection(ServerId(serverId), channelId)
+        }
+        return projections.isNotEmpty() && projections.none { it.joined }
+    }
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = conversationIdentityProvider(SlockShellStoreScope.Legacy)
@@ -1094,7 +1099,7 @@ internal class SlockSharedStoreProvider private constructor(
                 // process-global task/cursor/presence mutation is owned only
                 // by processRealtimeDomainEventOwner().
                 it.installCanonicalMessageV2OwnerGateway(
-                    buildCanonicalMessageV2OwnerGateway(authStore(scope), networkClient(scope)),
+                    buildCanonicalMessageV2OwnerGateway(),
                 )
             }
         }
@@ -1224,9 +1229,15 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun realtimeRoomLeaseRegistry(scope: SlockShellStoreScope): SharedRealtimeRoomLeaseRegistry =
         shellRealtimeRoomLeaseRegistries.getOrPut(scope) {
-            SharedRealtimeRoomLeaseRegistry(scope.shellInstanceId) { serverId, roomId ->
-                realtimeRoomLeaveAllowed(conversationIdentityProvider(scope), serverId, roomId)
-            }
+            SharedRealtimeRoomLeaseRegistry(
+                shellInstanceId = scope.shellInstanceId,
+                leaveAllowed = { serverId, roomId ->
+                    realtimeRoomLeaveAllowed(conversationIdentityProvider(scope), serverId, roomId)
+                },
+                // Task #168: the socket stops receiving that room's frames; its offline-cache window must
+                // not be appended onto any more.
+                onLeave = canonicalMessageV2Canary::noteRoomLeft,
+            )
         }
 
     fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =
@@ -2141,7 +2152,8 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     },
                     generationEngine = canonicalMessageV2GenerationEngine,
-                    logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
+                    // Lines already start with `canonical_v2_canary` (task #168: no doubled prefix).
+                    logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Canary"),
                 )
             // Read side of the same partition the canary writes: same store instance, same per-server
             // flag, no baseline-coordinator side effects (task #1123).
@@ -2356,7 +2368,8 @@ internal class SlockSharedStoreProvider private constructor(
                             SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
                         )
                     },
-                    logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
+                    logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2EnterSnapshot"),
+                    isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
             // Paging write side (task #168): same canary, engine, flag and network client as the enter
             // loader; extends the window that loader created, never creates one.
@@ -2375,7 +2388,9 @@ internal class SlockSharedStoreProvider private constructor(
                             SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
                         )
                     },
-                    logger = sharedInfoLogger("CanonicalMessageV2AdjacentPage", "canonical_v2_adjacent_page"),
+                    // Lines already start with `canonical_v2_adjacent_page` / `canonical_v2_latest_page`: a prefix
+                    // here doubled the latest-page line on device (task #168).
+                    logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),
                 )
             provider = SlockSharedStoreProvider(
                 bridge = bridge,
@@ -2896,7 +2911,7 @@ internal class SharedRealtimeDomainEventOwner(
         when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput, transportEpoch)) {
             // Held = the durable write failed (nothing was written). Display must not fail with it
             // (task #168): the event takes the same post-canary legacy path as a committed one.
-            // Pending = the durable write belongs to the scope's background snapshot: the canary returned
+            // Pending = the event is buffered for the channel's loading enter snapshot: the canary returned
             // without loading anything, so the event is displayed now under the grant it arrived with.
             CanonicalMessageV2CanaryOutcome.Committed,
             CanonicalMessageV2CanaryOutcome.Pending,

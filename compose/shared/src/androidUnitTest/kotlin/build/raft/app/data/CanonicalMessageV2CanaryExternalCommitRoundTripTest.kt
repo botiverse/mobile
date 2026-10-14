@@ -13,10 +13,9 @@ import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
+import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoadResult
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoader
 import build.raft.app.network.sync.CanonicalMessageV2Store
 import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
 import build.raft.app.network.sync.DurablePartitionKey
@@ -29,15 +28,14 @@ import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.toCanonicalMessageV2Envelope
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -45,65 +43,63 @@ import kotlin.test.assertTrue
  * catch-up writers skipped the realtime canary's scope ("the canary owns it"), but the canary only writes
  * realtime frames — the catch-up page after 210 offline messages never reached disk and the offline cold
  * start showed the pre-disconnect page. On the real SQLite store:
- * - the three writers now write the canary's scope exactly like any other scope;
- * - after such an external commit the canary's next realtime frame re-snapshots once instead of appending
- *   onto a window it did not produce;
- * - a canary background snapshot still pending at that moment is superseded by an explicit signal (cancel +
- *   one fresh snapshot), so its older page never overwrites the newer external window.
+ * - the three writers write a realtime window exactly like any other scope;
+ * - task #168 step 3: after a paging / catch-up commit (#3008 kept) the window is display only for realtime
+ *   frames — no background re-snapshot — until the next enter snapshot makes it continuous again;
+ * - an external commit while an enter snapshot is in flight keeps that enter's window display only.
  */
 class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     // ---- gap catch-up -------------------------------------------------------------------------------
 
     @Test
-    fun aCanarySelectedScopesLargeGapCatchUpReplacesTheWindowOnDisk() {
-        val selected = withFreshDatabase { database ->
+    fun aRealtimeWindowsLargeGapCatchUpReplacesTheWindowOnDisk() {
+        val continuous = withFreshDatabase { database ->
             val rig = Rig(database)
             runBlocking {
-                rig.canaryBaseline(10L, 20L, 30L)
-                assertTrue(rig.canary.isSelected(scope))
+                rig.enter(pageOf(10L, 20L, 30L))
+                assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
                 rig.latest(pageOf(100L, 110L, 120L), limit = 3)
                 rig.assertReplacedTo100To120()
                 assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
                 rig.coldStartSeqs()
             }
         }
-        // Twin: the same catch-up on a scope the canary never selected (window from the enter snapshot).
-        val notSelected = withFreshDatabase { database ->
+        // Twin: the same catch-up on a window the canary holds no state for (restored after a cold start).
+        val restored = withFreshDatabase { database ->
+            val seeding = Rig(database)
+            runBlocking { seeding.enter(pageOf(10L, 20L, 30L)) }
             val rig = Rig(database)
             runBlocking {
-                rig.enter(pageOf(10L, 20L, 30L))
-                assertFalse(rig.canary.isSelected(scope))
+                assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, rig.canary.continuityOf(scope))
                 rig.latest(pageOf(100L, 110L, 120L), limit = 3)
                 rig.assertReplacedTo100To120()
                 rig.coldStartSeqs()
             }
         }
-        assertEquals(listOf(100L, 110L, 120L), selected)
-        assertEquals(selected, notSelected)
+        assertEquals(listOf(100L, 110L, 120L), continuous)
+        assertEquals(continuous, restored)
     }
 
     @Test
-    fun afterTheCatchUpTheNextSameEpochFrameReSnapshotsOnceWithNoHole() = withFreshDatabase { database ->
+    fun afterTheCatchUpTheWindowIsDisplayOnlyUntilTheNextEnterWithoutAnyLoad() = withFreshDatabase { database ->
         val rig = Rig(database)
-        bounded {
-            rig.canaryBaseline(10L, 20L, 30L)
+        runBlocking {
+            rig.canary.noteTransportEpoch(partition, 1L)
+            rig.enter(pageOf(10L, 20L, 30L))
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(40L))
             rig.latest(pageOf(100L, 110L, 120L), limit = 3)
-            val loadsBefore = rig.loaderCalls
+            val paths = rig.networkPaths()
 
-            // Same epoch as the canary's last commit: without the external-commit mark this would append
-            // onto the catch-up window (Committed, no load).
-            rig.serverHas(100L, 110L, 120L, 130L)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, rig.accept(130L))
-            assertEquals(loadsBefore + 1, rig.loaderCalls, "exactly one re-snapshot")
-            assertEquals(listOf(100L, 110L, 120L, 130L), rig.coldStartSeqs())
-            val cursor = assertNotNull(rig.coldStartCursor())
-            assertEquals(100L, cursor.oldestLoadedSeq)
-            assertEquals(130L, cursor.newestLoadedSeq)
+            // Same epoch as the baseline: without the external-commit mark this would append onto the
+            // catch-up window (Committed).
+            assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, rig.accept(130L))
+            assertEquals(listOf(100L, 110L, 120L), rig.coldStartSeqs())
+            assertEquals(paths, rig.networkPaths(), "no re-snapshot (task #168 step 3)")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(scope))
 
-            // The canary owns continuity again: the next frame appends without a load.
-            rig.serverHas(100L, 110L, 120L, 130L, 140L)
+            // The user opens the channel: continuous again, the next frame appends.
+            rig.enter(pageOf(100L, 110L, 120L, 130L))
             assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(140L))
-            assertEquals(loadsBefore + 1, rig.loaderCalls)
             assertEquals(listOf(100L, 110L, 120L, 130L, 140L), rig.coldStartSeqs())
         }
     }
@@ -111,93 +107,82 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     // ---- enter snapshot / adjacent page -------------------------------------------------------------
 
     @Test
-    fun anEnterSnapshotOnTheCanarysScopeIsWrittenAndTheNextFrameReSnapshots() = withFreshDatabase { database ->
+    fun anEnterSnapshotOnAContinuousWindowIsWrittenAndStaysContinuous() = withFreshDatabase { database ->
         val rig = Rig(database)
-        bounded {
-            rig.canaryBaseline(10L, 20L, 30L)
+        runBlocking {
+            rig.enter(pageOf(10L, 20L, 30L))
             val snapshotsBefore = rig.store.snapshotWrites
             rig.enter(pageOf(50L, 60L))
             assertEquals(snapshotsBefore + 1, rig.store.snapshotWrites)
             assertEquals(listOf(50L, 60L), rig.coldStartSeqs())
-            assertTrue(rig.logs.any { "canonical_v2_enter_snapshot" in it && "outcome=committed facts=2" in it }, rig.logs.toString())
+            assertTrue(rig.logs.any { it.startsWith("canonical_v2_enter_snapshot ") && "outcome=committed facts=2" in it }, rig.logs.toString())
             assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
 
-            val loadsBefore = rig.loaderCalls
-            rig.serverHas(50L, 60L, 70L)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, rig.accept(70L))
-            assertEquals(loadsBefore + 1, rig.loaderCalls)
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(70L))
             assertEquals(listOf(50L, 60L, 70L), rig.coldStartSeqs())
         }
     }
 
     @Test
-    fun anAdjacentPageOnTheCanarysScopeIsWrittenAndTheNextFrameReSnapshots() = withFreshDatabase { database ->
+    fun anAdjacentPageOnARealtimeWindowIsWrittenAndTheWindowBecomesDisplayOnly() = withFreshDatabase { database ->
         val rig = Rig(database)
-        bounded {
-            rig.canaryBaseline(10L, 20L, 30L)
+        runBlocking {
+            rig.enter(pageOf(10L, 20L, 30L))
             val incrementalsBefore = rig.store.incrementalWrites
             rig.extend(ThreadDurablePageDirection.Older, anchorSeq = 10L, pageOf(5L, 8L), limit = 3)
             assertEquals(incrementalsBefore + 1, rig.store.incrementalWrites)
             assertEquals(listOf(5L, 8L, 10L, 20L, 30L), rig.coldStartSeqs())
             assertEquals(5L, rig.coldStartCursor()?.oldestLoadedSeq)
-            assertTrue(rig.logs.any { "canonical_v2_adjacent_page" in it && "outcome=committed facts=2" in it }, rig.logs.toString())
+            assertTrue(rig.logs.any { it.startsWith("canonical_v2_adjacent_page ") && "outcome=committed facts=2" in it }, rig.logs.toString())
             assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
 
-            val loadsBefore = rig.loaderCalls
-            rig.serverHas(5L, 8L, 10L, 20L, 30L, 40L)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, rig.accept(40L))
-            assertEquals(loadsBefore + 1, rig.loaderCalls)
-            assertEquals(listOf(5L, 8L, 10L, 20L, 30L, 40L), rig.coldStartSeqs())
+            val paths = rig.networkPaths()
+            assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, rig.accept(40L))
+            assertEquals(listOf(5L, 8L, 10L, 20L, 30L), rig.coldStartSeqs())
+            assertEquals(paths, rig.networkPaths())
         }
     }
 
-    // ---- a pending canary snapshot vs. an external commit -------------------------------------------
-
     @Test
-    fun anExternalCommitSupersedesAPendingCanarySnapshotWhichNeverOverwritesIt() = withFreshDatabase { database ->
+    fun aCatchUpCommittedWhileAnEnterLoadsKeepsThatEntersWindowDisplayOnly() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
-            rig.canaryBaseline(10L, 20L, 30L)
-            val loadsAfterBaseline = rig.loaderCalls
+            rig.enter(pageOf(10L, 20L, 30L))
+            val gate = CompletableDeferred<Unit>()
+            val pagesBefore = rig.networkPaths().count { it == "messages/channel/channel-1" }
+            val entering = async { rig.enter(pageOf(10L, 20L, 30L, 40L), gate) }
+            while (rig.networkPaths().count { it == "messages/channel/channel-1" } == pagesBefore) yield()
+            // The enter's page is in flight; the gap catch-up commits a newer page meanwhile.
+            rig.latest(pageOf(30L, 40L, 50L), limit = 3)
+            gate.complete(Unit)
+            entering.await()
 
-            // Reconnect as epoch 2: m200 schedules a snapshot that reads the server NOW (180..200) and is
-            // held. The load ignores cancellation, so its stale result does reach the scope writer.
-            rig.canary.noteTransportEpoch(partition, 2L)
-            rig.serverHas(180L, 190L, 200L)
-            val hold = rig.holdNextSnapshot(ignoresCancellation = true)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, rig.accept(200L, settle = false))
-            hold.started.await()
-            // m210 arrives while it loads: displayed and buffered.
-            rig.serverHas(180L, 190L, 200L, 210L)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, rig.accept(210L, settle = false))
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(scope))
+            assertTrue(rig.logs.any { "reason=external_commit" in it }, rig.logs.toString())
+            assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, rig.accept(60L))
 
-            // The gap catch-up fetched a newer page and commits while that snapshot is still pending.
-            rig.serverHas(190L, 200L, 210L, 220L)
-            rig.latest(pageOf(190L, 200L, 210L, 220L), limit = 4)
-            assertTrue(rig.logs.any { "canonical_v2_latest_page" in it && "window_replaced" in it }, rig.logs.toString())
-
-            // The old load returns now, after the newer window: it must be dropped by the explicit signal.
-            hold.release.complete(Unit)
-            rig.settle()
-
-            val seqs = rig.coldStartSeqs()
-            assertFalse(180L in seqs, "the older pending snapshot never overwrote the external window: $seqs")
-            // Nothing lost: the trigger m200, the buffered m210 and the catch-up's m220 are all on disk.
-            assertEquals(listOf(190L, 200L, 210L, 220L), seqs)
-            assertTrue(
-                rig.logs.any { "canonical_v2_canary external_commit" in it && "superseded=true" in it },
-                rig.logs.toString(),
-            )
-            assertTrue(rig.logs.any { "canonical_v2_canary snapshot=stale_dropped" in it }, rig.logs.toString())
-            assertEquals(220L, rig.coldStartCursor()?.newestLoadedSeq)
-            assertEquals(loadsAfterBaseline + 2, rig.loaderCalls, "the superseded load plus at most one fresh snapshot")
-
-            // The fresh snapshot committed under epoch 2: the next epoch-2 frame appends, no further load.
-            rig.serverHas(190L, 200L, 210L, 220L, 230L)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(230L))
-            assertEquals(loadsAfterBaseline + 2, rig.loaderCalls)
-            assertEquals(listOf(190L, 200L, 210L, 220L, 230L), rig.coldStartSeqs())
+            // Twin: the same enter without a commit in between is continuous.
+            rig.enter(pageOf(10L, 20L, 30L, 40L, 50L))
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(60L))
         }
+    }
+
+    // ---- log lines --------------------------------------------------------------------------------------
+
+    @Test
+    fun theLatestPageLineHasExactlyOnePrefixThroughTheProductionLogger() = withFreshDatabase { database ->
+        val lines = java.util.Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+        // The provider's sink for the paging writer (device: `canonical_v2_adjacent_page canonical_v2_latest_page …`).
+        val logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage") { tag, message -> lines += tag to message }
+        val rig = Rig(database, writerLogger = logger)
+        runBlocking {
+            rig.enter(pageOf(10L, 20L, 30L))
+            rig.latest(pageOf(100L, 110L, 120L), limit = 3)
+        }
+        val (tag, line) = lines.single { "window_replaced" in it.second }
+        assertEquals("CanonicalMessageV2AdjacentPage", tag)
+        assertTrue(line.startsWith("canonical_v2_latest_page server=server-1 scope=channel-1 outcome=window_replaced "), line)
+        assertFalse("canonical_v2_adjacent_page" in line, line)
     }
 
     // ---- rig ----------------------------------------------------------------------------------------
@@ -206,13 +191,12 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         withTimeout(30_000L) { block() }
     }
 
-    private class SnapshotHold(val ignoresCancellation: Boolean) {
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-    }
-
-    private class Rig(private val database: SlockSqlDatabase) {
+    private class Rig(
+        private val database: SlockSqlDatabase,
+        writerLogger: ((String) -> Unit)? = null,
+    ) {
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+        private val networks = java.util.Collections.synchronizedList(mutableListOf<RecordingNetworkClient>())
         val store = CountingStore(
             SqlDelightCanonicalMessageV2Store(
                 database = database,
@@ -233,73 +217,32 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
-            fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage()), { logs += it }),
+            fetcher = CanonicalMessageV2RestSnapshotFetcher(
+                RecordingNetworkClient(canonicalV2TestPage()).also { networks += it },
+                { logs += it },
+            ),
             isEnabledForServer = { true },
-            logger = { logs += it },
+            logger = writerLogger ?: { logs += it },
         )
 
-        /** The canary snapshot's answer: what the server holds when the load starts. */
-        @Volatile private var serverSeqs: List<Long> = emptyList()
-
-        @Volatile private var nextHold: SnapshotHold? = null
-
-        /** Read after [settle] or while a load is held. */
-        @Volatile var loaderCalls = 0
-
-        private val loader = CanonicalMessageV2SnapshotLoader { request ->
-            loaderCalls += 1
-            val hold = nextHold.also { nextHold = null }
-            val seqs = serverSeqs
-            if (hold != null) {
-                hold.started.complete(Unit)
-                if (hold.ignoresCancellation) withContext(NonCancellable) { hold.release.await() } else hold.release.await()
-            }
-            CanonicalMessageV2SnapshotLoadResult.Loaded(
-                CanonicalMessageV2SnapshotFrame(
-                    scope = request.scope,
-                    envelopes = seqs.map { envelope(it) },
-                    cursor = PersistedCursor(
-                        latestSeq = seqs.max(),
-                        oldestLoadedSeq = seqs.min(),
-                        newestLoadedSeq = seqs.max(),
-                        hasLoadedOldest = false,
-                        hasLoadedNewest = true,
-                    ),
-                ),
-            )
-        }
-
-        fun serverHas(vararg seqs: Long) {
-            serverSeqs = seqs.toList()
-        }
-
-        fun holdNextSnapshot(ignoresCancellation: Boolean = false): SnapshotHold =
-            SnapshotHold(ignoresCancellation).also { nextHold = it }
-
-        suspend fun settle() = canary.awaitSnapshotJobs()
-
-        /** The canary selects channel-1 and commits its first snapshot under epoch 1. */
-        suspend fun canaryBaseline(vararg seqs: Long) {
-            canary.noteTransportEpoch(partition, 1L)
-            serverHas(*seqs)
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, accept(seqs.max()))
-            assertEquals(seqs.toList(), coldStartSeqs())
-        }
-
         /** A realtime `New` of `m<seq>` (frame epoch = the recorded one). */
-        suspend fun accept(seq: Long, settle: Boolean = true): CanonicalMessageV2CanaryOutcome =
-            canary.accept(partition, input(seq), loader).also { if (settle) settle() }
+        suspend fun accept(seq: Long): CanonicalMessageV2CanaryOutcome = canary.accept(partition, input(seq))
 
-        suspend fun enter(rawMessages: JsonArray) {
+        /** The user opens channel-1 and the server answers [rawMessages] (after [gate], when given). */
+        suspend fun enter(rawMessages: JsonArray, gate: CompletableDeferred<Unit>? = null) {
             val body = """{"messages":$rawMessages,"historyLimited":false}"""
+            val network = RecordingNetworkClient(body).also { it.pageGate = gate; networks += it }
             CanonicalMessageV2EnteredScopeLoader(
                 canary = canary,
                 generationEngine = engine,
-                fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(body)),
+                fetcher = CanonicalMessageV2RestSnapshotFetcher(network),
                 isEnabledForServer = { true },
                 logger = { logs += it },
             ).loadOnEnter(partition, "channel-1") { true }
         }
+
+        /** Every request made so far by any network client of this rig. */
+        fun networkPaths(): List<String> = networks.flatMap { it.paths.toList() }
 
         suspend fun latest(rawMessages: JsonArray, limit: Int) =
             writer.applyLatestPage(partition, "channel-1", rawMessages, limit, replyParent = null) { true }

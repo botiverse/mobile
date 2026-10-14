@@ -66,8 +66,12 @@ internal class RecordingStore : CanonicalMessageV2Store {
         return CanonicalMessageV2StoreWriteResult()
     }
 
-    override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
-        CanonicalMessageV2StoreWriteResult()
+    val incrementals = mutableListOf<CanonicalMessageV2IncrementalFrame>()
+
+    override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult {
+        incrementals += frame
+        return CanonicalMessageV2StoreWriteResult()
+    }
 
     override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
         RestoredCanonicalMessageV2Scope(emptyList(), null)
@@ -75,6 +79,28 @@ internal class RecordingStore : CanonicalMessageV2Store {
     override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> = setOf(scope)
 
     override suspend fun clearPartition(partition: DurablePartitionKey) = Unit
+}
+
+/**
+ * Task #168 step 3: what the enter snapshot does around its commit, without a network: register the pending
+ * baseline, commit [frame] inside the scope writer, then hand it to the canary (or abandon it).
+ */
+internal suspend fun commitEnterBaselineForTest(
+    canary: build.raft.app.network.sync.CanonicalMessageV2ProductionCanary,
+    engine: build.raft.app.network.sync.CanonicalMessageV2GenerationEngine,
+    frame: CanonicalMessageV2SnapshotFrame,
+    nonMember: Boolean = false,
+): build.raft.app.network.sync.CanonicalMessageV2CommitResult {
+    val baseline = requireNotNull(canary.beginEnterBaseline(frame.scope.partition, frame.scope.scopeId, nonMember))
+    return engine.withScopeWriter(frame.scope) {
+        engine.applySnapshot(frame).also { result ->
+            if (result == build.raft.app.network.sync.CanonicalMessageV2CommitResult.Committed) {
+                canary.onEnterCommitted(baseline, frame)
+            } else {
+                canary.abandonEnterBaseline(baseline)
+            }
+        }
+    }
 }
 
 internal fun canonicalV2TestGrant() = RealtimeGrantRecord(

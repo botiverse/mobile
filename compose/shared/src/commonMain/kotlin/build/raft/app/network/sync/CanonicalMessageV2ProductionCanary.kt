@@ -3,18 +3,10 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -30,77 +22,107 @@ import kotlinx.serialization.json.JsonObject
 const val CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE: Boolean = true
 
 /**
- * Task #168: frames of one scope kept while its background snapshot loads. One more marks the scope
- * discontinuous instead (the buffer is dropped and the next frame snapshots again): never an unbounded queue.
+ * Task #168: frames of one channel kept while its enter snapshot loads. One more marks the window that
+ * snapshot commits discontinuous instead (the buffer is dropped): never an unbounded queue.
  */
 internal const val CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP: Int = 64
 
-enum class CanonicalMessageV2CanaryMode {
-    Off,
-    ShadowOnly,
-    Activating,
-    SoleApply,
-    Broken,
-}
-
 sealed interface CanonicalMessageV2CanaryOutcome {
-    /** This event remains on the existing T3-shadow + legacy projection path. */
+    /** Not written: the event remains on the existing T3-shadow + legacy projection path (display only). */
     data object NotSelected : CanonicalMessageV2CanaryOutcome
 
     /** The V2 commit completed and the caller may project the event after a fresh grant check. */
     data object Committed : CanonicalMessageV2CanaryOutcome
 
     /**
-     * Task #168: the durable write of this event belongs to the scope's background snapshot (scheduled by
-     * this event, or already loading and this event is buffered for it). Nothing is written yet and the
-     * caller never waits for the network: it projects the event now through the legacy display path after
-     * a fresh grant check, exactly as for [Committed].
+     * Task #168: the channel's enter snapshot is loading; the event is buffered for it and written (or not)
+     * when that snapshot commits. Nothing is written yet and the caller never waits for the network: it
+     * projects the event now through the legacy display path after a fresh grant check, as for [Committed].
      */
     data object Pending : CanonicalMessageV2CanaryOutcome
 
     /**
-     * The durable V2 write did not happen (revoked, evicted, poisoned). Nothing was written; the caller
+     * The durable V2 write did not happen (revoked, evicted, failed). Nothing was written; the caller
      * still projects the event through the legacy display path after a fresh grant check (task #168: a
      * failed durable write must never hide a message).
      */
     data class Held(val diagnostic: String) : CanonicalMessageV2CanaryOutcome
 }
 
-data class CanonicalMessageV2SnapshotRequest(
-    val scope: SyncScopeKey,
-    val targetFactId: String,
-)
-
+/** Result of one server page fetch (enter snapshot, reply-thread snapshot). */
 sealed interface CanonicalMessageV2SnapshotLoadResult {
     data class Loaded(val frame: CanonicalMessageV2SnapshotFrame) : CanonicalMessageV2SnapshotLoadResult
     data class Unavailable(val diagnostic: String) : CanonicalMessageV2SnapshotLoadResult
 }
 
-fun interface CanonicalMessageV2SnapshotLoader {
-    suspend fun load(request: CanonicalMessageV2SnapshotRequest): CanonicalMessageV2SnapshotLoadResult
+/** Task #168 (diagnostics / tests): what the realtime path does with the next frame of a scope. */
+enum class CanonicalMessageV2ScopeContinuity {
+    /** No window committed in this process (never opened, or restored from disk only): display only. */
+    NoWindow,
+
+    /** The window is known to hold every frame since its baseline: frames are written incrementally. */
+    Continuous,
+
+    /** The window may miss frames: display only until the user next opens the channel. */
+    Discontinuous,
 }
 
+/** One delivery of a realtime frame: the exact decoded frame and the connection that delivered it. */
+internal data class CanonicalMessageV2Delivery(
+    val foldInput: CanonicalMessageFoldInput,
+    val frameTransportEpoch: Long?,
+)
+
+/** A frame that arrived while its channel's enter snapshot was loading, with the epoch it was accepted under. */
+internal class CanonicalMessageV2BufferedFrame(
+    val delivery: CanonicalMessageV2Delivery,
+    /** The frame's own epoch, else the partition's recorded epoch when it was accepted (as #2991). */
+    val transportEpoch: Long?,
+)
+
+/**
+ * Task #168: the pending external baseline of one enter snapshot, registered BEFORE its fetch
+ * ([CanonicalMessageV2ProductionCanary.beginEnterBaseline]). Everything that decides whether the window it
+ * commits is continuous with the realtime stream is captured at request time. All mutable fields are guarded
+ * by the canary's state mutex.
+ */
+class CanonicalMessageV2EnterBaseline internal constructor(
+    internal val partition: DurablePartitionKey,
+    internal val scopeId: SyncScopeId,
+    /** The recorded transport epoch when the request was sent (#2991 rules); null = none recorded yet. */
+    internal val epochAtRequest: Long?,
+    internal val roomLeaveCountAtRequest: Long,
+    /** The conversation directory said the user is not a member when the request was sent. */
+    internal val nonMemberAtRequest: Boolean,
+) {
+    internal val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
+    internal var overflowed = false
+    internal var closed = false
+
+    /** Another writer committed into this channel while the fetch was in flight. */
+    internal var superseded = false
+
+    internal fun alreadyHolds(delivery: CanonicalMessageV2Delivery): Boolean =
+        buffered.any { it.delivery == delivery }
+}
+
+/**
+ * The realtime state of one scope that has a window committed in this process (task #168: one per windowed
+ * channel / DM, no single selected slot). Created only by an enter-snapshot commit; mutable fields are
+ * guarded by the canary's state mutex.
+ */
 private class CanonicalMessageV2CanaryScopeState(
-    var initialized: Boolean = false,
-    var mode: CanonicalMessageV2CanaryMode = CanonicalMessageV2CanaryMode.Activating,
-    var cursor: PersistedCursor? = null,
-    /**
-     * Task #167: the realtime transport epoch this scope last committed under. Frames delivered while the
-     * socket was down never reach the writer, so a frame from a different epoch must not be appended to
-     * this window; it re-snapshots first. Null until the first commit.
-     */
-    var committedTransportEpoch: Long? = null,
-    /**
-     * A window restored from disk has no known epoch: frames may have been missed while the process was dead.
-     * Task #168 reuses it as the scope's "discontinuous" mark: the next frame snapshots again.
-     */
-    var restoredWithoutEpoch: Boolean = false,
+    var cursor: PersistedCursor?,
+    /** The connection the baseline is known to be continuous with (the enter request's epoch). */
+    val committedTransportEpoch: Long?,
+    /** [CanonicalMessageV2ProductionCanary.noteRoomLeft] count of this room when the baseline was requested. */
+    val roomLeaveCountAtBaseline: Long,
 ) {
     /**
-     * Task #168: the background snapshot this scope is waiting for, if any. Confined to the scope writer;
-     * at most one per scope.
+     * Task #168: the window may miss frames from here on (epoch change, room leave, external commit, failed
+     * write, unapplicable update). Display only; never cleared: only the next enter commit replaces the state.
      */
-    var pendingSnapshot: CanonicalMessageV2PendingSnapshot? = null
+    var discontinuous: Boolean = false
 
     /**
      * Task #168: the last delivery committed for each fact id (bounded). One realtime frame reaches the
@@ -121,71 +143,28 @@ private class CanonicalMessageV2CanaryScopeState(
         }
     }
 
-    fun appendsContinuously(currentTransportEpoch: Long?): Boolean =
-        !restoredWithoutEpoch && committedTransportEpoch == currentTransportEpoch
-
-    fun committedUnder(currentTransportEpoch: Long?) {
-        committedTransportEpoch = currentTransportEpoch
-        restoredWithoutEpoch = false
-    }
-
-    /** Task #168: the window may miss frames from here on; the next frame snapshots instead of appending. */
-    fun markDiscontinuous() {
-        restoredWithoutEpoch = true
-    }
-
     private companion object {
         const val COMMITTED_DELIVERY_MEMORY = 256
     }
 }
 
-/** One delivery of a realtime frame: the exact decoded frame and the connection that delivered it. */
-private data class CanonicalMessageV2Delivery(
-    val foldInput: CanonicalMessageFoldInput,
-    val frameTransportEpoch: Long?,
-)
+private sealed interface CanonicalMessageV2Route {
+    /** No window and no enter in flight (or flag off without a window): display only, zero V2 work. */
+    data object None : CanonicalMessageV2Route
 
-/** A frame that arrived while its scope's snapshot was loading, with the epoch it was accepted under. */
-private class CanonicalMessageV2BufferedFrame(
-    val delivery: CanonicalMessageV2Delivery,
-    /** The frame's own epoch, else the partition's recorded epoch when it was accepted (as #2991). */
-    val transportEpoch: Long?,
-)
+    /** Buffered for the channel's loading enter snapshot. */
+    data object Buffered : CanonicalMessageV2Route
 
-/**
- * Task #168: one background snapshot of one scope. Everything that decides whether it may still commit is
- * captured at schedule time ([partitionGeneration], [epochAtRequest], the [state] object it belongs to) and
- * re-checked inside the scope writer before the commit.
- */
-private class CanonicalMessageV2PendingSnapshot(
-    val scope: SyncScopeKey,
-    val state: CanonicalMessageV2CanaryScopeState,
-    val targetFactId: String,
-    val partitionGeneration: Long,
-    /** The connection the snapshot is known to be continuous with: the frame's own when it names one. */
-    val epochAtRequest: Long?,
-    /** The delivery that scheduled it: written by the snapshot itself. */
-    val trigger: CanonicalMessageV2Delivery,
-    /** The loader it was scheduled with: reused when an external commit supersedes it ([onExternalCommit]). */
-    val snapshotLoader: CanonicalMessageV2SnapshotLoader,
-) {
-    /** Writer-confined. */
-    val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
+    data class Window(val scope: SyncScopeKey) : CanonicalMessageV2Route
 
-    /** Writer-confined. */
-    var overflowed = false
+    /** The flag went off for a scope that has a window. */
+    data class Revoke(val scope: SyncScopeKey) : CanonicalMessageV2Route
+}
 
-    /** Guarded by the canary's selection mutex. */
-    var job: Job? = null
-
-    /** Guarded by the canary's selection mutex: set once the job has entered the writer to commit. */
-    var committing = false
-
-    /** Guarded by the canary's selection mutex: reset / eviction / revoke dropped this snapshot. */
-    var cancelled = false
-
-    fun alreadyHolds(delivery: CanonicalMessageV2Delivery): Boolean =
-        delivery == trigger || buffered.any { it.delivery == delivery }
+private sealed interface CanonicalMessageV2Plan {
+    data object DisplayOnly : CanonicalMessageV2Plan
+    data object AlreadyCommitted : CanonicalMessageV2Plan
+    data class Write(val state: CanonicalMessageV2CanaryScopeState, val cursor: PersistedCursor) : CanonicalMessageV2Plan
 }
 
 private sealed interface CanonicalMessageV2AppendResult {
@@ -195,44 +174,50 @@ private sealed interface CanonicalMessageV2AppendResult {
     data object BaselineRequired : CanonicalMessageV2AppendResult
     data object PartitionRevoked : CanonicalMessageV2AppendResult
     data object ScopeEvicted : CanonicalMessageV2AppendResult
+    data class Failed(val reason: String) : CanonicalMessageV2AppendResult
 }
 
 /**
- * One-product-flag, one-scope production canary.
+ * Task #168 step 3: realtime messages are written to the durable offline cache for EVERY top-level channel /
+ * DM that has a window committed in this process, behind the existing `sync_core_messages` flag.
  *
- * The first eligible top-level scope on an enabled server owns that server's process-local canary slot.
- * Its first event must establish a fresh server-backed V2 snapshot. Exact later MessageNew frames commit
- * incrementally; MessageUpdated and any input that cannot prove a full V2 node take the safe snapshot path.
- * A failure never writes, and never hides the event: the caller still displays it (task #168). Other
- * scopes retain the existing shadow/legacy path.
- *
- * Task #168: display never waits for the network. A snapshot is never loaded inside [accept]: it is
- * scheduled as one serialized background job per scope ([snapshotJobScope]); frames of that scope that
- * arrive meanwhile are displayed and buffered (bounded), then replayed after the commit only when they are
- * provably continuous with it.
+ * - Which scopes: those whose window an enter snapshot committed in this process ([stateByScope], the
+ *   in-memory index). A scope without one — never opened, or only restored from disk after a cold start —
+ *   is display only: no request, no write, no store lookup on the display path. A restored window may have
+ *   missed frames while the process was dead, so it is treated exactly like a discontinuous one until the
+ *   user opens the channel again (its enter commit creates the state).
+ * - Continuous (same epoch as the baseline, never marked): `New` appends (insert-only, below-window skip,
+ *   cap edge, duplicate-delivery skip, #3002); `Updated` replaces the stored fact when the frame is full,
+ *   the fact is in the window and has no reply thread; otherwise it marks the scope discontinuous, or is
+ *   ignored when it lies below the window.
+ * - Discontinuous: display only. Nothing here ever requests the network (no first-frame activation, no
+ *   background re-snapshot): the next enter snapshot is the new baseline.
+ * - Hole A: the enter snapshot registers a pending baseline with its request epoch before it fetches;
+ *   frames of that channel meanwhile are displayed and buffered (bounded), then replayed inside the scope
+ *   writer right after the enter commit by #3007's rules.
  */
 internal class CanonicalMessageV2ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val logger: (String) -> Unit = {},
-    private val snapshotJobScope: CoroutineScope = defaultSnapshotJobScope(logger),
 ) {
-    private data class MutexEntry(
-        val mutex: Mutex = Mutex(),
-        var users: Int = 0,
-    )
+    /** Leaf lock: never held while calling the engine's suspending writes or another lock. */
+    private val stateMutex = Mutex()
 
-    private val selectionMutex = Mutex()
-    private val selectedScopeByPartition = mutableMapOf<DurablePartitionKey, SyncScopeKey>()
-    private val scopeMutexByKey = mutableMapOf<SyncScopeKey, MutexEntry>()
+    /** Guarded by [stateMutex]: the windowed index (every scope with a window committed in this process). */
     private val stateByScope = mutableMapOf<SyncScopeKey, CanonicalMessageV2CanaryScopeState>()
+
+    /** Guarded by [stateMutex]: the enter snapshot in flight for each channel id. */
+    private val enterBaselineByChannel =
+        mutableMapOf<Pair<DurablePartitionKey, SyncScopeId>, CanonicalMessageV2EnterBaseline>()
+
+    /** Guarded by [stateMutex]. */
     private val currentTransportEpochByPartition = mutableMapOf<DurablePartitionKey, Long>()
 
-    /** Guarded by [selectionMutex]: the live background snapshot of each scope (cancellation handle). */
-    private val pendingSnapshotByScope = mutableMapOf<SyncScopeKey, CanonicalMessageV2PendingSnapshot>()
+    private val roomLeaveLock = SynchronizedObject()
 
-    /** Guarded by [selectionMutex]: launched snapshot jobs not yet seen completed. */
-    private val launchedSnapshotJobs = mutableListOf<Job>()
+    /** Guarded by [roomLeaveLock]: how many times the socket left each (server, room). */
+    private val roomLeaveCountByRoom = mutableMapOf<Pair<String, String>, Long>()
 
     init {
         generationEngine.addPartitionRevocationObserver(::onPartitionRevoked)
@@ -242,58 +227,78 @@ internal class CanonicalMessageV2ProductionCanary(
     suspend fun accept(
         partition: DurablePartitionKey,
         foldInput: CanonicalMessageFoldInput,
-        snapshotLoader: CanonicalMessageV2SnapshotLoader,
         frameTransportEpoch: Long? = null,
     ): CanonicalMessageV2CanaryOutcome {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        val partitionGeneration = generationEngine.partitionGeneration(partition)
-        val existingSelection = selectionMutex.withLock { selectedScopeByPartition[partition] }
-        val scope = when {
-            existingSelection?.scopeId == foldInput.row.channelId -> existingSelection
-            existingSelection != null -> return CanonicalMessageV2CanaryOutcome.NotSelected
-            else -> foldInput.v2ScopeOrNull(partition) ?: return CanonicalMessageV2CanaryOutcome.NotSelected
+        if (!CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE) return CanonicalMessageV2CanaryOutcome.NotSelected
+        val delivery = CanonicalMessageV2Delivery(foldInput, frameTransportEpoch?.takeIf { it > 0L })
+        // Fast path: no writer, no store. Only a scope with a window (or an enter in flight) goes further.
+        val scope = when (val route = stateMutex.withLock { routeLocked(partition, delivery) }) {
+            CanonicalMessageV2Route.None -> return CanonicalMessageV2CanaryOutcome.NotSelected
+            CanonicalMessageV2Route.Buffered -> return CanonicalMessageV2CanaryOutcome.Pending
+            is CanonicalMessageV2Route.Window -> route.scope
+            is CanonicalMessageV2Route.Revoke -> route.scope
         }
-        val selected = selectionMutex.withLock {
-            val current = selectedScopeByPartition[partition]
-            when {
-                current != null -> current == scope
-                !isEnabledForServer(partition.serverId) -> false
-                else -> {
-                    selectedScopeByPartition[partition] = scope
-                    logger("canonical_v2_canary mode=activating server=${partition.serverId} scope=${scope.scopeId}")
-                    true
-                }
+        return generationEngine.withScopeWriter(scope) writer@{
+            // Re-routed inside the writer: an enter commit may have replaced the state meanwhile.
+            when (val route = stateMutex.withLock { routeLocked(partition, delivery) }) {
+                CanonicalMessageV2Route.None -> CanonicalMessageV2CanaryOutcome.NotSelected
+                CanonicalMessageV2Route.Buffered -> CanonicalMessageV2CanaryOutcome.Pending
+                is CanonicalMessageV2Route.Revoke ->
+                    if (route.scope == scope) revokeInsideWriter(scope) else CanonicalMessageV2CanaryOutcome.NotSelected
+                is CanonicalMessageV2Route.Window ->
+                    if (route.scope == scope) acceptInsideWriter(scope, partition, delivery)
+                    else CanonicalMessageV2CanaryOutcome.NotSelected
             }
         }
-        if (!selected) return CanonicalMessageV2CanaryOutcome.NotSelected
+    }
 
-        return withScopeMutex(scope) {
-            generationEngine.withScopeWriter(scope) writer@{
-                val state = selectionMutex.withLock {
-                    stateByScope.getOrPut(scope) { CanonicalMessageV2CanaryScopeState() }
-                }
-                if (!isEnabledForServer(partition.serverId)) {
-                    return@writer revokeSelection(scope, state)
-                }
-                if (!CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE) {
-                    state.mode = CanonicalMessageV2CanaryMode.ShadowOnly
-                    return@writer CanonicalMessageV2CanaryOutcome.NotSelected
-                }
+    /** Holding [stateMutex]. Buffers for a loading enter snapshot right here (no write, no writer needed). */
+    private fun routeLocked(partition: DurablePartitionKey, delivery: CanonicalMessageV2Delivery): CanonicalMessageV2Route {
+        val input = delivery.foldInput
+        val explicit = input.v2ScopeOrNull(partition)
+        if (explicit == null && input.row.conversationContext != null) {
+            // A reply (thread scopes are written by their own enter / paging paths) or an unsupported kind.
+            return CanonicalMessageV2Route.None
+        }
+        val scope = explicit ?: run {
+            // No producer context: the frame names only its channel id. It can never be written, but a
+            // window of that channel id must not silently miss it.
+            stateByScope.keys.singleOrNull { it.partition == partition && it.scopeId == input.row.channelId }
+        }
+        if (!isEnabledForServer(partition.serverId)) {
+            return if (scope != null && scope in stateByScope) CanonicalMessageV2Route.Revoke(scope) else CanonicalMessageV2Route.None
+        }
+        val baseline = enterBaselineByChannel[partition to input.row.channelId]
+        if (baseline != null && !baseline.closed) {
+            bufferLocked(baseline, delivery)
+            return CanonicalMessageV2Route.Buffered
+        }
+        return if (scope != null && scope in stateByScope) CanonicalMessageV2Route.Window(scope) else CanonicalMessageV2Route.None
+    }
 
-                val delivery = CanonicalMessageV2Delivery(foldInput, frameTransportEpoch?.takeIf { it > 0L })
-                if (state.isAlreadyCommitted(delivery)) {
-                    // The same frame through another entry: it is on disk already. Never write it again.
-                    logger(
-                        "canonical_v2_canary skip=duplicate_delivery server=${scope.serverId} " +
-                            "scope=${scope.scopeId}",
-                    )
-                    return@writer CanonicalMessageV2CanaryOutcome.Committed
-                }
-                acceptInsideWriter(scope, partition, delivery, state, snapshotLoader, partitionGeneration)
-                    .also { outcome ->
-                        if (outcome == CanonicalMessageV2CanaryOutcome.Committed) state.recordCommitted(delivery)
-                    }
+    /** Holding [stateMutex]: display now, keep the frame for the enter commit's replay. */
+    private fun bufferLocked(baseline: CanonicalMessageV2EnterBaseline, delivery: CanonicalMessageV2Delivery) {
+        val scopeId = baseline.scopeId
+        when {
+            // The same frame through another entry: kept once (one write per frame).
+            baseline.alreadyHolds(delivery) -> logger(
+                "canonical_v2_canary skip=duplicate_delivery server=${baseline.partition.serverId} " +
+                    "scope=$scopeId pending=enter",
+            )
+            baseline.overflowed -> Unit
+            baseline.buffered.size >= CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP -> {
+                baseline.overflowed = true
+                baseline.buffered.clear()
+                logger(
+                    "canonical_v2_canary enter=buffer_overflow server=${baseline.partition.serverId} " +
+                        "scope=$scopeId cap=$CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP",
+                )
             }
+            else -> baseline.buffered += CanonicalMessageV2BufferedFrame(
+                delivery,
+                delivery.frameTransportEpoch ?: currentTransportEpochByPartition[baseline.partition],
+            )
         }
     }
 
@@ -301,121 +306,129 @@ internal class CanonicalMessageV2ProductionCanary(
         scope: SyncScopeKey,
         partition: DurablePartitionKey,
         delivery: CanonicalMessageV2Delivery,
-        state: CanonicalMessageV2CanaryScopeState,
-        snapshotLoader: CanonicalMessageV2SnapshotLoader,
-        partitionGeneration: Long,
     ): CanonicalMessageV2CanaryOutcome {
-        val foldInput = delivery.foldInput
-        if (!state.initialized) {
-            val restored = try {
-                generationEngine.restore(scope)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (throwable: Throwable) {
-                state.mode = CanonicalMessageV2CanaryMode.Broken
-                logger(
-                    "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                        "reason=restore_${throwable::class.simpleName ?: "unknown"}",
-                )
-                return CanonicalMessageV2CanaryOutcome.Held(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
-            }
-            state.initialized = true
-            state.cursor = restored.cursor
-            // A window that survived a process restart may have missed frames meanwhile.
-            state.restoredWithoutEpoch = restored.cursor != null
-            state.mode =
-                if (restored.cursor == null) CanonicalMessageV2CanaryMode.Activating
-                else CanonicalMessageV2CanaryMode.SoleApply
+        val plan = stateMutex.withLock { planLocked(scope, partition, delivery) }
+        val (state, cursor) = when (plan) {
+            CanonicalMessageV2Plan.DisplayOnly -> return CanonicalMessageV2CanaryOutcome.NotSelected
+            // The same frame through another entry: it is on disk already. Never write it again.
+            CanonicalMessageV2Plan.AlreadyCommitted -> return CanonicalMessageV2CanaryOutcome.Committed
+            is CanonicalMessageV2Plan.Write -> plan.state to plan.cursor
         }
-        state.cursor = generationEngine.currentCursor(scope)
-        if (state.cursor == null && state.pendingSnapshot == null) state.mode = CanonicalMessageV2CanaryMode.Activating
+        val input = delivery.foldInput
+        return when (input.kind) {
+            CanonicalMessageFoldKind.New -> {
+                when (val result = appendNewInsideWriter(scope, state, cursor, input)) {
+                    CanonicalMessageV2AppendResult.Committed -> {
+                        stateMutex.withLock { state.recordCommitted(delivery) }
+                        CanonicalMessageV2CanaryOutcome.Committed
+                    }
+                    // Display only (logged inside); continuity unchanged.
+                    CanonicalMessageV2AppendResult.BelowWindow -> CanonicalMessageV2CanaryOutcome.NotSelected
+                    CanonicalMessageV2AppendResult.NotFullV2 -> {
+                        markDiscontinuous(scope, state, "not_full_v2")
+                        CanonicalMessageV2CanaryOutcome.NotSelected
+                    }
+                    CanonicalMessageV2AppendResult.BaselineRequired -> {
+                        markDiscontinuous(scope, state, "baseline_required")
+                        CanonicalMessageV2CanaryOutcome.NotSelected
+                    }
+                    CanonicalMessageV2AppendResult.PartitionRevoked -> heldAfterWindowLost(scope, state, "partition_revoked")
+                    CanonicalMessageV2AppendResult.ScopeEvicted -> heldAfterWindowLost(scope, state, "retention_evicted")
+                    is CanonicalMessageV2AppendResult.Failed -> {
+                        markDiscontinuous(scope, state, result.reason)
+                        CanonicalMessageV2CanaryOutcome.Held("canonical_v2_write_failed")
+                    }
+                }
+            }
+            CanonicalMessageFoldKind.Updated -> applyUpdatedInsideWriter(scope, state, cursor, delivery)
+        }
+    }
 
-        // A frame that names its connection decides by that: the reconnect signal travels through
-        // another coroutine and may not have been recorded yet, or may already name a newer socket.
-        // Otherwise read the recorded epoch inside this scope's writer, at commit time.
+    /** Holding [stateMutex]: every continuity decision for one frame, before any write. */
+    private fun planLocked(
+        scope: SyncScopeKey,
+        partition: DurablePartitionKey,
+        delivery: CanonicalMessageV2Delivery,
+    ): CanonicalMessageV2Plan {
+        val state = stateByScope[scope] ?: return CanonicalMessageV2Plan.DisplayOnly
+        if (state.isAlreadyCommitted(delivery)) {
+            logger("canonical_v2_canary skip=duplicate_delivery server=${scope.serverId} scope=${scope.scopeId}")
+            return CanonicalMessageV2Plan.AlreadyCommitted
+        }
         val frameEpoch = delivery.frameTransportEpoch
         val committedEpoch = state.committedTransportEpoch
-        if (
-            frameEpoch != null &&
-            committedEpoch != null &&
-            !state.restoredWithoutEpoch &&
-            frameEpoch < committedEpoch
-        ) {
-            // A late frame of an older socket: the window already continues from a newer
-            // connection, and frames that socket lost may sit between. Show it, never write it.
-            // Epochs only grow within a process on every host; a restart restores without one.
+        if (frameEpoch != null && committedEpoch != null && frameEpoch < committedEpoch) {
+            // A late frame of an older socket: the window already continues from a newer connection, and
+            // frames that socket lost may sit between. Show it, never write it, change nothing (also while
+            // the scope is discontinuous). Epochs only grow within a process on every host.
             logger(
                 "canonical_v2_canary skip=stale_transport server=${scope.serverId} scope=${scope.scopeId} " +
                     "frameEpoch=$frameEpoch committedEpoch=$committedEpoch",
             )
-            return CanonicalMessageV2CanaryOutcome.NotSelected
+            return CanonicalMessageV2Plan.DisplayOnly
         }
-        val transportEpoch = frameEpoch ?: currentTransportEpoch(scope.partition)
-
-        val pending = state.pendingSnapshot
-        if (pending != null) return bufferWhileSnapshotLoads(scope, pending, delivery, transportEpoch)
-
-        if (
-            foldInput.kind == CanonicalMessageFoldKind.New &&
-            state.cursor != null &&
-            state.appendsContinuously(transportEpoch)
-        ) {
-            when (appendNewInsideWriter(scope, partition, foldInput, state, partitionGeneration, transportEpoch)) {
-                CanonicalMessageV2AppendResult.Committed -> return CanonicalMessageV2CanaryOutcome.Committed
-                // Display only (logged inside).
-                CanonicalMessageV2AppendResult.BelowWindow -> return CanonicalMessageV2CanaryOutcome.NotSelected
-                CanonicalMessageV2AppendResult.PartitionRevoked -> return heldAfterPartitionRevoke(scope, state)
-                CanonicalMessageV2AppendResult.ScopeEvicted -> return heldAfterScopeEviction(scope, state)
-                CanonicalMessageV2AppendResult.NotFullV2,
-                CanonicalMessageV2AppendResult.BaselineRequired,
-                -> Unit
+        if (!state.discontinuous && roomLeaveCount(scope.serverId, scope.scopeId) != state.roomLeaveCountAtBaseline) {
+            markDiscontinuousLocked(scope, state, "room_left")
+        }
+        if (!state.discontinuous) {
+            // A frame that names its connection decides by that; otherwise the recorded epoch, read here.
+            val transportEpoch = frameEpoch ?: currentTransportEpochByPartition[partition]
+            if (transportEpoch != committedEpoch) {
+                markDiscontinuousLocked(scope, state, "epoch_changed frameEpoch=$transportEpoch committedEpoch=$committedEpoch")
             }
         }
-
-        return scheduleSnapshot(scope, partition, delivery, state, snapshotLoader, partitionGeneration)
+        if (state.discontinuous) {
+            logger("canonical_v2_canary skip=discontinuous server=${scope.serverId} scope=${scope.scopeId}")
+            return CanonicalMessageV2Plan.DisplayOnly
+        }
+        val cursor = generationEngine.currentCursor(scope) ?: state.cursor
+        if (cursor == null) {
+            markDiscontinuousLocked(scope, state, "no_window")
+            return CanonicalMessageV2Plan.DisplayOnly
+        }
+        state.cursor = cursor
+        return CanonicalMessageV2Plan.Write(state, cursor)
     }
 
     /**
      * Appends one `New` to a continuous window, inside the scope writer. Shared by the realtime path and the
-     * post-snapshot replay so both keep #3002's rules (insert-only, below-window skip, committed cursor).
+     * enter replay so both keep #3002's rules (insert-only, below-window skip, committed cursor). Never
+     * refreshes the scope's retention rank (task #168: ranking = last user-driven write).
      */
     private suspend fun appendNewInsideWriter(
         scope: SyncScopeKey,
-        partition: DurablePartitionKey,
-        foldInput: CanonicalMessageFoldInput,
         state: CanonicalMessageV2CanaryScopeState,
-        partitionGeneration: Long,
-        transportEpoch: Long?,
+        cursor: PersistedCursor,
+        foldInput: CanonicalMessageFoldInput,
     ): CanonicalMessageV2AppendResult {
-        val windowOldest = state.cursor!!.oldestLoadedSeq
+        val windowOldest = cursor.oldestLoadedSeq
         if (windowOldest != null && foldInput.row.seq < windowOldest) {
-            // Older than the stored window: nothing says the messages between it and the window's
-            // oldest edge are on disk, so writing it (and stretching the edge down to it) would claim
-            // a range never loaded. Show it, never write it.
+            // Older than the stored window: nothing says the messages between it and the window's oldest
+            // edge are on disk, so writing it (and stretching the edge down to it) would claim a range never
+            // loaded. Show it, never write it.
             logger(
                 "canonical_v2_canary skip=below_window server=${scope.serverId} scope=${scope.scopeId} " +
                     "seq=${foldInput.row.seq} oldestLoadedSeq=$windowOldest",
             )
             return CanonicalMessageV2AppendResult.BelowWindow
         }
-        val envelope = foldInput.toCanonicalMessageV2Envelope(partition, replyCount = 0)
+        val envelope = foldInput.toCanonicalMessageV2Envelope(scope.partition, replyCount = 0)
             ?: return CanonicalMessageV2AppendResult.NotFullV2
-        val cursor = state.cursor!!.advancedBy(envelope.fact.seq)
-        return when (
-            generationEngine.applyIncremental(
-                // A `New` only ever adds: a stored fact may already be newer (edited, reacted).
-                CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor, insertOnly = true),
-                expectedPartitionGeneration = partitionGeneration,
-            )
-        ) {
+        val advanced = cursor.advancedBy(envelope.fact.seq)
+        val result = commitIncremental(
+            // A `New` only ever adds: a stored fact may already be newer (edited, reacted).
+            CanonicalMessageV2IncrementalFrame(
+                scope,
+                listOf(envelope),
+                advanced,
+                insertOnly = true,
+                preserveUpdatedAt = true,
+            ),
+        ) ?: return CanonicalMessageV2AppendResult.Failed("write_failed")
+        return when (result) {
             CanonicalMessageV2CommitResult.Committed -> {
-                state.cursor = generationEngine.currentCursor(scope) ?: cursor
-                state.committedUnder(transportEpoch)
-                state.mode = CanonicalMessageV2CanaryMode.SoleApply
-                logger(
-                    "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
-                        "scope=${scope.scopeId} source=incremental",
-                )
+                stateMutex.withLock { state.cursor = generationEngine.currentCursor(scope) ?: advanced }
+                logger("canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=incremental")
                 CanonicalMessageV2AppendResult.Committed
             }
             is CanonicalMessageV2CommitResult.BaselineRequired -> CanonicalMessageV2AppendResult.BaselineRequired
@@ -424,224 +437,246 @@ internal class CanonicalMessageV2ProductionCanary(
         }
     }
 
-    /** Inside the scope writer, with [pending] still loading: display now, keep the frame for the replay. */
-    private fun bufferWhileSnapshotLoads(
+    /**
+     * Task #168: one `message:updated` on a continuous window, inside the scope writer. Explicit fields only:
+     * - below the window's oldest edge → ignored (the window never claimed it);
+     * - names a reply thread (`threadId`), so its reply count is unknown → discontinuous;
+     * - partial (not a full V2 node) → discontinuous;
+     * - its fact is not in the window although its seq is inside the window's range → discontinuous;
+     * - otherwise the stored fact is replaced (never insert-only), cursor and retention rank unchanged.
+     */
+    private suspend fun applyUpdatedInsideWriter(
         scope: SyncScopeKey,
-        pending: CanonicalMessageV2PendingSnapshot,
-        delivery: CanonicalMessageV2Delivery,
-        transportEpoch: Long?,
-    ): CanonicalMessageV2CanaryOutcome {
-        when {
-            // The same frame through another entry: kept once (task #168 #5, one write per frame).
-            pending.alreadyHolds(delivery) -> logger(
-                "canonical_v2_canary skip=duplicate_delivery server=${scope.serverId} " +
-                    "scope=${scope.scopeId} pending=snapshot",
-            )
-            pending.overflowed -> Unit
-            pending.buffered.size >= CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP -> {
-                pending.overflowed = true
-                pending.buffered.clear()
-                logger(
-                    "canonical_v2_canary snapshot=buffer_overflow server=${scope.serverId} " +
-                        "scope=${scope.scopeId} cap=$CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP",
-                )
-            }
-            else -> pending.buffered += CanonicalMessageV2BufferedFrame(delivery, transportEpoch)
-        }
-        return CanonicalMessageV2CanaryOutcome.Pending
-    }
-
-    /** Inside the scope writer: never loads. Starts the scope's one background snapshot and returns. */
-    private suspend fun scheduleSnapshot(
-        scope: SyncScopeKey,
-        partition: DurablePartitionKey,
-        trigger: CanonicalMessageV2Delivery,
         state: CanonicalMessageV2CanaryScopeState,
-        snapshotLoader: CanonicalMessageV2SnapshotLoader,
-        partitionGeneration: Long,
+        cursor: PersistedCursor,
+        delivery: CanonicalMessageV2Delivery,
     ): CanonicalMessageV2CanaryOutcome {
-        state.mode = CanonicalMessageV2CanaryMode.Activating
-        // The snapshot is only known to be continuous with the connection that was current when it was
-        // requested (the frame's own connection when it names one). If the transport reconnects while it
-        // loads, the next frame must snapshot again.
-        val epochAtRequest = trigger.frameTransportEpoch ?: currentTransportEpoch(scope.partition)
-        val pending = CanonicalMessageV2PendingSnapshot(
-            scope = scope,
-            state = state,
-            targetFactId = trigger.foldInput.row.id,
-            partitionGeneration = partitionGeneration,
-            epochAtRequest = epochAtRequest,
-            trigger = trigger,
-            snapshotLoader = snapshotLoader,
-        )
-        state.pendingSnapshot = pending
-        val scheduled = selectionMutex.withLock {
-            // Reset / eviction may have dropped this state while the writer was waiting.
-            if (stateByScope[scope] !== state) return@withLock false
-            val job = snapshotJobScope.launch(start = CoroutineStart.LAZY) {
-                runSnapshotJob(pending, partition, snapshotLoader)
-            }
-            pending.job = job
-            pendingSnapshotByScope[scope] = pending
-            launchedSnapshotJobs.removeAll { it.isCompleted }
-            launchedSnapshotJobs += job
-            true
-        }
-        if (!scheduled) {
-            state.pendingSnapshot = null
-            return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_scope_reset")
-        }
-        logger(
-            "canonical_v2_canary snapshot=scheduled server=${scope.serverId} scope=${scope.scopeId} " +
-                "epochAtRequest=$epochAtRequest",
-        )
-        // Started only once every handle is in place; it loads outside every lock.
-        pending.job?.start()
-        return CanonicalMessageV2CanaryOutcome.Pending
-    }
-
-    /** The background half: load outside every lock, then commit + replay inside the scope writer. */
-    private suspend fun runSnapshotJob(
-        pending: CanonicalMessageV2PendingSnapshot,
-        partition: DurablePartitionKey,
-        snapshotLoader: CanonicalMessageV2SnapshotLoader,
-    ) {
-        val scope = pending.scope
-        val loaded = try {
-            snapshotLoader.load(CanonicalMessageV2SnapshotRequest(scope, pending.targetFactId))
-        } catch (cancelled: CancellationException) {
-            // Our own cancellation (reset / eviction / revoke) ends the job; a transport that reports a
-            // failure as a cancellation is a failed load, never a stuck scope.
-            if (!currentCoroutineContext().isActive) throw cancelled
-            CanonicalMessageV2SnapshotLoadResult.Unavailable("canonical_v2_snapshot_cancelled")
-        } catch (throwable: Throwable) {
-            CanonicalMessageV2SnapshotLoadResult.Unavailable(
-                "canonical_v2_snapshot_${throwable::class.simpleName ?: "failed"}",
+        val row = delivery.foldInput.row
+        val windowOldest = cursor.oldestLoadedSeq
+        if (windowOldest != null && row.seq < windowOldest) {
+            logger(
+                "canonical_v2_canary skip=outside_window server=${scope.serverId} scope=${scope.scopeId} " +
+                    "seq=${row.seq} oldestLoadedSeq=$windowOldest",
             )
+            return CanonicalMessageV2CanaryOutcome.NotSelected
         }
-        // A load that returned despite a cancellation (a transport that ignores it) still reaches the writer:
-        // the re-check there is the one guard against a stale write, never where a cancellation lands. The
-        // lock bookkeeping always completes.
-        withContext(NonCancellable) { commitInsideWriter(pending, partition, loaded) }
+        if (row.threadId != null) {
+            markDiscontinuous(scope, state, "updated_thread")
+            return CanonicalMessageV2CanaryOutcome.NotSelected
+        }
+        val envelope = delivery.foldInput.toCanonicalMessageV2Envelope(scope.partition, replyCount = 0)
+        if (envelope == null) {
+            markDiscontinuous(scope, state, "updated_partial")
+            return CanonicalMessageV2CanaryOutcome.NotSelected
+        }
+        val stored = try {
+            generationEngine.storedFactExists(scope, row.id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            markDiscontinuous(scope, state, "read_failed")
+            return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_read_failed")
+        }
+        if (!stored) {
+            markDiscontinuous(scope, state, "updated_missing")
+            return CanonicalMessageV2CanaryOutcome.NotSelected
+        }
+        val result = commitIncremental(
+            CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor, insertOnly = false, preserveUpdatedAt = true),
+        )
+        return when (result) {
+            null -> {
+                markDiscontinuous(scope, state, "write_failed")
+                CanonicalMessageV2CanaryOutcome.Held("canonical_v2_write_failed")
+            }
+            CanonicalMessageV2CommitResult.Committed -> {
+                stateMutex.withLock {
+                    state.cursor = generationEngine.currentCursor(scope) ?: cursor
+                    state.recordCommitted(delivery)
+                }
+                logger("canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=updated")
+                CanonicalMessageV2CanaryOutcome.Committed
+            }
+            is CanonicalMessageV2CommitResult.BaselineRequired -> {
+                markDiscontinuous(scope, state, "baseline_required")
+                CanonicalMessageV2CanaryOutcome.NotSelected
+            }
+            CanonicalMessageV2CommitResult.PartitionRevoked -> heldAfterWindowLost(scope, state, "partition_revoked")
+            CanonicalMessageV2CommitResult.ScopeEvicted -> heldAfterWindowLost(scope, state, "retention_evicted")
+        }
     }
 
-    private suspend fun commitInsideWriter(
-        pending: CanonicalMessageV2PendingSnapshot,
-        partition: DurablePartitionKey,
-        loaded: CanonicalMessageV2SnapshotLoadResult,
-    ) {
-        val scope = pending.scope
-        withScopeMutex<Unit>(scope) {
-            generationEngine.withScopeWriter<Unit>(scope) writer@{
-                val stillCurrent = selectionMutex.withLock {
-                    val current = !pending.cancelled &&
-                        pendingSnapshotByScope[scope] === pending &&
-                        stateByScope[scope] === pending.state &&
-                        selectedScopeByPartition[scope.partition] == scope
-                    if (current) {
-                        pending.committing = true
-                        pendingSnapshotByScope.remove(scope)
-                    }
-                    current
-                }
-                if (!stillCurrent) {
-                    // Reset, server/account switch, eviction or revoke happened meanwhile: this job
-                    // belongs to a session that no longer exists. Never write.
-                    logger(
-                        "canonical_v2_canary snapshot=stale_dropped server=${scope.serverId} " +
-                            "scope=${scope.scopeId} buffered=${pending.buffered.size}",
-                    )
-                    // Never leave a state waiting for a job that will not commit (it would buffer forever).
-                    if (pending.state.pendingSnapshot === pending) {
-                        pending.state.pendingSnapshot = null
-                        pending.state.markDiscontinuous()
-                    }
-                    pending.buffered.clear()
-                    return@writer
-                }
-                val state = pending.state
-                if (state.pendingSnapshot === pending) state.pendingSnapshot = null
-                try {
-                    if (!isEnabledForServer(scope.serverId)) {
-                        generationEngine.rebaselineFailed(scope)
-                        state.markDiscontinuous()
-                        logger(
-                            "canonical_v2_canary snapshot=dropped server=${scope.serverId} " +
-                                "scope=${scope.scopeId} reason=flag_revoked",
-                        )
-                        return@writer
-                    }
-                    val outcome = commitSnapshot(
-                        scope,
-                        pending.targetFactId,
-                        state,
-                        loaded,
-                        pending.partitionGeneration,
-                        pending.epochAtRequest,
-                    )
-                    if (outcome == CanonicalMessageV2CanaryOutcome.Committed) {
-                        state.recordCommitted(pending.trigger)
-                        replayBuffered(
-                            pending,
-                            partition,
-                            (loaded as CanonicalMessageV2SnapshotLoadResult.Loaded).frame,
-                        )
-                    } else {
-                        // Nothing was written: whatever was buffered is lost to the window.
-                        state.markDiscontinuous()
-                        if (pending.buffered.isNotEmpty() || pending.overflowed) {
-                            logger(
-                                "canonical_v2_canary snapshot=buffer_dropped server=${scope.serverId} " +
-                                    "scope=${scope.scopeId} buffered=${pending.buffered.size}",
-                            )
-                        }
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (throwable: Throwable) {
-                    generationEngine.rebaselineFailed(scope)
-                    state.markDiscontinuous()
-                    state.mode = CanonicalMessageV2CanaryMode.Broken
-                    logger(
-                        "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                            "reason=snapshot_job_${throwable::class.simpleName ?: "failed"}",
-                    )
-                } finally {
-                    pending.buffered.clear()
-                }
-            }
+    /** `null` = the write threw (nothing committed: one SQLite transaction). */
+    private suspend fun commitIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2CommitResult? =
+        try {
+            generationEngine.applyIncremental(frame)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            logger(
+                "canonical_v2_canary write_failed server=${frame.scope.serverId} scope=${frame.scope.scopeId} " +
+                    "reason=${throwable::class.simpleName ?: "unknown"}",
+            )
+            null
         }
+
+    /**
+     * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch]. Posted by
+     * the native host before any frame of the new socket. Recorded per partition; every scope compares it
+     * with the epoch its baseline was requested under, inside its own writer.
+     */
+    suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
+        if (transportEpoch <= 0L) return
+        stateMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
     }
 
     /**
-     * Inside the scope writer, right after [pending]'s snapshot committed under its request epoch. A buffered
+     * Task #168: the socket left room [roomId] on [serverId] (a `leave:channel` transition; since #2994 only
+     * for rooms the user is not a member of). Its later frames may be missing from the stream, so every
+     * window of that channel id is discontinuous from here on, and an enter in flight cannot become
+     * continuous. Non-suspending: called from the room-lease registry's lock.
+     */
+    fun noteRoomLeft(serverId: String, roomId: String) {
+        val count = synchronized(roomLeaveLock) {
+            val key = serverId to roomId
+            ((roomLeaveCountByRoom[key] ?: 0L) + 1L).also { roomLeaveCountByRoom[key] = it }
+        }
+        logger("canonical_v2_canary room_left server=$serverId scope=$roomId count=$count")
+    }
+
+    private fun roomLeaveCount(serverId: String, roomId: String): Long =
+        synchronized(roomLeaveLock) { roomLeaveCountByRoom[serverId to roomId] ?: 0L }
+
+    /**
+     * Task #168 hole A: an enter snapshot of [scopeId] is about to be requested. MUST be called before the
+     * fetch. Records the request epoch; from now until [onEnterCommitted] / [abandonEnterBaseline], frames of
+     * that channel are displayed and buffered instead of written. `null` = one is already in flight (the
+     * caller then commits as a plain external commit).
+     */
+    suspend fun beginEnterBaseline(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        nonMember: Boolean,
+    ): CanonicalMessageV2EnterBaseline? = stateMutex.withLock {
+        val key = partition to scopeId
+        if (enterBaselineByChannel[key]?.closed == false) return@withLock null
+        val baseline = CanonicalMessageV2EnterBaseline(
+            partition = partition,
+            scopeId = scopeId,
+            epochAtRequest = currentTransportEpochByPartition[partition],
+            roomLeaveCountAtRequest = roomLeaveCount(partition.serverId, scopeId),
+            nonMemberAtRequest = nonMember,
+        )
+        enterBaselineByChannel[key] = baseline
+        logger(
+            "canonical_v2_canary enter=registered server=${partition.serverId} scope=$scopeId " +
+                "epochAtRequest=${baseline.epochAtRequest} nonMember=$nonMember",
+        )
+        baseline
+    }
+
+    /**
+     * Task #168: [baseline]'s enter snapshot [snapshot] has just committed. MUST be called inside
+     * `generationEngine.withScopeWriter(snapshot.scope)`, right after `applySnapshot` returned `Committed`.
+     * The scope gets a fresh state continuous under the request epoch, then the buffered frames are replayed
+     * by #3007's rules. It stays discontinuous instead when the user is not a member of the channel (the
+     * server joins its room asynchronously on open, so the page may miss messages never pushed), the room was
+     * left meanwhile, another writer committed meanwhile, or the buffer overflowed.
+     */
+    suspend fun onEnterCommitted(
+        baseline: CanonicalMessageV2EnterBaseline,
+        snapshot: CanonicalMessageV2SnapshotFrame,
+        nonMemberAtCommit: Boolean = false,
+    ): Unit = withContext(NonCancellable) {
+        val scope = snapshot.scope
+        val (state, buffered, reason) = stateMutex.withLock {
+            val open = !baseline.closed && enterBaselineByChannel[baseline.partition to baseline.scopeId] === baseline
+            closeLocked(baseline)
+            val cursor = generationEngine.currentCursor(scope)
+            if (!open || cursor == null) {
+                // Dropped by a reset meanwhile, or the window is gone: no state, nothing replayed.
+                markChannelLocked(baseline, "enter_dropped")
+                stateByScope.remove(scope)
+                return@withContext
+            }
+            val state = CanonicalMessageV2CanaryScopeState(
+                cursor = cursor,
+                committedTransportEpoch = baseline.epochAtRequest,
+                roomLeaveCountAtBaseline = baseline.roomLeaveCountAtRequest,
+            )
+            stateByScope[scope] = state
+            val reason = when {
+                baseline.nonMemberAtRequest || nonMemberAtCommit -> "non_member"
+                roomLeaveCount(scope.serverId, scope.scopeId) != baseline.roomLeaveCountAtRequest -> "room_left"
+                baseline.superseded -> "external_commit"
+                baseline.overflowed -> "buffer_overflow"
+                else -> null
+            }
+            if (reason != null) state.discontinuous = true
+            Triple(state, baseline.buffered.toList(), reason)
+        }
+        logger(
+            "canonical_v2_canary enter=committed server=${scope.serverId} scope=${scope.scopeId} " +
+                "epoch=${baseline.epochAtRequest} buffered=${buffered.size} " +
+                (reason?.let { "continuity=discontinuous reason=$it" } ?: "continuity=continuous"),
+        )
+        if (reason == null) replayBuffered(baseline, scope, state, snapshot, buffered)
+    }
+
+    /**
+     * Task #168: [baseline]'s enter snapshot will not commit (failed fetch, identity / flag change, refused
+     * commit). No-op once committed. Frames displayed during the fetch are not on disk, so any window of that
+     * channel is discontinuous from here on.
+     */
+    suspend fun abandonEnterBaseline(baseline: CanonicalMessageV2EnterBaseline): Unit = withContext(NonCancellable) {
+        stateMutex.withLock {
+            if (baseline.closed) return@withLock
+            closeLocked(baseline)
+            if (baseline.buffered.isNotEmpty() || baseline.overflowed) markChannelLocked(baseline, "enter_failed")
+            logger(
+                "canonical_v2_canary enter=abandoned server=${baseline.partition.serverId} " +
+                    "scope=${baseline.scopeId} buffered=${baseline.buffered.size}",
+            )
+        }
+    }
+
+    /** Holding [stateMutex]. */
+    private fun closeLocked(baseline: CanonicalMessageV2EnterBaseline) {
+        baseline.closed = true
+        val key = baseline.partition to baseline.scopeId
+        if (enterBaselineByChannel[key] === baseline) enterBaselineByChannel.remove(key)
+    }
+
+    /** Holding [stateMutex]: every window of [baseline]'s channel id may now miss frames. */
+    private fun markChannelLocked(baseline: CanonicalMessageV2EnterBaseline, reason: String) {
+        stateByScope.entries
+            .filter { it.key.partition == baseline.partition && it.key.scopeId == baseline.scopeId }
+            .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, reason) }
+    }
+
+    /**
+     * Inside the scope writer, right after the enter snapshot committed under its request epoch. A buffered
      * frame is appended only when it is provably continuous with that snapshot: a `New` of the same epoch
      * with a seq above the snapshot's latestSeq. A frame the snapshot already holds is not written again; an
      * older connection's frame is display-only; anything else marks the scope discontinuous.
      */
     private suspend fun replayBuffered(
-        pending: CanonicalMessageV2PendingSnapshot,
-        partition: DurablePartitionKey,
+        baseline: CanonicalMessageV2EnterBaseline,
+        scope: SyncScopeKey,
+        state: CanonicalMessageV2CanaryScopeState,
         snapshot: CanonicalMessageV2SnapshotFrame,
+        buffered: List<CanonicalMessageV2BufferedFrame>,
     ) {
-        val scope = pending.scope
-        val state = pending.state
-        fun discontinuous(reason: String) {
-            state.markDiscontinuous()
-            logger(
-                "canonical_v2_canary snapshot=replay_discontinuous server=${scope.serverId} " +
-                    "scope=${scope.scopeId} reason=$reason",
-            )
-        }
-        if (pending.overflowed) return discontinuous("buffer_overflow")
-        val committedEpoch = pending.epochAtRequest
-        val snapshotLatestSeq = state.cursor?.latestSeq ?: snapshot.cursor.latestSeq
+        suspend fun discontinuous(reason: String) = markDiscontinuous(scope, state, "replay_$reason")
+        val committedEpoch = baseline.epochAtRequest
+        val snapshotLatestSeq = snapshot.cursor.latestSeq
         val snapshotFactIds = snapshot.envelopes.mapTo(HashSet()) { it.fact.id }
-        for (buffered in pending.buffered) {
-            val delivery = buffered.delivery
+        for (frame in buffered) {
+            val delivery = frame.delivery
             val input = delivery.foldInput
-            if (state.isAlreadyCommitted(delivery)) continue
-            val epoch = buffered.transportEpoch
+            val frameScope = input.v2ScopeOrNull(scope.partition)
+            if (frameScope != null && frameScope != scope) continue // another scope kind of the same id
+            val epoch = frame.transportEpoch
             if (epoch != null && committedEpoch != null && epoch < committedEpoch) {
                 // A late frame of an older socket (as #2991): shown when it arrived, never written.
                 logger(
@@ -651,15 +686,18 @@ internal class CanonicalMessageV2ProductionCanary(
                 continue
             }
             if (epoch != committedEpoch) return discontinuous("epoch_mismatch")
+            if (frameScope == null) return discontinuous("not_full_v2")
             if (input.kind != CanonicalMessageFoldKind.New) return discontinuous("buffered_${input.kind.name.lowercase()}")
+            if (stateMutex.withLock { state.isAlreadyCommitted(delivery) }) continue
             val seq = input.row.seq
+            val cursor = stateMutex.withLock { state.cursor } ?: return discontinuous("no_window")
             if (snapshotLatestSeq != null && seq <= snapshotLatestSeq) {
                 if (input.row.id in snapshotFactIds) {
                     // The snapshot already holds it: never written twice.
-                    state.recordCommitted(delivery)
+                    stateMutex.withLock { state.recordCommitted(delivery) }
                     continue
                 }
-                val windowOldest = state.cursor?.oldestLoadedSeq
+                val windowOldest = cursor.oldestLoadedSeq
                 if (windowOldest != null && seq < windowOldest) {
                     logger(
                         "canonical_v2_canary skip=below_window server=${scope.serverId} scope=${scope.scopeId} " +
@@ -669,312 +707,111 @@ internal class CanonicalMessageV2ProductionCanary(
                 }
                 return discontinuous("missing_from_snapshot")
             }
-            if (state.cursor == null) return discontinuous("no_window")
-            when (appendNewInsideWriter(scope, partition, input, state, pending.partitionGeneration, committedEpoch)) {
-                CanonicalMessageV2AppendResult.Committed -> state.recordCommitted(delivery)
+            when (val result = appendNewInsideWriter(scope, state, cursor, input)) {
+                CanonicalMessageV2AppendResult.Committed -> stateMutex.withLock { state.recordCommitted(delivery) }
                 CanonicalMessageV2AppendResult.BelowWindow -> Unit
                 CanonicalMessageV2AppendResult.NotFullV2 -> return discontinuous("not_full_v2")
                 CanonicalMessageV2AppendResult.BaselineRequired -> return discontinuous("baseline_required")
                 CanonicalMessageV2AppendResult.PartitionRevoked -> {
-                    heldAfterPartitionRevoke(scope, state)
+                    heldAfterWindowLost(scope, state, "partition_revoked")
                     return
                 }
                 CanonicalMessageV2AppendResult.ScopeEvicted -> {
-                    heldAfterScopeEviction(scope, state)
+                    heldAfterWindowLost(scope, state, "retention_evicted")
                     return
                 }
-            }
-        }
-    }
-
-    private suspend fun <T> withScopeMutex(
-        scope: SyncScopeKey,
-        block: suspend () -> T,
-    ): T {
-        val entry = selectionMutex.withLock {
-            scopeMutexByKey.getOrPut(scope) { MutexEntry() }.also { it.users += 1 }
-        }
-        return try {
-            entry.mutex.withLock { block() }
-        } finally {
-            selectionMutex.withLock {
-                entry.users -= 1
-                if (entry.users == 0 && scopeMutexByKey[scope] === entry) {
-                    scopeMutexByKey.remove(scope)
-                }
+                is CanonicalMessageV2AppendResult.Failed -> return discontinuous(result.reason)
             }
         }
     }
 
     /**
-     * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch]. Posted by
-     * the native host before any frame of the new socket. Recorded per partition; every scope compares it
-     * with the epoch it last committed under, inside its own writer.
-     */
-    suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
-        if (transportEpoch <= 0L) return
-        // Any different value is a new connection. Hosts number sockets increasingly within a process, but
-        // the signal stays tolerant: a late old signal costs at most one extra snapshot.
-        selectionMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
-    }
-
-    private suspend fun currentTransportEpoch(partition: DurablePartitionKey): Long? =
-        selectionMutex.withLock { currentTransportEpochByPartition[partition] }
-
-    /**
-     * Read-only view for writers outside the canary (task #1124 enter-snapshot): whether [scope] is
-     * the scope this canary currently owns for its partition. Never selects, never widens.
-     */
-    suspend fun isSelected(scope: SyncScopeKey): Boolean =
-        selectionMutex.withLock { selectedScopeByPartition[scope.partition] == scope }
-
-    /**
-     * Task #168: a writer outside the canary (enter snapshot, adjacent page, gap catch-up) has just committed
-     * into [scope]. MUST be called inside `generationEngine.withScopeWriter(scope)`, right after that commit
-     * returned `Committed`, so it is serialized with every canary write of the scope.
+     * Task #168: a writer outside the canary that does not register a baseline (adjacent page, gap catch-up,
+     * an enter that could not register) has just committed into [scope]. MUST be called inside
+     * `generationEngine.withScopeWriter(scope)`, right after that commit returned `Committed`, so it is
+     * serialized with every canary write of the scope.
      *
-     * The canary did not produce that window, so:
-     * 1. the scope is marked discontinuous: the next realtime frame re-snapshots (#2991 rules) instead of
-     *    appending onto a window whose continuity with the realtime stream nothing proves;
-     * 2. a background snapshot still pending for the scope is superseded by an explicit signal, never by
-     *    comparing seqs: it is cancelled exactly like a reset cancels it (`cancelled`, removed from
-     *    [pendingSnapshotByScope], so its in-writer re-check drops it), because it was requested before this
-     *    commit and could otherwise overwrite the newer window with an older page. Its buffered frames are
-     *    dropped (they were displayed when they arrived), and ONE fresh snapshot is scheduled with the same
-     *    trigger: it loads after this commit, so it is never older than the external window, and it puts the
-     *    trigger frame (and everything buffered behind it) on disk even when no further frame arrives.
+     * The canary did not produce that window and nothing proves its continuity with the realtime stream, so
+     * the scope is marked discontinuous (#3008): display only until the next enter commit. Nothing is
+     * rescheduled (task #168: no background snapshot). An enter in flight for the channel cannot become
+     * continuous either. No-op for a scope without a state (thread scopes, never-opened channels).
      *
-     * No-op when the canary holds no state for [scope] (not selected, or not yet initialized: a state created
-     * later restores from disk without an epoch, which already re-snapshots).
-     *
-     * Locks: only [selectionMutex], a leaf lock (the canary's own scope mutex is ordered BEFORE the scope
-     * writer, so it is never taken here). Nothing of the realtime grant / authority registry is touched.
+     * Locks: only the canary's leaf state mutex. Nothing of the realtime grant / authority registry is touched.
      */
     suspend fun onExternalCommit(scope: SyncScopeKey): Unit = withContext(NonCancellable) {
         // The commit already happened: a cancellation of the caller must not skip the mark.
-        noteExternalCommitInsideWriter(scope)
-    }
-
-    private suspend fun noteExternalCommitInsideWriter(scope: SyncScopeKey) {
-        val state = selectionMutex.withLock {
-            val state = stateByScope[scope] ?: return
-            val superseded = state.pendingSnapshot
-            if (superseded != null && pendingSnapshotByScope[scope] === superseded) {
-                cancelPendingSnapshotsLocked { it == scope }
-            }
-            state
-        }
-        val superseded = state.pendingSnapshot
-        state.pendingSnapshot = null
-        state.cursor = generationEngine.currentCursor(scope)
-        state.markDiscontinuous()
-        logger(
-            "canonical_v2_canary external_commit server=${scope.serverId} scope=${scope.scopeId} " +
-                "superseded=${superseded != null}",
-        )
-        if (superseded == null) return
-        if (superseded.buffered.isNotEmpty() || superseded.overflowed) {
-            logger(
-                "canonical_v2_canary snapshot=buffer_dropped server=${scope.serverId} " +
-                    "scope=${scope.scopeId} buffered=${superseded.buffered.size} reason=external_commit",
-            )
-        }
-        superseded.buffered.clear()
-        scheduleSnapshot(
-            scope = scope,
-            partition = scope.partition,
-            trigger = superseded.trigger,
-            state = state,
-            snapshotLoader = superseded.snapshotLoader,
-            partitionGeneration = superseded.partitionGeneration,
-        )
-    }
-
-    suspend fun modeFor(serverId: String, scopeId: String): CanonicalMessageV2CanaryMode =
-        selectionMutex.withLock {
-            val selected = selectedScopeByPartition.values.firstOrNull { it.serverId == serverId }
-                ?: return@withLock CanonicalMessageV2CanaryMode.Off
-            if (selected.scopeId != scopeId) return@withLock CanonicalMessageV2CanaryMode.ShadowOnly
-            stateByScope[selected]?.mode ?: CanonicalMessageV2CanaryMode.Activating
-        }
-
-    /**
-     * Suspends until no background snapshot job is running (including ones started by the jobs awaited).
-     * Never starts, cancels or reorders work.
-     */
-    internal suspend fun awaitSnapshotJobs() {
-        while (true) {
-            val jobs = selectionMutex.withLock {
-                launchedSnapshotJobs.removeAll { it.isCompleted }
-                launchedSnapshotJobs.toList()
-            }
-            if (jobs.isEmpty()) return
-            jobs.joinAll()
+        stateMutex.withLock {
+            enterBaselineByChannel[scope.partition to scope.scopeId]?.superseded = true
+            val state = stateByScope[scope] ?: return@withLock
+            state.cursor = generationEngine.currentCursor(scope)
+            markDiscontinuousLocked(scope, state, "external_commit")
         }
     }
 
-    /** The scopes with a live (not cancelled, not yet committing) background snapshot. */
-    internal suspend fun pendingSnapshotScopes(): Set<SyncScopeKey> =
-        selectionMutex.withLock { pendingSnapshotByScope.keys.toSet() }
-
-    /** Inside the scope writer, with the snapshot already loaded: never touches the network. */
-    private suspend fun commitSnapshot(
-        scope: SyncScopeKey,
-        targetFactId: String,
-        state: CanonicalMessageV2CanaryScopeState,
-        loaded: CanonicalMessageV2SnapshotLoadResult,
-        partitionGeneration: Long,
-        epochAtRequest: Long?,
-    ): CanonicalMessageV2CanaryOutcome =
-        when (loaded) {
-            is CanonicalMessageV2SnapshotLoadResult.Unavailable -> {
-                generationEngine.rebaselineFailed(scope)
-                state.mode = CanonicalMessageV2CanaryMode.Broken
-                logger(
-                    "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                        "reason=${loaded.diagnostic}",
-                )
-                CanonicalMessageV2CanaryOutcome.Held(loaded.diagnostic)
-            }
-            is CanonicalMessageV2SnapshotLoadResult.Loaded -> {
-                val frame = loaded.frame
-                if (frame.scope != scope || frame.envelopes.none { it.fact.id == targetFactId }) {
-                    generationEngine.rebaselineFailed(scope)
-                    state.mode = CanonicalMessageV2CanaryMode.Broken
-                    logger(
-                        "canonical_v2_canary mode=broken server=${scope.serverId} scope=${scope.scopeId} " +
-                            "reason=canonical_v2_snapshot_missing_target",
-                    )
-                    CanonicalMessageV2CanaryOutcome.Held("canonical_v2_snapshot_missing_target")
-                } else {
-                    try {
-                        when (
-                            generationEngine.applySnapshot(
-                                frame,
-                                expectedPartitionGeneration = partitionGeneration,
-                            )
-                        ) {
-                            CanonicalMessageV2CommitResult.Committed -> {
-                                state.cursor = generationEngine.currentCursor(scope) ?: frame.cursor
-                                state.committedUnder(epochAtRequest)
-                                state.mode = CanonicalMessageV2CanaryMode.SoleApply
-                                logger(
-                                    "canonical_v2_canary mode=sole_apply server=${scope.serverId} " +
-                                        "scope=${scope.scopeId} source=snapshot",
-                                )
-                                CanonicalMessageV2CanaryOutcome.Committed
-                            }
-                            CanonicalMessageV2CommitResult.PartitionRevoked ->
-                                heldAfterPartitionRevoke(scope, state)
-                            CanonicalMessageV2CommitResult.ScopeEvicted ->
-                                heldAfterScopeEviction(scope, state)
-                            is CanonicalMessageV2CommitResult.BaselineRequired ->
-                                error("snapshot commit cannot require a baseline")
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (throwable: Throwable) {
-                        generationEngine.rebaselineFailed(scope)
-                        state.mode = CanonicalMessageV2CanaryMode.Broken
-                        CanonicalMessageV2CanaryOutcome.Held(
-                            "canonical_v2_snapshot_${throwable::class.simpleName ?: "failed"}",
-                        )
-                    }
-                }
-            }
+    /** What the realtime path does with [scope]'s next frame (diagnostics / tests; never selects or widens). */
+    internal suspend fun continuityOf(scope: SyncScopeKey): CanonicalMessageV2ScopeContinuity =
+        stateMutex.withLock {
+            val state = stateByScope[scope] ?: return@withLock CanonicalMessageV2ScopeContinuity.NoWindow
+            if (state.discontinuous) CanonicalMessageV2ScopeContinuity.Discontinuous
+            else CanonicalMessageV2ScopeContinuity.Continuous
         }
 
-    /**
-     * The flag went off for the selected scope: drop its V2 window and hand the scope back to the legacy
-     * path. Task #168: no snapshot barrier any more (it loaded inline, and the window it wrote was cleared
-     * right after anyway); a loading snapshot is cancelled and can never write.
-     */
-    private suspend fun revokeSelection(
+    /** The scopes of [partition] with a window committed in this process (the in-memory index). */
+    internal suspend fun windowedScopes(partition: DurablePartitionKey): Set<SyncScopeKey> =
+        stateMutex.withLock { stateByScope.keys.filterTo(mutableSetOf()) { it.partition == partition } }
+
+    private suspend fun markDiscontinuous(
         scope: SyncScopeKey,
         state: CanonicalMessageV2CanaryScopeState,
-    ): CanonicalMessageV2CanaryOutcome {
-        if (state.mode == CanonicalMessageV2CanaryMode.Off) return CanonicalMessageV2CanaryOutcome.NotSelected
-        selectionMutex.withLock { cancelPendingSnapshotsLocked { it == scope } }
-        state.pendingSnapshot = null
+        reason: String,
+    ) = stateMutex.withLock { markDiscontinuousLocked(scope, state, reason) }
+
+    /** Holding [stateMutex]. Only the state still installed for [scope] is marked. */
+    private fun markDiscontinuousLocked(
+        scope: SyncScopeKey,
+        state: CanonicalMessageV2CanaryScopeState,
+        reason: String,
+    ) {
+        if (stateByScope[scope] !== state || state.discontinuous) return
+        state.discontinuous = true
+        logger("canonical_v2_canary discontinuous server=${scope.serverId} scope=${scope.scopeId} reason=$reason")
+    }
+
+    /**
+     * The flag went off for a scope with a window: drop its V2 window and hand the scope back to the legacy
+     * path. Never loads.
+     */
+    private suspend fun revokeInsideWriter(scope: SyncScopeKey): CanonicalMessageV2CanaryOutcome {
         generationEngine.clearScope(scope)
-        selectionMutex.withLock {
-            if (selectedScopeByPartition[scope.partition] == scope) {
-                selectedScopeByPartition.remove(scope.partition)
-            }
-            stateByScope.remove(scope)
-        }
+        stateMutex.withLock { stateByScope.remove(scope) }
         logger("canonical_v2_canary mode=off server=${scope.serverId} scope=${scope.scopeId} reason=flag_revoked")
         return CanonicalMessageV2CanaryOutcome.NotSelected
     }
 
     private suspend fun onPartitionRevoked(partition: DurablePartitionKey) {
-        selectionMutex.withLock {
-            selectedScopeByPartition.remove(partition)
+        stateMutex.withLock {
             currentTransportEpochByPartition.remove(partition)
             stateByScope.keys.removeAll { it.partition == partition }
-            cancelPendingSnapshotsLocked { it.partition == partition }
+            enterBaselineByChannel.entries.removeAll { (key, baseline) ->
+                (key.first == partition).also { if (it) baseline.closed = true }
+            }
         }
     }
 
     private suspend fun onScopesInvalidated(scopes: Set<SyncScopeKey>) {
-        selectionMutex.withLock {
-            selectedScopeByPartition.entries.removeAll { it.value in scopes }
-            stateByScope.keys.removeAll { it in scopes }
-            cancelPendingSnapshotsLocked { it in scopes }
-        }
+        stateMutex.withLock { stateByScope.keys.removeAll { it in scopes } }
     }
 
-    /**
-     * Holding [selectionMutex]. The dropped snapshot can never commit (re-checked in its writer) and its
-     * buffer dies with it. A job already committing is not cancelled: it is inside the partition mutation
-     * that serializes it against the reset, whose generation check rejects its write if it came second.
-     */
-    private fun cancelPendingSnapshotsLocked(predicate: (SyncScopeKey) -> Boolean) {
-        val dropped = pendingSnapshotByScope.entries.filter { predicate(it.key) }
-        dropped.forEach { (scope, pending) ->
-            pending.cancelled = true
-            if (!pending.committing) pending.job?.cancel()
-            pendingSnapshotByScope.remove(scope)
-            logger(
-                "canonical_v2_canary snapshot=cancelled server=${scope.serverId} scope=${scope.scopeId}",
-            )
-        }
-    }
-
-    private fun heldAfterPartitionRevoke(
+    private suspend fun heldAfterWindowLost(
         scope: SyncScopeKey,
         state: CanonicalMessageV2CanaryScopeState,
+        reason: String,
     ): CanonicalMessageV2CanaryOutcome {
-        state.cursor = null
-        state.mode = CanonicalMessageV2CanaryMode.Off
-        logger(
-            "canonical_v2_canary mode=off server=${scope.serverId} " +
-                "scope=${scope.scopeId} reason=partition_revoked",
-        )
-        return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_partition_revoked")
-    }
-
-    private fun heldAfterScopeEviction(
-        scope: SyncScopeKey,
-        state: CanonicalMessageV2CanaryScopeState,
-    ): CanonicalMessageV2CanaryOutcome {
-        state.cursor = null
-        state.mode = CanonicalMessageV2CanaryMode.Off
-        logger(
-            "canonical_v2_canary mode=off server=${scope.serverId} " +
-                "scope=${scope.scopeId} reason=retention_evicted",
-        )
-        return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_scope_evicted")
+        stateMutex.withLock { if (stateByScope[scope] === state) stateByScope.remove(scope) }
+        logger("canonical_v2_canary mode=off server=${scope.serverId} scope=${scope.scopeId} reason=$reason")
+        return CanonicalMessageV2CanaryOutcome.Held("canonical_v2_$reason")
     }
 }
-
-private fun defaultSnapshotJobScope(logger: (String) -> Unit): CoroutineScope =
-    CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, throwable ->
-            // The job catches every failure itself; this only keeps a bug from crashing the process.
-            logger("canonical_v2_canary snapshot=job_crashed reason=${throwable::class.simpleName ?: "unknown"}")
-        },
-    )
 
 private fun CanonicalMessageFoldInput.v2ScopeOrNull(partition: DurablePartitionKey): SyncScopeKey? {
     val context = row.conversationContext ?: return null
