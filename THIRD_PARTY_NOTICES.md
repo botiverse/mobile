@@ -15,7 +15,6 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | Path | Repository | License |
 |---|---|---|
 | .agents/skills/kuikly-ui-framework/references/KuiklyUI | Tencent-TDS/KuiklyUI | KuiklyUI license |
-| third_party/sqldelight | bytemain/sqldelight (fork of sqldelight/sqldelight, branch slock-2.1.0-ohos) | Apache-2.0 |
 
 ## Build-time dependencies — Maven (Android / KMP)
 | Component | Version | License |
@@ -35,6 +34,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | com.google.code.gson:gson | 2.11.0 | Apache-2.0 |
 | io.socket:socket.io-client | 2.1.2 | MIT |
 | app.cash.sqldelight:runtime / android-driver / native-driver / sqlite-driver / coroutines-extensions | 2.1.0 | Apache-2.0 |
+| app.cash.sqldelight OHOS fork (gradle-plugin, core, migrations, migration-env, dialect-api, compiler-env, sqlite-3-18-dialect, runtime, native-driver; ohosArm64) — bytemain/sqldelight branch slock-2.1.0-ohos @ 23cf5c45, published to Raft Artifacts | 2.1.0-KBA-003 | Apache-2.0 |
 | com.caverock:androidsvg-aar | 1.4 | Apache-2.0 |
 | com.tencent:mmkv | 2.4.0 | BSD-3-Clause |
 | org.jetbrains:markdown (coordinate reference only; sources vendored) | 0.7.5 | Apache-2.0 |

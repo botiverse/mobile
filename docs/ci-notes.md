@@ -6,6 +6,22 @@ PR #65 把 test.yml 重构为「两个并行预构建 job 发布 fork 产物到 
 
 ## 架构现状
 
+> 2026-10-15 更新：`fork-deps` job 已随 #3031 移除。Kuikly 走不可变发布集
+> （`kuikly-artifacts` 只做 manifest 核验，不再发布到 mavenLocal），Stately /
+> SQLiter / SQLDelight 的 OHOS fork 全部从 maven.artifacts.botiverse.dev 远端解析
+> （SQLDelight 为 `2.1.0-KBA-003`，settings.ohos 用 exclusiveContent 独占路由），
+> 任何 job 都不再回填 `~/.m2`。下文提到 fork-deps / mavenLocal 缓存的条目是
+> 当年踩坑的历史记录，仍适用于其它 actions/cache 用法。
+
+```
+kuikly-artifacts (ubuntu，仅核验 Raft 发布集 manifest)
+                            ▼
+        android (ubuntu)   ohos (容器)   ohos-host (容器)   ios (macos, 自建)
+                 ↑ 全部依赖直接从 Raft Artifacts / Maven Central 解析
+```
+
+历史架构（PR #65 ～ #3031）：
+
 ```
 kuikly-artifacts (ubuntu) ──┐        fork-deps (ubuntu) ──┐
   android flavor 缓存        │          stately/sqliter/    │
@@ -94,7 +110,8 @@ Gradle 只在「该仓库确定没有此工件」时才查下一个仓库；连�
 
 mirrors.tencent.com 偶发抽风，fork-deps 的发布步骤保留 3 次重试（30/60/90s
 退避）。KBA 工件（如 kotlin-gradle-plugin:2.0.21-KBA-010、
-kotlin-native-prebuilt、sqldelight 2.1.0-KBA-001）只在腾讯镜像上有。
+kotlin-native-prebuilt）只在腾讯镜像上有；sqldelight 2.1.0-KBA-001 曾经也是，
+现在 SQLDelight 走 Raft Artifacts 的 2.1.0-KBA-003，与镜像无关。
 
 ## 其他
 

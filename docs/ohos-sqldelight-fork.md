@@ -1,14 +1,21 @@
 # OHOS SQLDelight Fork Stack
 
-Slock keeps one git submodule for the OHOS SQLDelight native-driver stack under
-`third_party/`:
+The OHOS build consumes the SQLDelight native-driver stack as published,
+immutable Maven artifacts from Raft Artifacts (`https://maven.artifacts.botiverse.dev`).
+Nothing in this stack is vendored or built from source in this repository any
+more; the `third_party/stately`, `third_party/sqliter` and `third_party/sqldelight`
+submodules are gone.
 
-- `third_party/sqldelight` -> `bytemain/sqldelight`, branch `slock-2.1.0-ohos`
+| Fork | Branch / commit | Published coordinates (ohosArm64) |
+| --- | --- | --- |
+| `bytemain/Stately` | `slock-2.1.0-ohos` | `co.touchlab:stately-strict`, `co.touchlab:stately-concurrency` `2.1.0-KBA-001` |
+| `bytemain/SQLiter` | `slock-1.3.3-ohos` | `co.touchlab:sqliter-driver` `1.3.3-KBA-001` |
+| `bytemain/sqldelight` | `slock-2.1.0-ohos` @ `23cf5c45` | `app.cash.sqldelight:*` `2.1.0-KBA-003` — gradle plugin (+ marker), `core`, `migrations`, `migration-env`, `dialect-api`, `compiler-env`, `sqlite-3-18-dialect`, `runtime`, `runtime-ohosarm64`, `native-driver`, `native-driver-ohosarm64` |
 
-The Stately and SQLiter forks (`bytemain/Stately` branch `slock-2.1.0-ohos`,
-`bytemain/SQLiter` branch `slock-1.3.3-ohos`) are no longer submodules: their
-OHOS artifacts are consumed from Raft Artifacts (see below). The first working
-SQLDelight pin was `08df192` (SQLDelight OHOS native driver).
+The SQLDelight publication is a deliberately closed ohosArm64 graph
+(`sqldelightOhosOnly=true` in the fork's build logic): no JVM/JS/Apple variants
+exist under the KBA-003 version, so it can never be picked up by the Android or
+iOS legs, which use upstream `app.cash.sqldelight:*:2.1.0` from Maven Central.
 
 ## Why Three Repos
 
@@ -19,7 +26,7 @@ needs OHOS variants from its native dependency chain:
    `ohosArm64`.
 2. SQLiter publishes `sqliter-driver` for `ohosArm64`, including the SQLite
    cinterop layer.
-3. SQLDelight publishes/compiles `native-driver` for `ohosArm64` against those
+3. SQLDelight publishes `native-driver` for `ohosArm64` against those
    Touchlab artifacts.
 
 The target application architecture is still local-first:
@@ -33,50 +40,52 @@ The target application architecture is still local-first:
 Do not make shared business stores call raw platform SQLite directly. Use a
 typed local data source backed by SQLDelight once the smoke DB is in place.
 
+## How the OHOS build resolves it
+
+`compose/settings.ohos.gradle.kts` routes the stack to Raft Artifacts:
+
+- `app.cash.sqldelight` sits in an `exclusiveContent` block in **both**
+  `pluginManagement` (the plugin marker and `gradle-plugin`) and
+  `dependencyResolutionManagement` (runtime and driver). Gradle therefore
+  consults only Raft Artifacts for that group; `mavenLocal()`, Maven Central
+  and the CN mirrors are never asked, so a stale local publish cannot shadow
+  the published artifacts.
+- The `co.touchlab` OHOS modules are routed to Raft Artifacts through the
+  `RaftArtifactsKuiklyBase` content filter, as before.
+- `compose/shared/build.ohos.gradle.kts` pins the plugin, `runtime` and
+  `native-driver-ohosarm64` to `2.1.0-KBA-003`.
+
+`scripts/ci/test_remote_touchlab_ci_contract.py` (run by the `plan` job and by
+the OHOS release workflow) fails the build if a workflow builds or hydrates any
+of these forks locally, if either settings block stops routing
+`app.cash.sqldelight` through `exclusiveContent`, if the build file drifts from
+the pinned version, or if the submodule reappears.
+
 ## Checkout
 
-Only the SQLDelight fork is ever checked out from source, and only for OHOS.
-Even there it is a fallback rather than a routine step:
-`compose/settings.ohos.gradle.kts` calls `ensureSubmodule` on it only when
-`needsSqlDelight` — that is, when one of the required
-`app.cash.sqldelight` OHOS artifacts is missing from the local Maven
-repositories. With those artifacts present, no submodule is needed at all.
-Android never needs it and resolves `app.cash.sqldelight` from Maven.
-
-So run this when the OHOS artifacts are unavailable locally:
-
-```bash
-git submodule update --init --recursive third_party/sqldelight
-```
-
-Stately and SQLiter are not checked out at all: they moved to published
-Touchlab artifacts, and `scripts/ci/test_remote_touchlab_ci_contract.py` fails
-the build if a workflow initialises or publishes them locally — `git submodule
-update --init third_party/stately` is in its forbidden list.
+Nothing to check out. A plain clone builds the OHOS shared library; the only
+submodule left in the repository is the `KuiklyUI` reference under
+`.agents/skills/`, which the build does not use.
 
 ## Local Verification
 
-Only the SQLDelight fork is published locally, and only in the fallback case
-described above:
-
 ```bash
-cd third_party/sqldelight
-./gradlew :sqldelight-gradle-plugin:publishToMavenLocal
-./gradlew :drivers:native-driver:compileKotlinOhosArm64
+cd compose
+./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
 ```
 
-That compile resolves its Stately and SQLiter dependencies **from Raft
-Artifacts**, not from a local publish:
+That compile resolves the whole SQLDelight stack from Raft Artifacts. Do not
+publish any of the forks to `mavenLocal()`: the exclusive routing ignores
+`mavenLocal()` for `app.cash.sqldelight`, and the CI contract forbids workflows
+from doing so.
 
-- `co.touchlab:stately-concurrency-ohosarm64:2.1.0-KBA-001`
-- `co.touchlab:stately-strict-ohosarm64:2.1.0-KBA-001`
-- `co.touchlab:sqliter-driver-ohosarm64:1.3.3-KBA-001`
+## Changing the fork
 
-Do not publish those three locally. The `stately` and `sqliter` publish
-commands this section used to carry are the ones
-`scripts/ci/test_remote_touchlab_ci_contract.py` forbids
-(`:stately-strict:publish`, `:sqliter-driver:publish` are in its list), so
-following them puts a workspace out of contract with CI.
+Changes to the SQLDelight OHOS driver go to `bytemain/sqldelight` branch
+`slock-2.1.0-ohos`, are published through that repository's
+`ohos-publication.yml` workflow as a new `2.1.0-KBA-00N` version, and are then
+consumed here by bumping the three coordinates in
+`compose/shared/build.ohos.gradle.kts`.
 
 ## Current App Build Entry
 

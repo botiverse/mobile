@@ -29,16 +29,18 @@ again from the new local-main commit.
 
 ## Submodules
 
-Prefer a focused submodule update over a blind recursive update when local fork
-mappings make recursion fail:
+No build dependency is a submodule any more (the OHOS SQLDelight fork moved to
+Raft Artifacts in #3031 and its gitlink was removed). The only remaining
+submodule is the `.agents/skills/kuikly-ui-framework/references/KuiklyUI`
+reference, which packaging does not need. Confirm nothing is unexpectedly
+initialized:
 
 ```bash
-git submodule update --init third_party/sqldelight
 git submodule status
 ```
 
-If another submodule is required by the build, initialize it explicitly and note
-that in the report.
+If a future change makes a submodule build-required, initialize it explicitly
+and note that in the report.
 
 The Slock TypeScript server/React source is **not** a Mobile submodule. If a
 packaging-side visual or contract check needs it, use an external checkout:
