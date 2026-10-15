@@ -6218,6 +6218,10 @@ internal class SharedThreadStore(
     private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
     private var loadNewerState: LoadNewerState? = null
     private var nextRealtimeGapRecoveryId: Long = 0L
+    // Feedback 4409cbc5: a resume catch-up that fails was never asked again, so the thread kept showing its
+    // cached messages until the user left. Counts retryable catch-up failures; a fresh resume bumps the generation.
+    private var gapCatchUpRetryableFailures: Long = 0L
+    private var resumeCatchUpGeneration: Long = 0L
     private var nextLoadNewerId: Long = 0L
     /** See [setViewportFollowsLatest]. */
     private var viewportFollowsLatest: Boolean = true
@@ -9103,7 +9107,8 @@ internal class SharedThreadStore(
         )
     }
 
-    private suspend fun refreshLatestAfterVisibleMaxSeq() {
+    private suspend fun refreshLatestAfterVisibleMaxSeq(retryAttempt: Int = 0) {
+        val generation = if (retryAttempt == 0) ++resumeCatchUpGeneration else resumeCatchUpGeneration
         val initial = _state.value.payload
         val staleToken = routeStaleToken
         val streamChannelId =
@@ -9116,6 +9121,7 @@ internal class SharedThreadStore(
                 ?: return
         val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
         if (initial.newerMessagesStatus == "loading") return
+        val failuresBefore = gapCatchUpRetryableFailures
         recoverRealtimeGap(
             initial = initial,
             initialRequest =
@@ -9133,6 +9139,18 @@ internal class SharedThreadStore(
             // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
             backfillAfterRecovery = true,
         )
+        if (gapCatchUpRetryableFailures == failuresBefore || retryAttempt >= RESUME_CATCH_UP_MAX_RETRIES) return
+        if (!staleToken.isCurrent(routeStaleToken)) return
+        diagnosticsLogger?.invoke(
+            "thread_resume_catchup_retry_scheduled threadId=${initial.sourceThreadId.orEmpty()} " +
+                "attempt=${retryAttempt + 1}"
+        )
+        scope.launch {
+            delay(resumeCatchUpRetryDelayMs(retryAttempt))
+            // A newer resume already asked again; the route changing is checked by the refresh itself.
+            if (generation != resumeCatchUpGeneration || !staleToken.isCurrent(routeStaleToken)) return@launch
+            refreshLatestAfterVisibleMaxSeq(retryAttempt + 1)
+        }
     }
 
     private suspend fun recoverRealtimeGap(
@@ -9432,6 +9450,7 @@ internal class SharedThreadStore(
                         }
                     }
                     is DataResult.Error -> {
+                        if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
                         reducePayloadPatch(cachePayload = true) { latestPayload ->
                             latestPayload.copy(
                                 newerMessagesStatus = "error",
@@ -13720,3 +13739,8 @@ private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
 
 private fun Throwable.safeThreadDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
+
+/** Resume catch-up retries after a retryable failure (feedback 4409cbc5): bounded, then the next resume asks again. */
+internal const val RESUME_CATCH_UP_MAX_RETRIES = 3
+
+internal fun resumeCatchUpRetryDelayMs(attempt: Int): Long = 2_000L shl attempt.coerceIn(0, 2)
