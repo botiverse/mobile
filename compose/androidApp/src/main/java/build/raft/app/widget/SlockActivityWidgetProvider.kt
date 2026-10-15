@@ -11,6 +11,7 @@ import build.raft.app.core.data.network.RealSlockNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeConversationRow
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -38,6 +39,7 @@ import android.widget.RemoteViews
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
@@ -148,13 +150,22 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             val serverId = ServerId(selectedServer.id)
             val networkClient =
                 RealSlockNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
-            val homeResult =
-                runCatching {
-                    RealChannelRepository(sessionStore, networkClient).getHome(serverId)
-                }.getOrElse { throwable ->
-                    SlockAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}")
-                    return previous.asStale("Could not refresh")
-                }
+            suspend fun fetchHome(): DataResult<HomeSnapshot>? =
+                runCatching { RealChannelRepository(sessionStore, networkClient).getHome(serverId) }
+                    .onFailure { throwable -> SlockAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}") }
+                    .getOrNull()
+            var homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
+            var attempt = 1
+            while (attempt < WIDGET_HOME_ATTEMPTS) {
+                val errorCode = (homeResult as? DataResult.Error)?.error?.code ?: break
+                if (!isWidgetTransientCancel(errorCode)) break
+                // The first refresh after the configure screen closes races the app's background edge, which
+                // retires in-flight reads (status 0, "lifecycle_retired"); a read is safe to repeat.
+                SlockAppLog.d(TAG, "home refresh cancelled code=$errorCode attempt=$attempt; retrying")
+                delay(WIDGET_HOME_RETRY_DELAY_MS)
+                attempt++
+                homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
+            }
             val home = when (homeResult) {
                 is DataResult.Content -> homeResult.data
                 is DataResult.Empty -> return previous.asStale("No conversations yet")
@@ -387,3 +398,9 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         }
     }
 }
+
+private const val WIDGET_HOME_ATTEMPTS = 3
+private const val WIDGET_HOME_RETRY_DELAY_MS = 1_000L
+
+/** A transport cancellation (HTTP status 0, e.g. "home_http_0") rather than a server answer. */
+internal fun isWidgetTransientCancel(errorCode: String): Boolean = errorCode.endsWith("_http_0")
