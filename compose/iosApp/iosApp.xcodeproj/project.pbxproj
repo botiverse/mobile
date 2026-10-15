@@ -16,6 +16,8 @@
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
 		4983CA96F486D911EC6CCFB8 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFD86DD765CA5210E2F6061E /* UIKit.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
+		A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47100020000000000000001 /* RaftIosSceneDelegate.swift */; };
+		A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47200020000000000000001 /* RaftIosShellWindowContract.swift */; };
 		8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */; };
 		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
@@ -95,6 +97,8 @@
 		058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
+		A47100020000000000000001 /* RaftIosSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSceneDelegate.swift; sourceTree = "<group>"; };
+		A47200020000000000000001 /* RaftIosShellWindowContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosShellWindowContract.swift; sourceTree = "<group>"; };
 		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
 		55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.release.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -294,6 +298,8 @@
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
 				D49163102E14000100C0DE01 /* Fonts */,
 				7555FF82242A565900829871 /* ContentView.swift */,
+				A47100020000000000000001 /* RaftIosSceneDelegate.swift */,
+				A47200020000000000000001 /* RaftIosShellWindowContract.swift */,
 				7555FF8C242A565B00829871 /* Info.plist */,
 				A39600020000000000000001 /* InfoPlist.strings */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
@@ -779,6 +785,8 @@
 				D41350122E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift in Sources */,
 				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
+				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
+				A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */,
 				FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */,
 				D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */,
 				D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */,

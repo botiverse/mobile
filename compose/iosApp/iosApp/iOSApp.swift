@@ -10,7 +10,8 @@ private enum SlockIosPushEnvironment: String {
     case production
 }
 
-private enum SlockIosPushHost {
+// Internal (not private) so RaftIosSceneDelegate can forward notification taps.
+enum SlockIosPushHost {
     private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
     private static let systemNotificationOpenName = Notification.Name("slockSystemNotificationOpen")
     private static let systemNotificationOpenReadyName = Notification.Name("slockSystemNotificationOpenReady")
@@ -371,7 +372,8 @@ private extension String {
     }
 }
 
-private enum SlockIosDesktopShortcutHost {
+// Internal (not private) so RaftIosSceneDelegate can forward shortcut items.
+enum SlockIosDesktopShortcutHost {
     private static let desktopShortcutOpenName = Notification.Name("slockDesktopShortcutOpen")
     private static let desktopShortcutOpenReadyName = Notification.Name("slockDesktopShortcutOpenReady")
     private static let desktopShortcutOpenNotReadyName = Notification.Name("slockDesktopShortcutOpenNotReady")
@@ -491,21 +493,37 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         return true
     }
 
-    func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "app_delegate")
-    }
+    // task #471: the scene manifest declares RaftIosSceneDelegate; URL opens
+    // and shortcut actions are delivered to the scene, so the app-level
+    // open:/performActionFor callbacks are intentionally not implemented.
 
     func application(
         _ application: UIApplication,
-        performActionFor shortcutItem: UIApplicationShortcutItem,
-        completionHandler: @escaping (Bool) -> Void
-    ) {
-        SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "perform_action")
-        completionHandler(true)
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+
+    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+        // Sessions discarded while the app was not running never hit
+        // sceneDidDisconnect, so release their shell scopes here instead.
+        for session in sceneSessions {
+            let context = RaftIosShellWindowRegistry.unregister(session: session)
+            guard let shellInstanceId = context?.shellInstanceId,
+                  shellInstanceId != RaftIosShellWindowContract.legacyShellInstanceId else {
+                continue
+            }
+            SlockShellStoreLaunchKt.releaseSlockShellStoreScope(
+                shellInstanceId: shellInstanceId,
+                serverId: context?.serverId
+            )
+            SlockIosDiagnosticsRecord(
+                "info",
+                "RaftIosShellWindow",
+                "discarded_session_released shell=\(shellInstanceId)"
+            )
+        }
     }
 
     func application(
