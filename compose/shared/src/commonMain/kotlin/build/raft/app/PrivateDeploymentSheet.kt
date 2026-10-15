@@ -180,7 +180,12 @@ internal fun privateDeploymentRequest(web: String, api: String): SharedSettingsA
     )
 }
 
-/** Trimmed, scheme defaulted to https, no query/fragment, no trailing slash; null unless http(s) with a host. */
+/**
+ * Trimmed, scheme defaulted to https, no trailing slash; null unless it is http(s) with a valid authority.
+ * A query or fragment is dropped (a pasted link keeps working). The authority must be a host name (letters,
+ * digits, `-`, `.` with no empty label) or a bracketed IPv6 literal, optionally `:port` (1-65535); user info
+ * (`user@`) and anything else is rejected.
+ */
 private fun normalizedHttpUrl(raw: String): String? {
     var text = raw.trim()
     if (text.isEmpty() || text.any { it.isWhitespace() }) return null
@@ -188,9 +193,41 @@ private fun normalizedHttpUrl(raw: String): String? {
     val scheme = text.substringBefore("://").lowercase()
     if (scheme != "http" && scheme != "https") return null
     val rest = text.substringAfter("://").substringBefore('?').substringBefore('#').trimEnd('/')
-    val host = rest.substringBefore('/').substringBefore(':')
-    if (host.isEmpty() || host.startsWith('.') || host.endsWith('.')) return null
+    val authority = rest.substringBefore('/')
+    if (!isValidAuthority(authority)) return null
     return "$scheme://$rest"
+}
+
+private fun isValidAuthority(authority: String): Boolean {
+    if (authority.isEmpty() || '@' in authority) return false
+    val host: String
+    val port: String?
+    if (authority.startsWith('[')) {
+        val close = authority.indexOf(']')
+        if (close < 0) return false
+        host = authority.substring(1, close)
+        val after = authority.substring(close + 1)
+        port = if (after.isEmpty()) null else if (after.startsWith(':')) after.substring(1) else return false
+        if (host.isEmpty() || host.any { !(it.isLetterOrDigit() || it == ':' || it == '.') } || ':' !in host) {
+            return false
+        }
+    } else {
+        host = authority.substringBefore(':')
+        port = if (':' in authority) authority.substringAfter(':') else null
+        val labels = host.split('.')
+        if (host.isEmpty() || labels.any { label ->
+                label.isEmpty() || label.startsWith('-') || label.endsWith('-') ||
+                    label.any { !(it.isLetterOrDigit() || it == '-') }
+            }
+        ) {
+            return false
+        }
+    }
+    if (port != null) {
+        val number = port.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toIntOrNull() ?: return false
+        if (number !in 1..65535) return false
+    }
+    return true
 }
 
 private fun httpOrigin(url: String): String {
