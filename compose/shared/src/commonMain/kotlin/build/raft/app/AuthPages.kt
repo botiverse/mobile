@@ -29,6 +29,7 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
+import build.raft.app.data.SlockSharedStoreProvider
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
@@ -277,7 +278,9 @@ private fun LoginScreen() {
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
     // Pre-auth flag: the cached answer renders at once. A fresh answer may switch the page only shortly after it
     // opened and before the user touched it; otherwise it is just cached for the next login page.
-    val apiBaseUrl = remember { sharedStores.apiEnvironmentStore.current().apiBaseUrl }
+    // Follows the stored environment so a deployment saved from the sheet below is evaluated at once.
+    val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
+    val apiBaseUrl = apiEnvironment.apiBaseUrl
     var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
     var loginPageInteracted by remember { mutableStateOf(false) }
     LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
@@ -294,8 +297,22 @@ private fun LoginScreen() {
             }
         }
     }
+    val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores)
+    var privateDeploymentVisible by remember { mutableStateOf(false) }
+    PrivateDeploymentSheet(
+        visible = privateDeploymentVisible,
+        environmentStore = sharedStores.apiEnvironmentStore,
+        settingsDataSource = settingsDataSource,
+        onDismiss = { privateDeploymentVisible = false },
+    )
     if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
-        WebLoginScreen(pager, bridge, authDataSource, onInteraction = { loginPageInteracted = true })
+        WebLoginScreen(
+            pager,
+            bridge,
+            authDataSource,
+            onInteraction = { loginPageInteracted = true },
+            onOpenPrivateDeployment = { privateDeploymentVisible = true },
+        )
         return
     }
     val linkNavigator =
@@ -487,9 +504,7 @@ private fun LoginScreen() {
         onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
         // Same entry as the web login (#2996): the API environment editor, whose save checks the server version.
-        onOpenPrivateDeployment = {
-            pager.openAuthPage(AUTH_ABOUT_PAGE, destination = AUTH_DESTINATION_API_ENVIRONMENT)
-        },
+        onOpenPrivateDeployment = { privateDeploymentVisible = true },
     )
 }
 
@@ -982,24 +997,22 @@ private fun ForgotPasswordScreen() {
     )
 }
 
-internal enum class AuthAboutDestination {
-    About,
-    ApiEnvironment,
-    Diagnostics
-}
-
+/**
+ * The settings data source of the signed-out pages (About / API environment editor, the private deployment
+ * sheet). Its platform capabilities tell the host about an environment change (realtime disconnect, widgets).
+ */
 @Composable
-private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
-    val pager = LocalActivity.current.getPager() as Pager
-    rememberKmmResourceLocaleSeed(pager)
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val linkNavigator =
+internal fun rememberAuthSettingsDataSource(
+    pager: Pager,
+    bridge: BridgeModule,
+    sharedStores: SlockSharedStoreProvider,
+    linkNavigator: SlockLinkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
             bridge = bridge,
             routeScope = SlockInAppBrowserRouteScope.Unscoped,
-        )
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+        ),
+): SharedSettingsDataSource {
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, bridgeCallScope) {
@@ -1018,19 +1031,39 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
-    val settingsDataSource =
-        remember(sharedStores, settingsCapabilities, avatarNativeCache) {
-            SharedSettingsDataSource(
-                sessionStore = sharedStores.authStore,
-                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
-                authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
-            ).withAvatarCacheRuntime(
-                runtime = sharedStores.avatarCacheRuntime,
-                nativeCache = avatarNativeCache
-            )
-        }
+    return remember(sharedStores, settingsCapabilities, avatarNativeCache) {
+        SharedSettingsDataSource(
+            sessionStore = sharedStores.authStore,
+            apiEnvironmentStore = sharedStores.apiEnvironmentStore,
+            platformCapabilities = settingsCapabilities,
+            diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
+            authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
+        ).withAvatarCacheRuntime(
+            runtime = sharedStores.avatarCacheRuntime,
+            nativeCache = avatarNativeCache
+        )
+    }
+}
+
+internal enum class AuthAboutDestination {
+    About,
+    ApiEnvironment,
+    Diagnostics
+}
+
+@Composable
+private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
+    val pager = LocalActivity.current.getPager() as Pager
+    rememberKmmResourceLocaleSeed(pager)
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator =
+        rememberSlockLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        )
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores, linkNavigator)
     var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }
     var developerState by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }
     var diagnosticsState by remember { mutableStateOf<ScreenLoadState<build.raft.app.data.SharedSettingsDiagnosticsSnapshot>>(ScreenLoadState.Loading) }

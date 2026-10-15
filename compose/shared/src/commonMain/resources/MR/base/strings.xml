@@ -2202,4 +2202,17 @@
     <string name="member_runtime_usage_health_unsupported">Not supported</string>
     <string name="member_runtime_usage_health_error">Error</string>
     <string name="member_runtime_usage_health_unknown">Unavailable</string>
+    <string name="auth_private_deployment_title">Private deployment</string>
+    <string name="auth_private_deployment_hint">Enter the addresses of your self-hosted Raft. The server must run version 1.13.0 or later.</string>
+    <string name="auth_private_deployment_web_label">Web address</string>
+    <string name="auth_private_deployment_web_placeholder">https://raft.company.com</string>
+    <string name="auth_private_deployment_api_label">Server (API) address</string>
+    <string name="auth_private_deployment_api_placeholder">https://api.raft.company.com</string>
+    <string name="auth_private_deployment_save">Save</string>
+    <string name="auth_private_deployment_cancel">Cancel</string>
+    <string name="auth_private_deployment_reset">Use Raft (app.raft.build)</string>
+    <string name="auth_private_deployment_invalid">Enter both addresses as http(s) links.</string>
+    <string name="auth_private_deployment_unreachable">The server could not be reached. Check the server address and try again.</string>
+    <string name="auth_private_deployment_outdated">This server does not report a supported version (1.13.0 or later). Upgrade the server and try again.</string>
+    <string name="auth_private_deployment_failed">Could not save the deployment. Try again.</string>
 </resources>

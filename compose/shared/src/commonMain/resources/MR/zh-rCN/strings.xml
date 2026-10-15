@@ -2202,4 +2202,17 @@
     <string name="member_runtime_usage_health_unsupported">不支持</string>
     <string name="member_runtime_usage_health_error">出错</string>
     <string name="member_runtime_usage_health_unknown">不可用</string>
+    <string name="auth_private_deployment_title">私有化部署</string>
+    <string name="auth_private_deployment_hint">填写你自建的 Raft 地址。服务器版本需要 1.13.0 或更高。</string>
+    <string name="auth_private_deployment_web_label">前端地址</string>
+    <string name="auth_private_deployment_web_placeholder">https://raft.company.com</string>
+    <string name="auth_private_deployment_api_label">服务器（API）地址</string>
+    <string name="auth_private_deployment_api_placeholder">https://api.raft.company.com</string>
+    <string name="auth_private_deployment_save">保存</string>
+    <string name="auth_private_deployment_cancel">取消</string>
+    <string name="auth_private_deployment_reset">使用 Raft 官方（app.raft.build）</string>
+    <string name="auth_private_deployment_invalid">请把两个地址都填成 http(s) 链接。</string>
+    <string name="auth_private_deployment_unreachable">无法连接服务器。请检查服务器地址后重试。</string>
+    <string name="auth_private_deployment_outdated">这个服务器没有返回支持的版本（需要 1.13.0 或更高）。请升级服务器后重试。</string>
+    <string name="auth_private_deployment_failed">保存失败，请重试。</string>
 </resources>
