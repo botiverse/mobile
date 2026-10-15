@@ -10,15 +10,11 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 | --- | --- | --- | --- |
 | third_party/markdown-parser | JetBrains/markdown (via botiverse/jetbrains-markdown fork raft/0.7.5-mobile) | 0.7.5, upstream 52368fb1, fork 295290f8 | Apache-2.0 (LICENSE present) |
 | third_party/kuikly-compose-markdown | Kuikly-contrib/kuikly-compose-markdown (com.tencent.kuiklybase:markdown 0.4.0 sources) + embedded JetBrains/Saket Narayan Apache-2.0 files | 0.4.0 / 0.3.0-ohos | KuiklyUI license (Tencent) for Kuikly-authored files; Apache-2.0 for JetBrains (42 files) and Saket Narayan (6 files) |
-| third_party/kuiklybase-platform | Tencent-TDS/KuiklyBase-platform | README only (patch catalog notes) | n/a (no code vendored) |
-| third_party/ktor-ohos | ktorio/ktor 2.3.7 fork notes (not used by the current build) | README + patches only | Apache-2.0 (patches derive from Ktor) |
 
 ## Git submodules (not vendored; referenced by URL)
 | Path | Repository | License |
 |---|---|---|
 | .agents/skills/kuikly-ui-framework/references/KuiklyUI | Tencent-TDS/KuiklyUI | KuiklyUI license |
-| third_party/stately | bytemain/Stately (fork of touchlab/Stately, branch slock-2.1.0-ohos) | Apache-2.0 |
-| third_party/sqliter | bytemain/SQLiter (fork of touchlab/SQLiter, branch slock-1.3.3-ohos) | Apache-2.0 |
 | third_party/sqldelight | bytemain/sqldelight (fork of sqldelight/sqldelight, branch slock-2.1.0-ohos) | Apache-2.0 |
 
 ## Build-time dependencies — Maven (Android / KMP)

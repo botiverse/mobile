@@ -33,7 +33,7 @@ Prefer a focused submodule update over a blind recursive update when local fork
 mappings make recursion fail:
 
 ```bash
-git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
+git submodule update --init third_party/sqldelight
 git submodule status
 ```
 
