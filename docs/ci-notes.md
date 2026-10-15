@@ -96,36 +96,21 @@ mirrors.tencent.com 偶发抽风，fork-deps 的发布步骤保留 3 次重试�
 退避）。KBA 工件（如 kotlin-gradle-plugin:2.0.21-KBA-010、
 kotlin-native-prebuilt、sqldelight 2.1.0-KBA-001）只在腾讯镜像上有。
 
-## 补丁维护的坑
-
-### 9. 重新生成 patch 时 `git diff` 会丢掉补丁新建的文件
-
-`git apply` 出来的新文件是 untracked，`git diff` 看不见它们。重生成
-third_party/ktor-ohos/patches/ 里的补丁必须：
-
-```bash
-git apply --unidiff-zero old.patch
-# ...改动...
-git add -A && git diff --cached -U0 > new.patch   # -U0 匹配 --unidiff-zero
-```
-
-并比对新旧补丁触及的文件集（`grep '^diff --git'`）确认没丢东西。
-
 ## 其他
 
-### 10. 容器 job 的 git 基础设施
+### 9. 容器 job 的 git 基础设施
 
 - workspace 由 host runner 用户创建、步骤以容器用户跑 → 需要
   `git config --global --add safe.directory '*'`。
 - 镜像 git 2.25 没有 `ls-tree --object-only`，取 gitlink sha 用
   `git rev-parse HEAD:third_party/<sub>`。
 
-### 11. 磁盘
+### 10. 磁盘
 
 kuikly（konan）+ fork-deps 任一全量构建都能吃满 hosted runner 约 14GB 空闲
 盘。预构建 job 首步清理不用的预装工具链（保留 Android SDK——kuikly 要用）。
 
-### 12. Signed-off-by 策略
+### 11. Signed-off-by 策略
 
 commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段落**。
 `Signed-off-by` 与其他 trailer（如 Co-Authored-By）必须在同一段落，中间不能
@@ -133,7 +118,7 @@ commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段
 
 ## OHOS host 门禁（容器内存墙）
 
-### 13. harmonyos-ci-image 容器缺的运行时依赖
+### 12. harmonyos-ci-image 容器缺的运行时依赖
 
 `ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image` 是 Ubuntu
 基底但很精简，CI 里要现装：
@@ -142,7 +127,7 @@ commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段
   没有会 `exit 127`。
 （计划把这些预装进镜像，见 harmony-next-pipeline-docker。）
 
-### 14. 编译器 JVM 调参：-Xss 与 daemon 选择
+### 13. 编译器 JVM 调参：-Xss 与 daemon 选择
 
 - Compose 编译器插件 `DeepCopyIrTreeWithRemappedComposableTypes` 按嵌套
   `@Composable` 递归，容器默认线程栈比 macOS 小 → 编 `:shared` 的
@@ -160,7 +145,7 @@ commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段
   `raftInitKuikly`，实时接口继续走 KNOI；release workflow 同时限制生成 header
   不得超过 500 行。不要把 binary target 移回 `:shared`。
 
-### 15. 容器资源与门禁范围
+### 14. 容器资源与门禁范围
 
 harmonyos-ci-image runner ≈ **7.8 GiB / 2 CPU，无 memory cgroup 上限**。这放不下
 libshared.so 的 native 链接（见坑 14），所以 ohos-host 门禁**只做 ArkTS/.ets 编译**

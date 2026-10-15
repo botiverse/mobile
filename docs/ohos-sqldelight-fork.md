@@ -1,17 +1,14 @@
 # OHOS SQLDelight Fork Stack
 
-Slock vendors the OHOS SQLDelight native-driver stack as git submodules under
+Slock keeps one git submodule for the OHOS SQLDelight native-driver stack under
 `third_party/`:
 
-- `third_party/stately` -> `bytemain/Stately`, branch `slock-2.1.0-ohos`
-- `third_party/sqliter` -> `bytemain/SQLiter`, branch `slock-1.3.3-ohos`
 - `third_party/sqldelight` -> `bytemain/sqldelight`, branch `slock-2.1.0-ohos`
 
-The pinned commits for the first working stack are:
-
-- `abdbeda` Stately OHOS publications
-- `a0d2ee5` SQLiter OHOS driver
-- `08df192` SQLDelight OHOS native driver
+The Stately and SQLiter forks (`bytemain/Stately` branch `slock-2.1.0-ohos`,
+`bytemain/SQLiter` branch `slock-1.3.3-ohos`) are no longer submodules: their
+OHOS artifacts are consumed from Raft Artifacts (see below). The first working
+SQLDelight pin was `08df192` (SQLDelight OHOS native driver).
 
 ## Why Three Repos
 
@@ -52,11 +49,10 @@ So run this when the OHOS artifacts are unavailable locally:
 git submodule update --init --recursive third_party/sqldelight
 ```
 
-Do **not** init or build `third_party/stately` or `third_party/sqliter`. Those
-moved to published Touchlab artifacts, and
-`scripts/ci/test_remote_touchlab_ci_contract.py` fails the build if a workflow
-initialises or publishes them locally — `git submodule update --init
-third_party/stately` is in its forbidden list.
+Stately and SQLiter are not checked out at all: they moved to published
+Touchlab artifacts, and `scripts/ci/test_remote_touchlab_ci_contract.py` fails
+the build if a workflow initialises or publishes them locally — `git submodule
+update --init third_party/stately` is in its forbidden list.
 
 ## Local Verification
 
