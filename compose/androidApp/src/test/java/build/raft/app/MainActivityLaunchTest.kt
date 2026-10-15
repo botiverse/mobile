@@ -271,6 +271,36 @@ class MainActivityLaunchTest {
     }
 
     @Test
+    fun externalBrowserSelectionSkipsOtherInstalledRaftBuilds() {
+        // An alpha build next to the release build: the release app is the App Link default, not a browser.
+        assertEquals(
+            "com.android.chrome",
+            selectExternalWebHandlerPackage(
+                ownPackage = "build.raft.app.alpha",
+                defaultPackage = "build.raft.app",
+                candidatePackages = listOf("build.raft.app", "build.raft.app.alpha", "com.android.chrome")
+            )
+        )
+        assertEquals(
+            null,
+            selectExternalWebHandlerPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app.alpha",
+                candidatePackages = listOf("build.raft.app", "build.raft.app.alpha", "build.raft.app.connectedtest")
+            )
+        )
+        // A package that merely shares the prefix text is not a Raft build.
+        assertEquals(
+            "build.raft.appstore",
+            selectExternalWebHandlerPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = null,
+                candidatePackages = listOf("build.raft.app", "build.raft.appstore")
+            )
+        )
+    }
+
+    @Test
     fun raftAppViewIntentDoesNotClearExistingTask() {
         assertFalse(
             shouldClearTaskForSharedShell(
