@@ -36,6 +36,9 @@ internal object SharedServerVersionGate {
      */
     const val MIN_SERVER_VERSION = "1.13.0"
 
+    /** raft-source requires a 40-hex `RAFT_RELEASE_SHA`; short hashes are tolerated, anything else is not Raft. */
+    private val RAFT_BUILD_SHA = Regex("^[0-9a-fA-F]{7,40}$")
+
     /** Numeric triple compare; non-numeric input never passes. */
     fun parseVersion(text: String): List<Int>? {
         val core = text.trim().removePrefix("v").substringBefore('-').substringBefore('+')
@@ -72,19 +75,23 @@ internal object SharedServerVersionGate {
             (response.bodyText ?: response.errorBodyText)
                 ?.takeIf { it.isNotBlank() }
                 ?.let { body -> runCatching { JSONObject(body) }.getOrNull() }
-        if (response.code == 503 && json?.optString("code") == "build_identity_unavailable") {
-            return ServerVersionProbe.Unversioned
-        }
-        if (response.code !in 200..299) return ServerVersionProbe.Unreachable
+        val buildIdentityUnavailable =
+            response.code == 503 && json?.optString("code") == "build_identity_unavailable"
         val version = json?.optString("version")?.trim().orEmpty()
-        if (parseVersion(version) == null) {
+        if (version.isEmpty()) {
+            // No version reported: only a Raft build identity passes (Ark: never let it override a real version).
+            if (buildIdentityUnavailable) return ServerVersionProbe.Unversioned
+            if (response.code !in 200..299) return ServerVersionProbe.Unreachable
             // A web app's catch-all page also answers 2xx: only a JSON build identity counts as Raft.
-            return if (json?.optString("sha")?.isNotBlank() == true) {
+            return if (json?.optString("sha")?.trim()?.let(RAFT_BUILD_SHA::matches) == true) {
                 ServerVersionProbe.Unversioned
             } else {
                 ServerVersionProbe.MissingVersion
             }
         }
+        // A reported version always decides; one that does not parse is refused, never treated as absent.
+        if (response.code !in 200..299 && !buildIdentityUnavailable) return ServerVersionProbe.Unreachable
+        if (parseVersion(version) == null) return ServerVersionProbe.MissingVersion
         return if (isVersionAtLeast(version, MIN_SERVER_VERSION)) {
             ServerVersionProbe.Compatible(version)
         } else {

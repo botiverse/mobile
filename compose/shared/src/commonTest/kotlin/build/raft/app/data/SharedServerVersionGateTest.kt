@@ -89,8 +89,22 @@ class SharedServerVersionGateTest {
                 AuthNetworkResponse(503, null, """{"error":"Build identity unavailable","code":"build_identity_unavailable","sha":null}""")
             )
         )
+        // A reported version decides even next to a build identity: garbage or overflow is refused, a low one too.
+        assertEquals(
+            ServerVersionProbe.MissingVersion,
+            probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"version":"garbage","sha":"98ad0d78bb17dcced299c5217a44fc9cabacbf67"}"""))
+        )
+        assertEquals(
+            ServerVersionProbe.MissingVersion,
+            probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"version":"999999999999999999999.0.0","sha":"98ad0d78"}"""))
+        )
+        assertEquals(
+            ServerVersionProbe.Incompatible("1.12.0"),
+            probe("https://private.example.com/api/", AuthNetworkResponse(503, null, """{"code":"build_identity_unavailable","version":"1.12.0"}"""))
+        )
         // A web app's catch-all HTML is not a Raft server; any other 503 is not either.
         assertEquals(ServerVersionProbe.MissingVersion, probe("https://private.example.com/api/", AuthNetworkResponse(200, "<html></html>")))
+        assertEquals(ServerVersionProbe.MissingVersion, probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"sha":"not-a-hash"}""")))
         assertEquals(ServerVersionProbe.Unreachable, probe("https://private.example.com/api/", AuthNetworkResponse(503, "{}")))
     }
 
