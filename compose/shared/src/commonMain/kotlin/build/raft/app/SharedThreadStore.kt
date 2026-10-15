@@ -9094,7 +9094,6 @@ internal class SharedThreadStore(
                 ?: return
         val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
         if (initial.newerMessagesStatus == "loading") return
-        val failuresBefore = gapCatchUpRetryableFailures
         recoverRealtimeGap(
             initial = initial,
             initialRequest =
@@ -9122,6 +9121,7 @@ internal class SharedThreadStore(
                 ?: return
         val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
         if (initial.newerMessagesStatus == "loading") return
+        val failuresBefore = gapCatchUpRetryableFailures
         recoverRealtimeGap(
             initial = initial,
             initialRequest =
