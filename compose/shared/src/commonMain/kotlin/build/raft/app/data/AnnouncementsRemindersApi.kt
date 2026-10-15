@@ -105,8 +105,14 @@ data class AnnouncementItem(
     val kind: AnnouncementKind = AnnouncementKind.Info,
     // Full multi-page content for the announcement modal (task #226). `body`
     // stays as the first page so the home-notification path keeps working.
-    val pages: List<AnnouncementPageItem> = emptyList()
+    val pages: List<AnnouncementPageItem> = emptyList(),
+    val label: String? = null,
+    val image: AnnouncementImage? = null,
+    val cta: AnnouncementCta? = null,
 )
+
+data class AnnouncementImage(val assetId: String, val alt: String)
+data class AnnouncementCta(val label: String, val href: String)
 
 data class AnnouncementPageItem(
     val title: String?,
@@ -167,7 +173,16 @@ private data class AnnouncementWireDto(
     val title: String,
     val pages: List<AnnouncementPageWireDto> = emptyList(),
     val publishedAt: String? = null,
+    val label: String? = null,
+    val image: AnnouncementImageWireDto? = null,
+    val cta: AnnouncementCtaWireDto? = null,
 )
+
+@Serializable
+private data class AnnouncementImageWireDto(val assetId: String, val alt: String)
+
+@Serializable
+private data class AnnouncementCtaWireDto(val label: String, val href: String)
 
 @Serializable
 private data class AnnouncementPageWireDto(
@@ -206,6 +221,23 @@ private fun AnnouncementWireDto.toDomain(): AnnouncementItem? {
         // actionLabel / targetId / kind are not part of the server Announcement
         // contract. Keep the data-class defaults; never sniff `kind`/`type`
         // strings to fabricate severity.
-        pages = pages.map { page -> AnnouncementPageItem(title = page.title, body = page.body) }
+        pages = pages.map { page -> AnnouncementPageItem(title = page.title, body = page.body) },
+        label = label?.trim()?.takeIf { it.isNotEmpty() && it.length <= 100 },
+        image = image?.takeIf { UUID_PATTERN.matches(it.assetId) && it.alt.length <= 500 }
+            ?.let { AnnouncementImage(it.assetId, it.alt) },
+        cta = cta?.let { announcementCtaOrNull(it.label, it.href) },
     )
+}
+
+private val UUID_PATTERN = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
+
+private fun announcementCtaOrNull(label: String, rawHref: String): AnnouncementCta? {
+    val cleanLabel = label.trim().takeIf { it.isNotEmpty() && it.length <= 100 } ?: return null
+    val href = rawHref.trim().takeIf { it.isNotEmpty() && it.length <= 2048 } ?: return null
+    if (href.any { it.code < 0x20 }) return null
+    val internal = (href.startsWith("/") || href.startsWith("?")) &&
+        !href.startsWith("//") && !href.contains('\\') && href.none { it.code <= 0x20 }
+    val external = href.startsWith("https://") &&
+        !href.substringAfter("https://").contains('@')
+    return if (internal || external) AnnouncementCta(cleanLabel, href) else null
 }

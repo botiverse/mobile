@@ -2943,7 +2943,6 @@ private fun SlockAppShellReadyContent(
     // announcement on session-ready and refetches on the announcement:new socket
     // event (RealtimeEventMapper maps it to RealtimeRefreshScope.Announcements,
     // which the home store deliberately ignores — the modal is the sole consumer).
-    var activeAnnouncement by remember { mutableStateOf<AnnouncementItem?>(null) }
     val announcementsClient =
         remember(appShellNetworkClient) {
             SlockAnnouncementsRemindersApiClient(NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient))
@@ -3961,16 +3960,26 @@ private fun SlockAppShellReadyContent(
         )
         observedHomeServerSwitchId = targetServerId
     }
-    // task #226: fetch the latest active announcement once the session is ready
-    // (keyed by server so switching servers re-pulls that server's announcement).
-    LaunchedEffect(announcementsClient, readyServerId, authoritativeHomeStartAllowed) {
-        if (readySession == null || !authoritativeHomeStartAllowed) {
-            activeAnnouncement = null
-            return@LaunchedEffect
+    val announcementOwner = listOf(
+        sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+        readySession?.user?.id,
+        readyServerId,
+        processRealtimeAuthority?.witness?.authGeneration?.toString(),
+        authoritativeHomeStartAllowed.toString(),
+    )
+    val latestAnnouncementOwner by rememberUpdatedState(announcementOwner)
+    val announcementStore = remember(announcementsClient, announcementOwner) {
+        build.raft.app.data.SharedAnnouncementStore(announcementsClient) {
+            announcementOwner == latestAnnouncementOwner &&
+                readySession != null && authoritativeHomeStartAllowed
         }
-        activeAnnouncement =
-            (announcementsClient.activeAnnouncements() as? DataResult.Content)?.data?.items?.firstOrNull()
     }
+    val activeAnnouncement by announcementStore.announcement.collectAsState()
+    val latestAnnouncementStore by rememberUpdatedState(announcementStore)
+    DisposableEffect(announcementStore) {
+        onDispose { announcementStore.close() }
+    }
+    LaunchedEffect(announcementStore) { announcementStore.refresh() }
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
     val latestVisibleAppearanceGeneration by rememberUpdatedState(visibleAppearanceGeneration)
@@ -5695,8 +5704,7 @@ private fun SlockAppShellReadyContent(
                         if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {
                             // task #226: announcement:new — refetch the latest active
                             // announcement so the modal pops live.
-                            activeAnnouncement =
-                                (announcementsClient.activeAnnouncements() as? DataResult.Content)?.data?.items?.firstOrNull()
+                            latestAnnouncementStore.refresh()
                         }
                     // task #459: `message:new` is a data-sync trigger only — the store
                     // accept above is its whole job. Attention comes from the
@@ -7206,15 +7214,25 @@ private fun SlockAppShellReadyContent(
                     )
                 }
                 activeAnnouncement?.let { announcement ->
+                    val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
                     SharedAnnouncementModal(
                         announcement = announcement,
                         onDismiss = {
-                            activeAnnouncement = null
-                            appShellCoroutineScope.launch {
-                                announcementsClient.dismissAnnouncement(announcement.id)
+                            if (announcementStore.dismiss(announcement.id)) {
+                                appShellCoroutineScope.launch {
+                                    announcementStore.persistDismissal(announcement.id)
+                                }
                             }
                         },
-                        onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
+                        onOpenUrl = { url ->
+                            if (announcementOwner == latestAnnouncementOwner) {
+                                resolveAnnouncementLink(
+                                    url,
+                                    announcementWebBase,
+                                    readySession?.servers?.firstOrNull { it.id == readyServerId }?.slug,
+                                )?.let { linkNavigator.open(it) }
+                            }
+                        }
                     )
                 }
             }

@@ -31,6 +31,10 @@ class AnnouncementsRemindersApiTest {
         assertEquals(null, announcements.items.single().targetId)
         assertEquals(AnnouncementKind.Info, announcements.items.single().kind)
 
+        assertEquals(null, announcements.items.single().label)
+        assertEquals(null, announcements.items.single().image)
+        assertEquals(null, announcements.items.single().cta)
+
         assertEquals(
             true,
             assertIs<DataResult.Content<AnnouncementCommandResult>>(client.dismissAnnouncement("announcement-1")).data.ok
@@ -49,6 +53,25 @@ class AnnouncementsRemindersApiTest {
             ),
             transport.calls
         )
+    }
+
+    @Test
+    fun announcementPresentationFieldsAreRetainedAndUnsafeCtaIsDropped() = runBlocking {
+        val client = SlockAnnouncementsRemindersApiClient(
+            RecordingAnnouncementsRemindersApi(
+                activeBody = """{"announcements":[
+                    {"id":"announcement-1","title":"Release notes","label":"Latest","image":{"assetId":"550e8400-e29b-41d4-a716-446655440000","alt":"Release image"},"cta":{"label":"Open","href":"/releases/1"},"pages":[{"body":"One"}],"publishedAt":"2026-05-22T00:00:00.000Z"},
+                    {"id":"announcement-2","title":"Unsafe","cta":{"label":"Open","href":"javascript:alert(1)"},"pages":[{"body":"Two"}],"publishedAt":"2026-05-22T00:00:00.000Z"}
+                ]}"""
+            )
+        )
+        val items = assertIs<DataResult.Content<AnnouncementsPage>>(client.activeAnnouncements()).data.items
+        assertEquals(2, items.size)
+        val item = items.first()
+        assertEquals("Latest", item.label)
+        assertEquals("550e8400-e29b-41d4-a716-446655440000", item.image?.assetId)
+        assertEquals("Open", item.cta?.label)
+        assertEquals("/releases/1", item.cta?.href)
     }
 
     @Test
