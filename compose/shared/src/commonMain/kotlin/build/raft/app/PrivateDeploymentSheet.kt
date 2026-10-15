@@ -18,13 +18,13 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.material3.ModalBottomSheet
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
@@ -79,87 +79,100 @@ internal fun PrivateDeploymentSheet(
         }
     val saving = pending != null
 
-    ModalBottomSheet(
-        visible = visible,
-        onDismissRequest = { if (!saving) onDismiss() },
-        modifier = Modifier.padding(horizontal = 12.dp),
-        containerColor = Color.Transparent,
-        dismissOnDrag = !saving,
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp + keyboardHeightDp.dp)) {
-            Column(
+    if (!visible) return
+    // Read before entering Modal: its content is rehosted in a native window where the pager's locals are gone.
+    val bottomInset = slockBottomSafeAreaPadding()
+    // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on iOS turns the whole
+    // window into one accessibility leaf and hides the fields (see slockModalDialogProperties).
+    Modal(onWillDismiss = { if (!saving) onDismiss() }) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SlockModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss, dismissEnabled = !saving)
+            Box(
                 modifier =
                     Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(SlockSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                        .padding(
+                            start = 12.dp,
+                            end = 12.dp,
+                            bottom = maxOf(bottomInset, keyboardHeightDp.dp) + SlockSpacing.Sm,
+                        )
+                        .slockDialogContentPointerBarrier()
             ) {
-                Text(text = stringResource(MR.strings.auth_private_deployment_title), style = SlockType.PageTitle)
-                Text(
-                    text = stringResource(MR.strings.auth_private_deployment_hint),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                )
-                AuthTextField(
-                    value = webValue,
-                    onValueChange = {
-                        webValue = it
-                        errorCode = null
-                    },
-                    label = stringResource(MR.strings.auth_private_deployment_web_label),
-                    placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
-                    enabled = !saving,
-                    keyboardHeightChange = onKeyboardHeightChange,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-                )
-                AuthTextField(
-                    value = apiValue,
-                    onValueChange = {
-                        apiValue = it
-                        errorCode = null
-                    },
-                    label = stringResource(MR.strings.auth_private_deployment_api_label),
-                    placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
-                    enabled = !saving,
-                    keyboardHeightChange = onKeyboardHeightChange,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                )
-                AuthError(errorMessage)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                    AuthActionButton(
-                        text = stringResource(MR.strings.auth_private_deployment_save),
-                        tone = AuthButtonTone.Pink,
-                        enabled = !saving,
-                        loading = saving,
-                        variant = AuthActionButtonVariant.Default,
-                        // AuthActionButton fills the width; weights share the row instead of pushing Cancel out.
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            val request = privateDeploymentRequest(webValue.text, apiValue.text)
-                            if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
-                        },
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(SlockSpacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                ) {
+                    Text(text = stringResource(MR.strings.auth_private_deployment_title), style = SlockType.PageTitle)
+                    Text(
+                        text = stringResource(MR.strings.auth_private_deployment_hint),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     )
-                    AuthActionButton(
-                        text = stringResource(MR.strings.auth_private_deployment_cancel),
-                        tone = AuthButtonTone.White,
-                        enabled = !saving,
-                        variant = AuthActionButtonVariant.Default,
-                        modifier = Modifier.weight(1f),
-                        onClick = onDismiss,
-                    )
-                }
-                if (isCustom) {
-                    AuthTextLink(stringResource(MR.strings.auth_private_deployment_reset)) {
-                        if (!saving) {
+                    AuthTextField(
+                        value = webValue,
+                        onValueChange = {
+                            webValue = it
                             errorCode = null
-                            pending = SharedSettingsApiEnvironmentRequest(
-                                key = SharedApiEnvironmentStore.Production.key,
-                                label = SharedApiEnvironmentStore.Production.label,
-                                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
-                                socketBaseUrl = SharedApiEnvironmentStore.Production.socketBaseUrl,
-                                webUrl = SharedApiEnvironmentStore.Production.webUrl,
-                            )
+                        },
+                        label = stringResource(MR.strings.auth_private_deployment_web_label),
+                        placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
+                        enabled = !saving,
+                        keyboardHeightChange = onKeyboardHeightChange,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                    )
+                    AuthTextField(
+                        value = apiValue,
+                        onValueChange = {
+                            apiValue = it
+                            errorCode = null
+                        },
+                        label = stringResource(MR.strings.auth_private_deployment_api_label),
+                        placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
+                        enabled = !saving,
+                        keyboardHeightChange = onKeyboardHeightChange,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    )
+                    AuthError(errorMessage)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                        AuthActionButton(
+                            text = stringResource(MR.strings.auth_private_deployment_save),
+                            tone = AuthButtonTone.Pink,
+                            enabled = !saving,
+                            loading = saving,
+                            variant = AuthActionButtonVariant.Default,
+                            // AuthActionButton fills the width; weights share the row instead of pushing Cancel out.
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                val request = privateDeploymentRequest(webValue.text, apiValue.text)
+                                if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
+                            },
+                        )
+                        AuthActionButton(
+                            text = stringResource(MR.strings.auth_private_deployment_cancel),
+                            tone = AuthButtonTone.White,
+                            enabled = !saving,
+                            variant = AuthActionButtonVariant.Default,
+                            modifier = Modifier.weight(1f),
+                            onClick = onDismiss,
+                        )
+                    }
+                    if (isCustom) {
+                        AuthTextLink(stringResource(MR.strings.auth_private_deployment_reset)) {
+                            if (!saving) {
+                                errorCode = null
+                                pending = SharedSettingsApiEnvironmentRequest(
+                                    key = SharedApiEnvironmentStore.Production.key,
+                                    label = SharedApiEnvironmentStore.Production.label,
+                                    apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                                    socketBaseUrl = SharedApiEnvironmentStore.Production.socketBaseUrl,
+                                    webUrl = SharedApiEnvironmentStore.Production.webUrl,
+                                )
+                            }
                         }
                     }
                 }
