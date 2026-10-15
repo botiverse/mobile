@@ -282,7 +282,8 @@ private fun LoginScreen() {
     val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
     val apiBaseUrl = apiEnvironment.apiBaseUrl
     var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
-    var loginPageInteracted by remember { mutableStateOf(false) }
+    // Per server: inputs on the previous deployment must not keep a newly saved one's answer from applying.
+    var loginPageInteracted by remember(apiBaseUrl) { mutableStateOf(false) }
     LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
         if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
             val openedAt = TimeSource.Monotonic.markNow()
