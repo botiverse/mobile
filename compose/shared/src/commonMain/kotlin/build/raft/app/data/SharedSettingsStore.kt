@@ -1404,7 +1404,7 @@ class SharedSettingsDataSource(
         apiEnvironmentStore?.let { store ->
             if (SharedApiEnvironmentStore.predefined.none { it.key == request.key }) {
                 when (serverVersionProbe(request.apiBaseUrl)) {
-                    is ServerVersionProbe.Compatible -> Unit
+                    is ServerVersionProbe.Compatible, ServerVersionProbe.Unversioned -> Unit
                     is ServerVersionProbe.Incompatible, ServerVersionProbe.MissingVersion ->
                         return DataResult.Error(ScreenError("settings_environment_server_outdated", retryable = false))
                     ServerVersionProbe.Unreachable ->
