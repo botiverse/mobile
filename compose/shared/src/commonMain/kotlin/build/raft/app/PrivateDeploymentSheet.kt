@@ -208,9 +208,7 @@ private fun isValidAuthority(authority: String): Boolean {
         host = authority.substring(1, close)
         val after = authority.substring(close + 1)
         port = if (after.isEmpty()) null else if (after.startsWith(':')) after.substring(1) else return false
-        if (host.isEmpty() || host.any { !(it.isLetterOrDigit() || it == ':' || it == '.') } || ':' !in host) {
-            return false
-        }
+        if (!isIpv6Literal(host)) return false
     } else {
         host = authority.substringBefore(':')
         port = if (':' in authority) authority.substringAfter(':') else null
@@ -224,10 +222,44 @@ private fun isValidAuthority(authority: String): Boolean {
         }
     }
     if (port != null) {
-        val number = port.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.toIntOrNull() ?: return false
+        val number = port.takeIf { it.isNotEmpty() && it.length <= 5 && it.all { c -> c in '0'..'9' } }?.toInt() ?: return false
         if (number !in 1..65535) return false
     }
     return true
+}
+
+/** RFC 4291 text form: hex groups of 1-4 digits, at most one `::`, optional trailing IPv4; no zone id. */
+private fun isIpv6Literal(host: String): Boolean {
+    if (host.isEmpty()) return false
+    var groups = host
+    if ('.' in host) {
+        val lastColon = host.lastIndexOf(':')
+        if (lastColon < 0 || !isIpv4Literal(host.substring(lastColon + 1))) return false
+        // The IPv4 tail fills two groups; keep the separator so "::1.2.3.4" still splits around its "::".
+        groups = host.substring(0, lastColon + 1) + "0:0"
+    }
+    val doubleColon = groups.indexOf("::")
+    if (doubleColon >= 0 && groups.indexOf("::", doubleColon + 1) >= 0) return false
+    fun validGroups(part: String): List<String>? {
+        if (part.isEmpty()) return emptyList()
+        val items = part.split(':')
+        return items.takeIf { all -> all.all { it.length in 1..4 && it.all { c -> c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F' } } }
+    }
+    if (doubleColon < 0) {
+        val all = validGroups(groups) ?: return false
+        return all.size == 8
+    }
+    val head = validGroups(groups.substring(0, doubleColon)) ?: return false
+    val tail = validGroups(groups.substring(doubleColon + 2)) ?: return false
+    return head.size + tail.size <= 7
+}
+
+private fun isIpv4Literal(text: String): Boolean {
+    val parts = text.split('.')
+    return parts.size == 4 && parts.all { part ->
+        part.length in 1..3 && part.all { it in '0'..'9' } && part.toInt() <= 255 &&
+            (part.length == 1 || part[0] != '0')
+    }
 }
 
 private fun httpOrigin(url: String): String {

@@ -44,6 +44,14 @@ class PrivateDeploymentRequestTest {
             "https://user@raft.example.com",
             "https://[::1",
             "https://[::1]x",
+            "https://[gg::1]",
+            "https://[]",
+            "https://[1:2]",
+            "https://[1::2::3]",
+            "https://[12345::1]",
+            "https://[1:2:3:4:5:6:7:8:9]",
+            "https://[::1.2.3.256]",
+            "https://[fe80::1%25eth0]",
             "https://host:abc",
             "https://host:",
             "https://host:70000",
@@ -62,5 +70,8 @@ class PrivateDeploymentRequestTest {
         assertEquals("https://raft.example.com", request.webUrl)
         assertEquals("http://[fd00::1]:3000/api/", request.apiBaseUrl)
         assertEquals("http://[fd00::1]:3000", request.socketBaseUrl)
+        for (host in listOf("::", "::1", "1::", "2001:db8::8a2e:370:7334", "1:2:3:4:5:6:7:8", "::ffff:192.0.2.1", "1:2:3:4:5:6:1.2.3.4")) {
+            assertEquals("https://[$host]", privateDeploymentRequest("https://[$host]", "https://api.example.com")?.webUrl, host)
+        }
     }
 }
