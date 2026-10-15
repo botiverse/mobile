@@ -5749,11 +5749,10 @@ internal class SlockKuiklyBridgeModule(
         }
         val uri = Uri.parse(authorizationUrl)
         // The web login page is on the Raft web origin, which every installed Raft build claims as an App Link;
-        // open a browser explicitly so the link does not bounce through a Raft app first.
+        // open a browser explicitly. Without one there is no fallback: a plain VIEW would land in a Raft app.
         val intent =
-                (androidExternalBrowserIntent(appContext, uri)
-                        ?: Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                androidExternalBrowserIntent(appContext, uri)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ?: return mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_unavailable")
         return runCatching { appContext.startActivity(intent) }
                 .fold(
                         onSuccess = { mapOf("status" to "started") },
