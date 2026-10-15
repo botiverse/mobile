@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
@@ -50,6 +51,10 @@ internal fun PrivateDeploymentSheet(
     var apiValue by remember(visible) { mutableStateOf(TextFieldValue(if (isCustom) current.apiBaseUrl else "")) }
     var pending by remember(visible) { mutableStateOf<SharedSettingsApiEnvironmentRequest?>(null) }
     var errorCode by remember(visible) { mutableStateOf<String?>(null) }
+    // The sheet sits outside AuthScaffold, whose keyboard provider the fields would otherwise fall back to (a
+    // no-op), so the fields report here and the sheet lifts above the keyboard like SlockUnifiedDialog does.
+    var keyboardHeightDp by remember(visible) { mutableStateOf(0f) }
+    val onKeyboardHeightChange: (KeyboardParams) -> Unit = { keyboardHeightDp = it.height.coerceAtLeast(0f) }
 
     LaunchedEffect(pending) {
         val request = pending ?: return@LaunchedEffect
@@ -81,7 +86,7 @@ internal fun PrivateDeploymentSheet(
         containerColor = Color.Transparent,
         dismissOnDrag = !saving,
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp + keyboardHeightDp.dp)) {
             Column(
                 modifier =
                     Modifier
@@ -105,6 +110,7 @@ internal fun PrivateDeploymentSheet(
                     label = stringResource(MR.strings.auth_private_deployment_web_label),
                     placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
                     enabled = !saving,
+                    keyboardHeightChange = onKeyboardHeightChange,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 )
                 AuthTextField(
@@ -116,16 +122,19 @@ internal fun PrivateDeploymentSheet(
                     label = stringResource(MR.strings.auth_private_deployment_api_label),
                     placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
                     enabled = !saving,
+                    keyboardHeightChange = onKeyboardHeightChange,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                 )
                 AuthError(errorMessage)
-                Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
                     AuthActionButton(
                         text = stringResource(MR.strings.auth_private_deployment_save),
                         tone = AuthButtonTone.Pink,
                         enabled = !saving,
                         loading = saving,
                         variant = AuthActionButtonVariant.Default,
+                        // AuthActionButton fills the width; weights share the row instead of pushing Cancel out.
+                        modifier = Modifier.weight(1f),
                         onClick = {
                             val request = privateDeploymentRequest(webValue.text, apiValue.text)
                             if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
@@ -136,6 +145,7 @@ internal fun PrivateDeploymentSheet(
                         tone = AuthButtonTone.White,
                         enabled = !saving,
                         variant = AuthActionButtonVariant.Default,
+                        modifier = Modifier.weight(1f),
                         onClick = onDismiss,
                     )
                 }
