@@ -2158,6 +2158,7 @@
     <string name="auth_web_login_hint">Sign in through raft.build</string>
     <string name="auth_web_login_private_entry">Sign in to a private deployment</string>
     <string name="auth_web_login_failed">Unable to finish sign-in. Please try again.</string>
+    <string name="auth_web_login_stale_callback">That sign-in link was from an earlier attempt. Finish signing in on the latest page, or sign in again.</string>
     <string name="channel_member_role_owner">Owner</string>
     <string name="channel_member_role_admin">Admin</string>
     <string name="channel_member_role_guest">Guest</string>
