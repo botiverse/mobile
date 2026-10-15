@@ -56,6 +56,8 @@ import android.view.ViewTreeObserver
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -741,7 +743,8 @@ private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
 open class SlockKuiklyActivity :
     ComponentActivity(),
     KuiklyRenderViewBaseDelegatorDelegate,
-    SlockKuiklyChildPageLoadListener {
+    SlockKuiklyChildPageLoadListener,
+    SlockSandboxWebViewFileChooserHost {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private val adaptivePaneHostDelegate =
@@ -801,6 +804,32 @@ open class SlockKuiklyActivity :
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 handleAttachmentSaveAsResult(result.resultCode, result.data?.data)
             }
+    private var pendingWebViewFileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val webViewFileChooserLauncher: ActivityResultLauncher<Intent> =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                val callback = pendingWebViewFileChooserCallback
+                pendingWebViewFileChooserCallback = null
+                callback?.onReceiveValue(
+                        WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+                )
+            }
+
+    override fun launchSandboxWebViewFileChooser(
+        params: WebChromeClient.FileChooserParams,
+        callback: ValueCallback<Array<Uri>>,
+    ): Boolean {
+        if (pendingWebViewFileChooserCallback != null) {
+            callback.onReceiveValue(null)
+            return false
+        }
+        return runCatching {
+            pendingWebViewFileChooserCallback = callback
+            webViewFileChooserLauncher.launch(params.createIntent())
+        }.onFailure {
+            pendingWebViewFileChooserCallback = null
+            callback.onReceiveValue(null)
+        }.isSuccess
+    }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
     private val screenshotFeedbackListeningGate = ScreenshotFeedbackListeningGate()

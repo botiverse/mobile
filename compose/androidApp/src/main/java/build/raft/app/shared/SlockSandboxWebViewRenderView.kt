@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
@@ -11,12 +12,14 @@ import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.ComponentActivity
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.JavaScriptReplyProxy
@@ -27,6 +30,29 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayInputStream
 import java.net.URI
 import org.json.JSONObject
+
+internal interface SlockSandboxWebViewFileChooserHost {
+    /**
+     * Launch the system file chooser for a WebView `<input type="file">`.
+     * Returns true when the chooser was launched; the callback must receive
+     * the picked URIs or null on cancel/failure. Returns false when no chooser
+     * can be shown (no host activity or one already open) — the callback is
+     * completed with null in that case by the host.
+     */
+    fun launchSandboxWebViewFileChooser(
+        params: WebChromeClient.FileChooserParams,
+        callback: ValueCallback<Array<Uri>>,
+    ): Boolean
+}
+
+private fun unwrapHostActivity(context: Context): ComponentActivity? {
+    var current: Context? = context
+    while (current is ContextWrapper) {
+        if (current is ComponentActivity) return current
+        current = current.baseContext
+    }
+    return null
+}
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
     private var webView = WebView(context)
@@ -338,6 +364,24 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     if (destroyed) return false
                     notifyNavigationBlocked("")
                     return false
+                }
+
+                override fun onShowFileChooser(
+                    view: WebView?,
+                    filePathCallback: ValueCallback<Array<Uri>>?,
+                    params: WebChromeClient.FileChooserParams?
+                ): Boolean {
+                    if (filePathCallback == null) return false
+                    if (destroyed || params == null) {
+                        filePathCallback.onReceiveValue(null)
+                        return false
+                    }
+                    val host = unwrapHostActivity(context) as? SlockSandboxWebViewFileChooserHost
+                    if (host == null) {
+                        filePathCallback.onReceiveValue(null)
+                        return false
+                    }
+                    return host.launchSandboxWebViewFileChooser(params, filePathCallback)
                 }
 
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
