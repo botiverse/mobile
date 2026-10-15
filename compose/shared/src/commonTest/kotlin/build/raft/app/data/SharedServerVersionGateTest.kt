@@ -72,6 +72,29 @@ class SharedServerVersionGateTest {
     }
 
     @Test
+    fun raftSourceBuildIdentityWithoutVersionAccepted() {
+        // raft-source packages/server/src/app.ts: `/api/version` answers the build identity only.
+        assertEquals(
+            ServerVersionProbe.Unversioned,
+            probe(
+                "https://private.example.com/api/",
+                AuthNetworkResponse(200, """{"sha":"98ad0d78bb17dcced299c5217a44fc9cabacbf67","builtAt":"2026-10-15T13:03:00Z","branch":"main"}""")
+            )
+        )
+        // Same server without RAFT_RELEASE_SHA / RAFT_BUILD_AT configured.
+        assertEquals(
+            ServerVersionProbe.Unversioned,
+            probe(
+                "https://private.example.com/api/",
+                AuthNetworkResponse(503, null, """{"error":"Build identity unavailable","code":"build_identity_unavailable","sha":null}""")
+            )
+        )
+        // A web app's catch-all HTML is not a Raft server; any other 503 is not either.
+        assertEquals(ServerVersionProbe.MissingVersion, probe("https://private.example.com/api/", AuthNetworkResponse(200, "<html></html>")))
+        assertEquals(ServerVersionProbe.Unreachable, probe("https://private.example.com/api/", AuthNetworkResponse(503, "{}")))
+    }
+
+    @Test
     fun unreachableOnHttpErrorOrNetworkFailure() {
         assertEquals(ServerVersionProbe.Unreachable, probe("https://private.example.com/api/", AuthNetworkResponse(404, null)))
         assertEquals(ServerVersionProbe.Unreachable, probe("https://private.example.com/api/", null))

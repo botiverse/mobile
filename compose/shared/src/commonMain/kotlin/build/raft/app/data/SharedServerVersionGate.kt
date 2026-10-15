@@ -13,8 +13,15 @@ sealed interface ServerVersionProbe {
     /** The endpoint could not be reached or returned a non-2xx response. */
     data object Unreachable : ServerVersionProbe
 
-    /** The endpoint answered 2xx but carried no usable `version` field. */
+    /** The endpoint answered 2xx but carried no usable `version` field and no Raft build identity. */
     data object MissingVersion : ServerVersionProbe
+
+    /**
+     * A Raft server that reports its build identity but no `version`: raft-source's `/api/version` answers
+     * `{sha, builtAt, branch}` (or 503 `build_identity_unavailable` when those are not configured). Accepted —
+     * otherwise every open-source deployment is refused (artin, 2026-10-15).
+     */
+    data object Unversioned : ServerVersionProbe
 }
 
 /**
@@ -48,9 +55,9 @@ internal object SharedServerVersionGate {
     }
 
     /**
-     * GETs `<apiBaseUrl>/version` without auth (contract: 200 JSON with a `version`
-     * string). Network errors, non-2xx, malformed JSON and a missing/invalid field
-     * all refuse the save — a deployment that cannot prove its version is rejected.
+     * GETs `<apiBaseUrl>/version` without auth. A `version` string is compared with the baseline; a Raft
+     * build identity without one ([ServerVersionProbe.Unversioned], raft-source) is accepted. Network errors,
+     * other non-2xx answers and non-Raft bodies refuse the save.
      */
     suspend fun probe(
         apiBaseUrl: String,
@@ -61,11 +68,23 @@ internal object SharedServerVersionGate {
         val response =
             runCatchingPreservingCancellation { transportFactory("$base/").serverVersion() }
                 .getOrNull() ?: return ServerVersionProbe.Unreachable
+        val json =
+            (response.bodyText ?: response.errorBodyText)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { body -> runCatching { JSONObject(body) }.getOrNull() }
+        if (response.code == 503 && json?.optString("code") == "build_identity_unavailable") {
+            return ServerVersionProbe.Unversioned
+        }
         if (response.code !in 200..299) return ServerVersionProbe.Unreachable
-        val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return ServerVersionProbe.MissingVersion
-        val version =
-            runCatching { JSONObject(body).optString("version").trim() }.getOrNull().orEmpty()
-        if (parseVersion(version) == null) return ServerVersionProbe.MissingVersion
+        val version = json?.optString("version")?.trim().orEmpty()
+        if (parseVersion(version) == null) {
+            // A web app's catch-all page also answers 2xx: only a JSON build identity counts as Raft.
+            return if (json?.optString("sha")?.isNotBlank() == true) {
+                ServerVersionProbe.Unversioned
+            } else {
+                ServerVersionProbe.MissingVersion
+            }
+        }
         return if (isVersionAtLeast(version, MIN_SERVER_VERSION)) {
             ServerVersionProbe.Compatible(version)
         } else {
