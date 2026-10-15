@@ -1,4 +1,22 @@
 pluginManagement {
+    // The OHOS SQLDelight fork (bytemain/sqldelight, branch slock-2.1.0-ohos) is
+    // published to Raft Artifacts as a closed ohosArm64 graph (2.1.0-KBA-003).
+    // exclusiveContent makes Raft the only repository Gradle may consult for
+    // app.cash.sqldelight here, so neither mavenLocal nor a mirror can shadow it.
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsSqlDelight() {
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsSqlDelight"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
+            }
+            filter {
+                includeGroup("app.cash.sqldelight")
+            }
+        }
+    }
+
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
             name = "RaftArtifactsKuiklyBase"
@@ -17,10 +35,6 @@ pluginManagement {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModuleByRegex("build\\.raft\\.mermaid", ".*")
-                // OHOS SQLDelight fork (bytemain/sqldelight slock-2.1.0-ohos) is a closed
-                // ohosArm64 graph published to Raft Artifacts as 2.1.0-KBA-003. No
-                // submodule source build or mavenLocal hydration is needed any more.
-                includeGroup("app.cash.sqldelight")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
                 includeModule("co.touchlab", "stately-strict")
@@ -32,6 +46,7 @@ pluginManagement {
     }
 
     repositories {
+        raftArtifactsSqlDelight()
         google()
         gradlePluginPortal()
         mavenCentral()
@@ -59,6 +74,9 @@ dependencyResolutionManagement {
             }
             filter {
                 includeGroup("com.tencent.kuikly-open")
+                // OHOS SQLDelight fork, 2.1.0-KBA-003: Raft Artifacts is the only
+                // allowed source (see the pluginManagement block).
+                includeGroup("app.cash.sqldelight")
                 includeGroupByRegex("com\\.tencent\\.kuikly-open\\.compose\\..+")
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-003")
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib-common", "2.0.21-KBA-003")
@@ -90,10 +108,6 @@ dependencyResolutionManagement {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModuleByRegex("build\\.raft\\.mermaid", ".*")
-                // OHOS SQLDelight fork (bytemain/sqldelight slock-2.1.0-ohos) is a closed
-                // ohosArm64 graph published to Raft Artifacts as 2.1.0-KBA-003. No
-                // submodule source build or mavenLocal hydration is needed any more.
-                includeGroup("app.cash.sqldelight")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
                 includeModule("co.touchlab", "stately-strict")

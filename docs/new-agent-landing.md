@@ -61,8 +61,9 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | Kuikly release consumed by mobile | `compose/gradle/kuikly-release-closure.json` | Immutable Raft Maven release manifest |
 | Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
 
-The mobile repo also has one OHOS/KMP fork submodule, `third_party/sqldelight`
-(Stately and SQLiter are consumed from Raft Artifacts, not vendored).
+The mobile repo vendors no OHOS/KMP fork sources any more: the SQLDelight,
+Stately and SQLiter OHOS forks are all consumed from Raft Artifacts (see
+`docs/ohos-sqldelight-fork.md`).
 
 When API payloads or Socket.IO events are in question, use the TypeScript
 server source as the contract oracle. Mobile no longer vendors that repository

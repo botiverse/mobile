@@ -79,4 +79,4 @@ The schema follows a Mattermost-style split between message facts and per-princi
 
 - Android shared generation works:
   `cd compose && ./gradlew --no-daemon --console=plain -Dkotlin.compiler.execution.strategy=in-process :shared:compileDebugKotlinAndroid`
-- OHOS generation is blocked until the forked SQLDelight Gradle plugin artifact `app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.1.0-KBA-001` is published. The OHOS native driver/runtime artifacts are separate and already exist.
+- OHOS generation runs against the forked SQLDelight Gradle plugin published to Raft Artifacts (`app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.1.0-KBA-003`, together with the OHOS runtime/native-driver artifacts of the same version); no local plugin publish is involved.

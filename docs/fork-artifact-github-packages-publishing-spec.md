@@ -1,5 +1,13 @@
 # Fork Artifact Publishing to GitHub Packages
 
+> **Status (2026-10-15): historical.** The forked stack now lives on Raft
+> Artifacts rather than GitHub Packages: Stately `2.1.0-KBA-001`, SQLiter
+> `1.3.3-KBA-001` and SQLDelight `2.1.0-KBA-003` are consumed remotely, and the
+> `third_party/stately`, `third_party/sqliter` and `third_party/sqldelight`
+> submodules were removed (#3029, #3031 and the follow-up). The text below is
+> kept as the original design record; see `docs/ohos-sqldelight-fork.md` for
+> the current state.
+
 ## Purpose
 
 Move Slock's forked native dependency stack out of `mavenLocal()` and local HAR

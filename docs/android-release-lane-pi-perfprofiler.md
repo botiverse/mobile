@@ -51,9 +51,9 @@ in any channel (usually `#artifacts`). Lane assumptions:
    reusable script). It will:
    - `cp` the canonical-checkout script into `<worktree>/.tools/`
    - `sed` the `WT=...` path
-   - For the Mobile dependency submodule (`third_party/sqldelight`)
-     plus the `.agents/skills/kuikly-ui-framework/references/KuiklyUI` skill
-     reference, write the right `core.worktree` in
+   - For the `.agents/skills/kuikly-ui-framework/references/KuiklyUI` skill
+     reference (the only remaining submodule; no build dependency is a
+     submodule any more), write the right `core.worktree` in
      `~/.slock-checkout/.git/modules/...` and use `git archive <pinned-sha> |
      tar -x` to materialize a clean tree (avoiding main-checkout dirty files).
    See "Submodule strategy" below for the rationale.

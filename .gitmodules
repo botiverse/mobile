@@ -1,7 +1,3 @@
 [submodule ".agents/skills/kuikly-ui-framework/references/KuiklyUI"]
 	path = .agents/skills/kuikly-ui-framework/references/KuiklyUI
 	url = https://github.com/Tencent-TDS/KuiklyUI.git
-[submodule "third_party/sqldelight"]
-	path = third_party/sqldelight
-	url = https://github.com/bytemain/sqldelight.git
-	branch = slock-2.1.0-ohos
