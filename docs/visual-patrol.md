@@ -1,4 +1,10 @@
-# Visual Patrol — daily drift inspection → GitHub issues
+# Visual Patrol — daily drift inspection
+
+> **Report only since 2026-10-15.** The repository is public, so the workflow no longer files
+> GitHub issues (artin; Sentinel, task #172). Every lens runs in its default dry-run mode and the
+> findings land in the job summary and the `visual-patrol-report` artifact; the 3x M3 verify stage
+> was removed with the issues it triaged. The scripts still support `--live` for a private fork.
+> The sections below describe the original issue-filing design.
 
 A daily, autonomous **inspection (巡检)** of cross-platform visual parity. It runs after
 the nightly capture + analysis, turns each **new** drift into a GitHub issue with

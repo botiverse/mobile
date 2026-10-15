@@ -1,14 +1,13 @@
-name: Visual Patrol (daily drift → issues)
+name: Visual Patrol (daily drift report)
 
-# Daily visual-drift inspection. Reads the nightly visual-testing analysis and files
-# a GitHub issue per NEW drift (deduped by caseId + perceptual fingerprint), so the
-# morning has a triaged queue. See docs/visual-patrol.md.
+# Daily visual-drift and source-lens inspection. Reads the nightly visual-testing analysis and the
+# source tree, and reports what it finds in the job summary and the uploaded JSON reports.
+# See docs/visual-patrol.md.
 #
-# SAFETY: dry-run by default. A run only files real issues when it is LIVE, which
-# requires BOTH an explicit opt-in:
-#   - manual dispatch with dry_run=false, OR
-#   - the repo variable VISUAL_PATROL_LIVE == "true" (for the scheduled run).
-# Merging this workflow therefore does NOT start filing issues on its own.
+# It no longer files GitHub issues: the repository is public (2026-10-15, artin), and automated
+# audit findings are internal triage material, not public issues (Sentinel, task #172). The scripts
+# always run in their default dry-run mode here; `--live` is never passed, and the job can only read
+# issues (the scripts list existing ones to dedupe the report).
 
 on:
   workflow_dispatch:
@@ -19,17 +18,13 @@ on:
         options: [react__android, android__ios, react__ios]
         default: react__android
       threshold:
-        description: "Minimum severity to file"
+        description: "Minimum severity to report"
         type: choice
         options: [medium, high, critical]
         default: medium
       cap:
-        description: "Max issues to file this run"
+        description: "Max findings per lens"
         default: "10"
-      dry_run:
-        description: "Dry run (print only, create nothing)"
-        type: boolean
-        default: true
   schedule:
     # A bit after the nightly capture+analysis lands on gh-pages.
     # Twice daily (artin, #wg-nightly-visual-fix 2026-07-16): the code lenses
@@ -40,7 +35,7 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
 
 concurrency:
   group: visual-patrol-${{ github.event.inputs.comparison || 'react__android' }}
@@ -52,19 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0            # need origin/gh-pages for the analysis + issue dedup
+          fetch-depth: 0            # need origin/gh-pages for the analysis + dedup context
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Resolve live/dry-run
-        id: mode
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            [ "${{ github.event.inputs.dry_run }}" = "false" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
-          else
-            # Scheduled: only live when the repo variable is explicitly set true.
-            [ "${{ vars.VISUAL_PATROL_LIVE }}" = "true" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
-          fi
       - name: Run visual patrol
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,8 +61,7 @@ jobs:
             --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
             --threshold "${{ github.event.inputs.threshold || 'medium' }}" \
             --cap "${{ github.event.inputs.cap || '10' }}" \
-            --repo "${{ github.repository }}" \
-            ${{ steps.mode.outputs.live }} | tee patrol-report.json
+            --repo "${{ github.repository }}" | tee patrol-report.json
       - name: Run token audit (design-token lens)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,8 +69,7 @@ jobs:
           set -o pipefail
           node scripts/patrol/token_audit.mjs \
             --repo "$GITHUB_REPOSITORY" \
-            --cap 5 \
-            ${{ steps.mode.outputs.live }} | tee token-audit-report.json
+            --cap 5 | tee token-audit-report.json
 
       - name: Run glyph audit (text-glyph-as-icon lens)
         env:
@@ -94,8 +78,7 @@ jobs:
           set -o pipefail
           node scripts/patrol/glyph_audit.mjs \
             --repo "$GITHUB_REPOSITORY" \
-            --cap 5 \
-            ${{ steps.mode.outputs.live }} | tee glyph-audit-report.json
+            --cap 5 | tee glyph-audit-report.json
 
       - name: Run renderer coverage audit (markdown silent-drop lens)
         env:
@@ -103,8 +86,7 @@ jobs:
         run: |
           set -o pipefail
           node scripts/patrol/renderer_coverage.mjs \
-            --repo "$GITHUB_REPOSITORY" \
-            ${{ steps.mode.outputs.live }} | tee renderer-coverage-report.json
+            --repo "$GITHUB_REPOSITORY" | tee renderer-coverage-report.json
 
       - name: Run font audit (typography contract lens)
         env:
@@ -113,10 +95,28 @@ jobs:
           set -o pipefail
           node scripts/patrol/font_audit.mjs \
             --repo "$GITHUB_REPOSITORY" \
-            --cap 5 \
-            ${{ steps.mode.outputs.live }} | tee font-audit-report.json
+            --cap 5 | tee font-audit-report.json
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## Visual patrol (report only, no issues filed)"
+            for f in patrol-report.json token-audit-report.json glyph-audit-report.json \
+                     renderer-coverage-report.json font-audit-report.json; do
+              [ -f "$f" ] || continue
+              echo ""
+              echo "<details><summary>$f</summary>"
+              echo ""
+              echo '```json'
+              head -c 60000 "$f"
+              echo '```'
+              echo "</details>"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v6
+        if: always()
         with:
           name: visual-patrol-report
           path: |
@@ -125,57 +125,3 @@ jobs:
             glyph-audit-report.json
             renderer-coverage-report.json
             font-audit-report.json
-
-  # After filing, adversarially verify each open drift issue with a 3x M3 panel:
-  # majority "real problem" -> label `verified` (enters the fix queue); otherwise the
-  # issue is closed as an auto-triaged false positive. Runs in the same live/dry-run
-  # mode as the patrol. Needs the M3 credential (same PI_API_KEY as nightly analysis).
-  verify:
-    needs: patrol
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0            # need origin/gh-pages for the analysis context
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-      - name: Install M3 SDK (pi-ai)
-        run: |
-          mkdir -p "$RUNNER_TEMP/m3" && cd "$RUNNER_TEMP/m3"
-          echo '{"name":"m3","private":true}' > package.json
-          # @earendil-works/pi-ai is on the PUBLIC npm registry — no scope override or auth.
-          # (The earlier .npmrc pinned the scope to GitHub Packages, which the package is NOT on;
-          # that scope-registry override also defeated the public-registry fallback → install failed.)
-          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
-      - name: Resolve live/dry-run
-        id: mode
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            [ "${{ github.event.inputs.dry_run }}" = "false" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
-          else
-            [ "${{ vars.VISUAL_PATROL_LIVE }}" = "true" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Verify drift issues (3x M3 adversarial panel)
-        env:
-          # verify_issues.mjs lists/labels/closes drift issues via `gh` — needs a token,
-          # same as the patrol job. Without it `gh issue list` 404s, the script exits
-          # non-zero, and (before pipefail) `| tee` masked that as a green no-op.
-          GH_TOKEN: ${{ github.token }}
-          PI_API_KEY: ${{ secrets.PI_API_KEY }}
-          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-        run: |
-          set -o pipefail   # `| tee` must not swallow a non-zero exit from the node script
-          if [ -z "$PI_API_KEY" ]; then echo "no PI_API_KEY; skipping verify stage"; exit 0; fi
-          export MINIMAX_API_KEY="$PI_API_KEY"
-          node scripts/patrol/verify_issues.mjs \
-            --repo "${{ github.repository }}" \
-            --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
-            ${{ steps.mode.outputs.live }} | tee verify-report.json
-      - uses: actions/upload-artifact@v6
-        with:
-          name: patrol-verify-report
-          path: verify-report.json
