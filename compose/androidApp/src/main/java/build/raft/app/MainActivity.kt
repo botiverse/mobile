@@ -21,6 +21,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -158,32 +159,7 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun externalBrowserIntent(uri: Uri): Intent? {
-        val implicit =
-            Intent(Intent.ACTION_VIEW, uri)
-                .addCategory(Intent.CATEGORY_BROWSABLE)
-        val candidates =
-            packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
-        val defaultPackage =
-            packageManager
-                .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
-                ?.activityInfo
-                ?.packageName
-        val selectedPackage =
-            selectExternalWebHandlerPackage(
-                ownPackage = packageName,
-                defaultPackage = defaultPackage,
-                candidatePackages = candidates.map { it.activityInfo.packageName }
-            ) ?: return null
-        val selected =
-            candidates.firstOrNull { candidate ->
-                candidate.activityInfo.packageName == selectedPackage
-            } ?: return null
-        return implicit.setClassName(
-            selected.activityInfo.packageName,
-            selected.activityInfo.name
-        )
-    }
+    private fun externalBrowserIntent(uri: Uri): Intent? = androidExternalBrowserIntent(this, uri)
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
         val pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent)
@@ -675,14 +651,54 @@ internal fun emailVerificationNavigation(
 
 private fun isRootWebPath(path: String?): Boolean = path.isNullOrEmpty() || path == "/"
 
+/**
+ * The browser for a Raft web link. Every Raft build (release, alpha, connected-test, ...) claims the Raft web
+ * origin, so with several installed the "default" handler can be another Raft app, which would only bounce
+ * the link back (artin, 2026-10-15: tapping web login first opened a Raft app). Any `build.raft.app*`
+ * package is skipped, not just this one.
+ */
 internal fun selectExternalWebHandlerPackage(
     ownPackage: String,
     defaultPackage: String?,
     candidatePackages: List<String>
 ): String? {
-    val externalPackages = candidatePackages.filter { it.isNotBlank() && it != ownPackage }
+    val externalPackages =
+        candidatePackages.filter { it.isNotBlank() && it != ownPackage && !it.isRaftAppPackage() }
     return defaultPackage?.takeIf { it in externalPackages }
         ?: externalPackages.firstOrNull()
+}
+
+private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || startsWith("$RAFT_APP_PACKAGE.")
+
+private const val RAFT_APP_PACKAGE = "build.raft.app"
+
+/** An explicit browser activity for [uri], so Android App Links cannot route it to a Raft app; null if none. */
+internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
+    val packageManager = context.packageManager
+    val implicit =
+        Intent(Intent.ACTION_VIEW, uri)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+    val candidates =
+        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+    val defaultPackage =
+        packageManager
+            .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo
+            ?.packageName
+    val selectedPackage =
+        selectExternalWebHandlerPackage(
+            ownPackage = context.packageName,
+            defaultPackage = defaultPackage,
+            candidatePackages = candidates.map { it.activityInfo.packageName }
+        ) ?: return null
+    val selected =
+        candidates.firstOrNull { candidate ->
+            candidate.activityInfo.packageName == selectedPackage
+        } ?: return null
+    return implicit.setClassName(
+        selected.activityInfo.packageName,
+        selected.activityInfo.name
+    )
 }
 
 private fun Intent?.isAppShellPageDataIntent(): Boolean =

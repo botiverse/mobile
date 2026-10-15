@@ -79,6 +79,7 @@ import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.MainActivity
 import build.raft.app.BuildConfig
+import build.raft.app.androidExternalBrowserIntent
 import build.raft.app.data.SlockDesktopShortcutContract
 import build.raft.app.FeedbackDiagnosticsBinding
 import build.raft.app.FeedbackDiagnosticsFailureReason
@@ -5746,11 +5747,12 @@ internal class SlockKuiklyBridgeModule(
         if (!authorizationUrl.startsWith("https://")) {
             return mapOf("status" to "error", "code" to "settings_mobile_oauth_url_invalid")
         }
+        val uri = Uri.parse(authorizationUrl)
+        // The web login page is on the Raft web origin, which every installed Raft build claims as an App Link;
+        // open a browser explicitly. Without one there is no fallback: a plain VIEW would land in a Raft app.
         val intent =
-                Intent(Intent.ACTION_VIEW, Uri.parse(authorizationUrl)).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+                androidExternalBrowserIntent(appContext, uri)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ?: return mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_unavailable")
         return runCatching { appContext.startActivity(intent) }
                 .fold(
                         onSuccess = { mapOf("status" to "started") },
