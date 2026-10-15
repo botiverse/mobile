@@ -36,6 +36,7 @@ internal fun WebLoginScreen(
     auth: SharedAuthDataSource,
     onInteraction: () -> Unit = {},
     onOpenPrivateDeployment: () -> Unit = {},
+    webUrl: String = "",
 ) {
     val scope = rememberCoroutineScope()
     val platform = remember(bridge) {
@@ -119,7 +120,8 @@ internal fun WebLoginScreen(
                 },
             )
             Text(
-                text = stringResource(MR.strings.auth_web_login_hint),
+                // Follows the current environment: the official web app by default, the private web address once set.
+                text = stringResource(MR.strings.auth_web_login_hint, webLoginHintHost(webUrl)),
                 modifier = Modifier.fillMaxWidth(),
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 textAlign = TextAlign.Center,
@@ -131,6 +133,12 @@ internal fun WebLoginScreen(
         }
     }
 }
+
+/** Host shown under the sign-in button; the official web app when the environment has no web address. */
+internal fun webLoginHintHost(webUrl: String): String =
+    webUrl.trim().substringAfter("://").substringBefore('/').substringBefore('?').ifBlank { WEB_LOGIN_DEFAULT_HOST }
+
+private const val WEB_LOGIN_DEFAULT_HOST = "app.raft.build"
 
 /** Reads the stored session until it appears or [attempts] run out ([delayMs] apart). */
 internal suspend fun <T> awaitStoredSession(

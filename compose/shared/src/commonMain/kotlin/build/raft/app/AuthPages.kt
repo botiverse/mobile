@@ -313,6 +313,7 @@ private fun LoginScreen() {
             authDataSource,
             onInteraction = { loginPageInteracted = true },
             onOpenPrivateDeployment = { privateDeploymentVisible = true },
+            webUrl = apiEnvironment.webUrl,
         )
         return
     }
