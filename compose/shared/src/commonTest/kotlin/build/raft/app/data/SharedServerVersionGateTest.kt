@@ -105,6 +105,18 @@ class SharedServerVersionGateTest {
         // A web app's catch-all HTML is not a Raft server; any other 503 is not either.
         assertEquals(ServerVersionProbe.MissingVersion, probe("https://private.example.com/api/", AuthNetworkResponse(200, "<html></html>")))
         assertEquals(ServerVersionProbe.MissingVersion, probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"sha":"not-a-hash"}""")))
+        // Only a string sha / version counts: Kuikly's optString would turn these into "1234567", "true", "{}", "[]".
+        for (sha in listOf("1234567", "true", "{}", "[]")) {
+            assertEquals(
+                ServerVersionProbe.MissingVersion,
+                probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"sha":$sha}""")),
+                "sha=$sha",
+            )
+        }
+        assertEquals(
+            ServerVersionProbe.MissingVersion,
+            probe("https://private.example.com/api/", AuthNetworkResponse(200, """{"version":2,"sha":"98ad0d78"}"""))
+        )
         assertEquals(ServerVersionProbe.Unreachable, probe("https://private.example.com/api/", AuthNetworkResponse(503, "{}")))
     }
 
