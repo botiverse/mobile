@@ -2203,6 +2203,7 @@
     <string name="auth_private_deployment_reset">Raft（app.raft.build）を使う</string>
     <string name="auth_private_deployment_invalid">両方のアドレスを http(s) のリンクで入力してください。</string>
     <string name="auth_private_deployment_unreachable">サーバーに接続できませんでした。サーバーのアドレスを確認して、もう一度お試しください。</string>
+    <string name="auth_private_deployment_web_unreachable">Web アドレスに接続できません。確認してもう一度お試しください。</string>
     <string name="auth_private_deployment_outdated">このサーバーは対応バージョン（1.13.0 以降）を返しませんでした。サーバーを更新してから、もう一度お試しください。</string>
     <string name="auth_private_deployment_failed">保存できませんでした。もう一度お試しください。</string>
 </resources>

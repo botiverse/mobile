@@ -2214,6 +2214,7 @@
     <string name="auth_private_deployment_reset">Use Raft (app.raft.build)</string>
     <string name="auth_private_deployment_invalid">Enter both addresses as http(s) links.</string>
     <string name="auth_private_deployment_unreachable">The server could not be reached. Check the server address and try again.</string>
+    <string name="auth_private_deployment_web_unreachable">The web address could not be reached. Check it and try again.</string>
     <string name="auth_private_deployment_outdated">This server does not report a supported version (1.13.0 or later). Upgrade the server and try again.</string>
     <string name="auth_private_deployment_failed">Could not save the deployment. Try again.</string>
 </resources>
