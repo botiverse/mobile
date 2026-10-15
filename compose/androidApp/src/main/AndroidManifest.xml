@@ -46,7 +46,7 @@
             android:name=".shared.SlockKuiklyActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="false"
-            android:theme="@style/Theme.Slock"
+            android:theme="@style/Theme.Slock.Translucent"
             android:windowSoftInputMode="adjustNothing" />
         <activity
             android:name=".shared.SlockAppShellActivity"

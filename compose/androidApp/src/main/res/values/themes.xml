@@ -19,4 +19,15 @@
     </style>
 
     <style name="Theme.Slock.AppShellStarting" parent="Theme.Slock.Starting" />
+
+    <!-- Pushed Kuikly pages (thread, members, ...) run inside
+         SlockKuiklyActivity stacked on top of another app activity.
+         A translucent window lets the underlying page show through the
+         open/close transition instead of flashing the opaque cream
+         window background while the Kuikly render surface attaches.
+         The app-shell activities keep their opaque splash themes. -->
+    <style name="Theme.Slock.Translucent" parent="Theme.Slock">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
 </resources>
