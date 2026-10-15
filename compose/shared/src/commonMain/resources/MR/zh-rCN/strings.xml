@@ -2214,6 +2214,7 @@
     <string name="auth_private_deployment_reset">使用 Raft 官方（app.raft.build）</string>
     <string name="auth_private_deployment_invalid">请把两个地址都填成 http(s) 链接。</string>
     <string name="auth_private_deployment_unreachable">无法连接服务器。请检查服务器地址后重试。</string>
+    <string name="auth_private_deployment_web_unreachable">前端地址无法访问，请检查后重试。</string>
     <string name="auth_private_deployment_outdated">这个服务器没有返回支持的版本（需要 1.13.0 或更高）。请升级服务器后重试。</string>
     <string name="auth_private_deployment_failed">保存失败，请重试。</string>
 </resources>

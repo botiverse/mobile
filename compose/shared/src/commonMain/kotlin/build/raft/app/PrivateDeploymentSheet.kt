@@ -11,6 +11,9 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.network.SlockHttpExecutor
+import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -31,6 +34,7 @@ import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The login pages' "Sign in to a private deployment" sheet (artin, 2026-10-15): the web (frontend) address and
@@ -56,8 +60,16 @@ internal fun PrivateDeploymentSheet(
     var keyboardHeightDp by remember(visible) { mutableStateOf(0f) }
     val onKeyboardHeightChange: (KeyboardParams) -> Unit = { keyboardHeightDp = it.height.coerceAtLeast(0f) }
 
+    val webProbe = remember { createPlatformSlockHttpExecutor {} }
     LaunchedEffect(pending) {
         val request = pending ?: return@LaunchedEffect
+        // The server check below only covers the API; web login opens the web address, so it must answer too
+        // (HuaTuo: a bad web address with a good server saved fine and broke sign-in).
+        if (request.key == SharedApiEnvironmentStore.CustomKey && !privateDeploymentWebReachable(webProbe, request.webUrl)) {
+            pending = null
+            errorCode = PRIVATE_DEPLOYMENT_WEB_UNREACHABLE
+            return@LaunchedEffect
+        }
         val result =
             runCatchingPreservingCancellation { settingsDataSource.saveApiEnvironment(request) }
                 .getOrNull()
@@ -73,6 +85,7 @@ internal fun PrivateDeploymentSheet(
         when (errorCode) {
             null -> null
             PRIVATE_DEPLOYMENT_INVALID -> stringResource(MR.strings.auth_private_deployment_invalid)
+            PRIVATE_DEPLOYMENT_WEB_UNREACHABLE -> stringResource(MR.strings.auth_private_deployment_web_unreachable)
             "settings_environment_server_unreachable" -> stringResource(MR.strings.auth_private_deployment_unreachable)
             "settings_environment_server_outdated" -> stringResource(MR.strings.auth_private_deployment_outdated)
             else -> stringResource(MR.strings.auth_private_deployment_failed)
@@ -95,7 +108,13 @@ internal fun PrivateDeploymentSheet(
                         .padding(
                             start = 12.dp,
                             end = 12.dp,
-                            bottom = maxOf(bottomInset, keyboardHeightDp.dp) + SlockSpacing.Sm,
+                            bottom =
+                                if (keyboardHeightDp > 0f) {
+                                    // Android's reported height leaves the suggestion strip over the buttons (HuaTuo).
+                                    keyboardHeightDp.dp + PRIVATE_DEPLOYMENT_KEYBOARD_GAP
+                                } else {
+                                    bottomInset + SlockSpacing.Sm
+                                },
                         )
                         .slockDialogContentPointerBarrier()
             ) {
@@ -183,6 +202,27 @@ internal fun PrivateDeploymentSheet(
 
 private const val PRIVATE_DEPLOYMENT_INVALID = "private_deployment_invalid"
 private const val PRIVATE_DEPLOYMENT_SAVE_FAILED = "private_deployment_save_failed"
+private const val PRIVATE_DEPLOYMENT_WEB_UNREACHABLE = "private_deployment_web_unreachable"
+private val PRIVATE_DEPLOYMENT_KEYBOARD_GAP = 48.dp
+private const val PRIVATE_DEPLOYMENT_WEB_PROBE_TIMEOUT_MS = 10_000L
+
+/** GET the web address: a 2xx/3xx answer is reachable; another status, a transport failure or a timeout is not. */
+internal suspend fun privateDeploymentWebReachable(executor: SlockHttpExecutor, webUrl: String): Boolean {
+    val response =
+        runCatchingPreservingCancellation {
+            withTimeoutOrNull(PRIVATE_DEPLOYMENT_WEB_PROBE_TIMEOUT_MS) {
+                executor.execute(
+                    priority = SlockRequestPriority.Foreground,
+                    url = webUrl,
+                    method = "GET",
+                    headers = emptyMap(),
+                    bodyText = null,
+                    jsonBody = false,
+                )
+            }
+        }.getOrNull() ?: return false
+    return response.code in 200..399
+}
 
 /**
  * The custom environment for a web address and a server address as typed. A missing scheme means https;
