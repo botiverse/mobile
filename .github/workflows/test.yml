@@ -298,209 +298,6 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
-  # Parallel sibling of kuikly-artifacts: the remaining SQLDelight fork.
-  # Stately and SQLiter resolve from Raft; NetworkKMM has no Ktor dependency.
-  fork-deps:
-    name: Shared fork dependencies (prebuild)
-    needs: [plan]
-    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
-    timeout-minutes: 60
-    env:
-      OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-    outputs:
-      forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Establish Git repository context
-        uses: ./.github/actions/git-safe-workspace
-        with:
-          scope: all
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Apply Gradle cache policy
-        uses: ./.github/actions/gradle-cache-policy
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      # The fork projects' settings list only CN mirrors (mirrors.tencent.com /
-      # maven.eazytec-cloud.com), which are flaky from hosted runners. Fall back
-      # to the canonical repositories without touching the pinned submodules.
-      # SQLDelight declares dependency repositories through allprojects, so its
-      # Touchlab dependencies need a project-level Raft repository. Keep that
-      # repository exclusive and scoped to the SQLDelight build; the canonical
-      # plugin fallbacks and the fork's existing CN mirrors remain unchanged.
-      - name: Add canonical repository fallbacks
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          mkdir -p "$userhome/.gradle"
-          cat > "$userhome/.gradle/init.gradle.kts" <<'INIT'
-          settingsEvaluated {
-              pluginManagement {
-                  repositories {
-                      gradlePluginPortal()
-                      mavenCentral()
-                      google()
-                  }
-              }
-          }
-          gradle.beforeProject {
-              if (rootProject.name == "sqldelight") {
-                  repositories {
-                      exclusiveContent {
-                          forRepository {
-                              maven {
-                                  name = "RaftArtifactsTouchlab"
-                                  url = uri("https://maven.artifacts.botiverse.dev")
-                              }
-                          }
-                          filter {
-                              includeGroup("co.touchlab")
-                          }
-                      }
-                  }
-              }
-          }
-          INIT
-
-      - name: Compose cache key
-        id: keys
-        shell: bash
-        run: |
-          sqldelight="$(git rev-parse HEAD:third_party/sqldelight)"
-          test -n "$sqldelight"
-          echo "forkdeps=sqldelight-mavenlocal-${HARMONY_CACHE_EPOCH}-$sqldelight" >> "$GITHUB_OUTPUT"
-
-      - name: Cache shared fork dependencies mavenLocal artifacts
-        id: forkdeps-cache
-        uses: actions/cache@v5
-        with:
-          path: .ci-cache/maven/fork-deps
-          key: ${{ steps.keys.outputs.forkdeps }}
-
-      - name: Hydrate shared fork dependencies from staged cache
-        if: steps.forkdeps-cache.outputs.cache-hit == 'true'
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          stage="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
-          dst="$userhome/.m2/repository"
-          test ! -e "$stage/co/touchlab"
-          test ! -e "$stage/io/ktor"
-          test -d "$stage/app/cash/sqldelight"
-          mkdir -p "$dst"
-          cp -a "$stage/." "$dst/"
-
-      - name: Start Touchlab resolution from empty local caches
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf \
-            "$userhome/.m2/repository/co/touchlab" \
-            "$userhome/.m2/repository/io/ktor" \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-          test ! -e "$userhome/.m2/repository/co/touchlab"
-          test ! -e "$userhome/.m2/repository/io/ktor"
-          test ! -e "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
-          test ! -e "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-
-      # Retried: the KBA artifacts resolve only from CN mirrors
-      # (mirrors.tencent.com), whose reachability from hosted runners is
-      # flaky — every fork-deps failure so far has been this. Once one run
-      # succeeds, the os-less cache keeps everyone warm until pins change.
-      # The attempt runs as its own `bash` process: a shell function called from
-      # an `if` has errexit suppressed for its whole body, so one failing gradlew
-      # would silently fall through to the next command and the step would pass
-      # with a half-empty ~/.m2 (this previously shipped an incomplete cache).
-      - name: Publish shared fork dependencies
-        if: steps.forkdeps-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          cat > /tmp/publish-forkdeps.sh <<'SCRIPT'
-          set -euo pipefail
-          git submodule sync third_party/sqldelight
-          git submodule update --init third_party/sqldelight
-
-          pushd third_party/sqldelight
-          ./gradlew --no-daemon --console=plain \
-            --stacktrace \
-            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:publishMavenPublicationToMavenLocal \
-            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
-            :sqldelight-gradle-plugin:publishToMavenLocal \
-            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
-            :runtime:publishOhosArm64PublicationToMavenLocal \
-            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
-          popd
-          SCRIPT
-          for i in 1 2 3; do
-            if bash /tmp/publish-forkdeps.sh; then exit 0; fi
-            echo "fork-deps publish attempt $i failed; retrying in $((i*30))s" >&2
-            sleep $((i*30))
-          done
-          echo "fork-deps publish failed after 3 attempts" >&2
-          exit 1
-
-      # Guard against ever saving a half-empty cache again: assert the marker
-      # artifacts from each fork are present before the post-job cache save.
-      - name: Verify published fork dependencies
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          repo="$userhome/.m2/repository"
-          missing=0
-          for probe in \
-            "app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" \
-            "app/cash/sqldelight/runtime-ohosarm64" \
-            "app/cash/sqldelight/native-driver-ohosarm64"; do
-            if ! find "$repo/$probe" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
-              echo "MISSING: $probe" >&2
-              missing=1
-            fi
-          done
-          test ! -e "$repo/co/touchlab"
-          test ! -e "$repo/io/ktor"
-          exit $missing
-
-      - name: Stage shared fork dependencies for cache
-        if: steps.forkdeps-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          repo="$userhome/.m2/repository"
-          stage="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
-          rm -rf "$stage"
-          mkdir -p "$stage/app/cash"
-          cp -a "$repo/app/cash/sqldelight" "$stage/app/cash/"
-          test ! -e "$stage/co/touchlab"
-          test ! -e "$stage/io/ktor"
-          test -d "$stage/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-
-      - name: Gradle failure diagnostics
-        if: failure()
-        uses: ./.github/actions/gradle-failure-diagnostics
-
   android:
     name: Android compile & tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -1323,7 +1120,7 @@ jobs:
     runs-on: blacksmith-8vcpu-ubuntu-2404
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
-    needs: [plan, kuikly-artifacts, fork-deps]
+    needs: [plan, kuikly-artifacts]
     if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     timeout-minutes: 90
     env:
@@ -1354,32 +1151,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Restore shared fork dependencies mavenLocal artifacts
-        uses: actions/cache/restore@v5
-        with:
-          path: .ci-cache/maven/fork-deps
-          key: ${{ needs.fork-deps.outputs.forkdeps-key }}
-          fail-on-cache-miss: true
-
-      - name: Hydrate staged mavenLocal caches
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          dst="$userhome/.m2/repository"
-          forkdeps="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
-          test ! -e "$forkdeps/co/touchlab"
-          test ! -e "$forkdeps/io/ktor"
-          test -d "$forkdeps/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          rm -rf "$dst/co/touchlab" "$dst/app/cash/sqldelight" "$dst/io/ktor"
-          gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-          mkdir -p "$dst/app/cash"
-          cp -a "$forkdeps/app/cash/sqldelight" "$dst/app/cash/"
-          test ! -e "$dst/io/ktor"
-
       - name: Detect OHOS native-bridge changes
         id: ohos_native
         shell: bash
@@ -1431,7 +1202,6 @@ jobs:
         id: compile_shared_ohos
         working-directory: compose
         env:
-          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
           OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
           DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
         run: |
@@ -1479,7 +1249,6 @@ jobs:
         if: steps.ohos_native.outputs.required == 'true'
         working-directory: compose
         env:
-          SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
           OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
           DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
         run: |
@@ -1559,12 +1328,12 @@ jobs:
   # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
   # ships the full DevEco command-line-tools (ohpm/hvigorw/SDK/JDK17) that
   # hosted runners cannot download (Huawei-login-gated). The hvigor build's
-  # kuikly plugin shells out to gradle to link the shared .so, so the same
-  # fork-dependency mavenLocal set as the ohos job is published first.
+  # kuikly plugin shells out to gradle to link the shared .so; its OHOS
+  # SQLDelight fork resolves from Raft Artifacts like the ohos job.
   ohos-host:
     name: OHOS host (hvigor/ArkTS) compile
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [plan, kuikly-artifacts, fork-deps]
+    needs: [plan, kuikly-artifacts]
     if: ${{ needs.plan.outputs.run_ohos == 'true' }}
     timeout-minutes: 90
     container:
@@ -1572,7 +1341,6 @@ jobs:
     env:
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -1593,32 +1361,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Restore shared fork dependencies mavenLocal artifacts
-        uses: actions/cache/restore@v5
-        with:
-          path: .ci-cache/maven/fork-deps
-          key: ${{ needs.fork-deps.outputs.forkdeps-key }}
-          fail-on-cache-miss: true
-
-      - name: Hydrate staged mavenLocal caches
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          dst="$userhome/.m2/repository"
-          forkdeps="$GITHUB_WORKSPACE/.ci-cache/maven/fork-deps"
-          test ! -e "$forkdeps/co/touchlab"
-          test ! -e "$forkdeps/io/ktor"
-          test -d "$forkdeps/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          rm -rf "$dst/co/touchlab" "$dst/app/cash/sqldelight" "$dst/io/ktor"
-          gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-          mkdir -p "$dst/app/cash"
-          cp -a "$forkdeps/app/cash/sqldelight" "$dst/app/cash/"
-          test ! -e "$dst/io/ktor"
-
       # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
       # cannot see (e.g. the tabbar host regression). It deliberately stops
       # short of the full unsigned-HAP assembleHap: that would require linking
@@ -1670,7 +1412,6 @@ jobs:
     needs:
       - plan
       - kuikly-artifacts
-      - fork-deps
       - android
       - android-device
       - android-minimum-supported-attachment-runtime

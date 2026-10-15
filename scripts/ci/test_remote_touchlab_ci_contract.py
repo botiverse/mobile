@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Remote OHOS fork-dependency contract.
+
+The OHOS SQLDelight native-driver stack (bytemain forks of Touchlab Stately and
+SQLiter plus SQLDelight itself) is consumed from Raft Artifacts as published,
+immutable coordinates. No workflow may rebuild any of them from a submodule or
+hydrate them through mavenLocal, and the OHOS Gradle build must route every one
+of them to Raft Artifacts.
+"""
 from pathlib import Path
 
 
@@ -7,6 +15,10 @@ WORKFLOWS = (
     ROOT / ".github/workflows/test.yml",
     ROOT / ".github/workflows/ohos-release.yml",
 )
+SETTINGS = ROOT / "compose/settings.ohos.gradle.kts"
+SHARED_BUILD = ROOT / "compose/shared/build.ohos.gradle.kts"
+
+SQLDELIGHT_VERSION = "2.1.0-KBA-003"
 
 
 def require(condition: bool, message: str) -> None:
@@ -19,6 +31,7 @@ def main() -> None:
     combined = "\n".join(sources.values())
 
     forbidden = (
+        # Touchlab forks: never built or hydrated locally.
         "git rev-parse HEAD:third_party/stately",
         "git rev-parse HEAD:third_party/sqliter",
         "git submodule sync third_party/stately",
@@ -28,62 +41,43 @@ def main() -> None:
         ":stately-strict:publish",
         ":stately-concurrency:publish",
         ":sqliter-driver:publish",
-        "forkdeps/co/touchlab/stately",
-        "stage/co/touchlab/stately",
+        "co/touchlab",
+        # SQLDelight fork: consumed from Raft Artifacts, never from the
+        # submodule source build or a mavenLocal cache.
+        "third_party/sqldelight",
+        "publish-forkdeps",
+        "fork-deps",
+        "forkdeps",
+        ":sqldelight-gradle-plugin:publishToMavenLocal",
+        ":drivers:native-driver:publishOhosArm64PublicationToMavenLocal",
+        "app/cash/sqldelight",
+        "RaftArtifactsTouchlab",
+        "SLOCK_SKIP_OHOS_LOCAL_DEP_PREP",
+        ".m2/repository",
+        "mavenLocal()",
     )
     for value in forbidden:
-        require(value not in combined, f"active CI still builds or hydrates Touchlab locally: {value}")
+        require(
+            value not in combined,
+            f"active CI still builds or hydrates an OHOS fork dependency locally: {value}",
+        )
 
     for path, source in sources.items():
         require(
-            'name = "RaftArtifactsTouchlab"' in source,
-            f"{path.name} does not give the remaining SQLDelight build a Raft Touchlab repository",
+            "scripts/ci/test_remote_touchlab_ci_contract.py" in source,
+            f"{path.name} no longer runs the remote fork-dependency contract",
         )
-        require(
-            'url = uri("https://maven.artifacts.botiverse.dev")' in source,
-            f"{path.name} does not bind the Touchlab repository to Raft Artifacts",
-        )
-        require(
-            'includeGroup("co.touchlab")' in source,
-            f"{path.name} does not keep co.touchlab exclusive to Raft Artifacts",
-        )
-        require(
-            'if (rootProject.name == "sqldelight")' in source,
-            f"{path.name} does not scope the Touchlab repository to SQLDelight",
-        )
-        require(
-            "git submodule update --init third_party/sqldelight" in source,
-            f"{path.name} no longer prepares the still-required SQLDelight source",
-        )
-    test_source = sources[WORKFLOWS[0]]
-    require(
-        test_source.count('caches/modules-2/files-2.1/co.touchlab') == 4,
-        "Test producer and both OHOS consumers must evict Gradle Touchlab caches",
-    )
-    require(
-        test_source.count('test ! -e "$forkdeps/co/touchlab"') == 2,
-        "both Test OHOS consumers must reject staged Touchlab mavenLocal content",
-    )
-    require(
-        test_source.count('rm -rf "$dst/co/touchlab"') == 2,
-        "both Test OHOS consumers must start without Touchlab in mavenLocal",
-    )
 
-    release_source = sources[WORKFLOWS[1]]
-    require(
-        release_source.count('caches/modules-2/files-2.1/co.touchlab') == 3,
-        "OHOS Release producer and consumer must evict Gradle Touchlab caches",
-    )
-    require(
-        'test ! -e "$src/co/touchlab"' in release_source,
-        "OHOS Release must reject restored Touchlab mavenLocal content",
-    )
-    require(
-        'rm -rf "$dst/co/touchlab"' in release_source,
-        "OHOS Release must start without Touchlab in mavenLocal",
-    )
-
-    settings = (ROOT / "compose/settings.ohos.gradle.kts").read_text()
+    settings = SETTINGS.read_text()
+    for value in (
+        "ensureSubmodule",
+        "mavenArtifactExists",
+        "needsSqlDelight",
+        "skipOhosLocalDependencyPrep",
+        "third_party/sqldelight",
+        "publishToMavenLocal",
+    ):
+        require(value not in settings, f"OHOS consumer still prepares SQLDelight locally: {value}")
     for module in (
         "sqliter-driver",
         "sqliter-driver-ohosarm64",
@@ -96,8 +90,25 @@ def main() -> None:
             f'includeModule("co.touchlab", "{module}")' in settings,
             f"OHOS consumer no longer routes {module} to Raft Artifacts",
         )
+    require(
+        settings.count('includeGroup("app.cash.sqldelight")') == 2,
+        "OHOS consumer must route app.cash.sqldelight to Raft Artifacts for both "
+        "plugin resolution and dependency resolution",
+    )
 
-    print("remote Touchlab CI contract: PASS")
+    shared_build = SHARED_BUILD.read_text()
+    require(
+        shared_build.count("app.cash.sqldelight") == 3,
+        "OHOS shared build must declare exactly the plugin, runtime and native-driver-ohosarm64 SQLDelight coordinates",
+    )
+    for coordinate in (
+        f'id("app.cash.sqldelight") version "{SQLDELIGHT_VERSION}"',
+        f'"app.cash.sqldelight:runtime:{SQLDELIGHT_VERSION}"',
+        f'"app.cash.sqldelight:native-driver-ohosarm64:{SQLDELIGHT_VERSION}"',
+    ):
+        require(coordinate in shared_build, f"OHOS shared build does not pin {coordinate}")
+
+    print("remote OHOS fork-dependency contract: PASS")
 
 
 if __name__ == "__main__":

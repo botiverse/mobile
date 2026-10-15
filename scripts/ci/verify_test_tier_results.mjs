@@ -51,7 +51,6 @@ export function verifyTierResults(needs) {
     // runAndroid || runOhos. Re-derive before editing either side; do not read this line as
     // "iOS always needs kuikly artifacts".
     ["kuikly-artifacts", runAndroid || runOhos || runIos],
-    ["fork-deps", runOhos],
     ["android", runAndroid],
     ["ios", runIos],
     ["ohos-receipt-selftest", runOhos],
@@ -97,7 +96,6 @@ function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLe
     },
   };
   needs["kuikly-artifacts"] = { result: android || ohos || ios ? "success" : "skipped" };
-  needs["fork-deps"] = { result: ohos ? "success" : "skipped" };
   needs.android = { result: android ? "success" : "skipped" };
   needs.ios = { result: ios ? "success" : "skipped" };
   needs["ohos-receipt-selftest"] = { result: ohos ? "success" : "skipped" };

@@ -28,7 +28,7 @@ raise "push path filters would suppress the stable CI gate" if events.fetch("pus
 
 jobs = workflow.fetch("jobs")
 expected_jobs = %w[
-  plan kuikly-artifacts fork-deps android android-device
+  plan kuikly-artifacts android android-device
   android-minimum-supported-attachment-runtime android-canonical-final-actual-host
   ios ohos-receipt-selftest ohos ohos-host ci-gate
 ]
@@ -63,15 +63,14 @@ raise "gitlink publication still calls the unavailable REST Issues API" if
 
 expected_needs = {
   "kuikly-artifacts" => ["plan"],
-  "fork-deps" => ["plan"],
   "android" => ["plan", "kuikly-artifacts"],
   "android-device" => ["plan", "android"],
   "android-minimum-supported-attachment-runtime" => ["plan", "android"],
   "android-canonical-final-actual-host" => ["plan", "android"],
   "ios" => ["plan", "kuikly-artifacts"],
   "ohos-receipt-selftest" => ["plan"],
-  "ohos" => ["plan", "kuikly-artifacts", "fork-deps"],
-  "ohos-host" => ["plan", "kuikly-artifacts", "fork-deps"],
+  "ohos" => ["plan", "kuikly-artifacts"],
+  "ohos-host" => ["plan", "kuikly-artifacts"],
 }
 expected_needs.each do |job, needs|
   raise "#{job} needs drifted" unless Array(jobs.dig(job, "needs")) == needs
@@ -82,7 +81,7 @@ raise "Kuikly manifest gate must follow every Kuikly consumer platform" unless
   jobs.dig("kuikly-artifacts", "if").include?("run_ohos")
 raise "Android compile is not Android-path gated" unless jobs.dig("android", "if").include?("run_android")
 raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?("run_ios")
-%w[fork-deps ohos-receipt-selftest ohos ohos-host].each do |job|
+%w[ohos-receipt-selftest ohos ohos-host].each do |job|
   raise "#{job} is not OHOS-path gated" unless jobs.dig(job, "if").include?("run_ohos")
 end
 raise "android-device suite is not device-suite gated" unless
