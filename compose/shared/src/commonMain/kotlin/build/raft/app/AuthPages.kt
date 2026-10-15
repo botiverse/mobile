@@ -29,6 +29,7 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
+import build.raft.app.data.SlockSharedStoreProvider
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
@@ -277,9 +278,12 @@ private fun LoginScreen() {
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
     // Pre-auth flag: the cached answer renders at once. A fresh answer may switch the page only shortly after it
     // opened and before the user touched it; otherwise it is just cached for the next login page.
-    val apiBaseUrl = remember { sharedStores.apiEnvironmentStore.current().apiBaseUrl }
+    // Follows the stored environment so a deployment saved from the sheet below is evaluated at once.
+    val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
+    val apiBaseUrl = apiEnvironment.apiBaseUrl
     var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
-    var loginPageInteracted by remember { mutableStateOf(false) }
+    // Per server: inputs on the previous deployment must not keep a newly saved one's answer from applying.
+    var loginPageInteracted by remember(apiBaseUrl) { mutableStateOf(false) }
     LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
         if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
             val openedAt = TimeSource.Monotonic.markNow()
@@ -294,8 +298,22 @@ private fun LoginScreen() {
             }
         }
     }
+    val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores)
+    var privateDeploymentVisible by remember { mutableStateOf(false) }
+    PrivateDeploymentSheet(
+        visible = privateDeploymentVisible,
+        environmentStore = sharedStores.apiEnvironmentStore,
+        settingsDataSource = settingsDataSource,
+        onDismiss = { privateDeploymentVisible = false },
+    )
     if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
-        WebLoginScreen(pager, bridge, authDataSource, onInteraction = { loginPageInteracted = true })
+        WebLoginScreen(
+            pager,
+            bridge,
+            authDataSource,
+            onInteraction = { loginPageInteracted = true },
+            onOpenPrivateDeployment = { privateDeploymentVisible = true },
+        )
         return
     }
     val linkNavigator =
@@ -487,9 +505,7 @@ private fun LoginScreen() {
         onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
         // Same entry as the web login (#2996): the API environment editor, whose save checks the server version.
-        onOpenPrivateDeployment = {
-            pager.openAuthPage(AUTH_ABOUT_PAGE, destination = AUTH_DESTINATION_API_ENVIRONMENT)
-        },
+        onOpenPrivateDeployment = { privateDeploymentVisible = true },
     )
 }
 
@@ -982,6 +998,62 @@ private fun ForgotPasswordScreen() {
     )
 }
 
+/**
+ * The settings data source of the signed-out pages (About / API environment editor, the private deployment
+ * sheet). Its platform capabilities tell the host about an environment change (realtime disconnect, widgets).
+ */
+@Composable
+internal fun rememberAuthSettingsDataSource(
+    pager: Pager,
+    bridge: BridgeModule,
+    sharedStores: SlockSharedStoreProvider,
+    linkNavigator: SlockLinkNavigator =
+        rememberSlockLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        ),
+): SharedSettingsDataSource {
+    val bridgeCallScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, bridgeCallScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
+    val copiedMessage = stringResource(MR.strings.common_copied)
+    val settingsCapabilities =
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                copiedMessage = copiedMessage,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
+        }
+    return remember(sharedStores, settingsCapabilities, avatarNativeCache) {
+        authSettingsDataSource(bridge, sharedStores, settingsCapabilities, avatarNativeCache)
+    }
+}
+
+private fun authSettingsDataSource(
+    bridge: BridgeModule,
+    sharedStores: SlockSharedStoreProvider,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    avatarNativeCache: BridgeSlockAvatarNativeCache,
+): SharedSettingsDataSource =
+    SharedSettingsDataSource(
+        sessionStore = sharedStores.authStore,
+        apiEnvironmentStore = sharedStores.apiEnvironmentStore,
+        platformCapabilities = settingsCapabilities,
+        diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
+        authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
+    ).withAvatarCacheRuntime(
+        runtime = sharedStores.avatarCacheRuntime,
+        nativeCache = avatarNativeCache
+    )
+
 internal enum class AuthAboutDestination {
     About,
     ApiEnvironment,
@@ -1020,16 +1092,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         }
     val settingsDataSource =
         remember(sharedStores, settingsCapabilities, avatarNativeCache) {
-            SharedSettingsDataSource(
-                sessionStore = sharedStores.authStore,
-                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
-                authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
-            ).withAvatarCacheRuntime(
-                runtime = sharedStores.avatarCacheRuntime,
-                nativeCache = avatarNativeCache
-            )
+            authSettingsDataSource(bridge, sharedStores, settingsCapabilities, avatarNativeCache)
         }
     var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }
     var developerState by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }

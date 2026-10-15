@@ -2191,4 +2191,17 @@
     <string name="member_runtime_usage_health_unsupported">非対応</string>
     <string name="member_runtime_usage_health_error">エラー</string>
     <string name="member_runtime_usage_health_unknown">利用不可</string>
+    <string name="auth_private_deployment_title">プライベートデプロイ</string>
+    <string name="auth_private_deployment_hint">セルフホストの Raft のアドレスを入力してください。サーバーはバージョン 1.13.0 以降が必要です。</string>
+    <string name="auth_private_deployment_web_label">Web アドレス</string>
+    <string name="auth_private_deployment_web_placeholder">https://raft.company.com</string>
+    <string name="auth_private_deployment_api_label">サーバー（API）アドレス</string>
+    <string name="auth_private_deployment_api_placeholder">https://api.raft.company.com</string>
+    <string name="auth_private_deployment_save">保存</string>
+    <string name="auth_private_deployment_cancel">キャンセル</string>
+    <string name="auth_private_deployment_reset">Raft（app.raft.build）を使う</string>
+    <string name="auth_private_deployment_invalid">両方のアドレスを http(s) のリンクで入力してください。</string>
+    <string name="auth_private_deployment_unreachable">サーバーに接続できませんでした。サーバーのアドレスを確認して、もう一度お試しください。</string>
+    <string name="auth_private_deployment_outdated">このサーバーは対応バージョン（1.13.0 以降）を返しませんでした。サーバーを更新してから、もう一度お試しください。</string>
+    <string name="auth_private_deployment_failed">保存できませんでした。もう一度お試しください。</string>
 </resources>

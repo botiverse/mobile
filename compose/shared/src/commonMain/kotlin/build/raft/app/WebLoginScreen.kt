@@ -34,6 +34,7 @@ internal fun WebLoginScreen(
     bridge: BridgeModule,
     auth: SharedAuthDataSource,
     onInteraction: () -> Unit = {},
+    onOpenPrivateDeployment: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val platform = remember(bridge) {
@@ -112,9 +113,7 @@ internal fun WebLoginScreen(
             )
             AuthTextLink(
                 text = stringResource(MR.strings.auth_web_login_private_entry),
-                onClick = {
-                    pager.openAuthPage(AUTH_ABOUT_PAGE, destination = AUTH_DESTINATION_API_ENVIRONMENT)
-                },
+                onClick = onOpenPrivateDeployment,
             )
         }
     }
