@@ -59,27 +59,16 @@ def main() -> None:
     for value in forbidden:
         require(value not in combined, f"active CI still builds or hydrates Ktor locally: {value}")
 
+    # Every OHOS fork dependency (Kuikly, Touchlab, SQLDelight) now resolves
+    # from Raft Artifacts, so no workflow hydrates mavenLocal at all. Ktor can
+    # therefore only re-enter through a checked-in consumer or the public
+    # NetworkKMM metadata, both verified below.
     for path, source in sources.items():
-        require(
-            "git submodule update --init third_party/sqldelight" in source,
-            f"{path.name} no longer prepares the still-required SQLDelight source",
-        )
-        require(
-            ":sqldelight-gradle-plugin:publishToMavenLocal" in source,
-            f"{path.name} no longer publishes the still-required SQLDelight plugin",
-        )
-        require(
-            'repository/io/ktor' in source,
-            f"{path.name} does not clear Maven-local Ktor content",
-        )
-        require(
-            'files-2.1/io.ktor' in source,
-            f"{path.name} does not clear Gradle-cached Ktor content",
-        )
-        require(
-            'test ! -e ' in source and 'io/ktor' in source,
-            f"{path.name} does not fail closed on restored Ktor content",
-        )
+        for value in (".m2/repository", "mavenLocal()", "io/ktor", "io.ktor"):
+            require(
+                value not in source,
+                f"{path.name} hydrates or references local Ktor content: {value}",
+            )
 
     consumer_suffixes = {
         ".gradle",

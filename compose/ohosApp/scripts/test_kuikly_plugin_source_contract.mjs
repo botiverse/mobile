@@ -63,7 +63,7 @@ assertContract(
   'OHOS release must not hydrate Kuikly from a gitlink, source build, or mavenLocal cache'
 );
 assertContract(
-  releaseWorkflow.includes('needs: [resolve, kuikly-artifacts, fork-deps]'),
+  releaseWorkflow.includes('needs: [resolve, kuikly-artifacts]'),
   'the OHOS package job must depend on the manifest gate'
 );
 assertContract(

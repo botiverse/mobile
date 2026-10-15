@@ -390,7 +390,6 @@ ohos_paths = %w[
 thread = find_step(workflow, "Select Thread newer-pagination gate")
 ohos = find_step(workflow, "Detect OHOS native-bridge changes")
 validate_kuikly_manifest_job(workflow)
-validate_git_safe_action_wiring(workflow, "fork-deps", "all")
 validate_git_safe_action_wiring(workflow, "ohos", "workspace")
 validate_git_safe_action_wiring(workflow, "ohos-host", "all")
 validate_consumer(thread, "run_gate", thread_paths)

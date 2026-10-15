@@ -7,7 +7,7 @@ plugins {
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
-    id("app.cash.sqldelight") version "2.1.0-KBA-001"
+    id("app.cash.sqldelight") version "2.1.0-KBA-003"
     id("com.tencent.kuiklybase.resource.generator")
     id("com.tencent.kuiklybase.knoi.plugin")
 }
@@ -162,7 +162,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("org.jetbrains.kotlinx:atomicfu:0.23.2-KBA-001")
-                implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
+                implementation("app.cash.sqldelight:runtime:2.1.0-KBA-003")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.4")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0-ohos")
                 // Unified network infra (task #12): all platforms' HTTP goes
@@ -198,7 +198,7 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/nativeMain/kotlin"))
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
-                implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
+                implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-003")
                 implementation("build.raft.mermaid:mermaid-core:0.1.11-ohos")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11-ohos")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11-ohos")

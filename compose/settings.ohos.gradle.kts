@@ -1,7 +1,4 @@
 pluginManagement {
-    val slockRoot = settingsDir.parentFile
-    val mavenLocal = File(System.getProperty("user.home"), ".m2/repository")
-
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
             name = "RaftArtifactsKuiklyBase"
@@ -20,6 +17,10 @@ pluginManagement {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModuleByRegex("build\\.raft\\.mermaid", ".*")
+                // OHOS SQLDelight fork (bytemain/sqldelight slock-2.1.0-ohos) is a closed
+                // ohosArm64 graph published to Raft Artifacts as 2.1.0-KBA-003. No
+                // submodule source build or mavenLocal hydration is needed any more.
+                includeGroup("app.cash.sqldelight")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
                 includeModule("co.touchlab", "stately-strict")
@@ -28,79 +29,6 @@ pluginManagement {
                 includeModule("co.touchlab", "stately-concurrency-ohosarm64")
             }
         }
-    }
-
-    fun mavenArtifactExists(groupPath: String, artifactId: String, version: String): Boolean =
-        File(mavenLocal, "$groupPath/$artifactId/$version/$artifactId-$version.pom").isFile ||
-            File(mavenLocal, "$groupPath/$artifactId/$version/$artifactId-$version.module").isFile
-
-    fun runChecked(workingDir: File, vararg command: String) {
-        println("prepare OHOS dependency: ${command.joinToString(" ")}")
-        val builder =
-            ProcessBuilder(*command)
-                .directory(workingDir)
-                .inheritIO()
-        if (command.firstOrNull() == "git") {
-            builder.environment()["GIT_CONFIG_GLOBAL"] =
-                System.getenv("SLOCK_GIT_CONFIG_GLOBAL") ?: "/dev/null"
-        }
-        val result = builder.start().waitFor()
-        check(result == 0) {
-            "OHOS dependency preparation failed (${command.joinToString(" ")}), exit code $result"
-        }
-    }
-
-    fun ensureSubmodule(path: String) {
-        val dir = File(slockRoot, path)
-        if (!File(dir, "gradlew").isFile) {
-            runChecked(slockRoot, "git", "submodule", "update", "--init", path)
-        }
-        check(File(dir, "gradlew").isFile) {
-            "Missing Gradle wrapper after submodule init: $path"
-        }
-    }
-
-    val sqldelightVersion = "2.1.0-KBA-001"
-    fun String?.enabledByDefault(defaultValue: Boolean): Boolean =
-        when (this?.trim()?.lowercase()) {
-            "1", "true", "yes", "on" -> true
-            "0", "false", "no", "off" -> false
-            null, "" -> defaultValue
-            else -> defaultValue
-        }
-    val skipOhosLocalDependencyPrep =
-        System.getenv("SLOCK_SKIP_OHOS_LOCAL_DEP_PREP")
-            .enabledByDefault(
-                providers.gradleProperty("slock.skipOhosLocalDependencyPrep").orNull
-                    .enabledByDefault(false)
-            )
-    val needsSqlDelight =
-        !mavenArtifactExists("app/cash/sqldelight", "app.cash.sqldelight.gradle.plugin", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "gradle-plugin", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "core", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "migrations", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "sqlite-3-18-dialect", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
-            !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
-    if (!skipOhosLocalDependencyPrep && needsSqlDelight) {
-        ensureSubmodule("third_party/sqldelight")
-        runChecked(
-            File(slockRoot, "third_party/sqldelight"),
-            "./gradlew",
-            "--no-daemon",
-            "--console=plain",
-            ":sqldelight-compiler:environment:publishMavenPublicationToMavenLocal",
-            ":sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal",
-            ":sqldelight-compiler:publishMavenPublicationToMavenLocal",
-            ":sqlite-migrations:environment:publishMavenPublicationToMavenLocal",
-            ":sqlite-migrations:publishMavenPublicationToMavenLocal",
-            ":dialects:sqlite-3-18:publishMavenPublicationToMavenLocal",
-            ":sqldelight-gradle-plugin:publishToMavenLocal",
-            ":runtime:publishKotlinMultiplatformPublicationToMavenLocal",
-            ":runtime:publishOhosArm64PublicationToMavenLocal",
-            ":drivers:native-driver:publishOhosArm64PublicationToMavenLocal"
-        )
     }
 
     repositories {
@@ -162,6 +90,10 @@ dependencyResolutionManagement {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModuleByRegex("build\\.raft\\.mermaid", ".*")
+                // OHOS SQLDelight fork (bytemain/sqldelight slock-2.1.0-ohos) is a closed
+                // ohosArm64 graph published to Raft Artifacts as 2.1.0-KBA-003. No
+                // submodule source build or mavenLocal hydration is needed any more.
+                includeGroup("app.cash.sqldelight")
                 includeModule("co.touchlab", "sqliter-driver")
                 includeModule("co.touchlab", "sqliter-driver-ohosarm64")
                 includeModule("co.touchlab", "stately-strict")

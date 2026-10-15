@@ -206,181 +206,16 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
-  fork-deps:
-    name: Shared OHOS fork dependencies
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [resolve, signing-preflight]
-    timeout-minutes: 60
-    outputs:
-      forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
-    steps:
-      - name: Free runner disk space
-        shell: bash
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
-            /usr/local/share/powershell /usr/local/graalvm \
-            /usr/local/share/chromium /usr/local/lib/node_modules
-          sudo docker image prune --all --force >/dev/null 2>&1 || true
-          df -h /
-
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.resolve.outputs.source_sha }}
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Apply Gradle cache policy
-        uses: ./.github/actions/gradle-cache-policy
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-
-      - name: Set up OpenHarmony SDK
-        id: setup-ohos-sdk
-        uses: openharmony-rs/setup-ohos-sdk@v1.0.1
-        with:
-          version: "6.0"
-          components: native
-          cache: true
-
-      - name: Export OpenHarmony SDK path
-        shell: bash
-        run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
-      - name: Add canonical plugin repository fallbacks
-        shell: bash
-        run: |
-          mkdir -p ~/.gradle
-          cat > ~/.gradle/init.gradle.kts <<'INIT'
-          settingsEvaluated {
-              pluginManagement {
-                  repositories {
-                      gradlePluginPortal()
-                      mavenCentral()
-                      google()
-                  }
-              }
-          }
-          gradle.beforeProject {
-              if (rootProject.name == "sqldelight") {
-                  repositories {
-                      exclusiveContent {
-                          forRepository {
-                              maven {
-                                  name = "RaftArtifactsTouchlab"
-                                  url = uri("https://maven.artifacts.botiverse.dev")
-                              }
-                          }
-                          filter {
-                              includeGroup("co.touchlab")
-                          }
-                      }
-                  }
-              }
-          }
-          INIT
-
-      - name: Compose dependency cache key
-        id: keys
-        shell: bash
-        run: |
-          sqldelight="$(git rev-parse HEAD:third_party/sqldelight)"
-          test -n "$sqldelight"
-          echo "forkdeps=sqldelight-mavenlocal-$sqldelight" >> "$GITHUB_OUTPUT"
-
-      - name: Cache shared fork dependencies
-        id: forkdeps-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.m2/repository/app/cash/sqldelight
-          key: ${{ steps.keys.outputs.forkdeps }}
-
-      - name: Start Touchlab resolution from empty local caches
-        shell: bash
-        run: |
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf \
-            "$userhome/.m2/repository/co/touchlab" \
-            "$userhome/.m2/repository/io/ktor" \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-          test ! -e "$userhome/.m2/repository/co/touchlab"
-          test ! -e "$userhome/.m2/repository/io/ktor"
-          test ! -e "$gradlehome/caches/modules-2/files-2.1/co.touchlab"
-          test ! -e "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-
-      - name: Publish shared fork dependencies
-        if: steps.forkdeps-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          cat > /tmp/publish-forkdeps.sh <<'SCRIPT'
-          set -euo pipefail
-          git submodule sync third_party/sqldelight
-          git submodule update --init third_party/sqldelight
-
-          pushd third_party/sqldelight
-          ./gradlew --no-daemon --console=plain \
-            --stacktrace \
-            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:publishMavenPublicationToMavenLocal \
-            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
-            :sqldelight-gradle-plugin:publishToMavenLocal \
-            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
-            :runtime:publishOhosArm64PublicationToMavenLocal \
-            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
-          popd
-          SCRIPT
-          for i in 1 2 3; do
-            if bash /tmp/publish-forkdeps.sh; then exit 0; fi
-            echo "fork-deps publish attempt $i failed; retrying in $((i*30))s" >&2
-            sleep $((i*30))
-          done
-          echo "fork-deps publish failed after 3 attempts" >&2
-          exit 1
-
-      - name: Verify published fork dependencies
-        shell: bash
-        run: |
-          repo="$HOME/.m2/repository"
-          missing=0
-          for probe in \
-            "app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" \
-            "app/cash/sqldelight/runtime-ohosarm64" \
-            "app/cash/sqldelight/native-driver-ohosarm64"; do
-            if ! find "$repo/$probe" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
-              echo "MISSING: $probe" >&2
-              missing=1
-            fi
-          done
-          test ! -e "$repo/co/touchlab"
-          test ! -e "$repo/io/ktor"
-          exit "$missing"
-
-      - name: Gradle failure diagnostics
-        if: failure()
-        uses: ./.github/actions/gradle-failure-diagnostics
-
   build-ohos-release:
     name: Build, sign, and validate OHOS .app
     runs-on: blacksmith-16vcpu-ubuntu-2404
-    needs: [resolve, kuikly-artifacts, fork-deps]
+    needs: [resolve, kuikly-artifacts]
     timeout-minutes: 180
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     env:
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
       SLOCK_OHOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
       SLOCK_OHOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
       KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
@@ -439,34 +274,6 @@ jobs:
           kuikly.libraryName=shared
           kuikly.ohosGradleSettings=settings.ohos.gradle.kts
           PROPERTIES
-
-      - name: Restore shared fork dependency artifacts
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.m2/repository/app/cash/sqldelight
-          key: ${{ needs.fork-deps.outputs.forkdeps-key }}
-          fail-on-cache-miss: true
-
-      - name: Relocate restored mavenLocal caches
-        shell: bash
-        run: |
-          src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
-          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
-          test -n "$userhome"
-          dst="$userhome/.m2/repository"
-          test ! -e "$src/co/touchlab"
-          test ! -e "$src/io/ktor"
-          rm -rf "$dst/co/touchlab" "$dst/io/ktor"
-          gradlehome="${GRADLE_USER_HOME:-$userhome/.gradle}"
-          rm -rf \
-            "$gradlehome/caches/modules-2/files-2.1/co.touchlab" \
-            "$gradlehome/caches/modules-2/files-2.1/io.ktor"
-          if [[ -d "$src" && "$src" != "$dst" ]]; then
-            mkdir -p "$userhome/.m2"
-            cp -a "$src" "$userhome/.m2/"
-          fi
-          test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
-          test ! -e "$dst/io/ktor"
 
       - name: Build and stage OHOS shared release library
         working-directory: compose
