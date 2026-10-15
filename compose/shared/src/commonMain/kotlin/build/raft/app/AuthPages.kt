@@ -1032,18 +1032,26 @@ internal fun rememberAuthSettingsDataSource(
             )
         }
     return remember(sharedStores, settingsCapabilities, avatarNativeCache) {
-        SharedSettingsDataSource(
-            sessionStore = sharedStores.authStore,
-            apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-            platformCapabilities = settingsCapabilities,
-            diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
-            authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
-        ).withAvatarCacheRuntime(
-            runtime = sharedStores.avatarCacheRuntime,
-            nativeCache = avatarNativeCache
-        )
+        authSettingsDataSource(bridge, sharedStores, settingsCapabilities, avatarNativeCache)
     }
 }
+
+private fun authSettingsDataSource(
+    bridge: BridgeModule,
+    sharedStores: SlockSharedStoreProvider,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    avatarNativeCache: BridgeSlockAvatarNativeCache,
+): SharedSettingsDataSource =
+    SharedSettingsDataSource(
+        sessionStore = sharedStores.authStore,
+        apiEnvironmentStore = sharedStores.apiEnvironmentStore,
+        platformCapabilities = settingsCapabilities,
+        diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
+        authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
+    ).withAvatarCacheRuntime(
+        runtime = sharedStores.avatarCacheRuntime,
+        nativeCache = avatarNativeCache
+    )
 
 internal enum class AuthAboutDestination {
     About,
@@ -1063,7 +1071,28 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
             routeScope = SlockInAppBrowserRouteScope.Unscoped,
         )
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores, linkNavigator)
+    val bridgeCallScope = rememberCoroutineScope()
+    val avatarNativeCache =
+        remember(bridge, bridgeCallScope) {
+            BridgeSlockAvatarNativeCache(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
+    val copiedMessage = stringResource(MR.strings.common_copied)
+    val settingsCapabilities =
+        remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                copiedMessage = copiedMessage,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
+        }
+    val settingsDataSource =
+        remember(sharedStores, settingsCapabilities, avatarNativeCache) {
+            authSettingsDataSource(bridge, sharedStores, settingsCapabilities, avatarNativeCache)
+        }
     var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }
     var developerState by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }
     var diagnosticsState by remember { mutableStateOf<ScreenLoadState<build.raft.app.data.SharedSettingsDiagnosticsSnapshot>>(ScreenLoadState.Loading) }
