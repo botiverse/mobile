@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       native_diagnostic_pair:
-        description: "Task68 only: re-sign fixed control/probe HAPs; never publish"
+        description: "Task68 only: re-sign pinned control/fixed HAPs; never publish"
         required: true
         type: boolean
         default: false
@@ -234,7 +234,7 @@ jobs:
           path: ${{ runner.temp }}/task68-original
           merge-multiple: true
 
-      - name: Verify fixed inputs and prepare unsigned control/probe pair
+      - name: Verify fixed inputs and prepare unsigned control/fixed pair
         shell: bash
         run: |
           set -euo pipefail
@@ -282,7 +282,7 @@ jobs:
           set -euo pipefail
           set +x
           mkdir "$RUNNER_TEMP/task68-signed"
-          for variant in control probe; do
+          for variant in control fixed; do
             java -jar "$TASK68_SIGN_TOOL" sign-app \
               -mode localSign -keyAlias "$KEY_ALIAS" -keyPwd "$KEY_PASSWORD" \
               -appCertFile "$RUNNER_TEMP/task68-signing/release.cer" \
@@ -314,7 +314,9 @@ jobs:
           Path(os.environ['RUNNER_TEMP'], 'task68-signed', 'driver-identity.json').write_text(json.dumps({
               'workflowSha': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'],
               'baseApplicationSha': '4fc2ea871da9c5ec101e4c8c6832ebeda412061a',
-              'rendererProbeSha': 'a76e111b65e1e922e6340f98611672732e590dbf',
+              'rendererFixedSha': 'e89677fb1cb3915848fb8399a5ee254bff962cb8',
+              'rendererControlSha': '8226bb433c1fb97c0ac424979ab77add9d6258e5',
+              'rendererFixBaseSha': '1beb09dbece03c77ab6e78a1de93ab29228ec50b',
               'scope': 'diagnostic only; no publication; runtime not yet run'
           }, indent=2) + '\n')
           PYRECEIPT
@@ -322,7 +324,7 @@ jobs:
       - name: Upload verified signed diagnostic HAPs only
         uses: actions/upload-artifact@v6
         with:
-          name: task68-native-diagnostic-${{ github.sha }}
+          name: task68-native-fix-${{ github.sha }}
           path: ${{ runner.temp }}/task68-signed
           if-no-files-found: error
           retention-days: 14

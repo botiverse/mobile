@@ -36,7 +36,7 @@ def small_hap(entries=None, version=11301900):
 
 
 def public_outputs(directory):
-    for role in ("original", "control", "probe"):
+    for role in ("original", "control", "fixed"):
         (directory / f"{role}.cer").write_bytes(b"TEST PUBLIC CERTIFICATE; NOT A REAL VERIFY RESULT")
         (directory / f"{role}.p7b").write_bytes(b"TEST PUBLIC PROFILE; NOT A REAL VERIFY RESULT")
 
@@ -52,6 +52,18 @@ class ContractTests(unittest.TestCase):
             path.write_bytes(data)
             with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
                 diagnostic.input_libraries(path)
+
+    def test_fixed_source_equivalence_receipt_matches_library_pins(self):
+        with zipfile.ZipFile(FIXTURE) as archive:
+            evidence = json.loads(archive.read("receipts/native-source-equivalence.json"))
+            self.assertEqual(evidence["fixed"]["wrapper"], diagnostic.SOURCE["fixed_sha"])
+            self.assertEqual(evidence["fix_base"]["wrapper"], diagnostic.SOURCE["fix_base_sha"])
+            self.assertEqual(evidence["control"]["wrapper"], diagnostic.SOURCE["control_sha"])
+            self.assertEqual({k: v["sha256"] for k, v in evidence["native_libraries"].items()},
+                             diagnostic.LIBRARY_SHA)
+            self.assertTrue(all(v["control"] == v["fix_base"]
+                                for v in evidence["source_and_build_inputs"].values()))
+            self.assertEqual(set(diagnostic.LIBRARY_SHA), {"control", "fixed"})
 
     def test_zip_traversal_rejected_before_reading(self):
         data = io.BytesIO()
@@ -81,7 +93,7 @@ class ContractTests(unittest.TestCase):
             root = Path(directory)
             public_outputs(root)
             diagnostic.public_identity(root)
-            (root / "probe.p7b").write_bytes(b"different profile")
+            (root / "fixed.p7b").write_bytes(b"different profile")
             with self.assertRaisesRegex(ValueError, "differs from original"):
                 diagnostic.public_identity(root)
 

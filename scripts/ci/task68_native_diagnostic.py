@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fixed Task68 control/probe preparation and post-signing payload checks.
+"""Fixed Task68 control/fixed preparation and post-signing payload checks.
 
 No network, signing, key access, build, installation or code from the input ZIP.
 The caller MUST run official verify-app successfully for all three signed HAPs
-before verify, exporting verified/{original,control,probe}.{cer,p7b} in a fresh
+before verify, exporting verified/{original,control,fixed}.{cer,p7b} in a fresh
 directory. This helper compares those public outputs; it is not a signature
 verifier. This diagnostic path does not change the normal release closure.
 """
@@ -20,7 +20,7 @@ import tempfile
 import zipfile
 
 
-ARCHIVE_SHA = "f3ac82093a8cb046b5734a472815415c801486fa076bc01b7d9a160bffc6ceb4"
+ARCHIVE_SHA = "f8c2e6c19cafefd28bc655765f2c1f0e71f93ce8f74603fe047430941ca7e43c"
 APP_NAME = "raft-ohos-1.13.1-diag-113bb09c-11301900.app"
 APP_SHA = "11346f726763bc23bebf3a2e4bc993bbdf6c7b051677f8a5a6b0a8ea4503422c"
 SIGNED_NAME = "raft-ohos-ohosApp-default-unsigned-entry-default.signed-1.13.1-diag-113bb09c-11301900.hap"
@@ -30,11 +30,11 @@ TARGET = "libs/arm64-v8a/libkuikly.so"
 ORIGINAL_LIBRARY_SHA = "c5dc59fdfca7013a8880be6fd8fdbd98b1737badf7d470d7494a5618ff6efdd6"
 LIBRARY_SHA = {
     "control": "e8067971e1a7f0dd36369a61f790e758457310e4989a89b116268dc0c19a449b",
-    "probe": "acf28fc36a11b08b545fe9299d7a3281ab8536704b90ac56237bd0e830d8359f",
+    "fixed": "74de27c38190c0b3340653e169169ed62efeaca235d184f19af0b42e2971b98a",
 }
 UNSIGNED_SHA = {
     "control": "f92dc0dc03f1280e33991c5730f04a7ce5e6fb47b91e101e5b3a521348ab8bfc",
-    "probe": "4d2df3e1af344d8f0b5d9bacff07d0e3295a3462acffaa6009b3b4d1cbfd483e",
+    "fixed": "f192a6f8a2ee12f268a754727fe7e3110f0ab21741ef3c60f6dceaf10e694e09",
 }
 FROZEN = {
     "libs/arm64-v8a/libshared.so": "ebb1ccfe8ebb864c3e42a5b7d6aa4df30ef16dcec8633d9d65a72b9409f5d54f",
@@ -43,20 +43,28 @@ FROZEN = {
     "ets/widgets.abc": "9f7d47a3cdb4dd716a2593e1c25a7027f90917f1cb5f3370da522725e12f63d3",
 }
 FIXTURE_MEMBERS = {
-    "README.md", "prepare_native_probe_hap.py", "control/libkuikly.so",
-    "probe/libkuikly.so", "receipts/control-manifest.json",
-    "receipts/probe-manifest.json", "receipts/paired-carrier-receipt.json",
-    "receipts/probe-download.json", "receipts/elf-comparison.json",
-    "receipts/control-provenance.json", "receipts/control-toolchain.json",
-    "receipts/probe-provenance.json", "receipts/probe-toolchain.json", "checksums.json",
+    'README.md',
+    'checksums.json',
+    'control/libkuikly.so',
+    'fixed/libkuikly.so',
+    'receipts/control-manifest.json',
+    'receipts/control-provenance.json',
+    'receipts/control-toolchain.json',
+    'receipts/elf-comparison.json',
+    'receipts/fixed-manifest.json',
+    'receipts/fixed-provenance.json',
+    'receipts/fixed-toolchain.json',
+    'receipts/native-source-equivalence.json',
 }
 SOURCE = {
     "original_run": 38503177796, "original_artifact": 11868217887,
     "original_artifact_name": "raft-ohos-1.13.1-diag-113bb09c-11301900",
     "application_sha": "4fc2ea871da9c5ec101e4c8c6832ebeda412061a",
     "control_sha": "8226bb433c1fb97c0ac424979ab77add9d6258e5",
-    "probe_sha": "a76e111b65e1e922e6340f98611672732e590dbf",
-    "probe_run": 38595671669,
+    "control_run": 38587540310,
+    "fix_base_sha": "1beb09dbece03c77ab6e78a1de93ab29228ec50b",
+    "fixed_sha": "e89677fb1cb3915848fb8399a5ee254bff962cb8",
+    "fixed_run": 38726132667,
 }
 
 
@@ -110,7 +118,7 @@ def input_libraries(path):
         libraries = {role: archive.read(f"{role}/libkuikly.so") for role in LIBRARY_SHA}
         for role, data in libraries.items():
             require(sha(data) == LIBRARY_SHA[role], f"{role} renderer changed")
-        # Deliberately do not extract or execute the archived Python/README.
+        # Provenance is data only; no archived code is executed.
         return libraries
 
 
@@ -172,7 +180,7 @@ def compare_signed_payload(unsigned, signed):
 
 def public_identity(directory):
     identities = {}
-    for role in ("original", "control", "probe"):
+    for role in ("original", "control", "fixed"):
         identities[role] = {}
         for suffix in ("cer", "p7b"):
             path = Path(directory) / f"{role}.{suffix}"
@@ -180,7 +188,7 @@ def public_identity(directory):
             data = path.read_bytes()
             require(0 < len(data) < 4 * 1024 * 1024, f"invalid public output size: {path.name}")
             identities[role][suffix + "_sha256"] = sha(data)
-    require(identities["original"] == identities["control"] == identities["probe"],
+    require(identities["original"] == identities["control"] == identities["fixed"],
             "signer certificate or profile differs from original")
     return identities
 
@@ -219,7 +227,7 @@ def prepare(original_dir, work_dir):
                "original_app_sha256": APP_SHA, "original_signed_hap_sha256": SIGNED_SHA,
                "original_unsigned_hap_sha256": BASE_HAP_SHA, "entry_count": 264,
                "changed_entries": [TARGET], "frozen_entries": FROZEN, "outputs": outputs,
-               "notice": "Only checked-in helper executed; archived Python was not extracted or executed. No signing/install. ZIP alignment/installability requires official signing/verification and device readback."}
+               "notice": "Only checked-in helper executed; archive contains libraries and data only. No signing/install. ZIP alignment/installability requires official signing/verification and device readback."}
     write_receipt(work / "preparation-receipt.json", receipt)
     return receipt
 
@@ -244,7 +252,7 @@ def verify(original_dir, work_dir, signed_dir, verified_dir, receipt_path):
                "bundle": "build.raft.mobile", "versionCode": 11301900,
                "versionName": "1.13.1-diag-113bb09c", "original_signed_hap_sha256": SIGNED_SHA,
                "frozen_entries": FROZEN, "public_verify_app_export_hashes": public, "outputs": outputs,
-               "signature_validation_boundary": "Caller must have run official verify-app successfully on original/control/probe and created these public exports in a fresh directory. Python compares exported bytes and payloads; it does not validate signatures or assert runtime PASS.",
+               "signature_validation_boundary": "Caller must have run official verify-app successfully on original/control/fixed and created these public exports in a fresh directory. Python compares exported bytes and payloads; it does not validate signatures or assert runtime PASS.",
                "runtime": "NOT_RUN"}
     write_receipt(receipt_path, receipt)
     return receipt
