@@ -2158,6 +2158,7 @@
     <string name="auth_web_login_hint">从 raft.build 登录</string>
     <string name="auth_web_login_private_entry">登录私有化部署</string>
     <string name="auth_web_login_failed">未能完成登录，请重试。</string>
+    <string name="auth_web_login_stale_callback">这个登录链接来自之前的一次尝试。请在最新打开的页面完成登录，或重新登录。</string>
     <string name="channel_member_role_owner">所有者</string>
     <string name="channel_member_role_admin">管理员</string>
     <string name="channel_member_role_guest">访客</string>

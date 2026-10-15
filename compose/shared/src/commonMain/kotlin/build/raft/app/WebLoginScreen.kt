@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.APP_LOGIN_STALE_CALLBACK
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.SharedAuthDataSource
@@ -49,6 +50,7 @@ internal fun WebLoginScreen(
     )
     var starting by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var staleCallback by remember { mutableStateOf(false) }
     val completion by SlockWebLoginCompletion.status.collectAsState()
     LaunchedEffect(completion) {
         when (completion) {
@@ -65,6 +67,10 @@ internal fun WebLoginScreen(
                 failed = true
                 SlockWebLoginCompletion.clear()
             }
+            APP_LOGIN_STALE_CALLBACK -> {
+                staleCallback = true
+                SlockWebLoginCompletion.clear()
+            }
         }
     }
     AuthScaffold(
@@ -73,7 +79,13 @@ internal fun WebLoginScreen(
     ) {
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {
-            AuthError(if (failed) stringResource(MR.strings.auth_web_login_failed) else null)
+            AuthError(
+                when {
+                    failed -> stringResource(MR.strings.auth_web_login_failed)
+                    staleCallback -> stringResource(MR.strings.auth_web_login_stale_callback)
+                    else -> null
+                }
+            )
             AuthTermsAgreement(
                 checked = consentAccepted,
                 onCheckedChange = {
@@ -93,6 +105,7 @@ internal fun WebLoginScreen(
                     startWebLoginWithConsent(consentAccepted, starting) {
                         starting = true
                         failed = false
+                        staleCallback = false
                         SlockWebLoginCompletion.clear()
                         scope.launch {
                             try {

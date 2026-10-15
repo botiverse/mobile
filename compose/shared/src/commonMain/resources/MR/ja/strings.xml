@@ -2147,6 +2147,7 @@
     <string name="auth_web_login_hint">raft.build からログイン</string>
     <string name="auth_web_login_private_entry">プライベートデプロイにログイン</string>
     <string name="auth_web_login_failed">ログインを完了できませんでした。もう一度お試しください。</string>
+    <string name="auth_web_login_stale_callback">以前のログイン操作のリンクです。最新のページでログインを完了するか、もう一度ログインしてください。</string>
     <string name="channel_member_role_owner">オーナー</string>
     <string name="channel_member_role_admin">管理者</string>
     <string name="channel_member_role_guest">ゲスト</string>

@@ -66,7 +66,9 @@ internal class AppLoginCoordinator(
         }
         val pending = pending() ?: return@withLock exit("ignored", "no_pending")
         if (pending.returnUri != returnUri) return@withLock exit("ignored", "return_uri_mismatch")
-        if (pending.requestId != requestId) return@withLock exit("ignored", "request_id_mismatch")
+        // A callback for an earlier attempt (the user tapped sign-in again): keep the newer attempt, but say so,
+        // or the login page sits there silently.
+        if (pending.requestId != requestId) return@withLock exit(APP_LOGIN_STALE_CALLBACK, "request_id_mismatch")
         val active = runtime() ?: return@withLock exit("retry", "runtime_unavailable")
         val age = now() - pending.startedAt
         val refusal =
@@ -93,6 +95,9 @@ internal class AppLoginCoordinator(
         if (exchanged) exit("app_shell", "exchanged") else exit("login_error", "exchange_failed")
     }
 }
+
+/** [AppLoginCoordinator.complete] result for a callback that belongs to an earlier, replaced attempt. */
+internal const val APP_LOGIN_STALE_CALLBACK = "stale"
 
 internal object SlockAppLogin {
     private val coordinator by lazy {
