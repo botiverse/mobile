@@ -16092,6 +16092,46 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun failedResumeCatchUpIsAskedAgainOnItsOwn() = runBlocking {
+        // Feedback 4409cbc5: the resume catch-up failed and nothing asked again, so the thread kept its
+        // cached messages until the user left. A retryable failure now schedules a bounded retry.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.catchUpBodyTexts.addLast("{}")
+        api.catchUpResponseCodes.addLast(500)
+        api.catchUpBodyTexts.addLast(pageRangeResponse(10L..13L))
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+        assertEquals(1, api.catchUpCalls)
+        assertEquals("error", store.state.value.payload.newerMessagesStatus)
+        assertTrue(logs.any { "thread_resume_catchup_retry_scheduled" in it && "attempt=1" in it }, logs.toString())
+
+        withTimeout(resumeCatchUpRetryDelayMs(0) + 5_000L) {
+            while (store.state.value.payload.newerMessagesStatus != "idle") delay(50)
+        }
+        assertEquals(2, api.catchUpCalls)
+        assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
+        scope.cancel()
+    }
+
+    @Test
+    fun resumeCatchUpRetriesAreBounded() {
+        assertEquals(listOf(2_000L, 4_000L, 8_000L), (0 until RESUME_CATCH_UP_MAX_RETRIES).map(::resumeCatchUpRetryDelayMs))
+    }
+
+    @Test
     fun allKnownCatchUpPageTerminatesWithoutLooping() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
