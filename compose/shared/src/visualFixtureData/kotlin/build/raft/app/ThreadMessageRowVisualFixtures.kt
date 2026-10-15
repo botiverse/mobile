@@ -448,6 +448,11 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
+                // The child-tap capture cases probe fixed display coordinates calibrated
+                // against the full-width layout. Task #278's 82% width cap for the other
+                // party's messages (alignment mode on) reflows the link span off those
+                // coordinates, so these tap-behavior fixtures pin alignment mode off.
+                alignOwnMessagesRight = false,
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) {
@@ -465,6 +470,9 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
+                // See MARKDOWN_LINK_CHILD: keep the mention span on the calibrated
+                // full-width geometry for the fixed-coordinate tap probe.
+                alignOwnMessagesRight = false,
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) {
