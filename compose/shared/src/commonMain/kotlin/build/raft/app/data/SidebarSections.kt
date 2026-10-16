@@ -80,6 +80,24 @@ fun reorderSidebarSectionOrder(order: List<String>, activeId: String, overId: St
 fun sidebarSectionItemKey(kind: String, id: String): String = "$kind:$id"
 
 /**
+ * The placement key of a sidebar conversation. Web keys agent-peer DMs by
+ * their agent member id (kind "agent") and everything else — channels, joint
+ * channels, human DMs — by channel id (kind "channel"); see Sidebar.tsx
+ * `resolveMovableItemFromDragId` / `contextMovableItem`. Store writes and UI
+ * resolution must derive the same key for the same conversation.
+ */
+fun sidebarSectionPlacementKindId(
+    peerType: String?,
+    presenceMemberId: String?,
+    conversationId: String
+): Pair<String, String> =
+    if (peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) && !presenceMemberId.isNullOrBlank()) {
+        SIDEBAR_SECTION_ITEM_KIND_AGENT to presenceMemberId
+    } else {
+        SIDEBAR_SECTION_ITEM_KIND_CHANNEL to conversationId
+    }
+
+/**
  * New custom-section id. Web uses `crypto.randomUUID()`; commonMain has no
  * java.util.UUID, so this produces the same version-4 UUID shape (the server
  * accepts any non-"system:" id up to 80 chars).

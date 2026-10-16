@@ -144,4 +144,27 @@ class SidebarSectionsTest {
         assertEquals(placements, removeSidebarItemPlacement(placements, "channel", "missing"))
         assertEquals(emptyList(), removeSidebarItemPlacement(placements, "channel", "channel-1"))
     }
+
+    @Test
+    fun placementKindIdKeysAgentDmsByMemberId() {
+        // LiBai review: agent-peer DMs place as agent:<memberId> (web agent
+        // items); channels and human DMs place as channel:<conversationId>.
+        assertEquals(
+            "agent" to "member-1",
+            sidebarSectionPlacementKindId(peerType = "agent", presenceMemberId = "member-1", conversationId = "dm-1")
+        )
+        assertEquals(
+            "channel" to "dm-2",
+            sidebarSectionPlacementKindId(peerType = "user", presenceMemberId = "user-1", conversationId = "dm-2")
+        )
+        assertEquals(
+            "channel" to "channel-1",
+            sidebarSectionPlacementKindId(peerType = null, presenceMemberId = null, conversationId = "channel-1")
+        )
+        // An agent DM whose member id never resolved still falls back to the channel key.
+        assertEquals(
+            "channel" to "dm-3",
+            sidebarSectionPlacementKindId(peerType = "agent", presenceMemberId = null, conversationId = "dm-3")
+        )
+    }
 }

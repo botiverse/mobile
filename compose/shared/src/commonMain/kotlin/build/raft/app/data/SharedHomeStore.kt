@@ -3096,15 +3096,26 @@ internal class SharedHomeStore(
             val currentPinned = previous.typedPinnedOrLegacy()
             val wasPinned =
                 currentPinned.any { it.matchesPinnedTarget(pinnedTarget) } || previous.legacyPinnedContains(pinnedTarget)
+            // LiBai review: the placement key must follow the conversation type —
+            // agent-peer DMs key by their agent member id (kind "agent"),
+            // everything else by channel id (kind "channel") — matching web's
+            // movable-item derivation and the UI's placement resolution.
+            val row = snapshot.findHomeConversation(conversationId)
+            val (placementKind, placementId) =
+                sidebarSectionPlacementKindId(
+                    peerType = row?.directMessagePeerType,
+                    presenceMemberId = row?.presenceMemberId?.value,
+                    conversationId = conversationId
+                )
             val nextPlacements =
                 if (sectionId == null) {
-                    removeSidebarItemPlacement(previous.sectionPlacements, SIDEBAR_SECTION_ITEM_KIND_CHANNEL, conversationId)
+                    removeSidebarItemPlacement(previous.sectionPlacements, placementKind, placementId)
                 } else {
                     if (previous.customSections.none { it.id == sectionId }) return@mutateSidebarSections null
                     moveSidebarItemToCustomSection(
                         previous.sectionPlacements,
-                        SIDEBAR_SECTION_ITEM_KIND_CHANNEL,
-                        conversationId,
+                        placementKind,
+                        placementId,
                         sectionId
                     )
                 }

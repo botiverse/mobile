@@ -5589,6 +5589,94 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun moveAgentDirectMessageToSectionKeysPlacementByMemberId() = runBlocking {
+        // LiBai review: agent DMs must place as kind=agent id=<memberId> —
+        // the same key the UI resolves and web writes for agent items —
+        // not kind=channel id=<conversationId>.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Agents", sortMode = "manual")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionsVersion = 2
+            )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Active)
+                            .copy(directMessagePeerType = "agent")
+                    ),
+                sidebarOrder = initial
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(sectionPlacements = request.sectionPlacements.orEmpty(), sectionsVersion = 3))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "dm-agent-1", sectionId = "sec-1"))
+
+        assertEquals(1, updateCalls.size)
+        assertEquals(
+            listOf(SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "sec-1", position = 0)),
+            updateCalls.first().sectionPlacements
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun removeAgentDirectMessageFromSectionDropsTheAgentKeyedPlacement() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Agents", sortMode = "manual")
+        val agentPlacement =
+            SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "sec-1", position = 0)
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionPlacements = listOf(agentPlacement),
+                sectionsVersion = 5
+            )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Active)
+                            .copy(directMessagePeerType = "agent")
+                    ),
+                sidebarOrder = initial
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(sectionPlacements = request.sectionPlacements.orEmpty(), sectionsVersion = 6))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "dm-agent-1", sectionId = null))
+
+        assertEquals(1, updateCalls.size)
+        assertEquals(emptyList(), updateCalls.first().sectionPlacements)
+        assertEquals(5L, updateCalls.first().sectionsVersion)
+        scope.cancel()
+    }
+
+    @Test
     fun reorderChannelsPersistsManualChannelOrderAndPreservesJointIds() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val home =
