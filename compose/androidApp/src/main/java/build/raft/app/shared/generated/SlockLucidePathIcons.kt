@@ -2075,6 +2075,88 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Dices: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "dices",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M 4.0 10.0 H 12.0 A 2.0 2.0 0 0 1 14.0 12.0 V 20.0 A 2.0 2.0 0 0 1 12.0 22.0 H 4.0 A 2.0 2.0 0 0 1 2.0 20.0 V 12.0 A 2.0 2.0 0 0 1 4.0 10.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M6 18h.01",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M10 14h.01",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M15 6h.01",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M18 9h.01",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val Download: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "download",
@@ -10638,6 +10720,7 @@ internal object SlockLucidePathIcons {
             "copy",
             "credit-card",
             "crop",
+            "dices",
             "download",
             "ellipsis",
             "maximize-2",
@@ -10846,6 +10929,7 @@ internal object SlockLucidePathIcons {
             "copy" -> Copy
             "credit-card" -> CreditCard
             "crop" -> Crop
+            "dices" -> Dices
             "download" -> Download
             "ellipsis" -> Ellipsis
             "maximize-2" -> Maximize2

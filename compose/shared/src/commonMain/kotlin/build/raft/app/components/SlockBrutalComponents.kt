@@ -480,6 +480,7 @@ internal fun SlockBrutalTextField(
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
+    labelAccessory: (@Composable () -> Unit)? = null,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
@@ -490,7 +491,8 @@ internal fun SlockBrutalTextField(
         optional = optional,
         hint = hint,
         error = error,
-        size = labelSize
+        size = labelSize,
+        labelAccessory = labelAccessory
     ) {
         SlockBrutalInputField(
             value = value,
@@ -537,6 +539,7 @@ internal fun SlockBrutalTextField(
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
     password: Boolean = false,
+    labelAccessory: (@Composable () -> Unit)? = null,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
@@ -547,7 +550,8 @@ internal fun SlockBrutalTextField(
         optional = optional,
         hint = hint,
         error = error,
-        size = labelSize
+        size = labelSize,
+        labelAccessory = labelAccessory
     ) {
         SlockBrutalInputField(
             value = value,

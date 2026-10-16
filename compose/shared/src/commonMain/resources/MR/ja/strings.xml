@@ -1329,6 +1329,7 @@
     <string name="auth_error_password_reset_setup">パスワードリセットのセットアップを完了できませんでした。もう一度お試しください。</string>
     <string name="auth_error_password_reset_failed">パスワードのリセットに失敗しました。もう一度お試しください。</string>
     <string name="agent_create_label_name">名前</string>
+    <string name="agent_create_random_name">ランダムな名前</string>
     <string name="agent_create_label_description">説明</string>
     <string name="agent_create_label_computer">コンピューター</string>
     <string name="agent_create_label_runtime">ランタイム</string>
