@@ -1020,6 +1020,25 @@ jobs:
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
 
+      - name: Test login route transition admission (UIKit)
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          log="$GITHUB_WORKSPACE/xcodebuild-login-router-tests.log"
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosAppTests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -only-testing:iosAppTests/SlockRouterLoginTransitionTests \
+            -parallel-testing-enabled NO \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
+          tail -60 "$log"
+
       # The UI-test bundle is only compiled here; no UI case is ever executed in
       # this workflow, and qa-acceptance-ios.yml does its own build-for-testing
       # before test-without-building. So on pull requests we build just the host
@@ -1077,6 +1096,7 @@ jobs:
           path: |
             xcodebuild-ios.log
             xcodebuild-adaptive-editor-tests.log
+            xcodebuild-login-router-tests.log
             xcodebuild-image-loader-tests.log
           if-no-files-found: ignore
           retention-days: 7

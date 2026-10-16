@@ -1,7 +1,9 @@
 #import "KRRouterHandler.h"
 #import "KuiklyRenderViewController.h"
+#import <objc/runtime.h>
 
 static NSString *const SlockRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+static char SlockRouterRetiredByLoginKey;
 
 static NSDictionary *SlockRouterIdentityPageData(NSDictionary *pageData) {
     if (![pageData isKindOfClass:NSDictionary.class]) {
@@ -53,11 +55,31 @@ static BOOL SlockRouterBool(id value) {
 
 - (void)openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData controller:(UIViewController *)controller {
     NSDictionary *sanitizedPageData = SlockRouterIdentityPageData(pageData);
-    KuiklyRenderViewController *renderViewController = [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:sanitizedPageData];
     UINavigationController *navigationController = controller.navigationController;
+    BOOL replaceCurrent = SlockRouterBool(sanitizedPageData[SlockRouterReplaceCurrentPageKey]);
+    if (replaceCurrent && [pageName isEqualToString:@"compose_login"]) {
+        // A removed page can still have a window during its exit animation.
+        // Retire its terminal callbacks before mutating UIKit containment.
+        if ([objc_getAssociatedObject(controller, &SlockRouterRetiredByLoginKey) boolValue]) {
+            return;
+        }
+        // Logout completion, mounted-page terminal observers and late auth-loss
+        // requests can all target login. The first replacement owns the stack;
+        // later requests must preserve that login instance and its input state.
+        UIViewController *top = navigationController.topViewController;
+        if ([top isKindOfClass:KuiklyRenderViewController.class] &&
+            ((KuiklyRenderViewController *)top).slockIsLoginPage) {
+            return;
+        }
+    }
+    KuiklyRenderViewController *renderViewController = [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:sanitizedPageData];
     if (navigationController) {
-        if (SlockRouterBool(sanitizedPageData[SlockRouterReplaceCurrentPageKey]) && navigationController.viewControllers.count > 0) {
+        if (replaceCurrent && navigationController.viewControllers.count > 0) {
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
+            if ([pageName isEqualToString:@"compose_login"]) {
+                objc_setAssociatedObject(viewControllers.lastObject, &SlockRouterRetiredByLoginKey,
+                                         @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
             [viewControllers removeLastObject];
             [viewControllers addObject:renderViewController];
             [navigationController setViewControllers:viewControllers animated:YES];

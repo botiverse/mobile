@@ -118,6 +118,10 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     return [_pageName isEqualToString:SlockAppShellPageName];
 }
 
+- (BOOL)slockIsLoginPage {
+    return [_pageName isEqualToString:@"compose_login"];
+}
+
 - (BOOL)slockConversationForwardGestureEnabled {
     return _slockConversationForwardGestureEnabled;
 }
