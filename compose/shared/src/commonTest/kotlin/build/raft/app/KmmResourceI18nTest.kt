@@ -261,6 +261,17 @@ class KmmResourceI18nTest {
             MR.strings.home_sort_manual,
             MR.strings.home_sort_recent,
             MR.strings.home_sort_az,
+            MR.strings.home_section_move_to,
+            MR.strings.home_section_remove_from,
+            MR.strings.home_section_new_menu,
+            MR.strings.home_section_rename,
+            MR.strings.home_section_delete,
+            MR.strings.home_section_new_title,
+            MR.strings.home_section_edit_title,
+            MR.strings.home_section_create,
+            MR.strings.home_section_name_label,
+            MR.strings.home_section_name_placeholder,
+            MR.strings.home_section_emoji_label,
             MR.strings.home_action_add_channel,
             MR.strings.home_state_no_servers,
             MR.strings.home_server_switcher_join_chinese_community,
@@ -274,6 +285,11 @@ class KmmResourceI18nTest {
                 "home shell resources must produce ResourceStringDesc entries"
             )
         }
+        assertTrue(
+            MR.strings.home_section_delete_message.format(listOf("My Project")) is
+                ResourceFormattedStringDesc,
+            "the section delete confirmation must be generated as a formatted string"
+        )
     }
 
     @Test
