@@ -7260,6 +7260,21 @@ internal fun slockFilePreviewVideoContainer(
     mimeType: String
 ): SlockPreviewableVideoContainer? {
     val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+
+    // task #511: ".ts" is ambiguous — overwhelmingly TypeScript source in chat
+    // attachments, but OS MIME tables (Android MimeTypeMap, Python mimetypes)
+    // auto-tag it video/mp2t. When the extension already resolves to a known
+    // text/code extension, prefer the text path over the video container guess.
+    val fileExtension =
+        fileName
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase()
+    if (normalizedMime == "video/mp2t" && fileExtension in SlockFilePreviewTextFileExtensions) {
+        return null
+    }
+
     val byMime =
         when (normalizedMime) {
             "video/mp4" -> SlockPreviewableVideoContainer.Mp4
@@ -7276,13 +7291,7 @@ internal fun slockFilePreviewVideoContainer(
         }
     if (byMime != null) return byMime
 
-    val extension =
-        fileName
-            .substringBefore('?')
-            .substringBefore('#')
-            .substringAfterLast('.', missingDelimiterValue = "")
-            .lowercase()
-    return when (extension) {
+    return when (fileExtension) {
         "mp4" -> SlockPreviewableVideoContainer.Mp4
         "mov", "qt" -> SlockPreviewableVideoContainer.QuickTime
         "m4v" -> SlockPreviewableVideoContainer.M4v
@@ -7290,7 +7299,7 @@ internal fun slockFilePreviewVideoContainer(
         "3g2", "3gp2" -> SlockPreviewableVideoContainer.ThreeGpp2
         "webm" -> SlockPreviewableVideoContainer.WebM
         "mkv" -> SlockPreviewableVideoContainer.Matroska
-        "ts", "m2ts", "mts" -> SlockPreviewableVideoContainer.MpegTs
+        "m2ts", "mts" -> SlockPreviewableVideoContainer.MpegTs
         "mpg", "mpeg", "m2p", "ps" -> SlockPreviewableVideoContainer.MpegPs
         "flv" -> SlockPreviewableVideoContainer.Flv
         else -> null

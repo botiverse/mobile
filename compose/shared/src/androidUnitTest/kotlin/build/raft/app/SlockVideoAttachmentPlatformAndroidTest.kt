@@ -15,12 +15,13 @@ class SlockVideoAttachmentPlatformAndroidTest {
             "clip.3g2" to "video/3gpp2",
             "clip.webm" to "video/webm",
             "clip.mkv" to "video/x-matroska",
-            "clip.ts" to "video/mp2t",
+            "clip.m2ts" to "video/mp2t",
             "clip.mpg" to "video/mpeg",
             "clip.flv" to "video/x-flv"
         ).forEach { (fileName, mimeType) ->
             assertTrue(slockFilePreviewIsPreviewableVideoAttachment(fileName, mimeType), fileName)
         }
+        assertFalse(slockFilePreviewIsPreviewableVideoAttachment("clip.ts", "video/mp2t"))
         assertFalse(slockFilePreviewIsPreviewableVideoAttachment("clip.avi", "video/x-msvideo"))
     }
 }
