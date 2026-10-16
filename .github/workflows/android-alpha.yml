@@ -38,7 +38,7 @@ jobs:
       github.event_name == 'workflow_dispatch'
       || (contains(github.event.pull_request.labels.*.name, 'build-alpha')
           && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout workflow base

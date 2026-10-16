@@ -22,7 +22,7 @@ permissions:
 jobs:
   ios-release-audit-tag:
     name: iOS release audit tag contract
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout

@@ -42,7 +42,7 @@ concurrency:
 jobs:
   build-app:
     name: Build installable Simulator app
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: macos-latest
     timeout-minutes: 60
     steps:
       - name: Checkout

@@ -19,7 +19,7 @@ permissions:
 jobs:
   thread-image-compression-contract:
     name: Image compression contract invariant
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact change

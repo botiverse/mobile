@@ -104,7 +104,7 @@ jobs:
   build:
     name: Build debug APK
     if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout mobile
@@ -182,7 +182,7 @@ jobs:
 
   acceptance:
     name: Acceptance run (M3 agent on emulator)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: build
     # Run when build succeeded OR was skipped (pinned-bits inputs replace it).

@@ -14,7 +14,7 @@ permissions:
 jobs:
   selftest:
     name: Merge tooling self-test
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
