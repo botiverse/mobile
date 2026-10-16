@@ -218,6 +218,50 @@ The release workflow no longer triggers from tags, activates a release, or
 creates a release tag. A tag is a post-publication audit record, never a build
 trigger or a way to bypass the draft gate.
 
+### 3.1 Upload the Play carrier through Hands' Google Play binding
+
+The Android Release workflow does not upload to Google Play automatically. For
+a Play candidate, dispatch it from the clean remote `release-X.Y.Z` checkout
+with `android_variant=play` and `upload_android_artifacts=true`. CI builds,
+signs, verifies, and retains the AAB (and the matching Play APK) as workflow
+artifacts; `create_hands_draft` remains `false` for this carrier. A workflow
+success or a GitHub artifact is not a Google Play receipt.
+
+Hands can perform the store upload when the app has an enabled, verified Google
+Play binding and the caller has the app `publisher` role. The binding owns the
+Google credential and maps Hands tracks to the provider tracks; never put a
+service-account key or OAuth token in the repository, CI variables, or Raft.
+Use the Hands CLI's `releases play-promote` command (CLI versions that expose
+it) or the equivalent `hands api` routes:
+
+1. Declare the exact AAB and matching APK at
+   `POST /api/apps/:appId/android-release-artifacts`, including source SHA/CI
+   run, package, version/versionCode, upload-key certificate SHA-256, file
+   sizes, and file SHA-256 values.
+2. Upload each file to its returned presigned URL, call each `complete` URL,
+   then `GET` the build and require `status=ready` with both assets `sealed`.
+3. Create a Hands draft at `POST /api/apps/:appId/releases/draft` and bind the
+   ready build. Create an acceptance receipt for the exact AAB at
+   `/releases/:releaseId/receipts/acceptance` with `verdict=pass` and the
+   current release revision.
+4. Submit the store operation with
+   `hands releases play-promote <app> <release> --track closed --note ...`, or
+   `POST /api/apps/:appId/releases/:releaseId/distributions/play/promote` with
+   `track=closed`, the fresh `expected_revision`, and a non-empty approval
+   note. `closed` means the binding's configured closed-test track (for this
+   app it is `alpha`); do not substitute a provider track ID by hand.
+5. Immediately read `/distributions/play` and `/receipts` and record the
+   returned Play receipt/edit ID, package, versionCode, track, AAB SHA-256,
+   source SHA, CI run, and provider review/rollout state. A successful Hands
+   response is the Play receipt; a `failed-closed` response is not a store
+   upload and must remain visible in the receipt chain.
+
+The Play operation is a separate store write. Keep artifact upload, acceptance,
+closed-test submission, production rollout, and Hands release activation as
+separate approvals. If the binding or Publisher path is unavailable, record
+`AAB ready / Play upload NOT RUN` and hand off the signed AAB; never infer a
+Play upload from a GitHub artifact, a Hands draft, or a local file.
+
 ## 4. Write And Review Notes
 
 Use the workflow's raw changelog and the selected PR list as source material,

@@ -280,6 +280,24 @@ gh workflow run ios-release.yml \
   -f release_mode=draft
 ```
 
+For the Google Play carrier, use the same exact release-ref checkout and
+source identity but dispatch `android_variant=play` with
+`upload_android_artifacts=true`. The workflow retains the signed AAB and
+matching Play APK and performs CI verification; it does not create a Hands
+release or submit to Google Play automatically. After the artifact and smoke
+gates pass, use the verified Hands Google Play binding and app `publisher`
+role: declare/upload/complete the AAB+APK pair, create a Hands draft, attach a
+passing acceptance receipt to the exact AAB, then run
+`hands releases play-promote <app> <release> --track closed --note ...` (or the
+equivalent `/distributions/play/promote` API). Read back the Play receipt/edit,
+package, versionCode, provider track, AAB SHA, source SHA, CI run, and review
+state. `closed` resolves through the binding to the configured closed-test
+track; keep store upload, closed-test submission, production rollout, and
+Hands activation separately approved. A missing binding or failed-closed
+operation is recorded as `AAB ready / Play upload NOT RUN` or the exact failed
+receipt; a green CI run, GitHub artifact, or Hands draft never substitutes for
+a Play receipt.
+
 Draft creation does not authorize activation or distribution. If source drifts
 after either dispatch, supersede both platform carriers and raise both build
 coordinates before rebuilding.
