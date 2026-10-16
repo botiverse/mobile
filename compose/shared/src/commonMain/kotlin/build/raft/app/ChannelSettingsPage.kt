@@ -382,9 +382,11 @@ private fun ChannelSettingsContent(
     onArchive: () -> Unit,
     onDelete: () -> Unit
 ) {
+    // task #177: standalone page; the last row clears the system navigation bar.
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item(key = "identity") {
