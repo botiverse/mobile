@@ -4,6 +4,7 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -397,13 +399,36 @@ internal fun SlockCollapsibleSectionHeader(
     countPrefix: String = "",
     sortContentDescription: String? = null,
     onSortClick: ((SlockPopoverAnchor) -> Unit)? = null,
+    // task #512: custom section headers open their context menu on long-press
+    // (web right-click). Null keeps the plain tap-to-collapse clickable.
+    // [longPressAnchorIdentity] must uniquely identify the header (a section
+    // id, not its display label) so the popover anchor registry never mixes
+    // two same-named sections.
+    onLongPress: ((SlockPopoverAnchor) -> Unit)? = null,
+    longPressAnchorIdentity: String = label,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
+    val longPressAnchorRef = remember(longPressAnchorIdentity) { SlockLiveRootAnchorRef(identity = "section-header:$longPressAnchorIdentity") }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = minHeight)
-            .clickable { onExpandedChange(!expanded) },
+            .then(
+                if (onLongPress != null) {
+                    Modifier
+                        .slockCaptureLiveRootAnchor(longPressAnchorRef)
+                        .pointerInput(onExpandedChange, expanded) {
+                            detectTapGestures(
+                                onTap = { onExpandedChange(!expanded) },
+                                onLongPress = {
+                                    longPressAnchorRef.resolve(SlockPopoverLocalPoint.BottomStart)?.let(onLongPress)
+                                }
+                            )
+                        }
+                } else {
+                    Modifier.clickable { onExpandedChange(!expanded) }
+                }
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockCollapsibleSectionContentGap)
     ) {

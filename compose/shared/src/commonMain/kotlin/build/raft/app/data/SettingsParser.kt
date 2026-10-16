@@ -768,6 +768,22 @@ fun parseSharedSettingsTranslation(bodyText: String): SettingsServerTranslationS
 }.getOrNull()
 
 @Serializable
+private data class WireSettingsSidebarCustomSection(
+    val id: String? = null,
+    val name: String? = null,
+    val emoji: String? = null,
+    val sortMode: String? = null,
+)
+
+@Serializable
+private data class WireSettingsSidebarSectionPlacement(
+    val kind: String? = null,
+    val id: String? = null,
+    val sectionId: String? = null,
+    val position: Int? = null,
+)
+
+@Serializable
 private data class WireSettingsSidebarOrder(
     val channelOrder: List<String> = emptyList(),
     val agentOrder: List<String> = emptyList(),
@@ -782,10 +798,31 @@ private data class WireSettingsSidebarOrder(
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
     val agentPanelTabOrder: List<String> = emptyList(),
+    val customSections: List<WireSettingsSidebarCustomSection> = emptyList(),
+    val sectionOrder: List<String> = emptyList(),
+    val sectionPlacements: List<WireSettingsSidebarSectionPlacement> = emptyList(),
+    val sectionsVersion: Long = 0L,
 )
 
 fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrderSnapshot? = runCatching {
     val order = settingsJson.decodeFromString(WireSettingsSidebarOrder.serializer(), bodyText)
+    // task #512: custom-section fields mirror web's normalize* helpers
+    // (packages/web/src/store/sidebarSections.ts): drop malformed entries,
+    // then repair the section order against the surviving sections.
+    val customSections =
+        normalizeSidebarCustomSections(
+            order.customSections.mapNotNull { section ->
+                val id = section.id?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val name = section.name?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val sortMode = section.sortMode?.trim()?.lowercase() ?: return@mapNotNull null
+                SettingsServerSidebarCustomSection(
+                    id = id,
+                    name = name,
+                    emoji = section.emoji?.takeIf { it.isNotBlank() },
+                    sortMode = sortMode,
+                )
+            }
+        )
     SettingsServerSidebarOrderSnapshot(
         channelOrder = order.channelOrder,
         agentOrder = order.agentOrder,
@@ -806,6 +843,19 @@ fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrde
         hiddenDmIds = order.hiddenDmIds,
         channelPanelTabOrder = order.channelPanelTabOrder,
         agentPanelTabOrder = order.agentPanelTabOrder,
+        customSections = customSections,
+        sectionOrder = normalizeSidebarSectionOrder(order.sectionOrder, customSections),
+        sectionPlacements =
+            normalizeSidebarSectionPlacements(
+                order.sectionPlacements.mapNotNull { placement ->
+                    val kind = placement.kind?.trim()?.lowercase() ?: return@mapNotNull null
+                    val id = placement.id?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val sectionId = placement.sectionId?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val position = placement.position ?: return@mapNotNull null
+                    SettingsServerSidebarSectionPlacement(kind = kind, id = id, sectionId = sectionId, position = position)
+                }
+            ),
+        sectionsVersion = order.sectionsVersion,
     )
 }.getOrNull()
 

@@ -792,7 +792,7 @@ class SettingsRepositoryDataSourceTest {
                 agreementUpdateJson = """{"enabled":true,"agreement":{"title":"Rules","bodyMarkdown":"Be excellent."}}""",
                 onboardingJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":null,"agentAllChannelGreetingEnabled":true}""",
                 translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
-                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"pinned":[{"kind":"channel","id":"channel-1"},{"kind":"agent","id":"agent-1"},{"kind":"human","id":"user-1"},{"kind":"invalid","id":"ignored"}],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
+                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"pinned":[{"kind":"channel","id":"channel-1"},{"kind":"agent","id":"agent-1"},{"kind":"human","id":"user-1"},{"kind":"invalid","id":"ignored"}],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"],"customSections":[{"id":"sec-1","name":"My Project","emoji":"🚀","sortMode":"az"},{"id":"","name":"bad","sortMode":"manual"},{"id":"sec-2","name":"No Sort","sortMode":"bogus"}],"sectionOrder":["system:dms","sec-1","bogus-id"],"sectionPlacements":[{"kind":"channel","id":"channel-1","sectionId":"sec-1","position":0},{"kind":"bogus","id":"x","sectionId":"sec-1","position":1}],"sectionsVersion":7}""",
                 serverOrderJson = """{"serverOrder":["server-2","server-1"]}""",
                 onboardingUpdateJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
                 translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
@@ -863,6 +863,21 @@ class SettingsRepositoryDataSourceTest {
             ),
             sidebar.data.pinned
         )
+        // task #512: custom sections parse, malformed entries drop, and the
+        // section order self-repairs against system + surviving custom ids.
+        assertEquals(
+            listOf(SettingsServerSidebarCustomSection(id = "sec-1", name = "My Project", emoji = "🚀", sortMode = "az")),
+            sidebar.data.customSections
+        )
+        assertEquals(
+            listOf("system:dms", "sec-1", "system:pinned", "system:joint", "system:channels"),
+            sidebar.data.sectionOrder
+        )
+        assertEquals(
+            listOf(SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)),
+            sidebar.data.sectionPlacements
+        )
+        assertEquals(7L, sidebar.data.sectionsVersion)
         assertTrue(serverOrder is DataResult.Content)
         assertEquals(listOf("server-2", "server-1"), serverOrder.data.serverOrder)
         assertTrue(updatedSidebar is DataResult.Content)
@@ -876,6 +891,26 @@ class SettingsRepositoryDataSourceTest {
             )
         assertTrue(updatedTypedPinned is DataResult.Content)
         assertEquals("""{"pinned":[{"kind":"agent","id":"agent-1"}]}""", network.sidebarBodies.last())
+        // task #512: section updates send the OCC version and omit null emoji.
+        val updatedSections =
+            repository.updateServerSidebarOrder(
+                SettingsServerSidebarOrderUpdateRequest(
+                    customSections =
+                        listOf(
+                            SettingsServerSidebarCustomSection(id = "sec-1", name = "My Project", emoji = "🚀", sortMode = "az"),
+                            SettingsServerSidebarCustomSection(id = "sec-2", name = "Plain")
+                        ),
+                    sectionOrder = listOf("system:pinned", "system:channels", "system:joint", "system:dms", "sec-1", "sec-2"),
+                    sectionPlacements =
+                        listOf(SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)),
+                    sectionsVersion = 7
+                )
+            )
+        assertTrue(updatedSections is DataResult.Content)
+        assertEquals(
+            """{"customSections":[{"id":"sec-1","name":"My Project","emoji":"🚀","sortMode":"az"},{"id":"sec-2","name":"Plain","sortMode":"manual"}],"sectionOrder":["system:pinned","system:channels","system:joint","system:dms","sec-1","sec-2"],"sectionPlacements":[{"kind":"channel","id":"channel-1","sectionId":"sec-1","position":0}],"sectionsVersion":7}""",
+            network.sidebarBodies.last()
+        )
         assertTrue(updatedServerOrder is DataResult.Content)
         assertEquals(listOf("server-1", "server-2"), updatedServerOrder.data.serverOrder)
         assertEquals("""{"serverOrder":["server-1","server-2"]}""", network.serverOrderBodies.single())

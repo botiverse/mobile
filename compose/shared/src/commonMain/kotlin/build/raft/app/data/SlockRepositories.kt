@@ -747,7 +747,14 @@ data class SettingsServerSidebarOrderUpdateRequest(
     val pinnedOrder: List<String>? = null,
     val hiddenDmIds: List<String>? = null,
     val channelPanelTabOrder: List<String>? = null,
-    val agentPanelTabOrder: List<String>? = null
+    val agentPanelTabOrder: List<String>? = null,
+    // task #512: custom-section fields. The server requires sectionsVersion
+    // (OCC) whenever any of customSections/sectionOrder/sectionPlacements is
+    // present; it answers a stale version with 409 SIDEBAR_SECTIONS_VERSION_CONFLICT.
+    val customSections: List<SettingsServerSidebarCustomSection>? = null,
+    val sectionOrder: List<String>? = null,
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement>? = null,
+    val sectionsVersion: Long? = null
 )
 
 data class SettingsServerOrderSnapshot(

@@ -3113,7 +3113,12 @@ private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolea
         pinnedOrder != null ||
         hiddenDmIds != null ||
         channelPanelTabOrder != null ||
-        agentPanelTabOrder != null
+        agentPanelTabOrder != null ||
+        // task #512: section fields make a PATCH meaningful on their own
+        // (sectionsVersion alone is OCC metadata, not a payload).
+        customSections != null ||
+        sectionOrder != null ||
+        sectionPlacements != null
 
 @Serializable
 data class AccountProfileUpdateRequestBody(
@@ -3300,7 +3305,11 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val pinnedOrder: List<String>? = null,
     val hiddenDmIds: List<String>? = null,
     val channelPanelTabOrder: List<String>? = null,
-    val agentPanelTabOrder: List<String>? = null
+    val agentPanelTabOrder: List<String>? = null,
+    val customSections: List<SettingsServerSidebarCustomSection>? = null,
+    val sectionOrder: List<String>? = null,
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement>? = null,
+    val sectionsVersion: Long? = null
 )
 
 @Serializable
@@ -3323,7 +3332,11 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             pinnedOrder = request.pinnedOrder,
             hiddenDmIds = request.hiddenDmIds,
             channelPanelTabOrder = request.channelPanelTabOrder,
-            agentPanelTabOrder = request.agentPanelTabOrder
+            agentPanelTabOrder = request.agentPanelTabOrder,
+            customSections = request.customSections,
+            sectionOrder = request.sectionOrder,
+            sectionPlacements = request.sectionPlacements,
+            sectionsVersion = request.sectionsVersion
         )
     )
 

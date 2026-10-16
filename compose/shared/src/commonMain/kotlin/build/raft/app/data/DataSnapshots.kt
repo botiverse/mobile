@@ -1455,13 +1455,35 @@ data class SettingsServerSidebarOrderSnapshot(
     val pinned: List<SettingsServerSidebarPinnedItem> = emptyList(),
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
-    val agentPanelTabOrder: List<String> = emptyList()
+    val agentPanelTabOrder: List<String> = emptyList(),
+    // task #512: web "channel sections" port. Mirrors the wire fields of
+    // GET/PATCH /servers/:id/sidebar-order (web packages/web/src/store/sidebarSections.ts).
+    val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
+    val sectionOrder: List<String> = emptyList(),
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
+    val sectionsVersion: Long = 0L
 )
 
 @Serializable
 data class SettingsServerSidebarPinnedItem(
     val kind: String,
     val id: String
+)
+
+@Serializable
+data class SettingsServerSidebarCustomSection(
+    val id: String,
+    val name: String,
+    val emoji: String? = null,
+    val sortMode: String = "manual"
+)
+
+@Serializable
+data class SettingsServerSidebarSectionPlacement(
+    val kind: String,
+    val id: String,
+    val sectionId: String,
+    val position: Int
 )
 
 data class SettingsMobileSnapshot(

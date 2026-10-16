@@ -19277,6 +19277,9 @@ private fun SharedHomeScreen(
                 pinnedItems = snapshot.sidebarOrder?.pinned.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
                 hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),
+                customSections = snapshot.sidebarOrder?.customSections.orEmpty(),
+                sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
+                sectionPlacements = snapshot.sidebarOrder?.sectionPlacements.orEmpty(),
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
@@ -19370,6 +19373,21 @@ private fun SharedHomeScreen(
                 },
                 onSidebarOrderChange = { target, order ->
                     onIntent(target.toReorderSidebarIntent(order))
+                },
+                onSidebarSectionSortModeChange = { sectionId, mode ->
+                    onIntent(SharedHomeIntent.SetSidebarSectionSortMode(sectionId, mode))
+                },
+                onSidebarSectionCreate = { name, emoji ->
+                    onIntent(SharedHomeIntent.CreateSidebarSection(name, emoji))
+                },
+                onSidebarSectionRename = { sectionId, name, emoji ->
+                    onIntent(SharedHomeIntent.RenameSidebarSection(sectionId, name, emoji))
+                },
+                onSidebarSectionDelete = { sectionId ->
+                    onIntent(SharedHomeIntent.DeleteSidebarSection(sectionId))
+                },
+                onMoveConversationToSection = { conversationId, sectionId ->
+                    onIntent(SharedHomeIntent.MoveConversationToSection(conversationId, sectionId))
                 },
                 onPinToggle = { conversationId ->
                     onIntent(SharedHomeIntent.TogglePinned(conversationId))

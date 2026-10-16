@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalPanel
 import build.raft.app.components.SlockExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
@@ -21,7 +22,12 @@ import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SettingsServerSidebarSectionPlacement
+import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_AGENT
+import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL
+import build.raft.app.data.normalizeSidebarSectionOrder
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
@@ -145,6 +151,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.format
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.math.PI
@@ -531,6 +538,18 @@ data class SlockHomeShellLabels(
     val sortManual: String = "Manual",
     val sortRecent: String = "Recent",
     val sortAz: String = "A-Z",
+    // task #512: custom sidebar sections (web channel-sections port).
+    val moveToSection: String = "Move to section",
+    val removeFromSection: String = "Remove from section",
+    val newSectionMenu: String = "New section…",
+    val renameSection: String = "Rename / change icon…",
+    val deleteSection: String = "Delete section",
+    val newSectionTitle: String = "New section",
+    val editSectionTitle: String = "Edit section",
+    val createSection: String = "Create section",
+    val sectionNameLabel: String = "Name",
+    val sectionNamePlaceholder: String = "My Project",
+    val sectionEmojiLabel: String = "Emoji",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
@@ -561,6 +580,17 @@ data class SlockHomeShellLabels(
             sortManual = stringResource(MR.strings.home_sort_manual),
             sortRecent = stringResource(MR.strings.home_sort_recent),
             sortAz = stringResource(MR.strings.home_sort_az),
+            moveToSection = stringResource(MR.strings.home_section_move_to),
+            removeFromSection = stringResource(MR.strings.home_section_remove_from),
+            newSectionMenu = stringResource(MR.strings.home_section_new_menu),
+            renameSection = stringResource(MR.strings.home_section_rename),
+            deleteSection = stringResource(MR.strings.home_section_delete),
+            newSectionTitle = stringResource(MR.strings.home_section_new_title),
+            editSectionTitle = stringResource(MR.strings.home_section_edit_title),
+            createSection = stringResource(MR.strings.home_section_create),
+            sectionNameLabel = stringResource(MR.strings.home_section_name_label),
+            sectionNamePlaceholder = stringResource(MR.strings.home_section_name_placeholder),
+            sectionEmojiLabel = stringResource(MR.strings.home_section_emoji_label),
             addChannel = stringResource(MR.strings.home_action_add_channel),
             noServersAvailable = stringResource(MR.strings.home_state_no_servers),
             joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
@@ -1424,6 +1454,10 @@ internal data class SlockStructuralHomeShellData(
     val pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
     val pinnedSortMode: String = "manual",
     val hiddenDmIds: List<String> = emptyList(),
+    // task #512: custom sidebar sections (web channel-sections port).
+    val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
+    val sectionOrder: List<String> = emptyList(),
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
     val canArchiveChannels: Boolean = false,
     val showLoadingSkeletons: Boolean = false,
     val selectedTabKey: String = "home",
@@ -1461,6 +1495,13 @@ internal class SlockStructuralHomeShellCallbacks(
     val onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     val onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     val onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    // task #512: custom sidebar sections (web channel-sections port).
+    val onSidebarSectionSortModeChange: (sectionId: String, SlockSidebarSortMode) -> Unit = { _, _ -> },
+    val onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    val onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
+    val onSidebarSectionDelete: (sectionId: String) -> Unit = {},
+    /** [sectionId] null returns the conversation to its default section. */
+    val onMoveConversationToSection: (conversationId: String, sectionId: String?) -> Unit = { _, _ -> },
     val onChannelClick: (String) -> Unit = {},
     val onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
     val onChannelLongPress: (String, SlockPopoverAnchor) -> Unit = { _, _ -> },
@@ -1515,6 +1556,10 @@ internal fun SlockStructuralHomeShell(
     pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
     pinnedSortMode: String = "manual",
     hiddenDmIds: List<String> = emptyList(),
+    // task #512: custom sidebar sections (web channel-sections port).
+    customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
+    sectionOrder: List<String> = emptyList(),
+    sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
     canArchiveChannels: Boolean = false,
     // #372 React parity: while home content is loading (session known,
     // channels / directMessages still empty) render static skeleton rows
@@ -1547,6 +1592,12 @@ internal fun SlockStructuralHomeShell(
     onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    // task #512: custom sidebar sections (web channel-sections port).
+    onSidebarSectionSortModeChange: (sectionId: String, SlockSidebarSortMode) -> Unit = { _, _ -> },
+    onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
+    onSidebarSectionDelete: (sectionId: String) -> Unit = {},
+    onMoveConversationToSection: (conversationId: String, sectionId: String?) -> Unit = { _, _ -> },
     onChannelClick: (String) -> Unit = {},
     onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
     onChannelLongPress: (String, SlockPopoverAnchor) -> Unit = { _, _ -> },
@@ -1607,6 +1658,9 @@ internal fun SlockStructuralHomeShell(
                 pinnedItems = pinnedItems,
                 pinnedSortMode = pinnedSortMode,
                 hiddenDmIds = hiddenDmIds,
+                customSections = customSections,
+                sectionOrder = sectionOrder,
+                sectionPlacements = sectionPlacements,
                 canArchiveChannels = canArchiveChannels,
                 showLoadingSkeletons = showLoadingSkeletons,
                 selectedTabKey = selectedTabKey,
@@ -1640,6 +1694,11 @@ internal fun SlockStructuralHomeShell(
                 onSidebarOrderChange = onSidebarOrderChange,
                 onDmSortModeChange = onDmSortModeChange,
                 onPinnedSortModeChange = onPinnedSortModeChange,
+                onSidebarSectionSortModeChange = onSidebarSectionSortModeChange,
+                onSidebarSectionCreate = onSidebarSectionCreate,
+                onSidebarSectionRename = onSidebarSectionRename,
+                onSidebarSectionDelete = onSidebarSectionDelete,
+                onMoveConversationToSection = onMoveConversationToSection,
                 onChannelClick = onChannelClick,
                 onPinnedMemberClick = onPinnedMemberClick,
                 onChannelLongPress = onChannelLongPress,
@@ -1703,6 +1762,9 @@ private fun SlockStructuralHomeShellContent(
     val pinnedItems = data.pinnedItems
     val pinnedSortMode = data.pinnedSortMode
     val hiddenDmIds = data.hiddenDmIds
+    val customSections = data.customSections
+    val sectionOrder = data.sectionOrder
+    val sectionPlacements = data.sectionPlacements
     val canArchiveChannels = data.canArchiveChannels
     val showLoadingSkeletons = data.showLoadingSkeletons
     val selectedTabKey = data.selectedTabKey
@@ -1733,6 +1795,11 @@ private fun SlockStructuralHomeShellContent(
     val onSidebarOrderChange = callbacks.onSidebarOrderChange
     val onDmSortModeChange = callbacks.onDmSortModeChange
     val onPinnedSortModeChange = callbacks.onPinnedSortModeChange
+    val onSidebarSectionSortModeChange = callbacks.onSidebarSectionSortModeChange
+    val onSidebarSectionCreate = callbacks.onSidebarSectionCreate
+    val onSidebarSectionRename = callbacks.onSidebarSectionRename
+    val onSidebarSectionDelete = callbacks.onSidebarSectionDelete
+    val onMoveConversationToSection = callbacks.onMoveConversationToSection
     val onChannelClick = callbacks.onChannelClick
     val onPinnedMemberClick = callbacks.onPinnedMemberClick
     val onChannelLongPress = callbacks.onChannelLongPress
@@ -1830,10 +1897,25 @@ private fun SlockStructuralHomeShellContent(
         }
     var sortOverlaySection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var activeMenuSection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
+    // task #512: custom-section UI state — collapsed ids, the header context
+    // menu, the create/rename dialog, the delete confirmation, and the
+    // move-to-section submenu target.
+    var collapsedCustomSectionIds by remember(currentServerId) { mutableStateOf(setOf<String>()) }
+    var activeSectionMenuId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    var sectionMenuAnchor by remember(currentServerId) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var sectionDialogTarget by remember(currentServerId) { mutableStateOf<SlockHomeSectionDialogTarget?>(null) }
+    var sectionDeleteConfirmId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    var moveToSectionConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     val allChannelId = remember(channels) { channels.firstOrNull { it.name == "all" }?.id }
-    val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState) {
+    // task #512: conversations claimed by a custom section leave their default
+    // system section (web customPlacedChannelIds / customPlacedAgentIds).
+    val customPlacedConversationIds = remember(sectionPlacements, directMessages) {
+        sidebarCustomPlacedConversationIds(sectionPlacements, directMessages)
+    }
+    val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds) {
         val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
         regularChannels
+            .filter { it.id !in customPlacedConversationIds }
             .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
             .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }
     }
@@ -1841,15 +1923,17 @@ private fun SlockStructuralHomeShellContent(
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
-    val displayedJointChannels = remember(channels, channelOrder, channelSortModeState) {
+    val displayedJointChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds) {
         channels
             .filter { it.kind == JointChannelKindWireValue }
+            .filter { it.id !in customPlacedConversationIds }
             .orderedBySidebarIds(channelOrder)
             .sortedForSidebar(channelSortModeState) { it.name }
     }
     val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
-    val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet) {
+    val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet, customPlacedConversationIds) {
         directMessages
+            .filter { it.id !in customPlacedConversationIds }
             .orderedBySidebarIds(dmOrder)
             .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
             .sortedForSidebar(directMessageSortMode) { it.name }
@@ -1891,6 +1975,19 @@ private fun SlockStructuralHomeShellContent(
         )
     }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
+    // task #512: custom sections render after the system sections, in
+    // sectionOrder order; empty ones stay hidden (mobile always hides empties).
+    val displayedCustomSections =
+        remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedIdSet) {
+            sidebarCustomSectionRows(
+                channels = channels,
+                directMessages = directMessages,
+                customSections = customSections,
+                sectionOrder = sectionOrder,
+                sectionPlacements = sectionPlacements,
+                pinnedConversationIds = pinnedIdSet
+            )
+        }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.homeConversationBadgeProjection().hasUnread } }
@@ -2580,6 +2677,130 @@ private fun SlockStructuralHomeShellContent(
                                 HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
                             }
                         }
+                        // task #512: custom sections (web channel-sections port) render
+                        // after the system sections, each with an emoji + name header;
+                        // long-press (or the trailing ellipsis) opens the section menu.
+                        displayedCustomSections.forEach { sectionRows ->
+                            val customSection = sectionRows.section
+                            val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
+                            item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
+                                Spacer(Modifier.height(SlockSpacing.Xs))
+                            }
+                            item(key = "custom-section-header:$currentServerId:${customSection.id}") {
+                                SlockCollapsibleSectionHeader(
+                                    label = customSection.sidebarSectionHeaderLabel(),
+                                    count = sectionRows.items.size,
+                                    expanded = customSectionExpanded,
+                                    onExpandedChange = { expanded ->
+                                        if (sidebarInteractionsEnabled) {
+                                            collapsedCustomSectionIds =
+                                                if (expanded) {
+                                                    collapsedCustomSectionIds - customSection.id
+                                                } else {
+                                                    collapsedCustomSectionIds + customSection.id
+                                                }
+                                        }
+                                    },
+                                    showCollapsedUnreadDot =
+                                        sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
+                                    uppercaseLabel = false,
+                                    onLongPress =
+                                        if (sidebarInteractionsEnabled) {
+                                            { anchor ->
+                                                activeSectionMenuId = customSection.id
+                                                sectionMenuAnchor = anchor
+                                                pressedRowKey = null
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                    longPressAnchorIdentity = "$currentServerId:${customSection.id}",
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                ) {
+                                    SlockSectionHeaderIconAction(
+                                        SlockLucideIconName.Ellipsis,
+                                        customSection.name,
+                                        onClick2 = { anchor ->
+                                            if (sidebarInteractionsEnabled) {
+                                                activeSectionMenuId = customSection.id
+                                                sectionMenuAnchor = anchor
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            if (customSectionExpanded) {
+                                items(
+                                    sectionRows.items.size,
+                                    key = { index -> "custom:$currentServerId:${customSection.id}:${sectionRows.items[index].id}" }
+                                ) { index ->
+                                    val item = sectionRows.items[index]
+                                    val badgeProjection = item.homeConversationBadgeProjection()
+                                    val customRowKey = "custom:${customSection.id}:${item.id}"
+                                    val customInteractionState = when {
+                                        sidebarSelection.conversationId == item.id -> ChannelRowInteractionState.Selected
+                                        pressedRowKey == customRowKey -> ChannelRowInteractionState.Pressed
+                                        else -> ChannelRowInteractionState.Default
+                                    }
+                                    val customLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
+                                        onChannelLongPressWithDismiss(item.id, anchor)
+                                        activePinMenuConversationId = item.id
+                                        activeMenuSection = null
+                                        pinMenuAnchor = anchor
+                                        pressedRowKey = null
+                                    }
+                                    if (item.isDirectMessageConversation()) {
+                                        DirectMessageRow(
+                                            interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
+                                            name = item.name,
+                                            description = item.description,
+                                            avatarLabel = item.avatarLabel,
+                                            peerType = item.peerType,
+                                            memberId = item.presenceMemberId,
+                                            cacheServerId = currentServerId,
+                                            agentStatusResolver = agentStatusResolver,
+                                            memberAvatarResolver = memberAvatarResolver,
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                            hasDraft = item.hasDraft,
+                                            muted = item.activityMuted,
+                                            badge = badgeProjection.label,
+                                            badgeTone = badgeProjection.tone,
+                                            interactionState = customInteractionState,
+                                            captureLongPressAnchor = captureRowAnchors,
+                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
+                                            onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
+                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
+                                            onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                        )
+                                    } else {
+                                        ChannelRow(
+                                            content =
+                                                ChannelRowContent(
+                                                    name = item.name,
+                                                    symbol = item.homeChannelSymbol(),
+                                                    joined = item.joined,
+                                                    hasDraft = item.hasDraft,
+                                                    muted = item.activityMuted,
+                                                    bridgeProvider = item.bridgeProvider,
+                                                    badge = badgeProjection.label,
+                                                    badgeTone = badgeProjection.tone
+                                                ),
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                            interaction =
+                                                ChannelRowInteraction(
+                                                    identity = homeSidebarInteractionIdentity("custom", customRowKey),
+                                                    state = customInteractionState,
+                                                    captureLongPressAnchor = captureRowAnchors,
+                                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
+                                                    onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
+                                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
+                                                    onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
                     }
                 }
@@ -2741,7 +2962,8 @@ private fun SlockStructuralHomeShellContent(
                     pinTargetIsPinned = pinTargetIsPinned,
                     sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
                     activeIsDirectMessage = activeIsDirectMessage,
-                    activeCanArchive = activeCanArchive
+                    activeCanArchive = activeCanArchive,
+                    hasCustomSections = customSections.isNotEmpty()
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -2764,6 +2986,9 @@ private fun SlockStructuralHomeShellContent(
                             "toggle-pin" -> onPinToggle(activeConversationId)
                             "close-dm" -> onCloseDirectMessage(activeConversationId)
                             "archive-channel" -> onArchiveChannel(activeConversationId)
+                            // task #512: opens the move-to-section submenu on the
+                            // same anchor (pinMenuAnchor survives menu close).
+                            "move-to-section" -> moveToSectionConversationId = activeConversationId
                             "sort-channels" -> {
                                 sortOverlaySection = activeMenuSection
                             }
@@ -2791,6 +3016,133 @@ private fun SlockStructuralHomeShellContent(
                         activePinnedMemberMenuKey = null
                     }
                 )
+                }
+            }
+            // task #512: custom-section overlays — the header context menu, the
+            // move-to-section submenu, the create/rename dialog and the delete
+            // confirmation.
+            val activeSectionMenuSection =
+                activeSectionMenuId?.let { id -> customSections.firstOrNull { it.id == id } }
+            if (activeSectionMenuSection != null) {
+                val resolvedSectionAnchor = sectionMenuAnchor
+                if (resolvedSectionAnchor != null) {
+                    SlockBaseMenuOverlay(
+                        anchor = resolvedSectionAnchor,
+                        items = slockHomeSectionMenuItems(labels),
+                        selectedId = "sort:${activeSectionMenuSection.sortMode}",
+                        onDismiss = { activeSectionMenuId = null },
+                        onSelect = { actionId ->
+                            val sectionId = activeSectionMenuSection.id
+                            when {
+                                actionId.startsWith("sort:") ->
+                                    onSidebarSectionSortModeChange(
+                                        sectionId,
+                                        SlockSidebarSortMode.fromWireValue(actionId.removePrefix("sort:"))
+                                    )
+                                actionId == "rename" ->
+                                    sectionDialogTarget = SlockHomeSectionDialogTarget.Edit(sectionId)
+                                actionId == "create" ->
+                                    sectionDialogTarget = SlockHomeSectionDialogTarget.Create
+                                actionId == "delete" -> sectionDeleteConfirmId = sectionId
+                            }
+                            activeSectionMenuId = null
+                        }
+                    )
+                }
+            }
+            val moveToSectionTarget = moveToSectionConversationId
+            if (moveToSectionTarget != null && customSections.isNotEmpty()) {
+                val resolvedMoveAnchor = pinMenuAnchor
+                if (resolvedMoveAnchor != null) {
+                    val moveTargetDm = directMessages.firstOrNull { it.id == moveToSectionTarget }
+                    val moveTargetCurrentSectionId =
+                        sectionPlacements
+                            .firstOrNull { placement ->
+                                when (placement.kind) {
+                                    SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> placement.id == moveToSectionTarget
+                                    SIDEBAR_SECTION_ITEM_KIND_AGENT ->
+                                        moveTargetDm?.presenceMemberId != null &&
+                                            placement.id == moveTargetDm?.presenceMemberId
+                                    else -> false
+                                }
+                            }
+                            ?.sectionId
+                    SlockBaseMenuOverlay(
+                        anchor = resolvedMoveAnchor,
+                        items = slockHomeMoveToSectionMenuItems(customSections, moveTargetCurrentSectionId, labels),
+                        selectedId = "section:${moveTargetCurrentSectionId.orEmpty()}",
+                        onDismiss = { moveToSectionConversationId = null },
+                        onSelect = { actionId ->
+                            if (actionId.startsWith("section:")) {
+                                val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
+                                onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                            }
+                            moveToSectionConversationId = null
+                        }
+                    )
+                }
+            }
+            sectionDialogTarget?.let { target ->
+                val editingSection =
+                    (target as? SlockHomeSectionDialogTarget.Edit)
+                        ?.let { edit -> customSections.firstOrNull { it.id == edit.sectionId } }
+                if (target is SlockHomeSectionDialogTarget.Create || editingSection != null) {
+                    SlockHomeSectionDialog(
+                        title = if (editingSection != null) labels.editSectionTitle else labels.newSectionTitle,
+                        submitLabel = if (editingSection != null) null else labels.createSection,
+                        nameLabel = labels.sectionNameLabel,
+                        namePlaceholder = labels.sectionNamePlaceholder,
+                        emojiLabel = labels.sectionEmojiLabel,
+                        initialName = editingSection?.name.orEmpty(),
+                        initialEmoji = editingSection?.emoji.orEmpty(),
+                        onDismiss = { sectionDialogTarget = null },
+                        onSubmit = { name, emoji ->
+                            if (editingSection != null) {
+                                onSidebarSectionRename(editingSection.id, name, emoji)
+                            } else {
+                                onSidebarSectionCreate(name, emoji)
+                            }
+                            sectionDialogTarget = null
+                        }
+                    )
+                } else {
+                    // The edited section disappeared (deleted from another
+                    // surface / a 409 reload) — close the stale dialog.
+                    LaunchedEffect(target) { sectionDialogTarget = null }
+                }
+            }
+            val sectionDeleteSection =
+                sectionDeleteConfirmId?.let { id -> customSections.firstOrNull { it.id == id } }
+            if (sectionDeleteSection != null) {
+                SlockUnifiedDialog(
+                    title = labels.deleteSection,
+                    onDismiss = { sectionDeleteConfirmId = null },
+                    maxWidth = 384.dp
+                ) {
+                    Text(
+                        text =
+                            MR.strings.home_section_delete_message
+                                .format(listOf(sectionDeleteSection.name))
+                                .localized(),
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                    SlockDialogFooter {
+                        SlockBrutalActionButton(
+                            label = stringResource(MR.strings.common_cancel),
+                            onClick = { sectionDeleteConfirmId = null },
+                            backgroundColor = SlockColor.SurfaceWhite
+                        )
+                        SlockBrutalActionButton(
+                            label = stringResource(MR.strings.common_delete),
+                            onClick = {
+                                onSidebarSectionDelete(sectionDeleteSection.id)
+                                sectionDeleteConfirmId = null
+                            },
+                            leadingIcon = SlockLucideIconName.Trash2,
+                            backgroundColor = SlockColor.AccentRed
+                        )
+                    }
                 }
             }
             sortOverlaySection?.let { section ->
@@ -3026,7 +3378,8 @@ internal fun slockHomeConversationMenuItems(
     pinTargetIsPinned: Boolean,
     sortableFromMenu: Boolean,
     activeIsDirectMessage: Boolean,
-    activeCanArchive: Boolean
+    activeCanArchive: Boolean,
+    hasCustomSections: Boolean = false
 ): List<SlockBaseMenuItem> =
     buildList {
         val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
@@ -3053,6 +3406,17 @@ internal fun slockHomeConversationMenuItems(
                 icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
             )
         )
+        // task #512: web parity (MoveToSectionMenuItem) — only when at least one
+        // custom section exists to move into.
+        if (hasCustomSections) {
+            add(
+                SlockBaseMenuItem(
+                    id = "move-to-section",
+                    label = labels.moveToSection,
+                    icon = SlockLucideIconName.Folder
+                )
+            )
+        }
         if (sortableFromMenu) {
             add(
                 SlockBaseMenuItem(
@@ -3086,6 +3450,115 @@ internal fun slockHomePinnedMemberMenuItems(
             icon = SlockLucideIconName.ArrowUpDown
         )
     )
+
+/**
+ * task #512: custom-section header menu — sort radios first (the overlay's
+ * selectedId marks the current mode), then rename / new / delete. Mirrors web's
+ * section context menu (Sidebar.tsx) minus the desktop-only display toggles.
+ */
+internal fun slockHomeSectionMenuItems(labels: SlockHomeShellLabels = SlockHomeShellLabels()): List<SlockBaseMenuItem> =
+    SlockSidebarSortMode.entries.map { mode ->
+        SlockBaseMenuItem(
+            id = "sort:${mode.wireValue}",
+            label =
+                when (mode) {
+                    SlockSidebarSortMode.Manual -> labels.sortManual
+                    SlockSidebarSortMode.Recent -> labels.sortRecent
+                    SlockSidebarSortMode.Az -> labels.sortAz
+                }
+        )
+    } +
+        listOf(
+            SlockBaseMenuItem(id = "rename", label = labels.renameSection, icon = SlockLucideIconName.Pencil, dividerBefore = true),
+            SlockBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = SlockLucideIconName.Plus),
+            SlockBaseMenuItem(id = "delete", label = labels.deleteSection, icon = SlockLucideIconName.Trash2, dividerBefore = true)
+        )
+
+/**
+ * task #512: "move to section" submenu rows — one per custom section plus a
+ * remove entry (only when the conversation is currently placed). Item ids carry
+ * the target: `section:<id>`; the bare `section:` id means the default section.
+ */
+internal fun slockHomeMoveToSectionMenuItems(
+    customSections: List<SettingsServerSidebarCustomSection>,
+    currentSectionId: String?,
+    labels: SlockHomeShellLabels = SlockHomeShellLabels()
+): List<SlockBaseMenuItem> =
+    buildList {
+        if (currentSectionId != null) {
+            add(SlockBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = SlockLucideIconName.X))
+        }
+        customSections.forEach { section ->
+            add(
+                SlockBaseMenuItem(
+                    id = "section:${section.id}",
+                    label = section.sidebarSectionHeaderLabel(),
+                    icon = SlockLucideIconName.Folder
+                )
+            )
+        }
+    }
+
+/** task #512: create/rename target for the custom-section dialog. */
+private sealed interface SlockHomeSectionDialogTarget {
+    data object Create : SlockHomeSectionDialogTarget
+
+    data class Edit(val sectionId: String) : SlockHomeSectionDialogTarget
+}
+
+/**
+ * task #512: create/rename dialog for a custom section — web
+ * SidebarSectionDialog.tsx reduced to a name field plus a plain emoji text
+ * field (no emoji picker on mobile). Web caps the name at 80 chars.
+ */
+@Composable
+private fun SlockHomeSectionDialog(
+    title: String,
+    submitLabel: String?,
+    nameLabel: String,
+    namePlaceholder: String,
+    emojiLabel: String,
+    initialName: String,
+    initialEmoji: String,
+    onDismiss: () -> Unit,
+    onSubmit: (name: String, emoji: String?) -> Unit
+) {
+    var name by remember { mutableStateOf(textFieldValueAtEnd(initialName)) }
+    var emoji by remember { mutableStateOf(textFieldValueAtEnd(initialEmoji)) }
+    val trimmedName = name.text.trim()
+    SlockUnifiedDialog(
+        title = title,
+        onDismiss = onDismiss,
+        maxWidth = 384.dp
+    ) {
+        Text(text = nameLabel, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        SlockBrutalInputField(
+            value = name,
+            onValueChange = { name = it.coerceTextLength(80) },
+            placeholder = namePlaceholder,
+            autoFocus = true
+        )
+        Text(text = emojiLabel, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        SlockBrutalInputField(
+            value = emoji,
+            onValueChange = { emoji = it.coerceTextLength(8) },
+            placeholder = "🙂"
+        )
+        SlockDialogFooter {
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+            SlockBrutalActionButton(
+                label = submitLabel ?: stringResource(MR.strings.common_save),
+                onClick = { onSubmit(trimmedName, emoji.text.trim().takeIf { it.isNotEmpty() }) },
+                enabled = trimmedName.isNotEmpty(),
+                backgroundColor = SlockColor.BrandYellow
+            )
+        }
+    }
+}
 
 enum class SlockSidebarSortTarget { Channels, JointChannels, DirectMessages, Pinned }
 
@@ -3746,6 +4219,91 @@ internal fun pinnedRowsForSidebar(
             ).map { SlockHomePinnedRow(key = it.id, conversation = it) }
     }
 }
+
+/** task #512: custom section header label — emoji prefix when one is set. */
+internal fun SettingsServerSidebarCustomSection.sidebarSectionHeaderLabel(): String =
+    emoji?.takeIf { it.isNotBlank() }?.let { "$it $name" } ?: name
+
+internal data class SlockHomeCustomSectionRows(
+    val section: SettingsServerSidebarCustomSection,
+    val items: List<SlockHomeConversationItem>
+)
+
+/**
+ * task #512: resolve custom-section placements to conversation rows, in
+ * sectionOrder order. Mirrors web Sidebar.tsx `customSectionItems`: placements
+ * resolve channels and DM channels by id (kind "channel") or agent-peer DMs by
+ * member id (kind "agent"); pinned conversations stay in the pinned section
+ * (the two stay mutually exclusive); empty sections keep mobile's always-hidden
+ * behavior; each section's items follow its own sort mode.
+ */
+internal fun sidebarCustomSectionRows(
+    channels: List<SlockHomeConversationItem>,
+    directMessages: List<SlockHomeConversationItem>,
+    customSections: List<SettingsServerSidebarCustomSection>,
+    sectionOrder: List<String>,
+    sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
+    pinnedConversationIds: Set<String>
+): List<SlockHomeCustomSectionRows> {
+    if (customSections.isEmpty() || sectionPlacements.isEmpty()) return emptyList()
+    val sectionById = customSections.associateBy { it.id }
+    val conversationById = buildMap {
+        channels.forEach { put(it.id, it) }
+        directMessages.forEach { put(it.id, it) }
+    }
+    val agentDmByMemberId =
+        directMessages
+            .filter {
+                it.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) &&
+                    !it.presenceMemberId.isNullOrBlank()
+            }
+            .associateBy { it.presenceMemberId.orEmpty() }
+    val itemsBySection = LinkedHashMap<String, MutableList<SlockHomeConversationItem>>()
+    sectionPlacements.sortedBy { it.position }.forEach { placement ->
+        val section = sectionById[placement.sectionId] ?: return@forEach
+        val conversation =
+            when (placement.kind) {
+                SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> conversationById[placement.id]
+                SIDEBAR_SECTION_ITEM_KIND_AGENT -> agentDmByMemberId[placement.id]
+                else -> null
+            } ?: return@forEach
+        if (conversation.id in pinnedConversationIds || placement.id in pinnedConversationIds) return@forEach
+        itemsBySection.getOrPut(section.id) { mutableListOf() } += conversation
+    }
+    return normalizeSidebarSectionOrder(sectionOrder, customSections)
+        .mapNotNull { sectionId ->
+            val section = sectionById[sectionId] ?: return@mapNotNull null
+            val items = itemsBySection[sectionId].orEmpty()
+            if (items.isEmpty()) return@mapNotNull null
+            SlockHomeCustomSectionRows(
+                section = section,
+                items = items.sortedForSidebar(SlockSidebarSortMode.fromWireValue(section.sortMode)) { it.name }
+            )
+        }
+}
+
+/**
+ * task #512: conversation ids hidden from their default system sections because
+ * a custom section claims them (web customPlacedChannelIds / customPlacedAgentIds).
+ */
+internal fun sidebarCustomPlacedConversationIds(
+    sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
+    directMessages: List<SlockHomeConversationItem>
+): Set<String> =
+    buildSet {
+        sectionPlacements.forEach { placement ->
+            when (placement.kind) {
+                SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> add(placement.id)
+                SIDEBAR_SECTION_ITEM_KIND_AGENT ->
+                    directMessages
+                        .firstOrNull {
+                            it.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) &&
+                                it.presenceMemberId == placement.id
+                        }
+                        ?.let { add(it.id) }
+            }
+        }
+    }
 
 private fun String?.homeDmPeerMemberKindOrNull(): MemberKind? =
     parsedMemberKindOrNull(MemberKindWireContract.InternalActor)
