@@ -1,9 +1,14 @@
 import Foundation
 import SwiftUI
+import UIKit
 import shared
 
 struct ContentView: View {
     @StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
+    // task #471: shell identity of the UIWindowScene hosting this view. Starts
+    // at the legacy id; ShellContextResolver replaces it once the scene's
+    // RaftIosSceneDelegate context is known.
+    @State private var shellContext = RaftIosShellContext()
 
     var body: some View {
         // task #419: the visual-testing capture harness launches the app with a
@@ -30,28 +35,32 @@ struct ContentView: View {
                     print("SLOCK_VISUAL_FIXTURE_READY page=\(fixture.pageName)")
                 }
         } else {
-            let destination = oauthRouteStore.destination
-            KuiklyRenderViewPage(
-                pageName: destination.pageName,
-                data: ContentView.hostPageData(destination)
-            )
-                .id(destination.revision)
-                .ignoresSafeArea()
-                .onOpenURL { url in
-                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
-                }
-                .onAppear {
-                    SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
-                }
+            ShellHostView(oauthRouteStore: oauthRouteStore, shellContext: shellContext)
+                .background(ShellContextResolver(context: $shellContext))
         }
     }
 
-    private static func hostPageData(_ destination: SlockIosOAuthDestination) -> [String: Any] {
+    fileprivate static func hostPageData(
+        _ destination: SlockIosOAuthDestination,
+        shellContext: RaftIosShellContext
+    ) -> [String: Any] {
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = slockIosOAuthProviders
         // Browser web login is available; the shared gate decides whether it replaces the login page.
         data["slockWebLoginSupported"] = true
+        // Shell identity contract (shared/SlockShellStoreLaunch.kt). A blank or
+        // absent slockShellInstanceId falls back to Legacy anyway, so injecting
+        // "legacy-app-shell" for the single-window path is byte-equivalent.
+        // slockShellServerId is always written — even as null — so a serialized
+        // null never falls back to a feature route's legacy "serverId" field.
+        data["slockShellInstanceId"] = shellContext.shellInstanceId
+        data["slockShellServerId"] = shellContext.serverId ?? NSNull()
+        if let owner = shellContext.routeOwner {
+            data["slockRouteEnvironmentId"] = owner.environmentId
+            data["slockRouteAccountId"] = owner.accountId
+            data["slockRouteServerId"] = owner.serverId
+        }
         if destination.pageName == "compose_slock_app_shell" {
             data["slockNativeTabBarRenderer"] = appTabBarRenderer()
         }
@@ -90,5 +99,84 @@ struct ContentView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+    }
+}
+
+// task #471: the app-shell host for one window. Lives outside ContentView so
+// the resolved RaftIosShellContext is observed (@ObservedObject) — a scene
+// arriving via scene(_:continue:) mutates the context's @Published fields and
+// must re-render with the new shell identity + route owner.
+private struct ShellHostView: View {
+    @ObservedObject var oauthRouteStore: SlockIosOAuthRouteStore
+    @ObservedObject var shellContext: RaftIosShellContext
+
+    var body: some View {
+        let destination = oauthRouteStore.destination
+        KuiklyRenderViewPage(
+            pageName: destination.pageName,
+            data: ContentView.hostPageData(destination, shellContext: shellContext)
+        )
+            // Rebuild when either the route or the owning shell changes.
+            .id("\(destination.revision)|\(shellContext.shellInstanceId)")
+            .ignoresSafeArea()
+            .onOpenURL { url in
+                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+            }
+            .onAppear {
+                SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
+            }
+    }
+}
+
+// task #471: zero-size probe that walks to the hosting UIWindowScene and binds
+// this view to that scene's RaftIosShellContext (registered by
+// RaftIosSceneDelegate under session.persistentIdentifier). Falls back to the
+// legacy shell when no scene is attached (e.g. previews).
+private struct ShellContextResolver: UIViewRepresentable {
+    @Binding var context: RaftIosShellContext
+
+    func makeUIView(context: Context) -> ProbeView {
+        ProbeView(onResolve: { resolved in
+            DispatchQueue.main.async {
+                self.context = resolved
+            }
+        })
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.resolveIfNeeded()
+    }
+
+    final class ProbeView: UIView {
+        private let onResolve: (RaftIosShellContext) -> Void
+        private var resolvedSessionId: String?
+
+        init(onResolve: @escaping (RaftIosShellContext) -> Void) {
+            self.onResolve = onResolve
+            super.init(frame: .zero)
+            isHidden = true
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            resolveIfNeeded()
+        }
+
+        func resolveIfNeeded() {
+            guard let session = window?.windowScene?.session,
+                  session.persistentIdentifier != resolvedSessionId else {
+                return
+            }
+            resolvedSessionId = session.persistentIdentifier
+            let resolved =
+                RaftIosShellWindowRegistry.context(forSessionId: session.persistentIdentifier)
+                    ?? RaftIosShellContext()
+            onResolve(resolved)
+        }
     }
 }
