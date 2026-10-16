@@ -763,6 +763,8 @@ open class SlockKuiklyActivity :
     @Volatile private var renderReadinessTopPageLoad: SlockKuiklyLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, SlockKuiklyLoadReadiness>()
     private var pageSpec: SlockKuiklyPageSpec? = null
+    // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
+    private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
     private var homeColdStartSplashTimeoutLogged = false
     private var homeColdStartUsesNativeHold = false
@@ -844,6 +846,21 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        if (!AndroidLoginTransitionRouting.observeHost(this)) {
+            finish()
+            return
+        }
+        if (pageName == PAGE_LOGIN) {
+            loginTransitionToken = AndroidLoginTransitionRouting.bindLogin(
+                this,
+                intent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN),
+            )
+            if (loginTransitionToken == null) {
+                finish()
+                return
+            }
+            intent.putExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN, loginTransitionToken)
+        }
         requestHighestSupportedDisplayMode()
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
@@ -1123,6 +1140,11 @@ open class SlockKuiklyActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        AndroidLoginTransitionRouting.retireHost(this)
+        if (pageName == PAGE_LOGIN && resolvedPageName(intent) != PAGE_LOGIN) {
+            AndroidLoginTransitionRouting.onDestroyed(this, loginTransitionToken, changingConfigurations = false)
+            loginTransitionToken = null
+        }
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
         registerAndroidShellWindow(intent)
@@ -1134,6 +1156,9 @@ open class SlockKuiklyActivity :
     }
 
     override fun onDestroy() {
+        AndroidLoginTransitionRouting.onDestroyed(
+            this, loginTransitionToken, isChangingConfigurations,
+        )
         screenshotFeedbackListeningGate.stop()
         screenCaptureObserver?.stop()
         screenCaptureObserver = null
@@ -1944,6 +1969,7 @@ open class SlockKuiklyActivity :
     internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
         if (!googleSocialAuthGateway.isNativeConfigured()) return false
 
+        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         lifecycleScope.launch {
             val nativeResult = googleSocialAuthGateway.signIn(this@SlockKuiklyActivity)
             when (nativeResult) {
@@ -1961,12 +1987,18 @@ open class SlockKuiklyActivity :
                             }
                     when (result) {
                         is SharedAuthResult.Success -> {
-                            callback?.invoke(mapOf("code" to 200, "status" to "success"))
-                            SlockKuiklyActivity.startAppShell(
-                                    this@SlockKuiklyActivity,
-                                    clearTask = true
-                            )
-                            finish()
+                            val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
+                                this@SlockKuiklyActivity, loginTransition,
+                            ) {
+                                SlockKuiklyActivity.startAppShell(
+                                        this@SlockKuiklyActivity,
+                                        clearTask = true
+                                )
+                            }
+                            if (accepted) {
+                                callback?.invoke(mapOf("code" to 200, "status" to "success"))
+                                finish()
+                            }
                         }
                         is SharedAuthResult.Failure -> {
                             callback?.invoke(
@@ -2973,6 +3005,7 @@ open class SlockKuiklyActivity :
             clearTask: Boolean = false,
             documentShellId: String? = null,
             hostActivityClass: Class<out Activity>? = null,
+            loginTransitionToken: String? = null,
         ) {
             SlockKuiklyAdapters.init(context.applicationContext)
             val hostPageData = pageData.withAndroidHostPageData(pageName)
@@ -2980,6 +3013,9 @@ open class SlockKuiklyActivity :
                     Intent(context, hostActivityClass ?: slockKuiklyHostActivityClass(pageName))
                             .putExtra(KEY_PAGE_NAME, pageName)
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
+            loginTransitionToken?.let {
+                starter.putExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN, it)
+            }
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             } else if (!documentShellId.isNullOrBlank()) {
@@ -3357,13 +3393,30 @@ internal fun threadMediaAttachmentPickerRequest(): PickVisualMediaRequest =
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
-        if (pageName == SlockKuiklyPages.APP_SHELL) {
-            SlockKuiklyActivity.startAppShell(context, pageData)
-        } else {
-            SlockKuiklyActivity.start(context, pageName, pageData)
+        val activity = context as? Activity
+        val replaceCurrent = SlockKuiklyActivity.shouldReplaceCurrentPage(pageData)
+        if (activity != null && pageName == SlockKuiklyPages.LOGIN && replaceCurrent) {
+            AndroidLoginTransitionRouting.openReplacement(activity, pageData)
+            return
         }
-        if (SlockKuiklyActivity.shouldReplaceCurrentPage(pageData)) {
-            (context as? Activity)?.finish()
+        val startDestination = {
+            if (pageName == SlockKuiklyPages.APP_SHELL) {
+                SlockKuiklyActivity.startAppShell(context, pageData)
+            } else {
+                SlockKuiklyActivity.start(context, pageName, pageData)
+            }
+        }
+        if (activity != null && AndroidLoginTransitionRouting.isPostAuthReplacement(
+                activity.intent?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME), pageName, replaceCurrent,
+            )) {
+            if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
+                    activity, launchDestination = startDestination,
+                )) return
+        } else {
+            startDestination()
+        }
+        if (replaceCurrent) {
+            activity?.finish()
         }
     }
 
