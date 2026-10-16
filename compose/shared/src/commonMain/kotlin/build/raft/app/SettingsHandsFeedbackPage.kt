@@ -68,7 +68,10 @@ private fun SettingsHandsFeedbackScreen() {
                 eventBus = sharedStores.eventBus,
                 settingsCapabilities = environment.settingsCapabilities,
                 sourceStoreScope = environment.storeScope,
-                accountId = resolvedAccountId
+                accountId = resolvedAccountId,
+                // task #176: this standalone page is outside the app shell, so the
+                // bottom composer reserves the system navigation bar itself.
+                bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg
             )
         }
     }

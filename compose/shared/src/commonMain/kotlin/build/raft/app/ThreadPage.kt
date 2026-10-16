@@ -29676,10 +29676,13 @@ private fun String.threadTaskAssigneeKey(): String =
 
 @Composable
 private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
+    // task #176: last element of the page, like the composer it replaces, so it
+    // keeps clear of the system navigation bar.
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         SlockBrutalActionButton(
