@@ -154,17 +154,31 @@ final class SlockIosMobileOAuthHost: NSObject,
     private struct DeferredCallback {
         let callback: ParsedCallback
         let expectedGeneration: String?
+        let loginRevision: UUID
         let source: String
         let attempt: Int
     }
 
+    /// Immutable origin of one browser-login attempt. Do not resolve its shell
+    /// again when a callback arrives: the scene may have been retargeted meanwhile.
+    private struct LoginOrigin {
+        let window: UIWindow
+        let scope: RaftIosExternalLinkOrigin
+        let requestId: String
+    }
+
+    private var appLoginOrigin: LoginOrigin?
+    private var providerLoginOrigin: LoginOrigin?
+    private var providerPresentationWindow: UIWindow?
     private var session: ASWebAuthenticationSession?
     private var appleAuthorizationController: ASAuthorizationController?
     private weak var presentationWindow: UIWindow?
     private var pendingStartGeneration: String?
     private var activeGeneration: String?
     private var activeAppleGeneration: String?
-    private var supersededGenerations: Set<String> = []
+    // Also fences generation-less cold callbacks whose shared result is in flight
+    // when a new native login starts.
+    private var loginRevision = UUID()
     private var deferredCallback: DeferredCallback?
     private var deferredRetryWorkItem: DispatchWorkItem?
     private var nativeAppleRetryWorkItem: DispatchWorkItem?
@@ -187,10 +201,11 @@ final class SlockIosMobileOAuthHost: NSObject,
         }
     }
 
-    @objc(startWithProvider:mode:completion:)
+    @objc(startWithProvider:mode:window:completion:)
     func start(
         provider: String,
         mode: String,
+        window: UIWindow?,
         completion: @escaping (NSDictionary) -> Void
     ) {
         runOnMain { [weak self] in
@@ -217,10 +232,27 @@ final class SlockIosMobileOAuthHost: NSObject,
                 return
             }
             let callbackReturnUri = "\(callbackScheme)://oauth/callback"
-
-            self.supersedeActiveSession()
+            guard let anchor = window,
+                  let scene = anchor.windowScene,
+                  let shell = RaftIosShellWindowRegistry.context(forSessionId: scene.session.persistentIdentifier) else {
+                completion(self.startError(code: "ios_mobile_oauth_window_unavailable", message: "Unable to present sign-in."))
+                return
+            }
             let generation = UUID().uuidString.lowercased()
+            let origin = LoginOrigin(
+                window: anchor,
+                scope: RaftIosExternalLinkOrigin(
+                    sceneId: scene.session.persistentIdentifier,
+                    shellScopeId: shell.shellInstanceId
+                ),
+                requestId: generation
+            )
+            self.supersedeActiveSession()
             self.pendingStartGeneration = generation
+            if normalizedMode == "login" {
+                self.providerLoginOrigin = origin
+                RaftIosExternalLinkHost.shared.loginStarted(origin: origin.scope, requestId: generation)
+            }
             let handleStart: (SlockIosMobileOAuthStartResult) -> Void = { [weak self] result in
                 self?.runOnMain {
                     guard let self else { return }
@@ -233,27 +265,27 @@ final class SlockIosMobileOAuthHost: NSObject,
                         return
                     }
                     self.pendingStartGeneration = nil
+                    // Never present a completed asynchronous start in a different
+                    // or retargeted scene. The snapshot itself stays immutable.
+                    guard anchor.windowScene?.session.persistentIdentifier == origin.scope.sceneId,
+                          RaftIosShellWindowRegistry.context(forSessionId: origin.scope.sceneId)?.shellInstanceId == origin.scope.shellScopeId else {
+                        self.cancelPending(generation: generation, error: "provider_failed", applyRoute: false)
+                        completion(self.startError(code: "ios_mobile_oauth_window_unavailable", message: "Unable to present sign-in."))
+                        return
+                    }
                     if normalizedProvider == "apple" {
                         guard
                             result.status == "started",
                             result.presentation == "native_apple",
                             result.authorizationUrl == nil
                         else {
+                            self.finishProviderLogin(generation: generation)
                             completion(self.startError(
                                 code: result.errorCode ?? "ios_native_apple_start_failed",
                                 message: result.message ?? "Mobile sign-in could not be started."
                             ))
                             return
                         }
-                        guard let anchor = self.currentPresentationWindow() else {
-                            self.cancelPending(generation: generation, error: "provider_failed", applyRoute: false)
-                            completion(self.startError(
-                                code: "ios_mobile_oauth_window_unavailable",
-                                message: "Mobile sign-in could not be started."
-                            ))
-                            return
-                        }
-
                         self.refreshCachedAppleCredentialState()
                         let request = ASAuthorizationAppleIDProvider().createRequest()
                         request.requestedScopes = [.email]
@@ -262,6 +294,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                         controller.delegate = self
                         controller.presentationContextProvider = self
                         self.presentationWindow = anchor
+                        self.providerPresentationWindow = anchor
                         self.activeAppleGeneration = generation
                         self.appleAuthorizationController = controller
                         controller.performRequests()
@@ -282,46 +315,32 @@ final class SlockIosMobileOAuthHost: NSObject,
                         let resultCallbackScheme = result.callbackScheme,
                         resultCallbackScheme == callbackScheme
                     else {
+                        self.finishProviderLogin(generation: generation)
                         completion(self.startError(
                             code: result.errorCode ?? "ios_mobile_oauth_start_failed",
                             message: result.message ?? "Mobile sign-in could not be started."
                         ))
                         return
                     }
-                    guard let anchor = self.currentPresentationWindow() else {
-                        self.cancelPending(generation: generation, error: "browser_failed", applyRoute: false)
-                        completion(self.startError(
-                            code: "ios_mobile_oauth_window_unavailable",
-                            message: "Unable to present the sign-in browser."
-                        ))
-                        return
-                    }
-
                     let authSession = ASWebAuthenticationSession(
                         url: authorizationUrl,
                         callbackURLScheme: resultCallbackScheme
                     ) { [weak self] callbackUrl, error in
                         self?.runOnMain {
                             guard let self else { return }
-                            if self.activeGeneration == generation {
-                                self.session = nil
-                                self.presentationWindow = nil
-                                self.activeGeneration = nil
-                            }
+                            guard self.activeGeneration == generation else { return }
+                            self.session = nil
+                            self.presentationWindow = nil
+                            self.providerPresentationWindow = nil
+                            self.activeGeneration = nil
                             if let callbackUrl {
-                                if self.supersededGenerations.remove(generation) != nil {
-                                    self.cancelPending(
-                                        generation: generation,
-                                        error: "provider_cancelled",
-                                        applyRoute: false
-                                    )
-                                    return
-                                }
-                                _ = self.acceptCallback(
+                                if !self.acceptCallback(
                                     callbackUrl,
                                     expectedGeneration: generation,
                                     source: "web_auth_session"
-                                )
+                                ) {
+                                    self.finishProviderLogin(generation: generation)
+                                }
                                 return
                             }
                             let cancelled =
@@ -329,18 +348,20 @@ final class SlockIosMobileOAuthHost: NSObject,
                             self.cancelPending(
                                 generation: generation,
                                 error: cancelled ? "provider_cancelled" : "browser_failed",
-                                applyRoute: self.supersededGenerations.remove(generation) == nil
+                                applyRoute: true
                             )
                         }
                     }
                     authSession.presentationContextProvider = self
                     authSession.prefersEphemeralWebBrowserSession = false
                     self.presentationWindow = anchor
+                    self.providerPresentationWindow = anchor
                     self.activeGeneration = generation
                     self.session = authSession
                     guard authSession.start() else {
                         self.session = nil
                         self.presentationWindow = nil
+                        self.providerPresentationWindow = nil
                         self.activeGeneration = nil
                         self.cancelPending(generation: generation, error: "browser_failed", applyRoute: false)
                         completion(self.startError(
@@ -403,10 +424,14 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     /// Opens the web login page in an auth session; its callback goes to the shared coordinator.
-    @objc(openAppLoginWithUrl:completion:)
-    func openAppLogin(url: String, completion: @escaping (NSDictionary) -> Void) {
+    @objc(openAppLoginWithUrl:window:completion:)
+    func openAppLogin(url: String, window: UIWindow?, completion: @escaping (NSDictionary) -> Void) {
         runOnMain { [weak self] in
             guard let self else { return }
+            guard self.pendingStartGeneration == nil, self.activeAppleGeneration == nil else {
+                completion(self.startError(code: "ios_mobile_oauth_start_in_progress", message: "A sign-in request is already starting."))
+                return
+            }
             guard
                 let authorizationUrl = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
                 authorizationUrl.scheme?.lowercased() == "https",
@@ -415,29 +440,50 @@ final class SlockIosMobileOAuthHost: NSObject,
                 completion(self.startError(code: "settings_mobile_oauth_url_invalid", message: "Unable to open web sign-in."))
                 return
             }
-            guard let anchor = self.currentPresentationWindow() else {
+            // The caller supplies the window that actually owns the login page.
+            // A missing/detached origin must not select another foreground scene.
+            guard
+                let anchor = window,
+                let scene = anchor.windowScene,
+                let shell = RaftIosShellWindowRegistry.context(forSessionId: scene.session.persistentIdentifier)
+            else {
                 completion(self.startError(code: "settings_mobile_oauth_browser_failed", message: "Unable to open web sign-in."))
                 return
             }
-            self.supersedeActiveSession()
             let generation = "app-login-\(UUID().uuidString.lowercased())"
+            let origin = LoginOrigin(
+                window: anchor,
+                scope: RaftIosExternalLinkOrigin(
+                    sceneId: scene.session.persistentIdentifier,
+                    shellScopeId: shell.shellInstanceId
+                ),
+                requestId: generation
+            )
+            self.supersedeActiveSession()
             let authSession = ASWebAuthenticationSession(
                 url: authorizationUrl,
                 callbackURLScheme: callbackScheme
             ) { [weak self] callbackUrl, error in
                 self?.runOnMain {
                     guard let self else { return }
-                    if self.activeGeneration == generation {
-                        self.session = nil
-                        self.presentationWindow = nil
-                        self.activeGeneration = nil
-                    }
-                    if self.supersededGenerations.remove(generation) != nil { return }
+                    // Superseded and duplicate callbacks cannot clear a newer
+                    // session or cancel links belonging to its origin.
+                    guard self.activeGeneration == generation,
+                          self.appLoginOrigin?.requestId == origin.requestId else { return }
+                    self.session = nil
+                    self.presentationWindow = nil
+                    self.activeGeneration = nil
+                    self.appLoginOrigin = nil
                     if let callbackUrl {
                         _ = self.acceptAppLoginCallback(callbackUrl, source: "web_auth_session")
                         return
                     }
                     let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+                    if cancelled {
+                        RaftIosExternalLinkHost.shared.loginCancelled(origin: origin.scope, requestId: origin.requestId)
+                    } else {
+                        RaftIosExternalLinkHost.shared.loginFailed(origin: origin.scope, requestId: origin.requestId)
+                    }
                     SlockIosDiagnosticsRecord(
                         "info",
                         "SlockIosAppLogin",
@@ -448,12 +494,16 @@ final class SlockIosMobileOAuthHost: NSObject,
             authSession.presentationContextProvider = self
             authSession.prefersEphemeralWebBrowserSession = false
             self.presentationWindow = anchor
+            self.appLoginOrigin = origin
             self.activeGeneration = generation
             self.session = authSession
+            RaftIosExternalLinkHost.shared.loginStarted(origin: origin.scope, requestId: origin.requestId)
             guard authSession.start() else {
+                RaftIosExternalLinkHost.shared.loginFailed(origin: origin.scope, requestId: origin.requestId)
                 self.session = nil
                 self.presentationWindow = nil
                 self.activeGeneration = nil
+                self.appLoginOrigin = nil
                 completion(self.startError(code: "settings_mobile_oauth_browser_failed", message: "Unable to open web sign-in."))
                 return
             }
@@ -489,11 +539,18 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+        if self.session === session {
+            if let origin = appLoginOrigin { return origin.window }
+            if let window = providerPresentationWindow { return window }
+        }
+        return presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+        if appleAuthorizationController === controller, let window = providerPresentationWindow {
+            return window
+        }
+        return presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
     }
 
     func authorizationController(
@@ -522,6 +579,7 @@ final class SlockIosMobileOAuthHost: NSObject,
             }
             self.appleAuthorizationController = nil
             self.presentationWindow = nil
+            self.providerPresentationWindow = nil
             self.processNativeAppleCredential(
                 generation: generation,
                 authorizationCode: authorizationCode,
@@ -580,6 +638,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                 DeferredCallback(
                     callback: callback,
                     expectedGeneration: expectedGeneration,
+                    loginRevision: self.loginRevision,
                     source: source,
                     attempt: 0
                 )
@@ -589,6 +648,9 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     private func process(_ deferred: DeferredCallback) {
+        guard deferred.loginRevision == loginRevision else { return }
+        let tracksLoginOrigin = deferred.expectedGeneration != nil &&
+            providerLoginOrigin?.requestId == deferred.expectedGeneration
         deferredRetryWorkItem?.cancel()
         deferredRetryWorkItem = nil
         SlockIosMobileOAuthBridge.shared.completeCallback(
@@ -602,12 +664,14 @@ final class SlockIosMobileOAuthHost: NSObject,
             expectedGeneration: deferred.expectedGeneration
         ) { [weak self] result in
             self?.runOnMain {
-                guard let self else { return }
+                guard let self, self.loginRevision == deferred.loginRevision else { return }
+                if tracksLoginOrigin, self.providerLoginOrigin?.requestId != deferred.expectedGeneration { return }
                 if result.status == "retry" {
                     self.deferRetry(
                         DeferredCallback(
                             callback: deferred.callback,
                             expectedGeneration: deferred.expectedGeneration ?? result.generation,
+                            loginRevision: deferred.loginRevision,
                             source: deferred.source,
                             attempt: deferred.attempt
                         )
@@ -615,6 +679,14 @@ final class SlockIosMobileOAuthHost: NSObject,
                     return
                 }
                 self.deferredCallback = nil
+                if let generation = deferred.expectedGeneration {
+                    // A URL error is not proof of admitted user cancellation:
+                    // shared also returns login_error for expiry/environment changes.
+                    self.finishProviderLogin(
+                        generation: generation,
+                        succeeded: ["app_shell", "choose_server", "legal_acceptance", "settings_account"].contains(result.status)
+                    )
+                }
                 SlockIosDiagnosticsRecord(
                     "info",
                     "SlockIosOAuth",
@@ -626,6 +698,7 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     private func deferRetry(_ deferred: DeferredCallback) {
+        guard deferred.loginRevision == loginRevision else { return }
         let nextAttempt = deferred.attempt + 1
         guard nextAttempt <= 40 else {
             deferredCallback = nil
@@ -639,12 +712,16 @@ final class SlockIosMobileOAuthHost: NSObject,
         let next = DeferredCallback(
             callback: deferred.callback,
             expectedGeneration: deferred.expectedGeneration,
+            loginRevision: deferred.loginRevision,
             source: deferred.source,
             attempt: nextAttempt
         )
         deferredCallback = next
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.deferredCallback?.attempt == nextAttempt else { return }
+            guard let self,
+                  self.loginRevision == next.loginRevision,
+                  self.deferredCallback?.loginRevision == next.loginRevision,
+                  self.deferredCallback?.attempt == nextAttempt else { return }
             self.deferredCallback = nil
             self.process(next)
         }
@@ -683,6 +760,11 @@ final class SlockIosMobileOAuthHost: NSObject,
                 self.activeAppleGeneration = nil
                 self.appleAuthorizationController = nil
                 self.presentationWindow = nil
+                self.providerPresentationWindow = nil
+                self.finishProviderLogin(
+                    generation: generation,
+                    succeeded: ["app_shell", "choose_server", "legal_acceptance", "settings_account"].contains(result.status)
+                )
                 if ["app_shell", "choose_server", "legal_acceptance", "settings_account"].contains(result.status) {
                     self.cacheAppleUserIdentifier(appleUserIdentifier)
                 }
@@ -704,6 +786,7 @@ final class SlockIosMobileOAuthHost: NSObject,
             activeAppleGeneration = nil
             appleAuthorizationController = nil
             presentationWindow = nil
+            providerPresentationWindow = nil
             cancelPending(generation: generation, error: "runtime_not_ready", applyRoute: true)
             return
         }
@@ -739,6 +822,7 @@ final class SlockIosMobileOAuthHost: NSObject,
             self.appleAuthorizationController = nil
             self.activeAppleGeneration = nil
             self.presentationWindow = nil
+            self.providerPresentationWindow = nil
             self.cancelPending(generation: generation, error: error, applyRoute: true)
         }
     }
@@ -781,21 +865,67 @@ final class SlockIosMobileOAuthHost: NSObject,
         }
     }
 
+    private func finishProviderLogin(generation: String, cancelled: Bool = false, succeeded: Bool = false) {
+        precondition(Thread.isMainThread)
+        guard let origin = providerLoginOrigin, origin.requestId == generation else { return }
+        providerLoginOrigin = nil
+        if succeeded { return }
+        if cancelled {
+            RaftIosExternalLinkHost.shared.loginCancelled(origin: origin.scope, requestId: generation)
+        } else {
+            RaftIosExternalLinkHost.shared.loginFailed(origin: origin.scope, requestId: generation)
+        }
+    }
+
     private func cancelPending(generation: String, error: String, applyRoute: Bool) {
-        SlockIosMobileOAuthBridge.shared.cancel(generation: generation, error: error) { result in
-            if applyRoute {
-                SlockIosOAuthRouteStore.shared.apply(result)
+        let revision = loginRevision
+        let tracksLoginOrigin = providerLoginOrigin?.requestId == generation
+        SlockIosMobileOAuthBridge.shared.cancel(generation: generation, error: error) { [weak self] result in
+            self?.runOnMain {
+                guard let self, self.loginRevision == revision else { return }
+                if tracksLoginOrigin, self.providerLoginOrigin?.requestId != generation { return }
+                self.finishProviderLogin(
+                    generation: generation,
+                    cancelled: applyRoute && error == "provider_cancelled" && result.status == "login_error"
+                )
+                if applyRoute {
+                    SlockIosOAuthRouteStore.shared.apply(result)
+                }
             }
         }
     }
 
     private func supersedeActiveSession() {
+        // Advance even without an active browser: cold callback/cancel results
+        // can already be queued by shared while the native session slot is empty.
+        loginRevision = UUID()
+        deferredRetryWorkItem?.cancel()
+        deferredRetryWorkItem = nil
+        deferredCallback = nil
+        if let origin = providerLoginOrigin {
+            providerLoginOrigin = nil
+            RaftIosExternalLinkHost.shared.loginSuperseded(origin: origin.scope, requestId: origin.requestId)
+        }
         guard let generation = activeGeneration else { return }
-        supersededGenerations.insert(generation)
-        session?.cancel()
+        let supersededSession = session
+        let supersededAppOrigin = appLoginOrigin
+        let wasProviderBrowser = providerPresentationWindow != nil
+        // Invalidate before cancel(), which may invoke completion synchronously.
+        // Active-generation admission needs no unbounded retired-generation set.
         session = nil
         presentationWindow = nil
+        providerPresentationWindow = nil
         activeGeneration = nil
+        appLoginOrigin = nil
+        if let origin = supersededAppOrigin {
+            RaftIosExternalLinkHost.shared.loginSuperseded(origin: origin.scope, requestId: origin.requestId)
+        }
+        if wasProviderBrowser {
+            // Preserve shared pending-request cleanup, but do it once at
+            // supersede instead of allowing a late browser callback to act.
+            cancelPending(generation: generation, error: "provider_cancelled", applyRoute: false)
+        }
+        supersededSession?.cancel()
     }
 
     private func createPkce() -> Pkce? {

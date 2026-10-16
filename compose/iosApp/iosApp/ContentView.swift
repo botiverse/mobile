@@ -8,7 +8,11 @@ struct ContentView: View {
     // task #471: shell identity of the UIWindowScene hosting this view. Starts
     // at the legacy id; ShellContextResolver replaces it once the scene's
     // RaftIosSceneDelegate context is known.
-    @SwiftUI.State private var shellContext = RaftIosShellContext()
+    @SwiftUI.State private var shellContext: RaftIosShellContext
+
+    init(shellContext: RaftIosShellContext = RaftIosShellContext()) {
+        _shellContext = SwiftUI.State(initialValue: shellContext)
+    }
 
     var body: some View {
         // task #419: the visual-testing capture harness launches the app with a
@@ -54,6 +58,9 @@ struct ContentView: View {
         // "legacy-app-shell" for the single-window path is byte-equivalent.
         // slockShellServerId is always written — even as null — so a serialized
         // null never falls back to a feature route's legacy "serverId" field.
+        if let sceneId = shellContext.sceneId {
+            data["slockSceneId"] = sceneId
+        }
         data["slockShellInstanceId"] = shellContext.shellInstanceId
         data["slockShellServerId"] = shellContext.serverId ?? NSNull()
         if let owner = shellContext.routeOwner {
@@ -117,7 +124,7 @@ private struct ShellHostView: View {
             data: ContentView.hostPageData(destination, shellContext: shellContext)
         )
             // Rebuild when either the route or the owning shell changes.
-            .id("\(destination.revision)|\(shellContext.shellInstanceId)")
+            .id("\(destination.revision)|\(shellContext.sceneId ?? "")|\(shellContext.shellInstanceId)")
             .ignoresSafeArea()
             .onOpenURL { url in
                 _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")

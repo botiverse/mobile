@@ -55,6 +55,8 @@ internal struct RaftIosShellRouteOwner: Equatable {
 /// `ContentView` when building pageData. Published so a `scene(_:continue:)`
 /// update can retarget an existing window.
 internal final class RaftIosShellContext: ObservableObject {
+    // Assigned by the scene registry, never derived from route contents.
+    @Published var sceneId: String?
     @Published var shellInstanceId: String
     @Published var serverId: String?
     @Published var routeOwner: RaftIosShellRouteOwner?
@@ -86,6 +88,7 @@ internal enum RaftIosShellWindowRegistry {
     private static var sessionsByShellInstanceId: [String: UISceneSession] = [:]
 
     static func register(session: UISceneSession, context: RaftIosShellContext) {
+        context.sceneId = session.persistentIdentifier
         lock.lock()
         defer { lock.unlock() }
         contextsBySessionId[session.persistentIdentifier] = context
