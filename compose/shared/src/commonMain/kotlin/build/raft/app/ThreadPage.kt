@@ -3763,6 +3763,9 @@ private fun ThreadPageScreen(
         remember { ThreadAdaptiveInitiationCaptureHolder() }
     val adaptiveNativeEditingStateReader =
         remember { SlockTextFieldNativeEditingStateReader() }
+    // QA-only carrier: native injects this Debug launch flag into each source pager.
+    val qaReplaceAdaptiveEditor = params.optBoolean("slockQaReplaceAdaptiveEditor", false)
+    val qaPreparedEditorRef = remember { mutableStateOf<Int?>(null) }
     val adaptiveDetailOpenInitiator =
         remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
             if (!isStandaloneThreadPage) return@remember null
@@ -3773,7 +3776,7 @@ private fun ThreadPageScreen(
                 eventBus = sharedStores.eventBus,
                 nowEpochMillis = { defaultNowMillis() },
                 nativeAdaptiveNavigation = { action, requestId, token, expectedRefTag, expectedText ->
-                    bridge.adaptiveNavigation(
+                    val reply = bridge.adaptiveNavigation(
                         action = action,
                         requestId = requestId,
                         token = token,
@@ -3793,8 +3796,20 @@ private fun ThreadPageScreen(
                         expectedEditorRefTag = expectedRefTag,
                         expectedEditorText = expectedText,
                     )
+                    if (qaReplaceAdaptiveEditor && action == "prepare" &&
+                        reply?.optString("status") == "prepared") {
+                        qaPreparedEditorRef.value = expectedRefTag
+                    }
+                    reply
                 },
                 dispatchAdaptiveCommit = { requestId, token ->
+                    // Run after the last real shared draft read. Recreate only the renderer
+                    // view at the same DSL ref; leave the node, draft and request untouched.
+                    if (qaReplaceAdaptiveEditor) {
+                        val ref = qaPreparedEditorRef.value
+                        val replaced = ref != null && qaRecreateAdaptiveEditor(pager.pagerId, ref)
+                        bridge.log("adaptive_qa editor_recreate_enqueued requestId=$requestId ref=$ref enqueued=$replaced")
+                    }
                     bridge.dispatchAdaptiveCommit(requestId, token)
                 },
                 dispatchAdaptiveCancel = { requestId, token ->

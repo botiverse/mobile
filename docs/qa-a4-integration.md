@@ -1,4 +1,4 @@
-# Test-only A4 integration revision 20 — DO NOT MERGE
+# Test-only A4 integration revision 21 — DO NOT MERGE
 
 Shared PR2730: 0aa81e31e316982b8f64287dbe1f200698f3e8a9 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
@@ -147,3 +147,36 @@ fallback restoration to the actual reverse-mapped message and preserved offset,
 matched committed settlement, pending=0 and draft retention. This injected missing
 identity is not a natural message-deletion race. Native source and product default
 flags remain unchanged; this QA-only branch must never merge to product.
+
+
+Revision 21 is based on r20 acb93a90df7600a46852d2706d6be4a66cb9fd7b.
+It adds a default-off, Debug-only editor replacement injection selected by process
+launch environment `SLOCK_QA_REPLACE_ADAPTIVE_EDITOR=1`. The native controller puts
+that test intent into its own pager parameters; it is not a product capability gate.
+
+After the real shared pre-commit draft check, but before dispatching the real native
+commit, the source recreates only the bound AutoHeightTextAreaView render view via
+Kuikly's public removeRenderView / insertSubRenderView methods. The Compose/DSL
+node and native refTag remain the same; the cached properties, callbacks and frame
+are replayed by the renderer. Neither the source controller/root, logical draft,
+request/token nor shared/native production admission guards are replaced.
+
+Native QA instrumentation retains the prepared editor/snapshot/context. At commit
+it reads the same bound ref using the ordinary renderer lookup. Only when that
+lookup finds a different real editor, the text is identical, the context is still
+identical and no marked text exists, it restores the original UIKit selection.
+This deliberately isolates object identity from selection drift. Diagnostics log
+booleans, text length and selection offsets, never draft text. The production
+session then decides the real commit result unchanged.
+
+Required evidence on a NEW isolated iPad simulator: same request/ref, objectChanged,
+oldDetached, newInRoot, contextEqual and snapshotEqual all true; real native result
+rejected/editor_drift; source still top/in stack, visible unsent draft retained and
+editable; actual shell receipt matching and cleanup recorded. If any injection
+precondition fails, report NOT COVERED rather than treating another rejection as
+editor-identity PASS. Use a committed, non-marked draft with keyboard hidden before
+rotation. Keep READY/anchor injections off. This controlled race is not a natural
+user editor replacement, current-main acceptance or physical-device evidence.
+
+The old B788 iPad contains an artin main trial and must not be overwritten. The QA
+branch is test-only, must not merge, and does not alter current product defaults.

@@ -90,6 +90,13 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     __weak KuiklyRenderViewController *_slockNavigationTarget;
     __weak UIWindow *_slockNavigationWindow;
     NSNumber *_slockNavigationEditorRefTag;
+#if DEBUG
+    // QA-only carrier, default off. Retain the old object so pointer identity is observable.
+    UITextView *_slockQaPreparedEditor;
+    NSDictionary *_slockQaPreparedEditorState;
+    NSDictionary *_slockQaPreparedContext;
+    NSString *_slockQaPreparedRequest;
+#endif
     NSString *_pageName;
     NSDictionary *_pageData;
     BOOL _slockConversationForwardGestureEnabled;
@@ -292,7 +299,16 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     if (root != (id)_delegator.renderView) {
         return @{ @"requestId": requestId, @"status": @"rejected", @"reason": @"root_mismatch" };
     }
-    if ([action isEqual:@"cancel"]) return [_slockNavigationSession cancel:requestId token:token];
+    if ([action isEqual:@"cancel"]) {
+        NSDictionary *result = [_slockNavigationSession cancel:requestId token:token];
+#if DEBUG
+        if ([_slockQaPreparedRequest isEqual:requestId] &&
+            ![result[@"reason"] isEqual:@"request_mismatch"]) {
+            [self slockQaReleasePreparedEditor];
+        }
+#endif
+        return result;
+    }
     KuiklyRenderViewController *target = [self slockAdaptiveNavigationTargetForRoot:root];
     NSDictionary *context = [self slockAdaptiveNavigationContext:target];
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
@@ -312,6 +328,14 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
             _slockNavigationTarget = target;
             _slockNavigationWindow = self.viewIfLoaded.window;
             _slockNavigationEditorRefTag = [refTag copy];
+#if DEBUG
+            if ([_pageData[@"slockQaReplaceAdaptiveEditor"] boolValue]) {
+                _slockQaPreparedEditor = editor;
+                _slockQaPreparedEditorState = [editorState copy];
+                _slockQaPreparedContext = [context copy];
+                _slockQaPreparedRequest = [requestId copy];
+            }
+#endif
         }
         return result;
     }
@@ -322,6 +346,29 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     KuiklyRenderViewController *preparedTarget = _slockNavigationTarget;
     if (target != preparedTarget || self.viewIfLoaded.window != _slockNavigationWindow) context = @{};
     UITextView *editor = [self slockAdaptiveEditorWithRefTag:_slockNavigationEditorRefTag root:root];
+#if DEBUG
+    if ([_pageData[@"slockQaReplaceAdaptiveEditor"] boolValue] &&
+        [_slockQaPreparedRequest isEqual:requestId]) {
+        BOOL contextEqual = [_slockQaPreparedContext isEqual:context];
+        BOOL objectChanged = editor != nil && _slockQaPreparedEditor != nil && editor != _slockQaPreparedEditor;
+        BOOL textEqual = [editor.text isEqual:_slockQaPreparedEditorState[@"text"]];
+        // Renderer recreation replays text/props but not UIKit selection. Keep that independent
+        // state identical so rejection can be attributed to object identity, not a cursor move.
+        if (contextEqual && objectChanged && textEqual && editor.markedTextRange == nil) {
+            NSUInteger start = [_slockQaPreparedEditorState[@"selectionStart"] unsignedIntegerValue];
+            NSUInteger end = [_slockQaPreparedEditorState[@"selectionEnd"] unsignedIntegerValue];
+            editor.selectedRange = NSMakeRange(start, end - start);
+        }
+        NSDictionary *newState = SlockAdaptiveEditorSnapshot(editor);
+        SlockIosDiagnosticsRecord(@"info", @"SlockAdaptiveQA", [NSString stringWithFormat:
+            @"editor_replacement requestId=%@ ref=%@ contextEqual=%d objectChanged=%d oldDetached=%d newInRoot=%d textEqual=%d snapshotEqual=%d textLength=%lu selectionStart=%@ selectionEnd=%@",
+            requestId, _slockNavigationEditorRefTag, contextEqual, objectChanged,
+            ![_slockQaPreparedEditor isDescendantOfView:root],
+            editor != nil && [editor isDescendantOfView:root], textEqual,
+            [_slockQaPreparedEditorState isEqual:newState], (unsigned long)editor.text.length,
+            newState[@"selectionStart"], newState[@"selectionEnd"]]);
+    }
+#endif
     NSDictionary *editorState = SlockAdaptiveEditorSnapshot(editor);
     NSDictionary *result = [_slockNavigationSession commit:requestId token:token context:context
                                                    editor:editor editorState:editorState now:now perform:^BOOL {
@@ -334,6 +381,14 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
         return removed == self && nav.topViewController == preparedTarget &&
             ![nav.viewControllers containsObject:self];
     }];
+#if DEBUG
+    if ([_pageData[@"slockQaReplaceAdaptiveEditor"] boolValue]) {
+        SlockIosDiagnosticsRecord(@"info", @"SlockAdaptiveQA", [NSString stringWithFormat:
+            @"editor_replacement_result requestId=%@ status=%@ reason=%@ sourceStillTop=%d sourceInStack=%d",
+            requestId, result[@"status"], result[@"reason"], self.navigationController.topViewController == self,
+            [self.navigationController.viewControllers containsObject:self]]);
+    }
+#endif
     NSMutableDictionary *receipt = [result mutableCopy];
     receipt[@"sourceControllerToken"] = _slockControllerToken;
     receipt[@"targetControllerToken"] = preparedTarget ? preparedTarget->_slockControllerToken : @"";
@@ -342,8 +397,23 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     if (preparedTarget) {
         [preparedTarget.delegator sendWithEvent:@"slockAdaptiveNativeCommitResult" data:receipt];
     }
+#if DEBUG
+    if ([_slockQaPreparedRequest isEqual:requestId] &&
+        ![result[@"reason"] isEqual:@"request_mismatch"]) {
+        [self slockQaReleasePreparedEditor];
+    }
+#endif
     return receipt;
 }
+
+#if DEBUG
+- (void)slockQaReleasePreparedEditor {
+    _slockQaPreparedEditor = nil;
+    _slockQaPreparedEditorState = nil;
+    _slockQaPreparedContext = nil;
+    _slockQaPreparedRequest = nil;
+}
+#endif
 
 #pragma mark - private
 
@@ -378,6 +448,10 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (NSDictionary *)p_mergeExtParamsWithOriditalParam:(NSDictionary *)pageParam {
     NSMutableDictionary *mParam = [(pageParam ?: @{}) mutableCopy];
     SlockKuiklyPutHostTimeContextIfMissing(mParam);
+#if DEBUG
+    // Local test-carrier launch intent, never inherited as product content or enabled by default.
+    mParam[@"slockQaReplaceAdaptiveEditor"] = @([NSProcessInfo.processInfo.environment[@"SLOCK_QA_REPLACE_ADAPTIVE_EDITOR"] isEqual:@"1"]);
+#endif
     // iOS Kuikly pageData safeAreaInsets are reported in native pixels, while
     // shared Compose layout uses dp. Mark the unit so shared safe-area helpers
     // convert through LocalDensity instead of treating 102px as 102dp.
