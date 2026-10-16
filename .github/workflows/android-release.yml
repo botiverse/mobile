@@ -223,7 +223,7 @@ jobs:
   resolve:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.aab_signing_repair == '' }}
     name: Resolve release parameters
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
       version_major: ${{ steps.p.outputs.version_major }}
       version_minor: ${{ steps.p.outputs.version_minor }}
@@ -307,7 +307,7 @@ jobs:
 
   build_android_release:
     name: Build + sign APK
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     needs: resolve
     timeout-minutes: 30
     outputs:
@@ -738,7 +738,7 @@ jobs:
 
   create_hands_draft:
     name: Create Hands draft + optional share page
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
@@ -961,7 +961,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     environment: production
     env:
