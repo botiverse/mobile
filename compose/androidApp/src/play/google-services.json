@@ -1,0 +1,5 @@
+{
+  "project_info": {"project_number": "972249548677", "project_id": "raft-mobile", "storage_bucket": "raft-mobile.firebasestorage.app"},
+  "client": [{"client_info": {"mobilesdk_app_id": "1:972249548677:android:fcfbfe7d04459c86fe26ec", "android_client_info": {"package_name": "build.raft.app"}}, "oauth_client": [], "api_key": [{"current_key": "AIzaSyAJDZJRgQO9ALKLc7eP1-Pd2dsCaG5lOxY"}], "services": {"appinvite_service": {"other_platform_oauth_client": []}}}],
+  "configuration_version": "1"
+}
