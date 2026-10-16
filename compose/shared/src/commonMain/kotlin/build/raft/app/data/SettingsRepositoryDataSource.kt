@@ -3113,7 +3113,12 @@ private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolea
         pinnedOrder != null ||
         hiddenDmIds != null ||
         channelPanelTabOrder != null ||
-        agentPanelTabOrder != null
+        agentPanelTabOrder != null ||
+        // task #512: section fields make a PATCH meaningful on their own
+        // (sectionsVersion alone is OCC metadata, not a payload).
+        customSections != null ||
+        sectionOrder != null ||
+        sectionPlacements != null
 
 @Serializable
 data class AccountProfileUpdateRequestBody(

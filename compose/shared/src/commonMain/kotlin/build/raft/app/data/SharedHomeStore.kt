@@ -3002,7 +3002,11 @@ internal class SharedHomeStore(
                     customSections = next.customSections,
                     sectionOrder = next.sectionOrder,
                     sectionPlacements = next.sectionPlacements,
-                    sectionsVersion = previous.sectionsVersion
+                    sectionsVersion = previous.sectionsVersion,
+                    // MoveConversationToSection also unpins (web parity); when the
+                    // mutation changed the pinned list the PATCH must carry it or
+                    // the server keeps the conversation pinned.
+                    pinned = next.pinned.takeIf { it != previous.pinned }
                 )
             when (val result = updateSidebarOrder(request)) {
                 is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)

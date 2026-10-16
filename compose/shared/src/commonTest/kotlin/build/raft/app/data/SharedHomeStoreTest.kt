@@ -5568,7 +5568,10 @@ class SharedHomeStoreTest {
             scope = scope,
             loadSidebarOrder = { _ ->
                 loadCalls += 1
-                DataResult.Content(fresh)
+                // Call 1 is Start's concurrent sidebar-order fetch (task #322) —
+                // return the same snapshot the home payload embedded so the merge
+                // no-ops. Call 2 is the conflict reload.
+                if (loadCalls == 1) DataResult.Content(initial) else DataResult.Content(fresh)
             },
             updateSidebarOrder = { DataResult.Error(ScreenError(code = "http_409", retryable = true)) },
             pinUpdateFailureCallback = { message -> failureMessages += message }
@@ -5583,7 +5586,7 @@ class SharedHomeStoreTest {
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(9L, after?.sectionsVersion)
         assertEquals(listOf("sec-9"), after?.customSections?.map { it.id })
-        assertEquals(1, loadCalls, "the conflict path reloads the sidebar order exactly once")
+        assertEquals(2, loadCalls, "Start's concurrent fetch, then exactly one conflict reload")
         assertEquals(emptyList(), failureMessages)
         scope.cancel()
     }
