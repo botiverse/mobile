@@ -4,11 +4,11 @@ import UIKit
 import shared
 
 struct ContentView: View {
-    @StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
+    @SwiftUI.StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
     // task #471: shell identity of the UIWindowScene hosting this view. Starts
     // at the legacy id; ShellContextResolver replaces it once the scene's
     // RaftIosSceneDelegate context is known.
-    @State private var shellContext = RaftIosShellContext()
+    @SwiftUI.State private var shellContext = RaftIosShellContext()
 
     var body: some View {
         // task #419: the visual-testing capture harness launches the app with a
@@ -107,8 +107,8 @@ struct ContentView_Previews: PreviewProvider {
 // arriving via scene(_:continue:) mutates the context's @Published fields and
 // must re-render with the new shell identity + route owner.
 private struct ShellHostView: View {
-    @ObservedObject var oauthRouteStore: SlockIosOAuthRouteStore
-    @ObservedObject var shellContext: RaftIosShellContext
+    @SwiftUI.ObservedObject var oauthRouteStore: SlockIosOAuthRouteStore
+    @SwiftUI.ObservedObject var shellContext: RaftIosShellContext
 
     var body: some View {
         let destination = oauthRouteStore.destination
@@ -133,7 +133,7 @@ private struct ShellHostView: View {
 // RaftIosSceneDelegate under session.persistentIdentifier). Falls back to the
 // legacy shell when no scene is attached (e.g. previews).
 private struct ShellContextResolver: UIViewRepresentable {
-    @Binding var context: RaftIosShellContext
+    @SwiftUI.Binding var context: RaftIosShellContext
 
     func makeUIView(context: Context) -> ProbeView {
         ProbeView(onResolve: { resolved in
