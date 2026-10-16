@@ -30434,7 +30434,12 @@ private fun ThreadForwardBundleScreen() {
                 // follow-up): same avatar/author/timestamp/markdown chrome and spacing
                 // as the thread flow, no bespoke dividers. Action callbacks are no-ops
                 // — this is a read-only list; only markdown links stay live.
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = SlockSpacing.Sm)) {
+                // task #177: standalone page; the last message clears the navigation bar.
+                val bundleBottomSafeArea = slockBottomSafeAreaPadding()
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(top = SlockSpacing.Sm, bottom = SlockSpacing.Sm + bundleBottomSafeArea),
+                ) {
                     items(messages.size, key = { messages[it].id }) { index ->
                         val item = messages[index]
                         val timestampLabel =

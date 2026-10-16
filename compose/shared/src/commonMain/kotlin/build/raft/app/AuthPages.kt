@@ -1179,9 +1179,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         val sourceLicensesSignInMessage = stringResource(MR.strings.auth_notice_source_licenses_sign_in)
         val reportSubmittedPrefix = stringResource(MR.strings.auth_notice_report_submitted_prefix)
         val reportFailedDiagnosticsCopiedMessage = stringResource(MR.strings.auth_notice_report_failed_diagnostics_copied)
+        // task #177: standalone page outside the app shell; the lists reserve the
+        // system navigation bar themselves.
+        val aboutBottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg
         when (destination) {
             AuthAboutDestination.About ->
                 SharedSettingsAboutContent(
+                    bottomContentPadding = aboutBottomContentPadding,
                     state = aboutState,
                     fallback = SharedSettingsAboutSnapshot(sessionStatusLabel = stringResource(MR.strings.settings_about_state_signed_out)),
                     developerState = developerState,
@@ -1225,12 +1229,14 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 )
             AuthAboutDestination.ApiEnvironment ->
                 SharedSettingsApiEnvironmentContent(
+                    bottomContentPadding = aboutBottomContentPadding,
                     state = developerState,
                     actionState = actionState,
                     onSaveApiEnvironment = { request -> pendingEnvironment = request }
                 )
             AuthAboutDestination.Diagnostics ->
                 SharedSettingsDiagnosticsContent(
+                    bottomContentPadding = aboutBottomContentPadding,
                     state = diagnosticsState,
                     actionState = actionState,
                     onCopyLogs = {

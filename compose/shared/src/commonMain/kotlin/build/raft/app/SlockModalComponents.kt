@@ -155,6 +155,15 @@ internal fun slockUnifiedDialogOuterClearance(
         bottom = outerPadding + bottomInset
     )
 
+/**
+ * task #177: the shell's dialog host inset is the bottom tab bar height, which is
+ * 0 when tabs are hidden (and there is no host at all on standalone pages). A
+ * tall dialog then reached under the system navigation bar, so never reserve
+ * less than the window's bottom safe area.
+ */
+internal fun slockUnifiedDialogHostBottomInset(hostBottomInset: Dp, bottomSafeArea: Dp): Dp =
+    maxSafeAreaDp(hostBottomInset, bottomSafeArea)
+
 internal fun slockUnifiedDialogEffectiveBottomInset(
     hostBottomInset: Dp,
     keyboardHeightDp: Float,
@@ -385,6 +394,8 @@ internal fun SlockUnifiedDialog(
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
     val topInset = slockTopSafeAreaPadding()
+    // Read here for the same reason as topInset (ModalView rehosts the content).
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     val hostState = LocalSlockUnifiedDialogHostState.current
     if (hostState == null) {
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
@@ -406,7 +417,7 @@ internal fun SlockUnifiedDialog(
                 contentSpacing = contentSpacing,
                 keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                 topInset = topInset,
-                hostBottomInset = 0.dp,
+                hostBottomInset = slockUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
                 handleBack = false,
                 content = content
             )
@@ -440,7 +451,11 @@ internal fun SlockUnifiedDialog(
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                     topInset = topInset,
-                    hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
+                    hostBottomInset =
+                        slockUnifiedDialogHostBottomInset(
+                            LocalSlockUnifiedDialogHostBottomInset.current,
+                            bottomSafeArea
+                        ),
                     handleBack = false,
                     content = content
                 )

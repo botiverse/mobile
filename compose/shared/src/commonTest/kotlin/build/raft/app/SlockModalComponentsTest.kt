@@ -40,6 +40,16 @@ class SlockModalComponentsTest {
     }
 
     @Test
+    fun dialogHostBottomInsetNeverDropsBelowTheNavigationBar() {
+        // Tabs hidden or no host: the shell reports 0, the navigation bar still needs room.
+        assertEquals(48.dp, slockUnifiedDialogHostBottomInset(hostBottomInset = 0.dp, bottomSafeArea = 48.dp))
+        // Tabs shown: the tab bar height already includes the safe area and wins.
+        assertEquals(98.dp, slockUnifiedDialogHostBottomInset(hostBottomInset = 98.dp, bottomSafeArea = 48.dp))
+        // No navigation bar (e.g. gesture-less host reporting 0): unchanged.
+        assertEquals(0.dp, slockUnifiedDialogHostBottomInset(hostBottomInset = 0.dp, bottomSafeArea = 0.dp))
+    }
+
+    @Test
     fun keyboardAwareDialogUsesNativeKeyboardHeightAsBottomInset() {
         assertEquals(
             312.dp,

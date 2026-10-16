@@ -141,6 +141,8 @@ private fun SettingsStorageScreen() {
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     ) {
         SettingsStorageContent(
+            // task #177: standalone page outside the app shell.
+            bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
             payload =
                 settingsState.storage.toStoragePayload(
                     actionState = settingsState.actionState,
