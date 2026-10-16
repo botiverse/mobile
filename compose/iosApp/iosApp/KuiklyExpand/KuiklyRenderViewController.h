@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 /** Native admission bit only; the identity-only Forward entry remains in the shared store. */
 @property (nonatomic, assign) BOOL slockConversationForwardGestureEnabled;
 @property (nonatomic, assign, readonly) BOOL slockIsAppShellPage;
+@property (nonatomic, assign, readonly) BOOL slockIsLoginPage;
 
 /*
  * @brief 创建实例对应的初始化方法.
