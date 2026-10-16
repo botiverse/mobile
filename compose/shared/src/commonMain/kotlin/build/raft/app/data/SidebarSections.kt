@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlin.random.Random
+
 /**
  * task #512: pure helpers for sidebar custom sections, ported from web
  * `packages/web/src/store/sidebarSections.ts`. These operate on the sidebar-order
@@ -76,6 +78,22 @@ fun reorderSidebarSectionOrder(order: List<String>, activeId: String, overId: St
 }
 
 fun sidebarSectionItemKey(kind: String, id: String): String = "$kind:$id"
+
+/**
+ * New custom-section id. Web uses `crypto.randomUUID()`; commonMain has no
+ * java.util.UUID, so this produces the same version-4 UUID shape (the server
+ * accepts any non-"system:" id up to 80 chars).
+ */
+fun newSidebarSectionId(randomLong: () -> Long = { Random.nextLong() }): String {
+    val high = randomLong().toULong()
+    val low = randomLong().toULong()
+    val timeLow = (high shr 32).toString(16).padStart(8, '0')
+    val timeMid = (high shr 16 and 0xffffuL).toString(16).padStart(4, '0')
+    val timeHigh = ((high and 0x0fffuL) or 0x4000uL).toString(16).padStart(4, '0')
+    val clock = ((low shr 48 and 0x3fffuL) or 0x8000uL).toString(16).padStart(4, '0')
+    val node = (low and 0xffffffffffffuL).toString(16).padStart(12, '0')
+    return "$timeLow-$timeMid-$timeHigh-$clock-$node"
+}
 
 /** Append the item to the end of [sectionId]. Mirrors web `moveSidebarItemToCustomSection`. */
 fun moveSidebarItemToCustomSection(

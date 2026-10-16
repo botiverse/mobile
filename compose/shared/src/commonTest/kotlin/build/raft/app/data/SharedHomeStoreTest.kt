@@ -5261,6 +5261,333 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    // task #512: custom sections (web channel-sections port) -----------------
+
+    @Test
+    fun createSidebarSectionPatchesCustomSectionsWithOccVersion() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(sectionsVersion = 3)
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(
+                    initial.copy(
+                        customSections = request.customSections.orEmpty(),
+                        sectionOrder = request.sectionOrder.orEmpty(),
+                        sectionsVersion = 4
+                    )
+                )
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.CreateSidebarSection(name = "My Project", emoji = "🚀"))
+
+        assertEquals(1, updateCalls.size)
+        val request = updateCalls.first()
+        assertEquals(3L, request.sectionsVersion)
+        val created = request.customSections.orEmpty().single()
+        assertTrue(created.id.isNotBlank())
+        assertEquals("My Project", created.name)
+        assertEquals("🚀", created.emoji)
+        assertEquals("manual", created.sortMode)
+        assertEquals(SIDEBAR_SYSTEM_SECTION_IDS + created.id, request.sectionOrder)
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(4L, after?.sectionsVersion)
+        assertEquals(listOf(created), after?.customSections)
+        scope.cancel()
+    }
+
+    @Test
+    fun renameSidebarSectionPatchesCustomSections() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Old", emoji = null, sortMode = "manual")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionsVersion = 2
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(customSections = request.customSections.orEmpty(), sectionsVersion = 3))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.RenameSidebarSection(sectionId = "sec-1", name = "New Name", emoji = "📌"))
+
+        assertEquals(1, updateCalls.size)
+        assertEquals(2L, updateCalls.first().sectionsVersion)
+        assertEquals(
+            listOf(section.copy(name = "New Name", emoji = "📌")),
+            updateCalls.first().customSections
+        )
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals("New Name", after?.customSections?.single()?.name)
+        assertEquals(3L, after?.sectionsVersion)
+        scope.cancel()
+    }
+
+    @Test
+    fun deleteSidebarSectionDropsOrderAndPlacements() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Doomed", sortMode = "manual")
+        val keep = SettingsServerSidebarCustomSection(id = "sec-2", name = "Keep", sortMode = "az")
+        val placement =
+            SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section, keep),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + listOf("sec-1", "sec-2"),
+                sectionPlacements = listOf(placement),
+                sectionsVersion = 6
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(
+                    initial.copy(
+                        customSections = request.customSections.orEmpty(),
+                        sectionOrder = request.sectionOrder.orEmpty(),
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = 7
+                    )
+                )
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.DeleteSidebarSection("sec-1"))
+
+        assertEquals(1, updateCalls.size)
+        val request = updateCalls.first()
+        assertEquals(6L, request.sectionsVersion)
+        assertEquals(listOf(keep), request.customSections)
+        assertEquals(SIDEBAR_SYSTEM_SECTION_IDS + "sec-2", request.sectionOrder)
+        assertEquals(emptyList(), request.sectionPlacements)
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf(keep), after?.customSections)
+        assertEquals(emptyList(), after?.sectionPlacements)
+        scope.cancel()
+    }
+
+    @Test
+    fun setSidebarSectionSortModePatchesSortMode() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Project", sortMode = "manual")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionsVersion = 1
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(customSections = request.customSections.orEmpty(), sectionsVersion = 2))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetSidebarSectionSortMode("sec-1", SlockSidebarSortMode.Az))
+
+        assertEquals(1, updateCalls.size)
+        assertEquals(1L, updateCalls.first().sectionsVersion)
+        assertEquals(listOf(section.copy(sortMode = "az")), updateCalls.first().customSections)
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals("az", after?.customSections?.single()?.sortMode)
+        scope.cancel()
+    }
+
+    @Test
+    fun moveConversationToSectionMovesPlacementAndUnpins() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Project", sortMode = "manual")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                pinned = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")),
+                pinnedChannelIds = listOf("channel-1"),
+                pinnedOrder = listOf("channel-1"),
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionsVersion = 2
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(
+                    initial.copy(
+                        pinned = request.pinned.orEmpty(),
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = 3
+                    )
+                )
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "channel-1", sectionId = "sec-1"))
+
+        assertEquals(1, updateCalls.size)
+        val request = updateCalls.first()
+        assertEquals(2L, request.sectionsVersion)
+        // Web parity (Sidebar.tsx moveItemToCustomSection): moving into a custom
+        // section unpins the conversation in the same PATCH.
+        assertEquals(emptyList(), request.pinned)
+        assertEquals(
+            listOf(SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)),
+            request.sectionPlacements
+        )
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(emptyList(), after?.pinned)
+        assertEquals(3L, after?.sectionsVersion)
+        scope.cancel()
+    }
+
+    @Test
+    fun moveConversationToDefaultSectionRemovesPlacement() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Project", sortMode = "manual")
+        val placement =
+            SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionPlacements = listOf(placement),
+                sectionsVersion = 4
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(sectionPlacements = request.sectionPlacements.orEmpty(), sectionsVersion = 5))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "channel-1", sectionId = null))
+
+        assertEquals(1, updateCalls.size)
+        assertEquals(4L, updateCalls.first().sectionsVersion)
+        assertEquals(emptyList(), updateCalls.first().sectionPlacements)
+        assertEquals(null, updateCalls.first().pinned)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedRemovesCustomSectionPlacement() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Project", sortMode = "manual")
+        val placement =
+            SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = "sec-1", position = 0)
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(section),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-1",
+                sectionPlacements = listOf(placement),
+                sectionsVersion = 8
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot =
+            initial.copy(
+                pinned = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")),
+                sectionPlacements = emptyList(),
+                sectionsVersion = 9
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        assertEquals(1, updateCalls.size)
+        val request = updateCalls.first()
+        assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")), request.pinned)
+        // Web parity (togglePinnedRef): pinning strips the custom-section
+        // placement, and the PATCH carries the OCC sectionsVersion with it.
+        assertEquals(emptyList(), request.sectionPlacements)
+        assertEquals(8L, request.sectionsVersion)
+        scope.cancel()
+    }
+
+    @Test
+    fun sidebarSectionMutationConflictReloadsSidebarOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(sectionsVersion = 1)
+        val fresh =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(SettingsServerSidebarCustomSection(id = "sec-9", name = "From Web", sortMode = "recent")),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + "sec-9",
+                sectionsVersion = 9
+            )
+        val failureMessages = mutableListOf<String>()
+        var loadCalls = 0
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ ->
+                loadCalls += 1
+                DataResult.Content(fresh)
+            },
+            updateSidebarOrder = { DataResult.Error(ScreenError(code = "http_409", retryable = true)) },
+            pinUpdateFailureCallback = { message -> failureMessages += message }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.CreateSidebarSection(name = "Local", emoji = null))
+
+        // Web parity (serverStore.updateSidebarOrder): a 409
+        // SIDEBAR_SECTIONS_VERSION_CONFLICT reloads the sidebar order instead of
+        // rolling back to the stale snapshot, and surfaces no error toast.
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(9L, after?.sectionsVersion)
+        assertEquals(listOf("sec-9"), after?.customSections?.map { it.id })
+        assertEquals(1, loadCalls, "the conflict path reloads the sidebar order exactly once")
+        assertEquals(emptyList(), failureMessages)
+        scope.cancel()
+    }
+
     @Test
     fun reorderChannelsPersistsManualChannelOrderAndPreservesJointIds() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

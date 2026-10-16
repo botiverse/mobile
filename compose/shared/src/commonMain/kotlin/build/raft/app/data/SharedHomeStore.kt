@@ -618,6 +618,16 @@ internal class SharedHomeStore(
                 setPinnedSortMode(intent.mode)
             is SharedHomeIntent.SetChannelSortMode ->
                 setChannelSortMode(intent.mode)
+            is SharedHomeIntent.CreateSidebarSection ->
+                createSidebarSection(intent.name, intent.emoji)
+            is SharedHomeIntent.RenameSidebarSection ->
+                renameSidebarSection(intent.sectionId, intent.name, intent.emoji)
+            is SharedHomeIntent.DeleteSidebarSection ->
+                deleteSidebarSection(intent.sectionId)
+            is SharedHomeIntent.MoveConversationToSection ->
+                moveConversationToSection(intent.conversationId, intent.sectionId)
+            is SharedHomeIntent.SetSidebarSectionSortMode ->
+                setSidebarSectionSortMode(intent.sectionId, intent.mode)
             is SharedHomeIntent.ReorderSidebar ->
                 reorderSidebar(intent)
             is SharedHomeIntent.ReorderServers ->
@@ -2703,16 +2713,49 @@ internal class SharedHomeStore(
             return
         }
         val target = current.snapshot.pinnedToggleTarget(intent)
-        val next = previous.withToggledPinnedTarget(target)
+        var next = previous.withToggledPinnedTarget(target)
+        // task #512 (web parity): pinning a conversation removes its custom
+        // section placement — web moveItemToPinned does the same so pinned and
+        // sectioned states stay mutually exclusive. Only then does the PATCH
+        // carry section fields (which require the OCC sectionsVersion).
+        val wasPinned =
+            previous.typedPinnedOrLegacy().any { it.matchesPinnedTarget(target) } ||
+                previous.legacyPinnedContains(target)
+        val nextPlacements =
+            if (wasPinned) {
+                previous.sectionPlacements
+            } else {
+                removeSidebarItemPlacement(
+                    removeSidebarItemPlacement(
+                        previous.sectionPlacements,
+                        SIDEBAR_SECTION_ITEM_KIND_CHANNEL,
+                        target.conversationId
+                    ),
+                    target.item.kind,
+                    target.item.id
+                )
+            }
+        if (nextPlacements != previous.sectionPlacements) {
+            next = next.copy(sectionPlacements = nextPlacements)
+        }
         sidebarPinChangeVersion += 1
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
-            pinned = next.pinned
+            pinned = next.pinned,
+            sectionPlacements = nextPlacements.takeIf { it != previous.sectionPlacements },
+            sectionsVersion = previous.sectionsVersion.takeIf { nextPlacements != previous.sectionPlacements }
         )
         when (val result = updateSidebarOrder(request)) {
             is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
             is DataResult.Empty -> Unit
-            is DataResult.Error,
+            is DataResult.Error -> {
+                if (result.error.code == "http_409") {
+                    reloadSidebarOrderAfterConflict(serverId)
+                } else {
+                    applySidebarOrderLocally(serverId = serverId, next = previous)
+                    pinUpdateFailureCallback("Unable to update pinned channels")
+                }
+            }
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to update pinned channels")
@@ -2911,6 +2954,168 @@ internal class SharedHomeStore(
                 applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to update channel sort mode")
             }
+        }
+    }
+
+    // task #512: custom-section mutations (web channel-sections port). All of
+    // them follow the setChannelSortMode pattern — optimistic local apply,
+    // PATCH, rollback + toast on failure — with two section-specific rules
+    // from web serverStore.updateSidebarOrder: the PATCH carries the OCC
+    // sectionsVersion, and a 409 reloads the sidebar order instead of
+    // rolling back to the (by definition stale) previous snapshot. Section
+    // mutations serialize on sidebarSectionsMutex so back-to-back edits PATCH
+    // with the version confirmed by the previous response (web's per-server
+    // update queue).
+    private val sidebarSectionsMutex = Mutex()
+
+    private suspend fun reloadSidebarOrderAfterConflict(serverId: ServerId) {
+        sidebarOrderMutex.withLock {
+            when (val result = loadSidebarOrder(serverId)) {
+                is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> Unit
+            }
+        }
+    }
+
+    private suspend fun mutateSidebarSections(
+        failureMessage: String,
+        mutate: (SettingsServerSidebarOrderSnapshot) -> SettingsServerSidebarOrderSnapshot?
+    ) {
+        val content = _state.value.content as? SharedHomeContentState.Content
+        val serverId = content?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("$failureMessage: home not loaded")
+            return
+        }
+        sidebarSectionsMutex.withLock {
+            val previous = ensureSidebarOrderLoaded()
+            if (previous == null) {
+                pinUpdateFailureCallback("$failureMessage: sidebar order not loaded")
+                return@withLock
+            }
+            val next = mutate(previous) ?: return@withLock
+            applySidebarOrderLocally(serverId = serverId, next = next)
+            val request =
+                SettingsServerSidebarOrderUpdateRequest(
+                    customSections = next.customSections,
+                    sectionOrder = next.sectionOrder,
+                    sectionPlacements = next.sectionPlacements,
+                    sectionsVersion = previous.sectionsVersion
+                )
+            when (val result = updateSidebarOrder(request)) {
+                is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+                is DataResult.Empty -> Unit
+                is DataResult.Error -> {
+                    if (result.error.code == "http_409") {
+                        reloadSidebarOrderAfterConflict(serverId)
+                    } else {
+                        applySidebarOrderLocally(serverId = serverId, next = previous)
+                        pinUpdateFailureCallback(failureMessage)
+                    }
+                }
+                is DataResult.NoPermission -> {
+                    applySidebarOrderLocally(serverId = serverId, next = previous)
+                    pinUpdateFailureCallback(failureMessage)
+                }
+            }
+        }
+    }
+
+    private suspend fun createSidebarSection(name: String, emoji: String?) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+        val trimmedEmoji = emoji?.trim()?.takeIf { it.isNotEmpty() }
+        mutateSidebarSections("Unable to create section") { previous ->
+            val section =
+                SettingsServerSidebarCustomSection(
+                    id = newSidebarSectionId(),
+                    name = trimmedName,
+                    emoji = trimmedEmoji,
+                    sortMode = SlockSidebarSortMode.Manual.wireValue
+                )
+            previous.copy(
+                customSections = previous.customSections + section,
+                sectionOrder = normalizeSidebarSectionOrder(previous.sectionOrder, previous.customSections) + section.id
+            )
+        }
+    }
+
+    private suspend fun renameSidebarSection(sectionId: String, name: String, emoji: String?) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+        val trimmedEmoji = emoji?.trim()?.takeIf { it.isNotEmpty() }
+        mutateSidebarSections("Unable to rename section") { previous ->
+            val section = previous.customSections.firstOrNull { it.id == sectionId } ?: return@mutateSidebarSections null
+            if (section.name == trimmedName && section.emoji == trimmedEmoji) return@mutateSidebarSections null
+            previous.copy(
+                customSections =
+                    previous.customSections.map { candidate ->
+                        if (candidate.id == sectionId) candidate.copy(name = trimmedName, emoji = trimmedEmoji) else candidate
+                    }
+            )
+        }
+    }
+
+    private suspend fun deleteSidebarSection(sectionId: String) {
+        mutateSidebarSections("Unable to delete section") { previous ->
+            if (previous.customSections.none { it.id == sectionId }) return@mutateSidebarSections null
+            previous.copy(
+                customSections = previous.customSections.filterNot { it.id == sectionId },
+                sectionOrder = previous.sectionOrder.filter { it != sectionId },
+                sectionPlacements = previous.sectionPlacements.filterNot { it.sectionId == sectionId }
+            )
+        }
+    }
+
+    private suspend fun setSidebarSectionSortMode(sectionId: String, mode: SlockSidebarSortMode) {
+        mutateSidebarSections("Unable to update section sort mode") { previous ->
+            val section = previous.customSections.firstOrNull { it.id == sectionId } ?: return@mutateSidebarSections null
+            if (section.sortMode == mode.wireValue) return@mutateSidebarSections null
+            previous.copy(
+                customSections =
+                    previous.customSections.map { candidate ->
+                        if (candidate.id == sectionId) candidate.copy(sortMode = mode.wireValue) else candidate
+                    }
+            )
+        }
+    }
+
+    private suspend fun moveConversationToSection(conversationId: String, sectionId: String?) {
+        val snapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
+        if (snapshot == null) {
+            pinUpdateFailureCallback("Unable to move conversation to section: home not loaded")
+            return
+        }
+        mutateSidebarSections("Unable to move conversation to section") { previous ->
+            // Web parity (Sidebar.tsx moveItemToCustomSection): moving into a
+            // custom section unpins the conversation; the two stores stay
+            // mutually exclusive.
+            val pinnedTarget = snapshot.pinnedToggleTarget(SharedHomeIntent.TogglePinned(conversationId))
+            val currentPinned = previous.typedPinnedOrLegacy()
+            val wasPinned =
+                currentPinned.any { it.matchesPinnedTarget(pinnedTarget) } || previous.legacyPinnedContains(pinnedTarget)
+            val nextPlacements =
+                if (sectionId == null) {
+                    removeSidebarItemPlacement(previous.sectionPlacements, SIDEBAR_SECTION_ITEM_KIND_CHANNEL, conversationId)
+                } else {
+                    if (previous.customSections.none { it.id == sectionId }) return@mutateSidebarSections null
+                    moveSidebarItemToCustomSection(
+                        previous.sectionPlacements,
+                        SIDEBAR_SECTION_ITEM_KIND_CHANNEL,
+                        conversationId,
+                        sectionId
+                    )
+                }
+            val next =
+                if (sectionId != null && wasPinned) {
+                    previous.withoutPinnedTarget(pinnedTarget)
+                } else {
+                    previous
+                }
+            val moved = next.copy(sectionPlacements = nextPlacements)
+            if (moved == previous) null else moved
         }
     }
 
@@ -3642,6 +3847,12 @@ private fun SettingsServerSidebarOrderSnapshot.withToggledPinnedTarget(
     return withCanonicalTypedPinned(nextPinned)
 }
 
+/** task #512: unpin without toggling — used when a conversation moves into a custom section. */
+private fun SettingsServerSidebarOrderSnapshot.withoutPinnedTarget(
+    target: PinnedToggleTarget
+): SettingsServerSidebarOrderSnapshot =
+    withCanonicalTypedPinned(typedPinnedOrLegacy().filterNot { it.matchesPinnedTarget(target) })
+
 internal fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
     if (pinned.isNotEmpty()) return pinned
     val orderedIds =
@@ -3721,6 +3932,11 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.TogglePinned -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pin:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pinned-sort:$mode"
         is SharedHomeIntent.SetChannelSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-sort:$mode"
+        is SharedHomeIntent.CreateSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-create:$name"
+        is SharedHomeIntent.RenameSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-rename:$sectionId"
+        is SharedHomeIntent.DeleteSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-delete:$sectionId"
+        is SharedHomeIntent.MoveConversationToSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-move:$conversationId:${sectionId ?: "default"}"
+        is SharedHomeIntent.SetSidebarSectionSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-sort:$sectionId:$mode"
         is SharedHomeIntent.ReorderSidebar -> "${SharedHomeChannelFoldEvent.Patch.wireName}:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
         is SharedHomeIntent.ReorderServers -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-order:${serverOrder.size}"
         is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
@@ -4411,6 +4627,17 @@ sealed interface SharedHomeIntent {
      */
     data class SetPinnedSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
     data class SetChannelSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
+    /**
+     * task #512: custom-section CRUD + membership (web channel-sections port).
+     * All persist through the sidebar-order PATCH with OCC sectionsVersion;
+     * a 409 reloads the sidebar order instead of rolling back.
+     */
+    data class CreateSidebarSection(val name: String, val emoji: String?) : SharedHomeIntent
+    data class RenameSidebarSection(val sectionId: String, val name: String, val emoji: String?) : SharedHomeIntent
+    data class DeleteSidebarSection(val sectionId: String) : SharedHomeIntent
+    /** [sectionId] null removes the conversation from its custom section (back to its default one). */
+    data class MoveConversationToSection(val conversationId: String, val sectionId: String?) : SharedHomeIntent
+    data class SetSidebarSectionSortMode(val sectionId: String, val mode: SlockSidebarSortMode) : SharedHomeIntent
     data class ReorderSidebar(
         val channelOrder: List<String>? = null,
         val jointChannelOrder: List<String>? = null,
@@ -4465,6 +4692,11 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.CreateSidebarSection,
+            is SharedHomeIntent.RenameSidebarSection,
+            is SharedHomeIntent.DeleteSidebarSection,
+            is SharedHomeIntent.MoveConversationToSection,
+            is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
@@ -4506,6 +4738,11 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.CreateSidebarSection,
+            is SharedHomeIntent.RenameSidebarSection,
+            is SharedHomeIntent.DeleteSidebarSection,
+            is SharedHomeIntent.MoveConversationToSection,
+            is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
@@ -4547,6 +4784,11 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.CreateSidebarSection,
+            is SharedHomeIntent.RenameSidebarSection,
+            is SharedHomeIntent.DeleteSidebarSection,
+            is SharedHomeIntent.MoveConversationToSection,
+            is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
