@@ -40,7 +40,7 @@ jobs:
     # The job checks out the private slock repository with a repository secret; fork pull
     # requests never receive secrets, so skip them instead of failing once the repo is public.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Mobile exact
         uses: actions/checkout@v5

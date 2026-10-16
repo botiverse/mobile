@@ -75,7 +75,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve release parameters
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     outputs:
       version_major: ${{ steps.p.outputs.version_major }}
       version_minor: ${{ steps.p.outputs.version_minor }}
@@ -131,7 +131,7 @@ jobs:
 
   build_ios_release:
     name: Build + sign IPA
-    runs-on: blacksmith-12vcpu-macos-latest
+    runs-on: macos-latest
     timeout-minutes: 60
     needs: resolve
     outputs:
@@ -443,7 +443,7 @@ jobs:
 
   create_hands_draft:
     name: Upload to Hands + create draft
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [resolve, build_ios_release]
     environment:

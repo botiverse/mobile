@@ -16,7 +16,7 @@ on:
 jobs:
   selftest:
     name: Fixture assertions (GREEN + RED mutations)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       # exact-bound: check out the PR HEAD (not the synthetic merge ref) and

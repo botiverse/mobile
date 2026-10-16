@@ -90,7 +90,7 @@ check_root() {
     grep -Fq -- "$retired_path" "$root/$file" || continue
     is_historical_file "$file" && continue
 
-    matches="$(rg --text -n --no-messages --fixed-strings "$retired_path" "$root/$file" || true)"
+    matches="$(grep -a -F -n -- "$retired_path" "$root/$file" || true)"
     while IFS=: read -r line text; do
       [ -n "$line" ] || continue
       if ! is_allowed_policy_line "$file" "$text"; then

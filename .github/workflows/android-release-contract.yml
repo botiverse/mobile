@@ -69,7 +69,7 @@ permissions:
 jobs:
   android-release-contract:
     name: Android Hands release contract
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
