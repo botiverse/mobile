@@ -318,6 +318,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Setup CI environment
+        uses: ./.github/actions/setup-env
+
       - name: Guard commonMain Map compatibility imports
         shell: bash
         run: |
