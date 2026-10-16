@@ -54,7 +54,7 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
       run:
@@ -140,7 +140,7 @@ jobs:
     name: Android build (connected test APKs)
     # ubuntu-latest-m (org larger runner, 4 cores / 15GB): the standard 7GB
     # runner forces emulator and gradle to fight for memory. (task #418)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
@@ -314,7 +314,7 @@ jobs:
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
@@ -457,7 +457,7 @@ jobs:
   ios-capture:
     name: iOS capture (simulator)
     if: ${{ !inputs.site_only }}
-    runs-on: self-hosted
+    runs-on: macos-latest
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
@@ -729,7 +729,7 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # AI analysis moved to the ai-analysis job (images publish first, per
     # artin 2026-07-09); without it diff/report/site fits well inside 30.
     timeout-minutes: 30
@@ -929,7 +929,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner

@@ -18,7 +18,7 @@ permissions:
 jobs:
   wiring:
     name: Policy wiring invariant
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -43,7 +43,7 @@ jobs:
   # .github/**), not in broad test.yml, so it only runs when the cache config changes.
   gradle-cache-poison-guard-writer:
     name: Gradle cache poison guard (writer)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       # Same absolute GRADLE_USER_HOME as the reader: setup-gradle's GitHub cache
@@ -94,7 +94,7 @@ jobs:
 
   gradle-cache-poison-guard:
     name: Gradle cache poison guard (reader)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: gradle-cache-poison-guard-writer
     timeout-minutes: 15
     env:

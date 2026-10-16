@@ -1,0 +1,43 @@
+name: Setup CI environment
+description: Install the small, cross-runner tool baseline used by repository contract checks.
+inputs:
+  ripgrep:
+    description: Install ripgrep when it is not already available.
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install ripgrep
+      if: ${{ inputs.ripgrep == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v rg >/dev/null 2>&1; then
+          rg --version | head -n 1
+          exit 0
+        fi
+        case "$(uname -s)" in
+          Linux)
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y ripgrep
+            else
+              echo 'ripgrep is missing and apt-get is unavailable' >&2
+              exit 1
+            fi
+            ;;
+          Darwin)
+            if command -v brew >/dev/null 2>&1; then
+              brew install ripgrep
+            else
+              echo 'ripgrep is missing and Homebrew is unavailable' >&2
+              exit 1
+            fi
+            ;;
+          *)
+            echo "unsupported runner OS: $(uname -s)" >&2
+            exit 1
+            ;;
+        esac
+        rg --version | head -n 1

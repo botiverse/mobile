@@ -94,7 +94,7 @@ env:
 jobs:
   acceptance:
     name: iOS acceptance run (M3 agent on simulator)
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: macos-latest
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.

@@ -17,7 +17,7 @@ permissions:
 jobs:
   source-path-contract:
     name: Retired source path invariant
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -38,6 +38,9 @@ jobs:
           actual="$(git rev-parse HEAD)"
           printf 'expected=%s\nactual=%s\n' "$EXPECTED_SHA" "$actual"
           test "$actual" = "$EXPECTED_SHA"
+
+      - name: Setup CI environment
+        uses: ./.github/actions/setup-env
 
       - name: Run checker self-test and gate
         shell: bash

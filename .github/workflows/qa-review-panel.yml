@@ -18,7 +18,7 @@ jobs:
   # generated records away from verification expectations.
   freeze:
     name: Freeze panel parameters
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       provider: ${{ steps.freeze.outputs.provider }}
@@ -59,7 +59,7 @@ jobs:
   review:
     name: Independent reviewer ${{ matrix.slot }}
     needs: freeze
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -110,7 +110,7 @@ jobs:
     name: Verify three independent votes
     needs: [freeze, review]
     if: ${{ always() }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Download reviewer records
