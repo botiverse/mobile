@@ -1,0 +1,123 @@
+package build.raft.app.data
+
+/**
+ * task #512: pure helpers for sidebar custom sections, ported from web
+ * `packages/web/src/store/sidebarSections.ts`. These operate on the sidebar-order
+ * snapshot models so the parser, the store, and the UI share one normalization
+ * and placement semantics.
+ */
+
+/** System section ids, in web's canonical order. */
+val SIDEBAR_SYSTEM_SECTION_IDS: List<String> =
+    listOf("system:pinned", "system:joint", "system:channels", "system:dms")
+
+const val SIDEBAR_SECTION_ITEM_KIND_CHANNEL = "channel"
+const val SIDEBAR_SECTION_ITEM_KIND_AGENT = "agent"
+
+val SIDEBAR_SECTION_SORT_MODES: Set<String> = setOf("manual", "recent", "az")
+
+/**
+ * Keep only well-formed custom sections (non-blank id/name, known sort mode).
+ * Mirrors web `normalizeSidebarCustomSections`.
+ */
+fun normalizeSidebarCustomSections(
+    sections: List<SettingsServerSidebarCustomSection>
+): List<SettingsServerSidebarCustomSection> =
+    sections.filter { section ->
+        section.id.isNotBlank() &&
+            section.name.isNotBlank() &&
+            section.sortMode in SIDEBAR_SECTION_SORT_MODES
+    }
+
+/**
+ * Keep only well-formed placements (known kind, non-blank ids, sane position).
+ * Mirrors web `normalizeSidebarSectionPlacements`.
+ */
+fun normalizeSidebarSectionPlacements(
+    placements: List<SettingsServerSidebarSectionPlacement>
+): List<SettingsServerSidebarSectionPlacement> =
+    placements.filter { placement ->
+        (placement.kind == SIDEBAR_SECTION_ITEM_KIND_CHANNEL ||
+            placement.kind == SIDEBAR_SECTION_ITEM_KIND_AGENT) &&
+            placement.id.isNotBlank() &&
+            placement.sectionId.isNotBlank() &&
+            placement.position >= 0
+    }
+
+/**
+ * Dedupe [order] to known section ids (system + custom), then append any
+ * section missing from the input: system sections first, then custom sections
+ * in their declaration order. Mirrors web `normalizeSidebarSectionOrder`.
+ */
+fun normalizeSidebarSectionOrder(
+    order: List<String>,
+    sections: List<SettingsServerSidebarCustomSection>
+): List<String> {
+    val customIds = sections.map { it.id }
+    val allowedIds = (SIDEBAR_SYSTEM_SECTION_IDS + customIds).toSet()
+    val orderedIds = ArrayList<String>(allowedIds.size)
+    val seen = HashSet<String>(allowedIds.size)
+    for (id in order + SIDEBAR_SYSTEM_SECTION_IDS + customIds) {
+        if (id !in allowedIds || !seen.add(id)) continue
+        orderedIds.add(id)
+    }
+    return orderedIds
+}
+
+/** Move [activeId] to [overId]'s index. Mirrors web `reorderSidebarSectionOrder`. */
+fun reorderSidebarSectionOrder(order: List<String>, activeId: String, overId: String): List<String> {
+    val oldIndex = order.indexOf(activeId)
+    val newIndex = order.indexOf(overId)
+    if (oldIndex == -1 || newIndex == -1 || oldIndex == newIndex) return order
+    val next = order.toMutableList()
+    val active = next.removeAt(oldIndex)
+    next.add(newIndex, active)
+    return next
+}
+
+fun sidebarSectionItemKey(kind: String, id: String): String = "$kind:$id"
+
+/** Append the item to the end of [sectionId]. Mirrors web `moveSidebarItemToCustomSection`. */
+fun moveSidebarItemToCustomSection(
+    placements: List<SettingsServerSidebarSectionPlacement>,
+    kind: String,
+    id: String,
+    sectionId: String
+): List<SettingsServerSidebarSectionPlacement> =
+    moveSidebarItemToCustomSectionAtPosition(placements, kind, id, sectionId, Int.MAX_VALUE)
+
+/**
+ * Move the item into [sectionId] at [requestedPosition] (clamped), reindexing
+ * the destination section's positions to 0..n-1. Mirrors web
+ * `moveSidebarItemToCustomSectionAtPosition`.
+ */
+fun moveSidebarItemToCustomSectionAtPosition(
+    placements: List<SettingsServerSidebarSectionPlacement>,
+    kind: String,
+    id: String,
+    sectionId: String,
+    requestedPosition: Int
+): List<SettingsServerSidebarSectionPlacement> {
+    val itemKey = sidebarSectionItemKey(kind, id)
+    val withoutItem = placements.filter { sidebarSectionItemKey(it.kind, it.id) != itemKey }
+    val destination =
+        withoutItem
+            .filter { it.sectionId == sectionId }
+            .sortedBy { it.position }
+            .toMutableList()
+    val position = requestedPosition.coerceIn(0, destination.size)
+    destination.add(position, SettingsServerSidebarSectionPlacement(kind = kind, id = id, sectionId = sectionId, position = position))
+    val reindexedDestination = destination.mapIndexed { index, placement -> placement.copy(position = index) }
+    return withoutItem.filter { it.sectionId != sectionId } + reindexedDestination
+}
+
+/** Remove the item's placement, if any. Mirrors web `removeSidebarItemPlacement`. */
+fun removeSidebarItemPlacement(
+    placements: List<SettingsServerSidebarSectionPlacement>,
+    kind: String,
+    id: String
+): List<SettingsServerSidebarSectionPlacement> {
+    val itemKey = sidebarSectionItemKey(kind, id)
+    if (placements.none { sidebarSectionItemKey(it.kind, it.id) == itemKey }) return placements
+    return placements.filter { sidebarSectionItemKey(it.kind, it.id) != itemKey }
+}

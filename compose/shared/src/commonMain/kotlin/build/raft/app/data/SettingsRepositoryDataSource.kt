@@ -3300,7 +3300,11 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val pinnedOrder: List<String>? = null,
     val hiddenDmIds: List<String>? = null,
     val channelPanelTabOrder: List<String>? = null,
-    val agentPanelTabOrder: List<String>? = null
+    val agentPanelTabOrder: List<String>? = null,
+    val customSections: List<SettingsServerSidebarCustomSection>? = null,
+    val sectionOrder: List<String>? = null,
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement>? = null,
+    val sectionsVersion: Long? = null
 )
 
 @Serializable
@@ -3323,7 +3327,11 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             pinnedOrder = request.pinnedOrder,
             hiddenDmIds = request.hiddenDmIds,
             channelPanelTabOrder = request.channelPanelTabOrder,
-            agentPanelTabOrder = request.agentPanelTabOrder
+            agentPanelTabOrder = request.agentPanelTabOrder,
+            customSections = request.customSections,
+            sectionOrder = request.sectionOrder,
+            sectionPlacements = request.sectionPlacements,
+            sectionsVersion = request.sectionsVersion
         )
     )
 
