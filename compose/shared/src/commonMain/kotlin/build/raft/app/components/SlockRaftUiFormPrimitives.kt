@@ -16,6 +16,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -65,6 +66,7 @@ internal fun SlockFormField(
     showLabel: Boolean = true,
     labelStyle: SlockFormFieldLabelStyle = SlockFormFieldLabelStyle.Uppercase,
     size: SlockFormFieldSize = SlockFormFieldSize.Default,
+    labelAccessory: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -74,7 +76,8 @@ internal fun SlockFormField(
                 required = required,
                 optional = optional,
                 labelStyle = labelStyle,
-                size = size
+                size = size,
+                accessory = labelAccessory
             )
         }
         content()
@@ -100,13 +103,20 @@ private fun SlockFormFieldLabel(
     required: Boolean,
     optional: Boolean,
     labelStyle: SlockFormFieldLabelStyle,
-    size: SlockFormFieldSize
+    size: SlockFormFieldSize,
+    accessory: (@Composable () -> Unit)? = null
 ) {
     val compact = size == SlockFormFieldSize.Compact
     val uppercase = labelStyle == SlockFormFieldLabelStyle.Uppercase
     val labelFontSize = if (compact) 11.sp else 14.sp
     val labelLineHeight = if (compact) 14.sp else 18.sp
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        // An accessory sits at the trailing edge of the label row (react FormField
+        // `labelAccessory` + `ml-auto`); without one the row keeps its wrap-content width.
+        modifier = if (accessory != null) Modifier.fillMaxWidth() else Modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(
             text = if (uppercase) label.slockDisplayUppercase() else label,
             style =
@@ -142,6 +152,10 @@ private fun SlockFormFieldLabel(
                 color = if (compact) SlockColor.TextMutedGray else SlockColor.TextBlack.copy(alpha = 0.40f),
                 maxLines = 1
             )
+        }
+        if (accessory != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            accessory()
         }
     }
 }

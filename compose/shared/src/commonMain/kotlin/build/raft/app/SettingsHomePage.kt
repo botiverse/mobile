@@ -18591,7 +18591,8 @@ private fun SharedMembersScreen(
                             createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
                             createAgentLoadRuntimeModels = loadRuntimeModels,
                             createAgentFormStore = createAgentFormStore,
-                            createAgentServerId = serverId
+                            createAgentServerId = serverId,
+                            createAgentTakenAgentNames = current.members.takenAgentNames()
                         ),
                         inviteHuman = MembersInviteHumanInputs(
                             inviteHumanSubmit = inviteHumanSubmit,

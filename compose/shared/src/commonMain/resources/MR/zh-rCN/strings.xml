@@ -1334,6 +1334,7 @@
     <string name="auth_error_password_reset_setup">重置密码初始化未能完成。请重试。</string>
     <string name="auth_error_password_reset_failed">密码重置失败。请重试。</string>
     <string name="agent_create_label_name">名称</string>
+    <string name="agent_create_random_name">随机名字</string>
     <string name="agent_create_label_description">描述</string>
     <string name="agent_create_label_computer">计算机</string>
     <string name="agent_create_label_runtime">运行时</string>

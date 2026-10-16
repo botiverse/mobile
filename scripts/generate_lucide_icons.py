@@ -101,6 +101,7 @@ LUCIDE_ICONS = [
     "copy",
     "credit-card",
     "crop",
+    "dices",
     "download",
     "ellipsis",
     "maximize-2",

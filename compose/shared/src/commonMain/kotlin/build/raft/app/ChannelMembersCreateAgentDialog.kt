@@ -27,6 +27,11 @@ internal fun ChannelMembersCreateAgentDialog(
     val picker by remember(computersStore, owner) {
         computersStore.computerPickerSliceFlow(owner.serverId)
     }.collectAsState(SharedComputersPickerSlice())
+    // Owner-scoped server directory, so a suggested name (blank query) avoids agent
+    // @names already used on this server; the server's uniqueness check still decides.
+    val serverMembers by remember(membersStore, owner) {
+        membersStore.serverMembersEntryFlow(owner)
+    }.collectAsState(SharedServerMembersEntry(serverId = owner.serverId))
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
     var createdId by remember(owner) { mutableStateOf<String?>(null) }
@@ -89,6 +94,7 @@ internal fun ChannelMembersCreateAgentDialog(
             machinesErrorMessage = if (picker.initialLoadError != null) failedLabel else null,
             onMachinesRetry = { computersStore.dispatch(SharedComputersIntent.RefreshComputerPicker(owner.serverId, DataRequestPriority.Visible)) },
             createAgentFormStore = formStore, createAgentServerId = owner.serverId,
+            takenAgentNames = serverMembers.members.takenAgentNames(),
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
     }

@@ -1336,6 +1336,7 @@
     <string name="auth_error_password_reset_setup">Reset password could not finish setup. Try again.</string>
     <string name="auth_error_password_reset_failed">Reset password failed. Try again.</string>
     <string name="agent_create_label_name">Name</string>
+    <string name="agent_create_random_name">Random name</string>
     <string name="agent_create_label_description">Description</string>
     <string name="agent_create_label_computer">Computer</string>
     <string name="agent_create_label_runtime">Runtime</string>

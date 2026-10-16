@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalSectionLabel
@@ -20,6 +21,7 @@ import build.raft.app.model.REASONING_EFFORTS
 import build.raft.app.model.buildRuntimeConfig
 import build.raft.app.model.getDefaultModel
 import build.raft.app.model.getModelLabel
+import build.raft.app.model.suggestAgentName
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.reconcileRuntimeReasoningEffort
 import build.raft.app.model.RuntimeModelInfo
@@ -85,6 +87,7 @@ import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -849,11 +852,17 @@ internal fun SharedCreateAgentDialog(
     external: Boolean = false,
     runtimeFormV2Override: RuntimeFormV2Access? = null,
     errorFieldKeys: Set<String> = emptySet(),
+    takenAgentNames: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
-    var name by remember(initialName) { mutableStateOf(initialName) }
+    // A fresh create starts with a suggested `adjective-noun` name instead of an empty
+    // field (react CreateAgentDialog parity); the dice button beside the label rolls
+    // another. Prefilled names (action cards, typed member query) are kept as-is.
+    var name by remember(initialName) {
+        mutableStateOf(initialName.ifBlank { suggestAgentName(takenAgentNames) })
+    }
     var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
     var model by remember(runtime, initialModel) { mutableStateOf(initialModel ?: getDefaultModel(runtime)) }
@@ -1416,7 +1425,13 @@ internal fun SharedCreateAgentDialog(
                         onValueChange = { name = it },
                         placeholder = stringResource(MR.strings.agent_create_placeholder_name),
                         enabled = !submitting,
-                        autoFocus = true
+                        autoFocus = true,
+                        labelAccessory = {
+                            CreateAgentRandomNameButton(
+                                enabled = !submitting,
+                                onClick = { name = suggestAgentName(listOf(name) + takenAgentNames) }
+                            )
+                        }
                     )
                 }
                 if (inlineNameError != null) {
@@ -2564,6 +2579,35 @@ internal fun CreateAgentSectionLabelWithAction(
             }
         }
     }
+}
+
+/**
+ * Dice button beside the Name label that rolls another suggested name (react
+ * `create-agent-random-name`: ghost, icon-xs, Dices 12px). Ghost = no fill, border or
+ * shadow, so it reads as a label accessory rather than a primary control.
+ */
+@Composable
+private fun CreateAgentRandomNameButton(
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    SlockBrutalIconButton(
+        iconName = SlockLucideIconName.Dices,
+        onClick = onClick,
+        contentDescription = stringResource(MR.strings.agent_create_random_name),
+        enabled = enabled,
+        backgroundColor = Color.Transparent,
+        disabledBackgroundColor = Color.Transparent,
+        borderColor = Color.Transparent,
+        disabledBorderColor = Color.Transparent,
+        shadowColor = Color.Transparent,
+        disabledShadowColor = Color.Transparent,
+        iconColor = SlockColor.TextBlackArgb,
+        disabledIconColor = SlockColor.TextMutedGrayArgb,
+        size = 22.dp,
+        shadowOffset = 0.dp,
+        iconSize = 13.dp
+    )
 }
 
 @Composable

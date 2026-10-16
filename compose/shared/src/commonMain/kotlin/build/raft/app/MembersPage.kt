@@ -2387,7 +2387,8 @@ internal fun MembersPageContent(
             createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             createAgentLoadRuntimeModels = loadRuntimeModels,
             createAgentFormStore = createAgentFormStore,
-            createAgentServerId = serverId
+            createAgentServerId = serverId,
+            createAgentTakenAgentNames = localMembers.takenAgentNames()
         ),
         inviteHuman = MembersInviteHumanInputs(
             inviteHumanSubmit = inviteHumanSubmit,
@@ -4634,8 +4635,14 @@ internal class MembersCreateAgentInputs(
     val createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     val createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
-    val createAgentServerId: String? = null
+    val createAgentServerId: String? = null,
+    /** Agent @names already used on this server, so a suggested name avoids them. */
+    val createAgentTakenAgentNames: List<String> = emptyList()
 )
+
+/** Agent @names (handles) of live agents, so a suggested create-agent name avoids them. */
+internal fun List<MemberProfile>.takenAgentNames(): List<String> =
+    filter { it.kind == MemberKind.Agent && it.agentDeletedAt.isNullOrBlank() }.map { it.handle }
 
 internal class MembersInviteHumanInputs(
     /**
@@ -4746,6 +4753,7 @@ internal fun MembersListContent(
     val createAgentLoadRuntimeModels = createAgent.createAgentLoadRuntimeModels
     val createAgentFormStore = createAgent.createAgentFormStore
     val createAgentServerId = createAgent.createAgentServerId
+    val createAgentTakenAgentNames = createAgent.createAgentTakenAgentNames
     val inviteHumanSubmit = inviteHuman.inviteHumanSubmit
     val inviteHumanJoinLinkLoading = inviteHuman.inviteHumanJoinLinkLoading
     val inviteHumanJoinLinkUrl = inviteHuman.inviteHumanJoinLinkUrl
@@ -5059,6 +5067,7 @@ internal fun MembersListContent(
             onRuntimeModelsRequest = createAgentLoadRuntimeModels,
             createAgentFormStore = createAgentFormStore,
             createAgentServerId = createAgentServerId,
+            takenAgentNames = createAgentTakenAgentNames,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
             onDismiss = {
