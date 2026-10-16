@@ -17,7 +17,7 @@
     <string name="error_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
     <string name="error_too_many_attempts">Too many attempts. Please wait a moment and try again.</string>
     <string name="error_response_unreadable">The response could not be read. Please try again.</string>
-    <string name="error_server_version_incompatible">This private deployment is not compatible with this app version. Ask its administrator to upgrade the server.</string>
+    <string name="error_server_version_incompatible">This self-hosted server is not compatible with this app version. Ask its administrator to upgrade the server.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
     <string name="empty_no_channels">No channels are available yet.</string>
     <string name="empty_no_messages">No messages are available yet.</string>
@@ -2157,7 +2157,7 @@
     <string name="joint_billing_locked_detail">The grace period has ended. This channel is read-only until an admin upgrades or a free server leaves.</string>
     <string name="auth_web_login_button">Sign in to Raft</string>
     <string name="auth_web_login_hint">Sign in through %1$s</string>
-    <string name="auth_web_login_private_entry">Sign in to a private deployment</string>
+    <string name="auth_web_login_private_entry">Sign in to a self-hosted server</string>
     <string name="auth_web_login_failed">Unable to finish sign-in. Please try again.</string>
     <string name="auth_web_login_stale_callback">That sign-in link was from an earlier attempt. Finish signing in on the latest page, or sign in again.</string>
     <string name="channel_member_role_owner">Owner</string>
@@ -2204,8 +2204,8 @@
     <string name="member_runtime_usage_health_unsupported">Not supported</string>
     <string name="member_runtime_usage_health_error">Error</string>
     <string name="member_runtime_usage_health_unknown">Unavailable</string>
-    <string name="auth_private_deployment_title">Private deployment</string>
-    <string name="auth_private_deployment_hint">Enter the addresses of your self-hosted Raft. The server must run version 1.13.0 or later.</string>
+    <string name="auth_private_deployment_title">Self-hosted server</string>
+    <string name="auth_private_deployment_hint">Enter the web and API addresses of your self-hosted Raft server. The server must run version 1.13.0 or later.</string>
     <string name="auth_private_deployment_web_label">Web address</string>
     <string name="auth_private_deployment_web_placeholder">https://raft.company.com</string>
     <string name="auth_private_deployment_api_label">Server (API) address</string>
@@ -2217,5 +2217,5 @@
     <string name="auth_private_deployment_unreachable">The server could not be reached. Check the server address and try again.</string>
     <string name="auth_private_deployment_web_unreachable">The web address could not be reached. Check it and try again.</string>
     <string name="auth_private_deployment_outdated">This server does not report a supported version (1.13.0 or later). Upgrade the server and try again.</string>
-    <string name="auth_private_deployment_failed">Could not save the deployment. Try again.</string>
+    <string name="auth_private_deployment_failed">Could not save the server settings. Try again.</string>
 </resources>
