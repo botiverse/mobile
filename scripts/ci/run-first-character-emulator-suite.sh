@@ -37,6 +37,7 @@ RUNNER_SHARED="build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunne
 
 DECLARED_TEST_IDS=(
   "inactive-host-rendering"
+  "login-transition-routing"
   "first-character-baseline"
   "ime-visibility-probe"
   "composer-session-retirement"
@@ -70,6 +71,12 @@ declare -A TEST_EXIT_CODE
 declare -A TEST_DURATION
 
 init_test_metadata() {
+  TEST_CLASS["login-transition-routing"]="build.raft.app.shared.AndroidLoginTransitionRoutingConnectedTest"
+  TEST_RUNNER["login-transition-routing"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["login-transition-routing"]=1
+  TEST_OUTPUT["login-transition-routing"]="login-transition-routing-instrumentation.txt"
+  TEST_CONDITION["login-transition-routing"]="always"
+
   TEST_CLASS["local-image-sampled-decode"]="build.raft.app.shared.SlockLocalImageSampledDecodeConnectedTest"
   TEST_RUNNER["local-image-sampled-decode"]="$RUNNER_CONNECTED"
   TEST_RETRIES["local-image-sampled-decode"]=1

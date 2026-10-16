@@ -8,6 +8,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
+import build.raft.app.shared.AndroidLoginTransitionRouting
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
@@ -43,6 +44,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        if (!AndroidLoginTransitionRouting.observeHost(this)) {
+            finish()
+            return
+        }
         externalShareAdmissionOwner = AndroidExternalShareProcessOwner.admissionOwner(applicationContext)
         val rawShare = intent.takeIf(Intent::isAndroidExternalShareIntent)
         if (rawShare != null) {
@@ -70,6 +75,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        AndroidLoginTransitionRouting.observeNewIntent(this)
         SlockAppLog.d(
             "SlockBoot",
             "main_activity_new_intent " +
@@ -181,6 +187,7 @@ class MainActivity : ComponentActivity() {
     private fun handleEmailVerificationLink(intent: Intent?): Boolean {
         val token = intent.emailVerificationToken() ?: return false
         val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         // Remove the token-bearing URL from the retained Activity intent before any async work.
         setIntent(Intent(this, MainActivity::class.java))
         lifecycleScope.launch {
@@ -197,7 +204,8 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this@MainActivity, getString(R.string.email_verified_toast), Toast.LENGTH_SHORT).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Verified)) {
                         EmailVerificationNavigation.FinishTrampoline -> finish()
-                        EmailVerificationNavigation.OpenPostLoginDestination -> openPostLoginDestination(result.session)
+                        EmailVerificationNavigation.OpenPostLoginDestination ->
+                            openPostLoginDestination(result.session, loginTransition)
                         EmailVerificationNavigation.OpenAuthShell -> error("Success must not open the auth shell")
                     }
                 }
@@ -259,6 +267,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, getString(R.string.google_sign_in_no_code_toast), Toast.LENGTH_SHORT).show()
             return true
         }
+        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         lifecycleScope.launch {
             val result =
                 withContext(Dispatchers.IO) {
@@ -270,7 +279,7 @@ class MainActivity : ComponentActivity() {
                 }
             when (result) {
                 is SharedAuthResult.Success ->
-                    openPostLoginDestination(result.data)
+                    openPostLoginDestination(result.data, loginTransition)
                 is SharedAuthResult.Failure ->
                     Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
                 SharedAuthResult.Unauthenticated ->
@@ -375,6 +384,7 @@ class MainActivity : ComponentActivity() {
             }
             return true
         }
+        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         lifecycleScope.launch {
             val result =
                 withContext(Dispatchers.IO) {
@@ -390,7 +400,7 @@ class MainActivity : ComponentActivity() {
             when (result) {
                 is SharedAuthResult.Success -> {
                     pendingStore.clear()
-                    openPostLoginDestination(result.data)
+                    openPostLoginDestination(result.data, loginTransition)
                 }
                 is SharedAuthResult.Failure -> {
                     if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
@@ -419,35 +429,40 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun openPostLoginDestination(session: StoredAuthSession) {
-        when (postLoginDestination(session.selectedServerId)) {
-            PostLoginDestination.AppShell ->
-                SlockKuiklyActivity.startAppShell(
-                    this,
-                    pageData =
-                        postLoginAppShellPageData(
-                            owner =
-                                AndroidShellRouteOwner(
-                                        environmentId =
-                                            AndroidApiServerEnvironmentStore(applicationContext)
-                                                .current()
-                                                .apiBaseUrl,
-                                        accountId = session.user.id,
-                                        serverId =
-                                            session.currentServerId
-                                                ?: session.selectedServerId.orEmpty(),
-                                    )
-                                    .normalizedOrNull()
-                        ),
-                    clearTask = true
-                )
-            PostLoginDestination.ChooseServer ->
-                SlockKuiklyActivity.startAuthChooseServer(
-                    this,
-                    clearTask = true
-                )
+    private fun openPostLoginDestination(
+        session: StoredAuthSession,
+        loginTransition: AndroidLoginTransitionRouting.AuthenticationAttempt,
+    ) {
+        val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(this, loginTransition) {
+            when (postLoginDestination(session.selectedServerId)) {
+                PostLoginDestination.AppShell ->
+                    SlockKuiklyActivity.startAppShell(
+                        this,
+                        pageData =
+                            postLoginAppShellPageData(
+                                owner =
+                                    AndroidShellRouteOwner(
+                                            environmentId =
+                                                AndroidApiServerEnvironmentStore(applicationContext)
+                                                    .current()
+                                                    .apiBaseUrl,
+                                            accountId = session.user.id,
+                                            serverId =
+                                                session.currentServerId
+                                                    ?: session.selectedServerId.orEmpty(),
+                                        )
+                                        .normalizedOrNull()
+                            ),
+                        clearTask = true
+                    )
+                PostLoginDestination.ChooseServer ->
+                    SlockKuiklyActivity.startAuthChooseServer(
+                        this,
+                        clearTask = true
+                    )
+            }
         }
-        finish()
+        if (accepted) finish()
     }
 
     private fun openLoginAfterMobileOAuthError(message: String) {
