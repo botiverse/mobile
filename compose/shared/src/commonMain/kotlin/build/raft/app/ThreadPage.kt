@@ -4779,6 +4779,9 @@ internal fun ThreadMembersPageContent(
     onCreateAgent: (String) -> Unit = {},
 ) {
     val rosterListState = rememberLazyListState()
+    // task #175: the page draws under the system navigation bar; whichever
+    // element sits last (the Add Member bar, else the roster) keeps clear of it.
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize()) {
         SlockTopPageHeader(
             title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
@@ -4838,7 +4841,10 @@ internal fun ThreadMembersPageContent(
         LazyColumn(
             state = rosterListState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp, top = 12.dp, end = 16.dp,
+                bottom = 12.dp + if (canAddMembers) 0.dp else bottomSafeArea,
+            ),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             if (membersFailed) {
@@ -4929,7 +4935,7 @@ internal fun ThreadMembersPageContent(
         }
         if (canAddMembers) {
             Box(Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp + bottomSafeArea)) {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.thread_action_add_member),
                     modifier = Modifier.fillMaxWidth(),
