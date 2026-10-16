@@ -237,8 +237,11 @@ private fun SlockInAppBrowserError(
     onOpenSystem: (() -> Unit)?,
     onClose: (() -> Unit)?,
 ) {
+    // task #176: the action buttons sit at the bottom of a standalone page.
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(20.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+            .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 20.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

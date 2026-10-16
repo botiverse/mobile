@@ -3794,6 +3794,7 @@ private fun PendingMentionActionBanner(
             }
         }
     }
+    val mentionSheetBottomSafeArea = slockBottomSafeAreaPadding()
     ModalBottomSheet(
         visible = detailsVisible,
         onDismissRequest = { detailsVisible = false },
@@ -3801,7 +3802,9 @@ private fun PendingMentionActionBanner(
         containerColor = Color.Transparent,
         dismissOnDrag = true
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        // task #176: ModalBottomSheet applies no insets; lift the card (and its
+        // Add all / Done buttons) above the system navigation bar.
+        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp + mentionSheetBottomSafeArea)) {
             Box(
                 modifier =
                     Modifier
