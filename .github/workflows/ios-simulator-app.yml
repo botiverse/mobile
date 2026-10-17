@@ -128,15 +128,29 @@ jobs:
         env:
           ARCHS_INPUT: ${{ inputs.archs }}
         run: |
+          set -euo pipefail
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
           archs="${ARCHS_INPUT:-arm64}"
           echo "ARCHS=$archs"
+          # A CONCRETE destination (id=UDID), not generic: with
+          # "generic/platform=iOS Simulator" the Podfile
+          # "[CP-User] Copy kmmresource MR bundle to app" script phase
+          # (:shared:copyFrameworkResourcesToApp) re-runs the full
+          # compileKotlinIosSimulatorArm64 instead of hitting the cache the
+          # "Build shared" phase just produced — a second cold Kotlin/Native
+          # compile that blew the 60-min cap (run 38906495675 stall log).
+          # qa-acceptance-ios.yml builds with id=${UDID} and finishes in
+          # ~12 min; resolve any iPhone simulator UDID to take the same path.
+          # The simulator does NOT need to be booted for build-for-testing.
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(u for devs in d["devices"].values() for u in [x["udid"] for x in devs if "iPhone" in x["name"]]))')
+          echo "destination UDID=$UDID"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppUITests \
             -configuration Debug \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "platform=iOS Simulator,id=${UDID}" \
             -derivedDataPath build/DerivedData \
             ARCHS="$archs" \
             CODE_SIGNING_ALLOWED=NO \
