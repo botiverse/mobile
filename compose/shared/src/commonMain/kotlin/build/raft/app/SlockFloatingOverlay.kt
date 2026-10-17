@@ -21,7 +21,6 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.layout.positionInWindow
 import com.tencent.kuikly.compose.ui.zIndex
 
 internal expect fun Modifier.slockNativeDispatchCapture(): Modifier
@@ -182,14 +181,16 @@ internal fun SlockFloatingOverlayHost(
             .zIndex(SlockFloatingOverlayHostZIndex)
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
-                // task #181 follow-up: WINDOW coordinates, not page-root. `Modal`'s container is
-                // screen-sized, but inside a Kuikly child page `positionInRoot()` still reports
-                // against the 400px page root -- exactly the "origin=(0,0) size=400x1200" the device
-                // logs showed while the anchor was window-space (1904). Measuring in window space
-                // makes anchor and viewport agree, which is what lets the popover lay out at all.
+                // Kuikly only implements `positionInRoot()`; `positionInWindow()` throws
+                // PagerNotFoundException and crashed the app shell, so the host can only report
+                // PAGE-local geometry. Callers convert the anchor into that same space.
                 overlayLayout =
                     SlockFloatingOverlayLayout(
-                        origin = coordinates.positionInWindow(),
+                        // NB: do NOT use `positionInWindow()` here. Kuikly does not implement
+                        // `localToWindow` -- it throws PagerNotFoundException from
+                        // NodeCoordinator.localToWindow, which crashed the whole app shell on
+                        // entering any channel on a large screen. Only `positionInRoot()` exists.
+                        origin = coordinates.positionInRoot(),
                         size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                     )
             },
