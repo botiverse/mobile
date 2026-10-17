@@ -3,7 +3,6 @@ package build.raft.app.network.sync
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
-import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
@@ -30,7 +29,6 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
                 MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
                 MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
                 MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
-                MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
                 SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
                 SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
                 THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
@@ -53,10 +51,6 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ServerExact,
             registry.snapshot(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY).scopeKind,
-        )
-        assertEquals(
-            DiagnosticFeatureFlagScopeKind.ServerExact,
-            registry.snapshot(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY).scopeKind,
         )
     }
 

@@ -29,7 +29,7 @@ class AppShellRailSurfaceVisibilityTest {
         assertTrue(
             appShellSharedDetailSurfaceVisible(
                 pageVisible = true,
-                selectedTab = SlockSlackNavTabs.Activity,
+                selectedTab = "activity",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
             )
@@ -51,7 +51,7 @@ class AppShellRailSurfaceVisibilityTest {
         assertTrue(
             appShellSharedDetailSurfaceVisible(
                 pageVisible = true,
-                selectedTab = SlockSlackNavTabs.Dms,
+                selectedTab = "dms",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
             )
@@ -59,7 +59,7 @@ class AppShellRailSurfaceVisibilityTest {
         assertFalse(
             appShellSharedDetailSurfaceVisible(
                 pageVisible = false,
-                selectedTab = SlockSlackNavTabs.Dms,
+                selectedTab = "dms",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
             )
@@ -70,14 +70,14 @@ class AppShellRailSurfaceVisibilityTest {
     fun `first back on dms tab dismisses the open dm before leaving the tab`() {
         assertTrue(
             appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = SlockSlackNavTabs.Dms,
+                selectedTab = "dms",
                 railInlineSecondaryDestination = null,
                 selectionPresent = true,
             )
         )
         assertFalse(
             appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = SlockSlackNavTabs.Dms,
+                selectedTab = "dms",
                 railInlineSecondaryDestination = null,
                 selectionPresent = false,
             )
@@ -92,14 +92,6 @@ class AppShellRailSurfaceVisibilityTest {
         assertFalse(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.Channel, null))
         assertFalse(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.ReplyThread, KuiklyThreadSurfaceKind.Channel))
         assertFalse(appShellDmsTabShowsDetail(null, null))
-    }
-
-    @Test
-    fun `dm row highlight follows the detail selection`() {
-        assertTrue(isWeChatDmRowSelected("dm-1", "dm-1"))
-        assertFalse(isWeChatDmRowSelected("dm-1", "dm-2"))
-        assertFalse(isWeChatDmRowSelected("dm-1", null))
-        assertFalse(isWeChatDmRowSelected(null, null))
     }
 
     @Test
@@ -189,7 +181,7 @@ class AppShellRailSurfaceVisibilityTest {
         assertFalse(
             appShellSharedDetailSurfaceVisible(
                 pageVisible = false,
-                selectedTab = SlockSlackNavTabs.Activity,
+                selectedTab = "activity",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = AppShellRailSearchKey,
             )
@@ -201,7 +193,7 @@ class AppShellRailSurfaceVisibilityTest {
         // Selection present on Activity tab or inline Search -> dismiss first.
         assertTrue(
             appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = SlockSlackNavTabs.Activity,
+                selectedTab = "activity",
                 railInlineSecondaryDestination = null,
                 selectionPresent = true,
             )
@@ -216,7 +208,7 @@ class AppShellRailSurfaceVisibilityTest {
         // No selection -> the destination itself exits; non-rail tabs keep legacy order.
         assertFalse(
             appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = SlockSlackNavTabs.Activity,
+                selectedTab = "activity",
                 railInlineSecondaryDestination = null,
                 selectionPresent = false,
             )
@@ -267,32 +259,32 @@ class AppShellRailSurfaceVisibilityTest {
 
     @Test
     fun `activity destination survives narrowing once reached`() {
-        val legacy = SlockSlackNavTabs.LegacyOrder
+        val legacy = listOf("home", "tasks", "members", "settings")
         // Wide rail: Activity allowed even under legacy keys.
         assertTrue(
-            SlockSlackNavTabs.Activity in
+            "activity" in
                 appShellAllowedTabKeys(legacy, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false)
         )
         // Narrow while an inline destination covers the middle pane: still allowed.
         assertTrue(
-            SlockSlackNavTabs.Activity in
+            "activity" in
                 appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = AppShellRailSearchKey, activityReachedThisSession = false)
         )
         // Narrow after the destination was reached earlier this session: still allowed.
         assertTrue(
-            SlockSlackNavTabs.Activity in
+            "activity" in
                 appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = true)
         )
         // Narrow with Activity never reached: legacy clamp unchanged.
         assertFalse(
-            SlockSlackNavTabs.Activity in
+            "activity" in
                 appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = false)
         )
         // Slack order already contains Activity: never duplicated.
-        val slack = SlockSlackNavTabs.DefaultOrder
+        val slack = listOf("home", "dms", "activity", "more")
         assertTrue(
             appShellAllowedTabKeys(slack, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false).count {
-                it == SlockSlackNavTabs.Activity
+                it == "activity"
             } == 1
         )
     }

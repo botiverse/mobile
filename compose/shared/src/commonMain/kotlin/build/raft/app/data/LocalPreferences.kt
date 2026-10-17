@@ -417,10 +417,6 @@ interface ChatLayoutPreferenceStore {
     fun readHomeServerAvatarEnabledSync(): Boolean
     suspend fun readHomeServerAvatarEnabled(): Boolean
     suspend fun saveHomeServerAvatarEnabled(enabled: Boolean)
-    /** task #94: persisted Slack-aligned bottom-tab order (raw string; absent = untouched). */
-    fun readSlackNavTabOrderSync(): String?
-    suspend fun readSlackNavTabOrder(): String?
-    suspend fun saveSlackNavTabOrder(rawOrder: String?)
     fun readTranslationModeSync(): TranslationModePreference
     suspend fun readTranslationMode(): TranslationModePreference
     suspend fun saveTranslationMode(mode: TranslationModePreference)
@@ -607,16 +603,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, enabled)
     }
 
-    override fun readSlackNavTabOrderSync(): String? =
-        store.getString(KEY_SLACK_NAV_TAB_ORDER)?.takeIf { it.isNotBlank() }
-
-    override suspend fun readSlackNavTabOrder(): String? =
-        readSlackNavTabOrderSync()
-
-    override suspend fun saveSlackNavTabOrder(rawOrder: String?) {
-        store.putString(KEY_SLACK_NAV_TAB_ORDER, rawOrder?.takeIf { it.isNotBlank() })
-    }
-
     override fun readTranslationModeSync(): TranslationModePreference =
         TranslationModePreference.fromStorageKey(store.getString(KEY_TRANSLATION_MODE))
 
@@ -660,7 +646,6 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
         const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "mobile:new_design_settings_enabled"
         const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
-        const val KEY_SLACK_NAV_TAB_ORDER = "mobile:slack_nav_tab_order"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_TRANSLATION_TARGET_LANGUAGE = "settings.translationTargetLanguage"
     }

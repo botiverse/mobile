@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.SlockSlackNavTabs
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.MemberId
@@ -428,20 +427,20 @@ class SharedHomeShellStoreTest {
         assertEquals(false, store.state.value.isActivityVisible)
         assertNull(store.state.value.selectedTab)
 
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
 
         assertEquals(true, store.state.value.isActivityVisible)
-        assertEquals(SlockSlackNavTabs.Activity, store.state.value.selectedTab)
+        assertEquals("activity", store.state.value.selectedTab)
         assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
 
         // Redundant set does not re-dispatch refresh
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
         assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
 
         // Switching away resets isActivityVisible
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Dms))
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("dms"))
         assertEquals(false, store.state.value.isActivityVisible)
-        assertEquals(SlockSlackNavTabs.Dms, store.state.value.selectedTab)
+        assertEquals("dms", store.state.value.selectedTab)
 
         fixture.cancel()
     }
@@ -468,7 +467,7 @@ class SharedHomeShellStoreTest {
                 )
             )
 
-        fixture.store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        fixture.store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
         fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
 
         assertEquals(
@@ -486,7 +485,7 @@ class SharedHomeShellStoreTest {
         val fixture = fixture()
         val store = fixture.store
 
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
         fixture.activityIntents.clear()
         fixture.homeIntents.clear()
 
@@ -503,7 +502,7 @@ class SharedHomeShellStoreTest {
         val store = fixture.store
 
         // User is on Slack Activity tab, then opens Saved overlay
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
         store.dispatch(SharedHomeShellIntent.OpenSaved)
         fixture.activityIntents.clear()
         fixture.searchSavedIntents.clear()
