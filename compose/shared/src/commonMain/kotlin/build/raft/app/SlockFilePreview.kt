@@ -7941,8 +7941,14 @@ private fun SlockFilePreviewVideoPanel(
                     seekRequest = seekRequest,
                     onPlayStateChanged = { playState = it },
                     onPlayTimeChanged = { current, total ->
-                        currentTimeMs = current
-                        totalTimeMs = total
+                        val (safeCurrent, safeTotal) =
+                            slockVideoProgressForUi(
+                                currentMs = current,
+                                durationMs = total,
+                                terminal = playState == PlayState.PLAY_END,
+                            )
+                        currentTimeMs = safeCurrent
+                        totalTimeMs = safeTotal
                     },
                     onFirstFrame = {
                         firstFrameVisible = true

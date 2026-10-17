@@ -22,6 +22,8 @@ import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewListener
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoPlayState
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoViewContentMode
+import build.raft.app.SlockVideoProgressContract
+import build.raft.app.SlockVideoPlaybackAttemptGate
 
 /**
  * Media3 (ExoPlayer) backed Kuikly video view (task #556).
@@ -52,6 +54,13 @@ private class SlockKRVideoView(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var stopped = false
     private var lastReportedState: KRVideoPlayState? = null
+    private val progressContract = SlockVideoProgressContract()
+    private val terminalGate = SlockVideoPlaybackAttemptGate(progressContract.currentGeneration)
+    private var awaitingAttemptStart = false
+    // Media3 does not attach an attempt id to callbacks. Keep the generation
+    // observed by the current READY attempt so a late callback from the prior
+    // replay/seek attempt is rejected by the shared contract.
+    private var callbackGeneration = progressContract.currentGeneration
 
     private val hostActivity: ComponentActivity? = context.unwrapComponentActivity()
     private var fullscreenContainer: FrameLayout? = null
@@ -82,15 +91,29 @@ private class SlockKRVideoView(
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
 
-    private val timeTicker =
-        object : Runnable {
-            override fun run() {
-                if (stopped) return
-                val duration = player.duration.takeIf { it > 0 } ?: 0L
-                listener.playTimeDidChangedWithCurrentTime(player.currentPosition, duration)
-                mainHandler.postDelayed(this, PROGRESS_TICK_MS)
+    private fun scheduleProgressTicker(generation: Long = progressContract.currentGeneration) {
+        mainHandler.postDelayed({
+            if (stopped || !terminalGate.acceptsProgress(generation)) return@postDelayed
+            val duration = player.duration.takeIf { it > 0 } ?: 0L
+            val progress = progressContract.progress(player.currentPosition, duration, generation)
+            if (awaitingAttemptStart && player.isPlaying && !progress.terminal) {
+                terminalGate.markStarted(progress.generation)
+                awaitingAttemptStart = false
             }
-        }
+            if (!progress.terminal && duration > 0L && progress.currentMs >= duration) {
+                terminalGate.markTerminalEligible(progress.generation)
+                if (terminalGate.acceptsTerminal(progress.generation)) {
+                    val terminal = progressContract.ended(duration, progress.generation)
+                    listener.playTimeDidChangedWithCurrentTime(terminal.currentMs, terminal.durationMs)
+                    reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                    scheduleProgressTicker(generation)
+                    return@postDelayed
+                }
+            }
+            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
+            scheduleProgressTicker(generation)
+        }, PROGRESS_TICK_MS)
+    }
 
     init {
         player.addListener(
@@ -103,7 +126,7 @@ private class SlockKRVideoView(
                     when (playbackState) {
                         Player.STATE_BUFFERING ->
                             reportState(KRVideoPlayState.KRVideoPlayStateCaching)
-                        Player.STATE_READY ->
+                        Player.STATE_READY -> {
                             reportState(
                                 if (player.playWhenReady) {
                                     KRVideoPlayState.KRVideoPlayStatePlaying
@@ -111,11 +134,17 @@ private class SlockKRVideoView(
                                     KRVideoPlayState.KRVideoPlayStatePaused
                                 }
                             )
-                        Player.STATE_ENDED ->
-                            reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                        }
+                        Player.STATE_ENDED -> {
+                            // Terminal state is derived by the ticker from a
+                            // duration-qualified active generation. Ignoring
+                            // native STATE_ENDED prevents an old queued event
+                            // from ending the new replay/seek attempt.
+                        }
                         Player.STATE_IDLE -> Unit
                     }
                 }
+
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                     if (player.playbackState == Player.STATE_READY) {
@@ -141,7 +170,7 @@ private class SlockKRVideoView(
             }
         )
         player.prepare()
-        mainHandler.post(timeTicker)
+        scheduleProgressTicker()
     }
 
     override fun preplay() {
@@ -153,7 +182,13 @@ private class SlockKRVideoView(
     override fun play() {
         if (stopped) return
         if (player.playbackState == Player.STATE_ENDED) {
+            val progress = progressContract.replay()
+            callbackGeneration = progress.generation
+            terminalGate.begin(progress.generation)
+            awaitingAttemptStart = true
+            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
             player.seekTo(0L)
+            scheduleProgressTicker(progress.generation)
         }
         player.play()
     }
@@ -167,7 +202,7 @@ private class SlockKRVideoView(
         if (stopped) return
         exitFullscreen()
         stopped = true
-        mainHandler.removeCallbacks(timeTicker)
+        mainHandler.removeCallbacksAndMessages(null)
         playerView.player = null
         player.release()
     }
@@ -194,7 +229,13 @@ private class SlockKRVideoView(
 
     override fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
-        player.seekTo(seekToTimeMs.coerceAtLeast(0L))
+        val progress = progressContract.seek(seekToTimeMs)
+        callbackGeneration = progress.generation
+        terminalGate.begin(progress.generation)
+        awaitingAttemptStart = true
+        listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
+        player.seekTo(progress.currentMs)
+        scheduleProgressTicker(progress.generation)
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
