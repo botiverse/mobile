@@ -27,7 +27,9 @@ data class ServerSummary(
     val avatarUrl: String? = null,
     val unreadCount: Int = 0,
     val permissions: ServerPermissions = ServerPermissions(),
-    val hideHumansFromMembers: Boolean = false
+    val hideHumansFromMembers: Boolean = false,
+    /** See [build.raft.app.data.StoredAuthServer.publicPageLive]. */
+    val publicPageLive: Boolean = false
 )
 
 @Serializable
@@ -125,6 +127,11 @@ data class ConversationSummary(
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     val bridgeProvider: String? = null,
+    /**
+     * Channel row `guestVisible` (see [build.raft.app.data.HomeChannelWireDto.guestVisible]).
+     * Only meaningful for `type == "channel"`; never true for DMs / threads.
+     */
+    val guestVisible: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
     /**

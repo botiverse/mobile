@@ -197,6 +197,9 @@ sealed interface HomeConversationRow {
     /** task #396: external bridge provider (e.g. "slack"); only channels carry one. */
     val bridgeProvider: String?
         get() = null
+    /** Channel `guestVisible` (see [HomeChannelWireDto.guestVisible]); only channels carry one. */
+    val guestVisible: Boolean
+        get() = false
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
     /**
@@ -251,6 +254,7 @@ data class HomeChannelRow(
     override val jointBillingLocked: Boolean? = null,
     override val jointOverLimitGraceEndsAt: String? = null,
     override val bridgeProvider: String? = null,
+    override val guestVisible: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
@@ -337,6 +341,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
+        guestVisible = guestVisible,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities
@@ -379,6 +384,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
+        guestVisible = guestVisible,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities

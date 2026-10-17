@@ -22,8 +22,27 @@ internal data class ThreadHeaderDisplayModel(
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
     val dmPeerIdentity: MemberDetailIdentity? = null,
     // task #396: Channel-surface only; reply threads / DMs never show the bridge badge.
-    val bridgeProvider: String? = null
-)
+    val bridgeProvider: String? = null,
+    /** Channel-surface only: the directory row's `guestVisible` / archived state. */
+    val channelGuestVisible: Boolean = false,
+    val channelArchived: Boolean = false,
+    /**
+     * The header's server `publicPageLive`, read from the session server list (never from the
+     * route payload). Applied by the Thread route after projection.
+     */
+    val serverPublicPageLive: Boolean = false
+) {
+    /** Web ChatPanel.tsx:1366: the channel header icon carries the public-page globe. */
+    val channelOnPublicPage: Boolean
+        get() =
+            surfaceKind == KuiklyThreadSurfaceKind.Channel &&
+                build.raft.app.components.channelOnPublicPage(
+                    serverPublicPageLive = serverPublicPageLive,
+                    channelKind = channelKind,
+                    guestVisible = channelGuestVisible,
+                    archived = channelArchived,
+                )
+}
 
 internal sealed interface ThreadHeaderProjectionInput {
     // Order IS the contract (t432 family ③): implementations list ids that name the
@@ -302,7 +321,9 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 subtitle = directory.subtitle?.takeIf { it.isNotBlank() },
                 surfaceKind = surfaceKind,
                 channelKind = directory.channelKind,
-                bridgeProvider = directory.bridgeProvider
+                bridgeProvider = directory.bridgeProvider,
+                channelGuestVisible = directory.guestVisible,
+                channelArchived = directory.archived
             )
         KuiklyThreadSurfaceKind.ReplyThread ->
             ThreadHeaderDisplayModel(

@@ -2228,4 +2228,26 @@
     <string name="auth_private_deployment_web_unreachable">Web アドレスに接続できません。確認してもう一度お試しください。</string>
     <string name="auth_private_deployment_outdated">このサーバーは対応バージョン（1.13.0 以降）を返しませんでした。サーバーを更新してから、もう一度お試しください。</string>
     <string name="auth_private_deployment_failed">保存できませんでした。もう一度お試しください。</string>
+    <string name="settings_public_visibility_section_label">公開アクセス</string>
+    <string name="settings_public_visibility_title">このサーバーを公開する</string>
+    <string name="settings_public_visibility_description">以下のチャンネルは、サインインや招待なしで誰でも閲覧できます。</string>
+    <string name="settings_public_visibility_public_url">公開ページ</string>
+    <string name="settings_public_visibility_copy_url">コピー</string>
+    <string name="settings_public_visibility_allow_guest_join">訪問者のゲスト参加を許可</string>
+    <string name="settings_public_visibility_allow_guest_join_description">サインイン済みの訪問者は、閲覧専用のゲストとしてサーバーに参加し、ゲストに公開されたチャンネルをフォローできます。ほかのチャンネルに招待することもできます。</string>
+    <string name="settings_public_visibility_allow_search">検索エンジンを許可</string>
+    <string name="settings_public_visibility_allow_search_description">誰でも閲覧できるチャンネルとそのスレッドが、検索エンジンの検索結果に表示されるようになります。オフにすると掲載は止まりますが、すでに表示されている結果が消えるまでには時間がかかる場合があります。チャンネルは公開されたままです。</string>
+    <string name="settings_public_visibility_channel_list_label">誰でも閲覧できるチャンネル</string>
+    <string name="settings_public_visibility_empty_channels">現在「ゲストに表示」に設定されているチャンネルはありません。</string>
+    <string name="settings_public_visibility_confirm_title">このサーバーを公開しますか？</string>
+    <string name="settings_public_visibility_confirm_description">次のチャンネルが誰でも閲覧できるようになります：</string>
+    <string name="settings_public_visibility_confirm_audience_change">これらは以前に「ゲストに表示」に設定したチャンネルです。この設定は、招待したゲストだけでなく全員に適用されるようになります。チャンネルごとに改めて確認されることはありません。</string>
+    <string name="settings_public_visibility_confirm_action">公開する</string>
+    <string name="settings_public_visibility_confirm_saving">公開しています…</string>
+    <string name="settings_public_visibility_failed_load">公開アクセス設定を読み込めませんでした</string>
+    <string name="settings_public_visibility_failed_update">公開アクセスを更新できませんでした</string>
+    <string name="settings_public_visibility_failed_guest_join_update">ゲスト参加の設定を更新できませんでした</string>
+    <string name="settings_public_visibility_failed_search_update">検索エンジンの設定を更新できませんでした</string>
+    <string name="channel_public_page_readable">誰でも公開ページでこのチャンネルを閲覧できます</string>
+    <string name="layout_server_public_page_live">公開中：サインインしなくても誰でも公開チャンネルを閲覧できます</string>
 </resources>

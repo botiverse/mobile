@@ -6,6 +6,9 @@ import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalPanel
 import build.raft.app.components.SlockExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
+import build.raft.app.components.SlockHashGlobeIcon
+import build.raft.app.components.SlockPublicPageGlobe
+import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.data.ChannelRepository
@@ -209,6 +212,8 @@ private val HomeServerBadgeVerticalInset = 6.dp
 private val HomeServerBadgeContentGap = 6.dp
 private val HomeServerBadgeChevronSize = 16.dp
 internal val HomeServerIdentityNameChevronGap = 4.dp
+internal val HomeServerPublicPageGlobeGap = 4.dp
+internal val HomeServerPublicPageGlobeSize = 13.dp
 internal val HomeServerIdentityChevronSize = 18.dp
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
@@ -295,6 +300,8 @@ data class SlockServerSwitcherItem(
     /** Present means known, including an authoritative zero. */
     val activityUnreadCount: Long? = null,
     val serverPushMuted: Boolean = false,
+    /** `GET /api/servers` `publicPageLive`; drives the Globe mark next to the server name. */
+    val publicPageLive: Boolean = false,
 )
 
 internal data class HomeServerSwitcherBadgePresentation(
@@ -358,7 +365,9 @@ data class SlockHomeConversationItem(
     val activityMuted: Boolean = false,
     val activityMuteSupported: Boolean = false,
     // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
-    val bridgeProvider: String? = null
+    val bridgeProvider: String? = null,
+    /** Channel `guestVisible`; combine with the server's publicPageLive via [channelOnPublicPage]. */
+    val guestVisible: Boolean = false
 )
 
 data class SlockHomeServerDrawerSection(
@@ -2198,6 +2207,7 @@ private fun SlockStructuralHomeShellContent(
                     HomeTitlebar(
                         serverName = currentServerName,
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
+                        serverPublicPageLive = currentHomeHeaderServer.publicPageLive,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         notifications = visibleNotifications,
                         notificationCenterExpanded = notificationCenterExpanded,
@@ -2462,7 +2472,7 @@ private fun SlockStructuralHomeShellContent(
                                                 content =
                                                     ChannelRowContent(
                                                         name = pinned.name,
-                                                        symbol = pinned.homeChannelSymbol(),
+                                                        symbol = pinned.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
                                                         joined = pinned.joined,
                                                         hasDraft = pinned.hasDraft,
                                                         muted = pinned.activityMuted,
@@ -2513,7 +2523,7 @@ private fun SlockStructuralHomeShellContent(
                                                 content =
                                                     ChannelRowContent(
                                                         name = channel.name,
-                                                        symbol = channel.homeChannelSymbol(),
+                                                        symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
@@ -2578,7 +2588,7 @@ private fun SlockStructuralHomeShellContent(
                                                 content =
                                                     ChannelRowContent(
                                                         name = channel.name,
-                                                        symbol = channel.homeChannelSymbol(),
+                                                        symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
@@ -2777,7 +2787,7 @@ private fun SlockStructuralHomeShellContent(
                                             content =
                                                 ChannelRowContent(
                                                     name = item.name,
-                                                    symbol = item.homeChannelSymbol(),
+                                                    symbol = item.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
                                                     joined = item.joined,
                                                     hasDraft = item.hasDraft,
                                                     muted = item.activityMuted,
@@ -3789,6 +3799,27 @@ internal fun SlockHomeConversationItem.isDirectMessageConversation(): Boolean =
 internal fun SlockHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toSlockChannelSymbol()
 
+/**
+ * Row glyph symbol including the public-page mark: a regular channel readable on the server's
+ * live public page draws the hash-globe glyph in place of `#` (web channelKindIcon.tsx:22).
+ * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
+ */
+internal fun SlockHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String =
+    if (
+        channelOnPublicPage(
+            serverPublicPageLive = serverPublicPageLive,
+            channelKind = homeChannelKind(),
+            guestVisible = guestVisible,
+            archived = archived,
+        )
+    ) {
+        HomeChannelSymbolHashGlobe
+    } else {
+        homeChannelSymbol()
+    }
+
+internal const val HomeChannelSymbolHashGlobe = "hash-globe"
+
 internal fun String?.toSlockChannelSymbol(): String =
     when (this?.lowercase()) {
         "private" -> "lock"
@@ -4325,6 +4356,7 @@ private fun List<SlockHomePinnedRow>.sortedPinnedRows(mode: SlockSidebarSortMode
 private fun HomeTitlebar(
     serverName: String,
     serverIdentity: SlockServerSwitcherItem? = null,
+    serverPublicPageLive: Boolean = false,
     hasOtherServerUnread: Boolean,
     notifications: List<SlockHomeNotificationItem>,
     notificationCenterExpanded: Boolean = false,
@@ -4352,6 +4384,7 @@ private fun HomeTitlebar(
                         showDropdown = true,
                         tilted = true,
                         unread = hasOtherServerUnread,
+                        publicPageLive = serverPublicPageLive,
                         textStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
                     )
                 }
@@ -4401,6 +4434,10 @@ private fun HomeServerIdentityCluster(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false)
         )
+        if (server.publicPageLive) {
+            Spacer(Modifier.width(HomeServerPublicPageGlobeGap))
+            SlockPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = SlockColor.TextBlackArgb)
+        }
         Spacer(Modifier.width(HomeServerIdentityNameChevronGap))
         SlockLucideIcon(
             SlockLucideIconName.ChevronDown,
@@ -4417,10 +4454,18 @@ private fun SlockLogoBadge(
     showDropdown: Boolean = false,
     tilted: Boolean = true,
     unread: Boolean = false,
+    publicPageLive: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
     if (tilted) {
-        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
+        SlockTiltedLogoBadge(
+            text = text,
+            modifier = modifier,
+            showDropdown = showDropdown,
+            unread = unread,
+            publicPageLive = publicPageLive,
+            textStyle = textStyle
+        )
         return
     }
 
@@ -4445,9 +4490,10 @@ private fun SlockTiltedLogoBadge(
     modifier: Modifier = Modifier,
     showDropdown: Boolean = false,
     unread: Boolean = false,
+    publicPageLive: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
-    key(text, showDropdown) {
+    key(text, showDropdown, publicPageLive) {
         SlockTiltedBadgeSurface(modifier = modifier) {
             com.tencent.kuikly.compose.foundation.layout.Row(
                 modifier = Modifier.padding(
@@ -4457,6 +4503,10 @@ private fun SlockTiltedLogoBadge(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                if (publicPageLive) {
+                    Spacer(Modifier.width(HomeServerBadgeContentGap))
+                    SlockPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = SlockColor.BrandYellowArgb)
+                }
                 if (showDropdown) {
                     Spacer(Modifier.width(HomeServerBadgeContentGap))
                     SlockLucideIcon(
@@ -5739,7 +5789,20 @@ private fun ServerSwitcherRow(
         }
         ServerSwitcherAvatarTile(server)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    server.name,
+                    style = SlockType.Button,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (server.publicPageLive) {
+                    Spacer(Modifier.width(HomeServerPublicPageGlobeGap))
+                    SlockPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize)
+                }
+            }
             Text(
                 "/${server.slug}",
                 style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
@@ -6340,6 +6403,11 @@ private fun ChannelRow(
                     SlockLucideIcon(
                         "hash",
                         Modifier.size(ChannelSymbolIconSize),
+                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
+                    )
+                } else if (content.symbol == HomeChannelSymbolHashGlobe) {
+                    SlockHashGlobeIcon(
+                        size = ChannelSymbolIconSize,
                         color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
                     )
                 } else if (content.symbol == "git-branch") {
