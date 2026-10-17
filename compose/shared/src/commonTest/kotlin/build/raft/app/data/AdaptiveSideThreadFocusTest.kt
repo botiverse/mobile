@@ -243,4 +243,23 @@ class AdaptiveSideThreadFocusTest {
         assertEquals(before?.payload, focused.visibleSideThread()?.payload)
         assertEquals(before?.owner, focused.visibleSideThread()?.owner)
     }
+
+    @Test
+    fun enteringFocusKeepsTheSessionRenderableSoNoZeroWeightLayoutIsNeeded() {
+        // A device run crashed with IllegalArgumentException("invalid weight 0.0") on entering
+        // Focus: `Modifier.weight(0f)` is illegal in Compose. The layout now collapses the parent
+        // pane by WIDTH instead, which requires the session to stay renderable in both directions.
+        // This pins that contract so the layout can never be forced into an invalid state.
+        val session = sessionWithSideThread(widePane(), detailPaneWidthDp = 1240f)
+
+        val focused = session.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+        assertTrue(focused.sideThreadFocusActive())
+        assertTrue(focused.visibleSideThread() != null, "Focus must keep the thread renderable")
+        assertTrue(focused.workspace?.selection != null, "Focus must keep a selection to restore")
+
+        val restored = focused.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+        assertFalse(restored.sideThreadFocusActive())
+        assertTrue(restored.visibleSideThread() != null, "leaving Focus must restore the two columns")
+        assertTrue(restored.workspace?.selection != null)
+    }
 }
