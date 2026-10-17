@@ -301,8 +301,11 @@ internal fun rememberSlockChildPageOriginBinding(
     // The key is computed from the SAME page data the host used, so both sides resolve to one state.
     // When this composition is not a registered child page the registry yields a zero state, and the
     // ambient local (also zero by default) agrees -- full-screen behaviour is unchanged.
-    val pageData = LocalActivity.current.pageData
-    val state = SlockChildPageOriginRegistry.stateFor(slockChildPageOriginKey(pageData.pageName, pageData.params))
+    // The host writes its registry key into this page's own params, because a page cannot see its
+    // own name and a CompositionLocal cannot cross the @Page boundary.
+    val params = LocalActivity.current.pageData.params
+    val originKey = params.optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM).trim()
+    val state = SlockChildPageOriginRegistry.stateFor(originKey)
     SideEffect { anchorRef.attachChildPageOrigin(state) }
     return state
 }
