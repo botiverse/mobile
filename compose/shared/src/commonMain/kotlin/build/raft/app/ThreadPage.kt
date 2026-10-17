@@ -1,5 +1,13 @@
 package build.raft.app
 
+import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
+import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
+import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
+import build.raft.app.data.slockShouldApplyShellOverlayResult
+import build.raft.app.data.SlockShellOverlayRequest
+import build.raft.app.data.SlockShellOverlayItem
+import build.raft.app.data.cancelSlockShellOverlayJson
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.sideThreadFocusActive
@@ -16566,8 +16574,12 @@ private fun ThreadHeaderFocusModeMenu(
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
     // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
     // anchor here -- in window space -- and ask the shell to draw it.
-    val pageData = LocalActivity.current.pageData
-    val pageKey = slockChildPageOriginKey(pageData.params.optString(SHELL_OVERLAY_PAGE_KEY_PARAM), pageData.params)
+    // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
+    val pageKey =
+        LocalActivity.current.pageData.params
+            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .trim()
+            .ifEmpty { "thread-panel" }
     var openRequestId by remember { mutableStateOf<String?>(null) }
     DisposableEffect(eventBus, pageKey) {
         val bus = eventBus ?: return@DisposableEffect onDispose {}

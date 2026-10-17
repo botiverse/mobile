@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
@@ -2401,7 +2402,7 @@ private fun SlockAppShellReadyContent(
                 // Ignore a request superseded by another page, and honour a cancel from the page
                 // that owns the menu currently on screen.
                 val current = shellOverlayMenu
-                when (eventData.optString(SHELL_OVERLAY_MESSAGE_TYPE)) {
+                when (eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)) {
                     SHELL_OVERLAY_TYPE_CANCEL -> {
                         if (current != null && current.request.requestId == request.requestId) {
                             shellOverlayMenu = null
