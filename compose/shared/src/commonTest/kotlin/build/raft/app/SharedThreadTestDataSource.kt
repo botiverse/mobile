@@ -39,7 +39,7 @@ internal fun testSharedThreadDataSource(
     serverMembersStore: SharedServerMembersStore? = null,
     conversationRepository: ConversationRepository? = null,
     channelRepository: ChannelRepository? = null,
-    homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
+    homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
     channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     messageStore: SharedThreadMessageStore? = null,
     cacheEnvironmentIdProvider: () -> String,

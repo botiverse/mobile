@@ -206,6 +206,23 @@ internal class SharedHomeStore(
             ?.snapshot
             ?.takeIf { snapshot -> snapshot.server.id == serverId }
 
+    /**
+     * Bounded wait for an in-flight home load, returning the resulting snapshot when it belongs to
+     * [serverId]. Lets cold-start readers (e.g. thread initial access, task #387) reuse the single
+     * home fetch instead of issuing a duplicate network request; returns null when no load is
+     * in flight or the deadline elapses first.
+     */
+    suspend fun awaitSnapshotFor(serverId: ServerId, timeoutMillis: Long): HomeSnapshot? {
+        val deadline = kotlin.time.TimeSource.Monotonic.markNow()
+        while (true) {
+            snapshotFor(serverId)?.let { return it }
+            val remaining = timeoutMillis - deadline.elapsedNow().inWholeMilliseconds
+            if (remaining <= 0) return null
+            val job = loadJob?.takeIf { it.isActive } ?: return null
+            withTimeoutOrNull(remaining) { job.join() } ?: return null
+        }
+    }
+
     private var stateDiagnosticsReason: String = "unknown"
     private var stateDiagnosticsIntent: SharedHomeIntent? = null
 

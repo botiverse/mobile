@@ -1491,7 +1491,7 @@ internal class SharedThreadDataSource(
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
-    private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
+    private val homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     // REQUIRED: the cache environment is an identity dimension of every reply cache. There is no
@@ -1611,7 +1611,7 @@ internal class SharedThreadDataSource(
         serverMembersStore: SharedServerMembersStore? = null,
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
-        homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
+        homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String,
