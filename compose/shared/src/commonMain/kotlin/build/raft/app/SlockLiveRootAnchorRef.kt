@@ -264,6 +264,22 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
     }
 }
 
+/**
+ * Reads the enclosing child page's origin for [anchorRef] and keeps the ref bound to it.
+ *
+ * Split out because `CompositionLocal.current` is only readable in a @Composable scope, while the
+ * modifier factory itself is not composable. Returns the state so the capture element can also
+ * carry it through modifier updates.
+ */
+@Composable
+internal fun rememberSlockChildPageOriginBinding(
+    anchorRef: SlockLiveRootAnchorRef
+): SlockChildPageOriginState {
+    val state = LocalSlockChildPageOrigin.current
+    SideEffect { anchorRef.attachChildPageOrigin(state) }
+    return state
+}
+
 internal val LocalSlockChildPageOrigin =
     androidx.compose.runtime.staticCompositionLocalOf { SlockChildPageOriginState() }
 
@@ -400,13 +416,12 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
-    // task #181 follow-up: bind the enclosing child page's origin so resolve() can convert this
-    // page's root coordinates into window coordinates. Offset.Zero outside a child page, i.e.
-    // unchanged behaviour for single-column / full-screen hosts.
-    val childPageOrigin = LocalSlockChildPageOrigin.current
-    SideEffect { anchorRef.attachChildPageOrigin(childPageOrigin) }
+    // task #181 follow-up: the enclosing child page's origin must be bound so resolve() can convert
+    // this page's root coordinates into window coordinates. Read it in a @Composable scope; a
+    // CompositionLocal cannot be read from a plain modifier factory.
+    val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
     return if (enabled) {
-        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured)
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
     } else {
         this
     }
@@ -414,13 +429,14 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
 
 private data class SlockLiveRootAnchorCaptureElement(
     val anchorRef: SlockLiveRootAnchorRef,
-    val onCaptured: ((IntSize) -> Unit)?
+    val onCaptured: ((IntSize) -> Unit)?,
+    val childPageOrigin: SlockChildPageOriginState
 ) : ModifierNodeElement<SlockLiveRootAnchorCaptureNode>() {
     override fun create(): SlockLiveRootAnchorCaptureNode =
-        SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured)
+        SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured, childPageOrigin)
 
     override fun update(node: SlockLiveRootAnchorCaptureNode) {
-        node.update(anchorRef, onCaptured)
+        node.update(anchorRef, onCaptured, childPageOrigin)
     }
 
     override fun InspectorInfo.inspectableProperties() {
@@ -431,7 +447,8 @@ private data class SlockLiveRootAnchorCaptureElement(
 
 private class SlockLiveRootAnchorCaptureNode(
     private var anchorRef: SlockLiveRootAnchorRef,
-    private var onCaptured: ((IntSize) -> Unit)?
+    private var onCaptured: ((IntSize) -> Unit)?,
+    private var childPageOrigin: SlockChildPageOriginState
 ) : Modifier.Node(), GlobalPositionAwareModifierNode {
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onAttach() {
@@ -455,12 +472,17 @@ private class SlockLiveRootAnchorCaptureNode(
 
     fun update(
         nextAnchorRef: SlockLiveRootAnchorRef,
-        nextOnCaptured: ((IntSize) -> Unit)?
+        nextOnCaptured: ((IntSize) -> Unit)?,
+        nextChildPageOrigin: SlockChildPageOriginState
     ) {
         val currentAnchorRef = anchorRef
         val ownerChanged = currentAnchorRef !== nextAnchorRef
         anchorRef = nextAnchorRef
         onCaptured = nextOnCaptured
+        childPageOrigin = nextChildPageOrigin
+        // task #181 follow-up: keep the ref bound after a reuse/update, otherwise a recycled row
+        // would resolve against a stale origin.
+        anchorRef.attachChildPageOrigin(childPageOrigin)
 
         // Kuikly may update a reused lazy-row Modifier.Node without scheduling another global
         // positioning callback when the recycled slot stays at the same coordinates. Capture the
