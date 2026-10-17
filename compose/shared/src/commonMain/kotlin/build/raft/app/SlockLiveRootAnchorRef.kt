@@ -432,11 +432,18 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
 }
 
 /**
- * Popover anchoring for feature code: binds the enclosing child page's origin so `resolve()` can
- * convert this page's root coordinates into window coordinates.
+ * Child-page-aware popover anchoring.
+ *
+ * Identical to [slockCaptureLiveRootAnchor] except it also binds the enclosing Kuikly child page's
+ * window origin, so `resolve()` converts this page's root coordinates into window coordinates.
+ * Use this inside a `SlockKuiklyChildPage` (dual-pane detail / side-thread column); elsewhere the
+ * plain modifier is fine because a full-screen page's origin is zero anyway.
+ *
+ * Distinct name on purpose: an overload would make `Modifier.slockCaptureLiveRootAnchor(ref)`
+ * ambiguous and silently prefer the @Composable variant at non-composable call sites.
  */
 @Composable
-internal fun Modifier.slockCaptureLiveRootAnchor(
+internal fun Modifier.slockCaptureChildPageRootAnchor(
     anchorRef: SlockLiveRootAnchorRef,
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null

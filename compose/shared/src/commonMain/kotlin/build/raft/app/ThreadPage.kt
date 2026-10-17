@@ -16551,7 +16551,9 @@ private fun ThreadHeaderFocusModeMenu(
     Box(
         modifier =
             Modifier
-                .slockCaptureLiveRootAnchor(anchorRef)
+                // Child-page-aware: this menu lives inside the thread's Kuikly child page, so the
+                // anchor needs the page's window origin added or it lands over the list pane.
+                .slockCaptureChildPageRootAnchor(anchorRef)
                 // The shared header action button carries no description of its own, so keep the
                 // menu trigger labelled here instead of dropping the a11y label with the old button.
                 .semantics { contentDescription = menuDescription }
@@ -26363,7 +26365,9 @@ internal fun Modifier.threadMessageLongPressActions(
     }
     gestureOwner.tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
-        .slockCaptureLiveRootAnchor(gestureOwner.rootAnchor)
+        // Child-page-aware: the long-press menu also opens inside the thread's child page, so its
+        // anchor needs the page's window origin or the menu drifts over the list pane.
+        .slockCaptureChildPageRootAnchor(gestureOwner.rootAnchor)
         .threadMessagePointerInput(
             role = "tap_movement",
             messageId = messageId,
