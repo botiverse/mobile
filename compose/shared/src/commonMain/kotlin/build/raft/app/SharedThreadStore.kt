@@ -6129,27 +6129,35 @@ internal class SharedThreadStore(
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
 
     private fun memoryCacheSeededInitialPayload(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        fun miss(reason: String): KuiklyThreadScreenPayload {
+            diagnosticsLogger?.invoke(
+                "thread_initial_seed hit=false reason=$reason " +
+                    "route=${routePayload.instanceId.ifBlank { "?" }} status=${routePayload.status}"
+            )
+            return routePayload
+        }
         // A route payload that already carries renderable content (e.g. a launch-time page) is
         // shown as-is; only the bare loading shell is replaced by the cache.
-        if (routePayload.hasRenderableThreadContent()) return routePayload
+        if (routePayload.hasRenderableThreadContent()) return miss("route_has_content")
         val routeContextPayload =
             routePayload
                 .withoutRouteCandidateContent()
                 .withoutTransientLocalSendingMessages()
         // Reply threads keep the start() path: their cached-parent enrichment needs the session,
         // which is only reachable through a suspend capture.
-        if (routeContextPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return routePayload
+        if (routeContextPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return miss("reply_thread")
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
-        val threadId = routeIdentity.timelineKey ?: return routePayload
-        val provenance = dataSource.currentReplyCacheProvenance() ?: return routePayload
+        val threadId = routeIdentity.timelineKey ?: return miss("no_timeline_key")
+        val provenance = dataSource.currentReplyCacheProvenance() ?: return miss("no_provenance")
+        if (!routeIdentity.canRenderTimelineCandidates) return miss("route_not_renderable")
+        val cacheHit =
+            dataSource.cachedPayloadIfCurrent(threadId, provenance)
+                ?: return miss("cache_miss threadId=$threadId")
+        if (!cacheHit.isUsableCachedPayloadForRoute(routeContextPayload)) return miss("stale_for_route threadId=$threadId")
         val cached =
-            dataSource
-                .cachedPayloadIfCurrent(threadId, provenance)
-                ?.takeIf { routeIdentity.canRenderTimelineCandidates }
-                ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
-                ?.withRouteContext(routeContextPayload)
-                ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
-                ?: return routePayload
+            cacheHit
+                .withRouteContext(routeContextPayload)
+                .withStoreResolvedReplyOriginFrom(routeContextPayload)
         dataSource.seedThreadAuthorProfiles(
             serverId = provenance.serverId,
             payload = cached,
