@@ -6125,47 +6125,9 @@ internal class SharedThreadStore(
     // ~one frame the async Start intent needs to reach the same cache. Only the memory cache is
     // consulted here (all synchronous); the durable last-known frame stays with start(), which
     // re-runs the full seed chain right after and converges to the same payload.
-    private val _state = MutableStateFlow(SharedThreadState(payload = memoryCacheSeededInitialPayload(initialPayload)))
+    private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
 
-    private fun memoryCacheSeededInitialPayload(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        // A route payload that already carries renderable content (e.g. a launch-time page) is
-        // shown as-is; only the bare loading shell is replaced by the cache.
-        if (routePayload.hasRenderableThreadContent()) return routePayload
-        val routeContextPayload =
-            routePayload
-                .withoutRouteCandidateContent()
-                .withoutTransientLocalSendingMessages()
-        // Reply threads keep the start() path: their cached-parent enrichment needs the session,
-        // which is only reachable through a suspend capture.
-        if (routeContextPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return routePayload
-        val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
-        val threadId = routeIdentity.timelineKey ?: return routePayload
-        val provenance = dataSource.currentReplyCacheProvenance() ?: return routePayload
-        val cached =
-            dataSource
-                .cachedPayloadIfCurrent(threadId, provenance)
-                ?.takeIf { routeIdentity.canRenderTimelineCandidates }
-                ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
-                ?.withRouteContext(routeContextPayload)
-                ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
-                ?: return routePayload
-        dataSource.seedThreadAuthorProfiles(
-            serverId = provenance.serverId,
-            payload = cached,
-            source = "initial_memory_cache"
-        )
-        diagnosticsLogger?.invoke(
-            "thread_initial_seed threadId=$threadId hit=true messages=${cached.messages.size}"
-        )
-        // Same pending-send restoration start() applies to its visible candidate, so journaled
-        // local sends are already in the first frame on a warm entry.
-        return dataSource.restorePendingLocalSends(
-            provenance = provenance,
-            route = routeIdentity,
-            canonicalPayload = cached,
-        )
-    }
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
             .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
@@ -10331,13 +10293,16 @@ internal class SharedThreadStore(
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
     private val initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    // Tests inject a plain scope: the default viewModelScope needs the Kuikly pager id, which is
+    // only assigned after ViewModelStore.get() returns (the #3081 crash) and never in JUnit.
+    private val scopeOverride: CoroutineScope? = null,
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
             SharedThreadStore(
                 dataSource = dataSource,
-                scope = viewModelScope,
+                scope = scopeOverride ?: viewModelScope,
                 diagnosticsLogger = diagnosticsLogger,
                 initialPayload = initialPayload
             )

@@ -2653,6 +2653,39 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun viewModelEnsureStartedDispatchesStartExactlyOnce() = runBlocking {
+        // task #387 follow-up: the page calls ensureStarted() during composition; recompositions
+        // and the page's later effect must not double the load. The injected scope stands in for
+        // the Kuikly page scope (unavailable in JUnit — it needs the pager id).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true)
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val viewModel =
+            SharedThreadViewModel(
+                dataSource = dataSource,
+                initialPayload = basePayload(),
+                scopeOverride = scope
+            )
+
+        viewModel.ensureStarted()
+        viewModel.ensureStarted()
+        // Let the fire-and-forget store coroutine pass its first-frame delay and reach refresh.
+        delay(100)
+
+        val payload = viewModel.state.value.payload
+        assertEquals("content", payload.status)
+        assertEquals("cached body", payload.messages.single().body)
+        assertEquals(1, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun cachedThreadPayloadSurvivesVisibleFetchFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
@@ -2674,71 +2707,6 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
-    @Test
-    fun warmChannelEntrySeedsFirstFrameFromMemoryCacheBeforeStart() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeThreadApi(failChannelMessages = true)
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        // The route payload arrives as a bare loading shell (ThreadRoutePayload.kt); the store must
-        // seed the first frame from the memory cache at construction, before any Start intent.
-        val store =
-            SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = basePayload())
-
-        val firstState = store.state.value
-        assertEquals("content", firstState.timelineSlice.status)
-        assertEquals("cached body", firstState.timelineSlice.messages.single().body)
-        assertEquals(
-            ThreadRouteMountPlan.FeatureSurfaces,
-            firstState.payload.threadRouteMountPlan(
-                timelineSlice = firstState.timelineSlice,
-                accessResolution = firstState.accessResolution
-            )
-        )
-        scope.cancel()
-    }
-
-    @Test
-    fun coldChannelEntryKeepsLoadingShellFirstFrame() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val store =
-            SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = basePayload())
-
-        val firstState = store.state.value
-        assertEquals("loading", firstState.timelineSlice.status)
-        assertTrue(firstState.timelineSlice.messages.isEmpty())
-        scope.cancel()
-    }
-
-    @Test
-    fun replyThreadEntryIsNotSeededAtConstruction() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        // Reply threads need the session-bearing parent enrichment chain in start(); construction
-        // must not seed them from the bare memory cache.
-        val store =
-            SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = replyPayload("m1", "thread-m1"))
-
-        assertEquals("loading", store.state.value.timelineSlice.status)
-        scope.cancel()
-    }
 
     @Test
     fun sameServerAccountSwitchShowsLoadingShellInsteadOfPreviousOwnersCachedTimeline() = runBlocking {
