@@ -3367,6 +3367,9 @@ private fun SlockAppShellReadyContent(
             val generation = eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
             val requestId = adaptiveWorkspaceStore.snapshot().pendingDetailOpens.values
                 .firstOrNull { it.detailGeneration == generation }?.requestId.orEmpty()
+            // A READY with no adoption pending (default-landing/detail remount) is not an
+            // A1 envelope — admitting it would pin the case on a blank requestId.
+            if (requestId.isBlank()) return null
             val witness = qaLastWitness ?: return null
             return QaAdaptiveReadyReplay.admit(
                 requestId = requestId,
