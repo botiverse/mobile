@@ -36,8 +36,14 @@ internal data class SlockAdaptivePaneEvent(
 internal const val SlockAdaptivePanePagerEvent = "slockAdaptivePaneChanged"
 
 /**
- * Pure reducer so every host delivers the same layout contract. A half-folded posture never
- * opens a second pane because the hinge is part of the interaction surface.
+ * Pure reducer so every host delivers the same layout contract.
+ *
+ * Task #180 (artin 2026-10-17): a HALF_OPENED / half-folded posture no longer suppresses the second
+ * pane. It follows the same width rule as every other posture -- half-folded devices are a real
+ * large-screen shape (the folded-out half), and treating them as compact left those users on a
+ * phone layout beside an 840dp-capable window. The Unknown posture still means "no window facts
+ * yet" and stays compact. The side reply-thread column keeps its own, higher gate (>=1200dp plus
+ * detail-area headroom), so this widens DualPane only.
  */
 internal fun reduceSlockAdaptivePane(
     previous: SlockAdaptivePaneState,
@@ -49,7 +55,6 @@ internal fun reduceSlockAdaptivePane(
     val layout =
         if (
             event.posture != SlockAdaptivePanePosture.Unknown &&
-            event.posture != SlockAdaptivePanePosture.HalfFolded &&
             widthDp >= DualPaneMinimumWidthDp
         ) {
             SlockAdaptivePaneLayout.DualPane
