@@ -286,12 +286,24 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle {
 }
 
 internal object SlockType {
-    val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
-    val SectionLabel = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
-    val Body = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
-    val Caption = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
-    val Button = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
-    val ButtonBold = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
-    val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
-    val Input = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+    // Task #179: these are GETTERS, not vals. A `val` is evaluated once at object initialisation
+    // and then keeps whatever face was active at first touch -- pressing a font option would write
+    // the preference and repaint nothing, because ~970 call sites read this object. A getter
+    // re-resolves against SlockFontFaceState.preference on every read, so a change reaches them all.
+    val PageTitle: TextStyle
+        get() = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
+    val SectionLabel: TextStyle
+        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
+    val Body: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+    val Caption: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
+    val Button: TextStyle
+        get() = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
+    val ButtonBold: TextStyle
+        get() = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
+    val TabLabel: TextStyle
+        get() = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+    val Input: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
 }

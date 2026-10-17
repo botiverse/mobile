@@ -2,16 +2,25 @@ package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButtonDefaultTextStyle
 import build.raft.app.components.SlockSpinnerActiveSweepAngle
+import build.raft.app.data.FontPreference
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNotEquals
 
 class SlockDesignTokensTest {
+    // The face state is process-wide; restore it so this suite cannot leak a face into others.
+    @AfterTest
+    fun restoreDefaultFace() {
+        SlockFontFaceState.apply(FontPreference.Default)
+    }
+
     private fun expectedRenderedWeight(weight: FontWeight): FontWeight =
         if (slockPlatformPreservesEncodedFontWeightForFallback()) weight else FontWeight.Normal
 
@@ -54,10 +63,50 @@ class SlockDesignTokensTest {
 
     @Test
     fun slockFontFamiliesUseIosRegisteredPostScriptNames() {
-        assertEquals("SpaceGrotesk-Regular", SlockType.Body.fontFamily.slockFontName())
-        assertEquals("SpaceGrotesk-Medium", SlockType.Button.fontFamily.slockFontName())
-        assertEquals("SpaceGrotesk-SemiBold", SlockType.PageTitle.fontFamily.slockFontName())
-        assertEquals("SpaceGrotesk-Bold", SlockType.ButtonBold.fontFamily.slockFontName())
+        // The contract is: whatever face the default option resolves to, its per-weight names must
+        // be the PostScript names iOS has registered from Info.plist/UIAppFonts, because that is
+        // how the family resolves on iOS at all. It is NOT "the default is a particular typeface"
+        // -- task #179 moved the default from Space Grotesk to Hanken Grotesk to match web, and a
+        // test hardcoding the old face would have blocked that for the wrong reason.
+        val defaultFace = FontPreference.Default
+        val psPrefix =
+            when (defaultFace) {
+                FontPreference.HankenGrotesk -> "HankenGrotesk"
+                FontPreference.GeistInter -> "Geist"
+                FontPreference.SpaceGrotesk -> "SpaceGrotesk"
+                // The system option names no bundled family, so there is no PostScript name to check.
+                FontPreference.System -> return
+            }
+        val expected =
+            mapOf(
+                SlockType.Body to "$psPrefix-Regular",
+                SlockType.Button to "$psPrefix-Medium",
+                SlockType.PageTitle to "$psPrefix-SemiBold",
+                SlockType.ButtonBold to "$psPrefix-Bold",
+            )
+        expected.forEach { (style, name) ->
+            assertEquals(name, style.fontFamily.slockFontName(), "default face $defaultFace")
+        }
+    }
+
+    @Test
+    fun everyBundledWeightNameIsDistinctSoIosCanTellWeightsApart() {
+        // A variable font instanced per weight keeps ONE PostScript name unless the name table is
+        // rewritten, and then iOS collapses every weight into a single face (all text renders at
+        // Regular). Assert the names the renderer will actually ask for are pairwise distinct.
+        FontPreference.entries.filter { it.sansFamily != null }.forEach { preference ->
+            SlockFontFaceState.apply(preference)
+            val names =
+                listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
+                    .map { slockFontFamilyForWeight(it).slockFontName() }
+            assertEquals(
+                names.size,
+                names.toSet().size,
+                "$preference exposes duplicate PostScript names: $names"
+            )
+            assertTrue(names.none { it.isNullOrBlank() }, "$preference has an unnamed weight: $names")
+        }
+        SlockFontFaceState.apply(FontPreference.Default)
     }
 
     @Test

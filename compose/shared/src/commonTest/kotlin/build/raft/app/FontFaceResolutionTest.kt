@@ -99,4 +99,23 @@ class FontFaceResolutionTest {
             }
         }
     }
+
+    @Test
+    fun theTypeTokensThemselvesFollowTheFaceNotAFrozenSnapshot() {
+        // Guards a bug this change actually shipped for one round: SlockType's members were `val`s,
+        // so they captured the face at object initialisation. Every ~970 call site reads SlockType,
+        // so switching the option wrote the preference and repainted nothing. Asserting the token
+        // (not just the resolver helper) is what catches that.
+        select(FontPreference.SpaceGrotesk)
+        val spaceBody = SlockType.Body.fontFamily
+
+        select(FontPreference.HankenGrotesk)
+        val hankenBody = SlockType.Body.fontFamily
+
+        assertTrue(
+            spaceBody != hankenBody,
+            "SlockType.Body must follow the selected face; it stayed on one snapshot"
+        )
+        assertEquals(SlockType.Body.fontFamily, slockFontFamilyForWeight(FontWeight.Normal))
+    }
 }
