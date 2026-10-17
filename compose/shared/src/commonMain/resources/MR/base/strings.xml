@@ -2236,4 +2236,6 @@
     <string name="auth_private_deployment_web_unreachable">The web address could not be reached. Check it and try again.</string>
     <string name="auth_private_deployment_outdated">This server does not report a supported version (1.13.0 or later). Upgrade the server and try again.</string>
     <string name="auth_private_deployment_failed">Could not save the server settings. Try again.</string>
+    <string name="channel_public_page_readable">Anyone can read this channel on the public page</string>
+    <string name="layout_server_public_page_live">Public: anyone can read its public channels without signing in</string>
 </resources>

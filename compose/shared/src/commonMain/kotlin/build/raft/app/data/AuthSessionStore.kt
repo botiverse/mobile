@@ -564,7 +564,17 @@ data class StoredAuthServer(
     val hideHumansFromMembers: Boolean = false,
     val role: String? = null,
     val avatarUrl: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    /**
+     * Whether this server's public page is live: the owner made it public AND the
+     * `public_server_v0` gate is on for it (evaluated as the anonymous public route does).
+     * Sent per server by `GET /api/servers` (botiverse/slock@9df0d1b3f
+     * packages/server/src/routes/servers.ts:748-770); the owner-only `publiclyVisible`
+     * itself is never sent. Absent on other server payloads (create, join), so it
+     * defaults to false. There is no socket event for it; members see changes on the
+     * next server-list refresh.
+     */
+    val publicPageLive: Boolean = false
 ) {
     fun toServerSummary(): ServerSummary =
         ServerSummary(
@@ -577,7 +587,8 @@ data class StoredAuthServer(
             description = slug?.let { "/$it" },
             avatarUrl = avatarUrl,
             hideHumansFromMembers = hideHumansFromMembers,
-            permissions = serverPermissionsForRole(role)
+            permissions = serverPermissionsForRole(role),
+            publicPageLive = publicPageLive
         )
 }
 

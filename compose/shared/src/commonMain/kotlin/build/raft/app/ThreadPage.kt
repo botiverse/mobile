@@ -6339,9 +6339,14 @@ private fun SharedThreadRouteContentContent(
             lastAcceptedHeaderProjection = accepted
         }
     }
+    // Public-page globe on the channel header icon: the server's publicPageLive comes from
+    // the session server list (canonical store state), never from the route payload.
+    val headerServerPublicPageLive =
+        currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload) {
+        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive) {
             headerProjectionInput.displayModel(stableHeaderProjection, payload)
+                .copy(serverPublicPageLive = headerServerPublicPageLive)
         }
     val activityMuteState =
         remember(payload, stableHeaderProjection, sharedHomeStore) {
@@ -15890,7 +15895,10 @@ internal fun ThreadPageHeader(
                 )
             } else if (payload.showModeTabs) {
                 Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
-                    SlockChannelIdentityTile(headerDisplay.channelKind)
+                    SlockChannelIdentityTile(
+                        channelKind = headerDisplay.channelKind,
+                        onPublicPage = headerDisplay.channelOnPublicPage
+                    )
                 }
             }
         },
@@ -16048,7 +16056,8 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
 internal fun SlockChannelIdentityTile(
     channelKind: String?,
     tileSize: Dp = ThreadHeaderChannelTileSize,
-    iconSize: Dp = ThreadHeaderChannelIconSize
+    iconSize: Dp = ThreadHeaderChannelIconSize,
+    onPublicPage: Boolean = false
 ) {
     Box(
         modifier = Modifier.size(tileSize)
@@ -16056,11 +16065,15 @@ internal fun SlockChannelIdentityTile(
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            channelKind.threadChannelHeaderIcon(),
-            modifier = Modifier.size(iconSize),
-            color = "#FF141111"
-        )
+        if (onPublicPage) {
+            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = "#FF141111")
+        } else {
+            SlockLucideIcon(
+                channelKind.threadChannelHeaderIcon(),
+                modifier = Modifier.size(iconSize),
+                color = "#FF141111"
+            )
+        }
     }
 }
 

@@ -67,7 +67,9 @@ internal data class SharedConversationDirectoryProjection(
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
-    val bridgeProvider: String? = null
+    val bridgeProvider: String? = null,
+    /** Channel `guestVisible` from the Home channel row; threads/DMs/inbox projections never carry it. */
+    val guestVisible: Boolean = false
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -458,7 +460,8 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         channelCapabilities = channelCapabilities,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
-        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider
+        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider,
+        guestVisible = kind != ConversationKind.Thread && guestVisible
     )
 }
 

@@ -2236,4 +2236,6 @@
     <string name="auth_private_deployment_web_unreachable">前端地址无法访问，请检查后重试。</string>
     <string name="auth_private_deployment_outdated">这个服务器没有返回支持的版本（需要 1.13.0 或更高）。请升级服务器后重试。</string>
     <string name="auth_private_deployment_failed">保存失败，请重试。</string>
+    <string name="channel_public_page_readable">任何人都能在公开页阅读这个频道</string>
+    <string name="layout_server_public_page_live">已公开：任何人不登录也能阅读公开的频道</string>
 </resources>

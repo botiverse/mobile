@@ -69,6 +69,15 @@ data class HomeChannelWireDto(
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     val bridge: HomeChannelBridgeWireDto? = null,
+    /**
+     * Full `channels` db row column (botiverse/slock@9df0d1b3f packages/server/src/db/schema.ts:1801,
+     * `guest_visible boolean not null default false`). `GET /api/channels` selects the whole row
+     * (packages/server/src/services/channelService.ts:1964 `db.select().from(channels)`), so the
+     * field is present on list and detail payloads; older servers omit it and it defaults to false.
+     * Web marks a channel as readable on the public page iff the server's `publicPageLive` &&
+     * `guestVisible` && not archived (packages/web/src/components/layout/Sidebar.tsx:894).
+     */
+    val guestVisible: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -123,6 +132,8 @@ private data class HomeChannelDetailWireDto(
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     val bridge: HomeChannelBridgeWireDto? = null,
+    /** See [HomeChannelWireDto.guestVisible]. */
+    val guestVisible: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -199,6 +210,7 @@ internal fun parseSlockChannelDetail(
             jointBillingLocked = wire.jointBillingLocked,
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
             bridge = wire.bridge,
+            guestVisible = wire.guestVisible,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -402,6 +414,7 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
+        guestVisible = guestVisible,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,

@@ -2225,4 +2225,6 @@
     <string name="auth_private_deployment_web_unreachable">Web アドレスに接続できません。確認してもう一度お試しください。</string>
     <string name="auth_private_deployment_outdated">このサーバーは対応バージョン（1.13.0 以降）を返しませんでした。サーバーを更新してから、もう一度お試しください。</string>
     <string name="auth_private_deployment_failed">保存できませんでした。もう一度お試しください。</string>
+    <string name="channel_public_page_readable">誰でも公開ページでこのチャンネルを閲覧できます</string>
+    <string name="layout_server_public_page_live">公開中：サインインしなくても誰でも公開チャンネルを閲覧できます</string>
 </resources>

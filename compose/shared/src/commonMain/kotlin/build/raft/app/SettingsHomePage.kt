@@ -23390,6 +23390,7 @@ private fun ServerSummary.toSharedSwitcherItem(
         broaderUnreadCount = serverUnreadCounts[id.value] ?: unreadCount,
         activityUnreadCount = activityProjection.countFor(serverOwner),
         serverPushMuted = activityProjection.serverPushMutedFor(serverOwner),
+        publicPageLive = publicPageLive,
     )
 }
 
@@ -23403,7 +23404,12 @@ internal fun sharedHomeSwitcherItems(
     session.servers.map { server ->
         server.toServerSummary().let { summary ->
             if (summary.id == selectedServer.id) {
-                selectedServer.copy(avatarUrl = selectedServer.avatarUrl ?: summary.avatarUrl)
+                selectedServer.copy(
+                    avatarUrl = selectedServer.avatarUrl ?: summary.avatarUrl,
+                    // publicPageLive only comes from the server list (session), never
+                    // from a Home snapshot, so the session row stays authoritative.
+                    publicPageLive = summary.publicPageLive
+                )
             } else {
                 summary
             }
@@ -23439,7 +23445,8 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackArchived: Boolean = false,
     val fallbackActivityMuted: Boolean = false,
     val fallbackActivityMuteSupported: Boolean = false,
-    val fallbackBridgeProvider: String? = null
+    val fallbackBridgeProvider: String? = null,
+    val fallbackGuestVisible: Boolean = false
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -23554,7 +23561,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackArchived = archived,
         fallbackActivityMuted = activityMuted,
         fallbackActivityMuteSupported = activityMuteSupported,
-        fallbackBridgeProvider = bridgeProvider
+        fallbackBridgeProvider = bridgeProvider,
+        fallbackGuestVisible = guestVisible
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -23593,7 +23601,10 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         archived = directoryProjection?.archived ?: fallbackArchived,
         activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,
         activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported,
-        bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider
+        bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider,
+        // The Home row seed is the canonical channel row; a directory projection from a
+        // sparse source (inbox) never carries guestVisible, so it may only add, not clear.
+        guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true
     )
 }
 
