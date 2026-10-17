@@ -22,6 +22,7 @@ import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewListener
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoPlayState
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoViewContentMode
+import build.raft.app.SlockVideoProgressContract
 
 /**
  * Media3 (ExoPlayer) backed Kuikly video view (task #556).
@@ -52,6 +53,7 @@ private class SlockKRVideoView(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var stopped = false
     private var lastReportedState: KRVideoPlayState? = null
+    private val progressContract = SlockVideoProgressContract()
 
     private val hostActivity: ComponentActivity? = context.unwrapComponentActivity()
     private var fullscreenContainer: FrameLayout? = null
@@ -87,7 +89,8 @@ private class SlockKRVideoView(
             override fun run() {
                 if (stopped) return
                 val duration = player.duration.takeIf { it > 0 } ?: 0L
-                listener.playTimeDidChangedWithCurrentTime(player.currentPosition, duration)
+                val progress = progressContract.progress(player.currentPosition, duration)
+                listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
         }
@@ -111,8 +114,11 @@ private class SlockKRVideoView(
                                     KRVideoPlayState.KRVideoPlayStatePaused
                                 }
                             )
-                        Player.STATE_ENDED ->
+                        Player.STATE_ENDED -> {
+                            val progress = progressContract.ended(player.duration)
+                            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                             reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                        }
                         Player.STATE_IDLE -> Unit
                     }
                 }
@@ -153,6 +159,8 @@ private class SlockKRVideoView(
     override fun play() {
         if (stopped) return
         if (player.playbackState == Player.STATE_ENDED) {
+            val progress = progressContract.replay()
+            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
             player.seekTo(0L)
         }
         player.play()
@@ -194,7 +202,9 @@ private class SlockKRVideoView(
 
     override fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
-        player.seekTo(seekToTimeMs.coerceAtLeast(0L))
+        val progress = progressContract.seek(seekToTimeMs)
+        listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
+        player.seekTo(progress.currentMs)
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
