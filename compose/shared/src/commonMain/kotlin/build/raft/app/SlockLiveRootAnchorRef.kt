@@ -225,7 +225,16 @@ internal class SlockPopoverAnchor private constructor(
             // NOT the window, so add the host-provided origin. Read here (open time), never cached,
             // so rotation / pane resize / fold are picked up. Zero outside a child page.
             val pageOrigin = childPageOriginState?.windowOrigin ?: Offset.Zero
-            val rootOffset = current.localToRoot(localPoint.resolve(current.size)) + pageOrigin
+            val localPointResolved = localPoint.resolve(current.size)
+            val pageRootOffset = current.localToRoot(localPointResolved)
+            val rootOffset = pageRootOffset + pageOrigin
+            // task #180 follow-up: instrumented on Argus's request so a single logcat captures
+            // whether the origin is actually non-zero and where the anchor lands.
+            slockLogInfo(
+                "SlockOverlayAnchor",
+                "resolve identity=$identity local=$localPointResolved pageRoot=$pageRootOffset " +
+                    "origin=$pageOrigin final=$rootOffset"
+            )
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
         }
     }

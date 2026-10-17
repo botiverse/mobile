@@ -285,7 +285,16 @@ internal fun SlockKuiklyChildPage(
         factory = { SlockKuiklyChildPageView() },
         modifier =
             modifier.onGloballyPositioned { coordinates ->
-                childPageOriginState.updateOrigin(coordinates.positionInRoot())
+                val measured = coordinates.positionInRoot()
+                // task #180 follow-up: instrumented on Argus's request. If this logs (0,0) the host
+                // measurement is inside the child page's own composition, and the origin must come
+                // from the shell's pane rect instead.
+                slockLogInfo(
+                    "SlockChildPageOrigin",
+                    "measure page=$pageName origin=$measured size=${coordinates.size} " +
+                        "parent=${parentChildPageOrigin.windowOrigin}"
+                )
+                childPageOriginState.updateOrigin(measured)
             },
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
