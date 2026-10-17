@@ -390,6 +390,29 @@ private fun slockLog(
 }
 
 /**
+ * task #180: a trace line that ALWAYS reaches the platform log (logcat), for cross-page
+ * diagnostics that a verifier greps on a device.
+ *
+ * `slockLogInfo` is not usable for this: when a record sink is installed (SlockApplication
+ * installs one) `slockLog` hands the record to the sink and returns, so entries land in the
+ * diagnostics ring/journal and only reach logcat later, asynchronously, via that sink's queue.
+ * A verifier clearing logcat and tapping would see nothing. This calls the platform actual
+ * directly, which is a synchronous `android.util.Log.i` on Android.
+ */
+internal fun slockTraceToPlatformLog(tag: String, message: String) {
+    runCatching {
+        // Uses the platform actual, deliberately skipping the queued sink above it. Not suspend.
+        slockPlatformLog(
+            level = SlockLogLevel.Info,
+            tag = tag,
+            message = message,
+            timestampMillis = 0L,
+            hint = SlockPlatformLogHint.None
+        )
+    }
+}
+
+/**
  * Ordered shared-to-platform barrier.
  *
  * Completion means the consumer has invoked the installed sink or platform

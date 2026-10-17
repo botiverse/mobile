@@ -2401,7 +2401,7 @@ private fun SlockAppShellReadyContent(
             eventBus.observe(SLOCK_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
                 // task #180 diagnostics (Argus): point 2 of 3 -- the shell saw a request (or why not).
                 val request = eventData.toSlockShellOverlayRequestOrNull()
-                slockLogInfo(
+                slockTraceToPlatformLog(
                     "SlockShellOverlay",
                     "shell_observe parsed=${request != null} requestId=${request?.requestId} " +
                         "pageKey=${request?.pageKey} anchor=${request?.anchor} items=${request?.items?.size} " +
@@ -6436,7 +6436,7 @@ private fun SlockAppShellReadyContent(
                     // renders the menu. Same host pattern as the rail server switcher above.
                     shellOverlayMenu?.let { open ->
                         // task #180 diagnostics (Argus): point 3 of 3 -- the host is composing.
-                        slockLogInfo(
+                        slockTraceToPlatformLog(
                             "SlockShellOverlay",
                             "shell_host_compose requestId=${open.request.requestId} " +
                                 "anchor=${open.request.anchor} items=${open.request.items.size}"

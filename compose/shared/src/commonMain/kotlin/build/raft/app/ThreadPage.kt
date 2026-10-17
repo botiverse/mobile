@@ -16606,14 +16606,30 @@ private fun ThreadHeaderFocusModeMenu(
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
         onClick = {
-            val bus = eventBus ?: return@SlockBrutalIconButton
-            val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd) ?: return@SlockBrutalIconButton
+            // task #180 diagnostics (Argus): unconditional entry log. The previous device run
+            // produced ZERO trace lines, which could not distinguish "the click never reached this
+            // handler" from "the lines went somewhere else". This line fires before any guard.
+            slockTraceToPlatformLog("SlockShellOverlay", "click_enter")
+            val bus = eventBus
+            if (bus == null) {
+                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=eventBus_null")
+                return@SlockBrutalIconButton
+            }
+            val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
+            if (anchor == null) {
+                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
+                return@SlockBrutalIconButton
+            }
             // Already window space: the shell must not convert this again.
-            val windowAnchor = anchor.rootOffsetOrNull() ?: return@SlockBrutalIconButton
+            val windowAnchor = anchor.rootOffsetOrNull()
+            if (windowAnchor == null) {
+                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
+                return@SlockBrutalIconButton
+            }
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
-            slockLogInfo(
+            slockTraceToPlatformLog(
                 "SlockShellOverlay",
                 "page_post requestId=$requestId pageKey=$pageKey windowAnchor=$windowAnchor items=${items.size}"
             )
