@@ -10343,6 +10343,25 @@ internal class SharedThreadViewModel(
             )
         }
     private val store: SharedThreadStore by storeDelegate
+
+    private var startDispatched = false
+
+    // task #387: dispatch Start once, but never from init — viewModelScope reads the provider-
+    // assigned pagerId, which is only set after the viewModel() provider returns, so touching it
+    // during construction crashes cold entry. The page calls this from composition right after
+    // viewModel() returns; viewModelScope's ComposeDispatcher is then immediate on the Kuikly
+    // page thread, so the store's warm path (in-memory identity capture + payload cache hit)
+    // still completes inline — the first frame renders the cached timeline instead of flashing
+    // the loading shell for one turn. Any genuinely suspending step (durable read, network)
+    // yields and the shell renders exactly as before. This is the only Start dispatch for a
+    // fresh page; the page's LaunchedEffect only records markers and handles retained-route
+    // intent updates.
+    fun ensureStarted() {
+        if (startDispatched) return
+        startDispatched = true
+        dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+
     val state: StateFlow<SharedThreadState>
         get() = store.state
     val currentPayload: KuiklyThreadScreenPayload
