@@ -104,6 +104,9 @@ private class SlockKRVideoView(
                     terminalGate.markStarted(progress.generation)
                     awaitingAttemptStart = false
                 }
+                if (duration > 0L && progress.currentMs >= duration) {
+                    terminalGate.markTerminalEligible(progress.generation)
+                }
                 listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
@@ -134,6 +137,9 @@ private class SlockKRVideoView(
                             // A stale STATE_ENDED notification can arrive after
                             // replay/seek. The generation observed by the last
                             // READY attempt fences it in the shared contract.
+                            if (player.duration > 0L && player.currentPosition >= player.duration) {
+                                terminalGate.markTerminalEligible(callbackGeneration)
+                            }
                             if (!terminalGate.acceptsTerminal(callbackGeneration)) return
                             val progress = progressContract.ended(player.duration, callbackGeneration)
                             if (progress.terminal) {

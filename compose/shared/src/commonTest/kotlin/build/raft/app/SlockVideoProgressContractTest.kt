@@ -59,6 +59,8 @@ class SlockVideoProgressContractTest {
         assertEquals(false, gate.acceptsTerminal(1L))
 
         gate.markStarted(1L)
+        assertEquals(false, gate.acceptsTerminal(1L))
+        gate.markTerminalEligible(1L)
         assertEquals(true, gate.acceptsTerminal(1L))
     }
 }

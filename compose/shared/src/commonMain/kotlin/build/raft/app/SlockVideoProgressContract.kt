@@ -18,18 +18,24 @@ data class SlockVideoProgressSnapshot(
 class SlockVideoPlaybackAttemptGate(initialGeneration: Long = 0L) {
     private var activeGeneration = initialGeneration
     private var started = true
+    private var terminalEligible = false
 
     fun begin(generation: Long) {
         activeGeneration = generation
         started = false
+        terminalEligible = false
     }
 
     fun markStarted(generation: Long) {
         if (generation == activeGeneration) started = true
     }
 
+    fun markTerminalEligible(generation: Long) {
+        if (generation == activeGeneration && started) terminalEligible = true
+    }
+
     fun acceptsTerminal(generation: Long): Boolean =
-        started && generation == activeGeneration
+        started && terminalEligible && generation == activeGeneration
 }
 
 class SlockVideoProgressContract {
