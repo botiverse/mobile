@@ -54,6 +54,10 @@ private class SlockKRVideoView(
     private var stopped = false
     private var lastReportedState: KRVideoPlayState? = null
     private val progressContract = SlockVideoProgressContract()
+    // Media3 does not attach an attempt id to callbacks. Keep the generation
+    // observed by the current READY attempt so a late callback from the prior
+    // replay/seek attempt is rejected by the shared contract.
+    private var callbackGeneration = progressContract.currentGeneration
 
     private val hostActivity: ComponentActivity? = context.unwrapComponentActivity()
     private var fullscreenContainer: FrameLayout? = null
@@ -89,7 +93,8 @@ private class SlockKRVideoView(
             override fun run() {
                 if (stopped) return
                 val duration = player.duration.takeIf { it > 0 } ?: 0L
-                val progress = progressContract.progress(player.currentPosition, duration)
+                val progress =
+                    progressContract.progress(player.currentPosition, duration, callbackGeneration)
                 listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
@@ -106,7 +111,8 @@ private class SlockKRVideoView(
                     when (playbackState) {
                         Player.STATE_BUFFERING ->
                             reportState(KRVideoPlayState.KRVideoPlayStateCaching)
-                        Player.STATE_READY ->
+                        Player.STATE_READY -> {
+                            callbackGeneration = progressContract.currentGeneration
                             reportState(
                                 if (player.playWhenReady) {
                                     KRVideoPlayState.KRVideoPlayStatePlaying
@@ -114,14 +120,21 @@ private class SlockKRVideoView(
                                     KRVideoPlayState.KRVideoPlayStatePaused
                                 }
                             )
+                        }
                         Player.STATE_ENDED -> {
-                            val progress = progressContract.ended(player.duration)
-                            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
-                            reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                            // A stale STATE_ENDED notification can arrive after
+                            // replay/seek. The generation observed by the last
+                            // READY attempt fences it in the shared contract.
+                            val progress = progressContract.ended(player.duration, callbackGeneration)
+                            if (progress.terminal) {
+                                listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
+                                reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                            }
                         }
                         Player.STATE_IDLE -> Unit
                     }
                 }
+
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                     if (player.playbackState == Player.STATE_READY) {

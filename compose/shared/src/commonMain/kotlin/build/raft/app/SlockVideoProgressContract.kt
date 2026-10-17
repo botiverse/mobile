@@ -20,14 +20,27 @@ class SlockVideoProgressContract {
     private var durationMs = 0L
     private var terminal = false
 
-    fun progress(rawCurrentMs: Long, rawDurationMs: Long): SlockVideoProgressSnapshot {
+    /** Generation used to fence callbacks that belonged to an older attempt. */
+    val currentGeneration: Long
+        get() = generation
+
+    fun progress(
+        rawCurrentMs: Long,
+        rawDurationMs: Long,
+        callbackGeneration: Long = generation,
+    ): SlockVideoProgressSnapshot {
+        if (callbackGeneration != generation) return snapshot()
         if (rawDurationMs > 0L) durationMs = rawDurationMs
         if (terminal) return snapshot()
         currentMs = clamp(rawCurrentMs, durationMs)
         return snapshot()
     }
 
-    fun ended(rawDurationMs: Long): SlockVideoProgressSnapshot {
+    fun ended(
+        rawDurationMs: Long,
+        callbackGeneration: Long = generation,
+    ): SlockVideoProgressSnapshot {
+        if (callbackGeneration != generation) return snapshot()
         if (rawDurationMs > 0L) durationMs = rawDurationMs
         terminal = true
         currentMs = durationMs
@@ -42,6 +55,7 @@ class SlockVideoProgressContract {
     }
 
     fun seek(rawTargetMs: Long): SlockVideoProgressSnapshot {
+        generation += 1L
         terminal = false
         currentMs = clamp(rawTargetMs, durationMs)
         return snapshot()
