@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
+import build.raft.app.data.sideThreadFocusActive
 import build.raft.app.data.showsSideThreadFocusEntry
 import build.raft.app.data.toggleSideThreadFocusFromPanel
 import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
@@ -6706,9 +6707,7 @@ private fun SharedThreadRouteContentContent(
             payload = payload,
             displayModel = headerDisplayModel,
             memberAvatarResolver = memberAvatarResolver,
-            onBack = onBack,
-            onToggleFocusMode = threadFocusModeToggle,
-            focusModeActive = threadFocusModeActive
+            onBack = onBack
         )
         return
     }
@@ -10627,6 +10626,9 @@ private fun SharedThreadRouteContentContent(
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
+                // task #180: forwarded from the route scope, which owns the workspace store.
+                onToggleFocusMode = threadFocusModeToggle,
+                focusModeActive = threadFocusModeActive,
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -13908,8 +13910,6 @@ private fun ThreadDeferredLoadingRouteContent(
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: SlockMemberAvatarResolver,
     onBack: () -> Unit,
-    onToggleFocusMode: (() -> Unit)? = null,
-    focusModeActive: Boolean = false,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -14171,7 +14171,9 @@ fun ThreadPageContent(
     onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
-    onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
+    onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 )
  {
     ThreadFollowersOverlayHost {
