@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
+import build.raft.app.data.showsSideThreadFocusEntry
+import build.raft.app.data.toggleSideThreadFocusFromPanel
 import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -4373,6 +4375,29 @@ private fun ThreadMembersPageScreen() {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
+    // Read reactively so the label flips between Focus and Standard when it changes.
+    // Availability comes from the session itself: a page whose thread actually occupies the side
+    // column can always be maximised, which is exactly what the column's own open gating proved.
+    val focusWorkspaceStore =
+        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    val focusWorkspaceSession by focusWorkspaceStore.state.collectAsState()
+    val threadFocusModeActive = focusWorkspaceSession.sideThreadFocusActive()
+    // Only a page adopted by the side column offers the entry; the predicate is shared with the
+    // tests so "no column host renders no entry" is actually guarded, not just asserted in prose.
+    val isSideColumnOwner = data.adaptiveCloseRequest != null
+    val threadShowsFocusEntry =
+        focusWorkspaceSession.showsSideThreadFocusEntry(isSideColumnOwner)
+    val threadFocusModeToggle: (() -> Unit)? =
+        if (threadShowsFocusEntry) {
+            {
+                focusWorkspaceStore.update { current ->
+                    current.toggleSideThreadFocusFromPanel(isSideColumnOwner)
+                }
+            }
+        } else {
+            null
+        }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val routeOwner =
         remember(pager.pageData.params.toString()) {
@@ -6683,7 +6708,9 @@ private fun SharedThreadRouteContentContent(
             payload = payload,
             displayModel = headerDisplayModel,
             memberAvatarResolver = memberAvatarResolver,
-            onBack = onBack
+            onBack = onBack,
+            onToggleFocusMode = threadFocusModeToggle,
+            focusModeActive = threadFocusModeActive
         )
         return
     }
@@ -13882,7 +13909,9 @@ private fun ThreadDeferredLoadingRouteContent(
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: SlockMemberAvatarResolver,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -14031,6 +14060,9 @@ private class ThreadPageContentCallbacks(
     val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     val onSaveShareImage: suspend (String) -> JSONObject?,
     val onFirstContentReady: () -> Unit,
+    /** task #180: null when this surface has no side column to maximise. */
+    val onToggleFocusMode: (() -> Unit)? = null,
+    val focusModeActive: Boolean = false,
     val onVisibleReadTailChange: (Int?) -> Unit,
     val onViewportFollowsLatestChange: (Boolean) -> Unit,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
@@ -14147,6 +14179,8 @@ fun ThreadPageContent(
     ThreadFollowersOverlayHost {
     ThreadPageContentContent(
         modifier = Modifier,
+        onToggleFocusMode = onToggleFocusMode,
+        focusModeActive = focusModeActive,
         data =
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
@@ -14212,6 +14246,8 @@ fun ThreadPageContent(
         callbacks =
             ThreadPageContentCallbacks(
                 scaffold = scaffold,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
                 onSelectedTabChanged = onSelectedTabChanged,
                 onSuggestionDemandChanged = onSuggestionDemandChanged,
                 onToggleActivityMute = onToggleActivityMute,
@@ -14257,6 +14293,8 @@ private fun ThreadPageContentContent(
     modifier: Modifier = Modifier,
     data: ThreadPageContentData,
     callbacks: ThreadPageContentCallbacks,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 ) {
     val scaffold = callbacks.scaffold
     val threadInstanceKey = data.threadInstanceKey
@@ -15236,7 +15274,10 @@ private fun ThreadPageContentContent(
                             { threadHeaderScrollToTopRequest += 1 }
                         } else {
                             null
-                        }
+                        },
+                    // task #180: null on hosts without a side column, which also hides the menu item.
+                    onToggleFocusMode = callbacks.onToggleFocusMode,
+                    focusModeActive = callbacks.focusModeActive,
                 )
             },
             body = {
@@ -15818,7 +15859,13 @@ internal fun ThreadPageHeader(
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    /**
+     * task #180: web parity (#9172/#9335). Null when this host cannot host a side column, which is
+     * also when the menu item is hidden -- Focus mode relaxes layout, it never creates a column.
+     */
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
@@ -15953,6 +16000,12 @@ internal fun ThreadPageHeader(
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
+                    }
+                    onToggleFocusMode?.let { toggleFocus ->
+                        ThreadHeaderFocusModeMenu(
+                            focused = focusModeActive,
+                            onSelect = toggleFocus
+                        )
                     }
                 }
                 }
@@ -16394,6 +16447,64 @@ private fun String?.threadParticipantHandleKey(): String? =
         ?.takeIf { it.isNotBlank() }
         ?.lowercase()
         ?.let { "handle:$it" }
+
+/**
+ * task #180 (web parity #9172/#9335): the thread panel's overflow menu, anchored in the header.
+ *
+ * Web puts Focus mode as the first item of this menu; mobile had no thread-panel overflow at all,
+ * so this is that menu with its first (and for now only) entry. Kept generic so later parity items
+ * can join it instead of adding more permanent header icons.
+ */
+@Composable
+private fun ThreadHeaderFocusModeMenu(
+    focused: Boolean,
+    onSelect: () -> Unit
+) {
+    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
+    val items =
+        listOf(
+            SlockBrutalDropdownMenuItem(
+                id = FOCUS_MODE_MENU_ITEM_ID,
+                label =
+                    stringResource(
+                        if (focused) {
+                            MR.strings.thread_focus_mode_standard
+                        } else {
+                            MR.strings.thread_focus_mode_focus
+                        }
+                    ),
+                // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
+                icon = if (focused) SlockLucideIconName.Square else SlockLucideIconName.Maximize2,
+                enabled = true
+            )
+        )
+    SlockBrutalIconButton(
+        iconName = SlockLucideIconName.Ellipsis,
+        onClick = {
+            anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
+        },
+        enabled = true,
+        size = 28.dp,
+        shadowOffset = SlockShadow.BrutalSmall,
+        iconSize = 14.dp,
+        modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
+        contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
+    )
+    menuAnchor?.let { anchor ->
+        SlockBrutalDropdownMenu(
+            anchor = anchor,
+            items = items,
+            onSelect = { id ->
+                menuAnchor = null
+                if (id == FOCUS_MODE_MENU_ITEM_ID) onSelect()
+            },
+            onDismiss = { menuAnchor = null }
+        )
+    }
+}
+
+internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {

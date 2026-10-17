@@ -29,6 +29,15 @@ internal data class SharedAdaptiveWorkspaceSession(
     /** task #36: reply thread shown in its own column beside the selected channel/DM. */
     val sideThread: AdaptiveSideThread? = null,
     /**
+     * task #180: Focus mode (web parity, #9172/#9335). While true the side thread takes the whole
+     * row and the parent channel/DM is not laid out beside it.
+     *
+     * Deliberately NOT persisted: like the web panel toggle this is a per-session view state, so a
+     * new window or a reopen decides again from the measured width instead of resurrecting a mode
+     * that may no longer fit.
+     */
+    val sideThreadFocused: Boolean = false,
+    /**
      * task #36: measured width (dp) of the detail pane on the host currently showing it, after the
      * rail, list, dividers and insets. Null while unmeasured or on a host without a side column.
      */

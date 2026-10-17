@@ -2203,6 +2203,9 @@
     <string name="app_update_download_paused">Download paused — waiting to resume</string>
     <string name="app_update_download_failed">Download failed. Tap Retry to download again.</string>
     <string name="thread_audio_playback_position">Playback position</string>
+    <string name="thread_focus_mode_focus">Focus mode</string>
+    <string name="thread_focus_mode_standard">Standard mode</string>
+    <string name="thread_focus_mode_menu_more">Thread panel menu</string>
     <string name="member_runtime_usage_title">Account usage</string>
     <string name="member_runtime_usage_attention">Usage needs attention</string>
     <string name="member_runtime_usage_reading">Reading…</string>

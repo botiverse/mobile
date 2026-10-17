@@ -315,3 +315,60 @@ internal fun SharedAdaptiveWorkspaceSession.parentFocusOutcomeAfterWait(
     !keyboardClosed -> AdaptiveParentFocusOutcome.KeyboardStillOpen
     else -> AdaptiveParentFocusOutcome.Applied
 }
+
+/**
+ * task #180 (web parity #9172/#9335): can the side thread be expanded into Focus mode right now?
+ *
+ * Focus mode only relaxes the LAYOUT — it does not create a side column where the window cannot
+ * hold one. So it is offered exactly when the column is already available; a window that cannot
+ * show the two columns keeps today's fold-into-detail behaviour instead of a half-broken layout.
+ */
+internal fun SharedAdaptiveWorkspaceSession.sideThreadFocusAvailable(
+    desktopModeOnLargeScreen: Boolean,
+): Boolean = visibleSideThread() != null && sideThreadColumnAvailable(desktopModeOnLargeScreen)
+
+/** Whether the thread is currently taking the whole row. False whenever there is no side thread. */
+internal fun SharedAdaptiveWorkspaceSession.sideThreadFocusActive(): Boolean =
+    sideThread != null && sideThreadFocused
+
+/**
+ * Toggle Focus mode. Ignored when no thread is in the column or the window cannot host one, so a
+ * stale menu item can never leave the workspace in a layout it cannot draw.
+ */
+internal fun SharedAdaptiveWorkspaceSession.toggleSideThreadFocus(
+    desktopModeOnLargeScreen: Boolean,
+): SharedAdaptiveWorkspaceSession =
+    if (!sideThreadFocusAvailable(desktopModeOnLargeScreen)) this
+    else copy(sideThreadFocused = !sideThreadFocused)
+
+/**
+ * Leaving Focus mode when the thread goes away or the window stops fitting. Keeping the flag set on
+ * a session that has no side thread would make the next thread open already-maximised.
+ */
+internal fun SharedAdaptiveWorkspaceSession.normalizeSideThreadFocus(
+    desktopModeOnLargeScreen: Boolean,
+): SharedAdaptiveWorkspaceSession =
+    if (sideThreadFocused && !sideThreadFocusAvailable(desktopModeOnLargeScreen)) {
+        copy(sideThreadFocused = false)
+    } else {
+        this
+    }
+
+/**
+ * task #180: whether the thread panel should render the Focus-mode menu entry.
+ *
+ * The side page decides this for itself because it never receives the shell's
+ * desktopModeOnLargeScreen flag. Being the column's owner ([isSideColumnOwner], i.e. the page was
+ * adopted by the column) AND having a visible side thread in the session is the equivalent fact:
+ * a column can only exist if it already passed the width/posture gates.
+ */
+internal fun SharedAdaptiveWorkspaceSession.showsSideThreadFocusEntry(
+    isSideColumnOwner: Boolean,
+): Boolean = isSideColumnOwner && visibleSideThread() != null
+
+/** Toggle Focus, but only from a page that actually owns the column. */
+internal fun SharedAdaptiveWorkspaceSession.toggleSideThreadFocusFromPanel(
+    isSideColumnOwner: Boolean,
+): SharedAdaptiveWorkspaceSession =
+    if (!showsSideThreadFocusEntry(isSideColumnOwner)) this
+    else if (sideThreadFocusActive()) copy(sideThreadFocused = false) else copy(sideThreadFocused = true)

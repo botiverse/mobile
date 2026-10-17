@@ -4,6 +4,10 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.normalizeSideThreadFocus
+import build.raft.app.data.sideThreadFocusActive
+import build.raft.app.data.sideThreadFocusAvailable
+import build.raft.app.data.toggleSideThreadFocus
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.foldSideThreadIntoDetail
 import build.raft.app.data.sideThreadColumnAvailable
@@ -3425,9 +3429,20 @@ private fun SlockAppShellReadyContent(
         adaptiveWorkspaceStore.update { current ->
             if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
                 bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp}")
-                current.foldSideThreadIntoDetail()
+                // task #180: drop Focus together with the column. The fold turns the thread into the
+                // main detail, so a leftover flag would mean "maximised with no column to maximise".
+                current.foldSideThreadIntoDetail().copy(sideThreadFocused = false)
             } else current
         }
+    }
+    // task #180: also normalise when Focus is somehow set without an available column (e.g. the
+    // thread was closed while focused), so the next thread does not open already-maximised.
+    val sideThreadFocusStale =
+        adaptiveWorkspaceSession.sideThreadFocusActive() &&
+            !adaptiveWorkspaceSession.sideThreadFocusAvailable(desktopModeOnLargeScreen)
+    LaunchedEffect(sideThreadFocusStale) {
+        if (!sideThreadFocusStale) return@LaunchedEffect
+        adaptiveWorkspaceStore.update { it.normalizeSideThreadFocus(desktopModeOnLargeScreen) }
     }
     val tasksDetailOverlayKeepsOwnership =
         appShellTasksDetailOverlayStaysActive(
@@ -5016,6 +5031,13 @@ private fun SlockAppShellReadyContent(
             membersDetailSelection.value = null
             return true
         }
+        // task #180 (web parity): Focus mode is one step of its own. Back leaves Focus and restores
+        // the two columns; only the next Back closes the thread. Matches the web menu's model where
+        // maximise is a reversible view state, not a new screen.
+        if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().sideThreadFocusActive()) {
+            adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
+            return true
+        }
         // task #36: an open side thread closes first; the main detail stays.
         if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
             adaptiveWorkspaceStore.update { it.copy(sideThread = null) }
@@ -6405,6 +6427,10 @@ private fun SlockAppShellReadyContent(
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
                                     listPaneResizeDefersFold)
+                        // task #180: web parity (#9172/#9335). Focus mode lets the side thread take the
+                        // whole row. It only relaxes layout -- it never creates a column the window
+                        // cannot host, so it is gated on the same availability the column uses.
+                        val sideThreadFocusActive = adaptiveWorkspaceSession.sideThreadFocusActive()
                         LaunchedEffect(active, allowSideColumn) {
                             if (active && !allowSideColumn) {
                                 adaptiveWorkspaceStore.update {
@@ -6424,7 +6450,11 @@ private fun SlockAppShellReadyContent(
                                         }
                                     }
                         ) {
-                        val modifier = Modifier.weight(1f).fillMaxHeight()
+                        // task #180: in Focus mode the thread owns the row, so the parent channel/DM is
+                        // not laid out at all (weight 0) rather than merely drawn underneath. Its page
+                        // data is still computed, so leaving Focus restores the same surface.
+                        val modifier =
+                            if (sideThreadFocusActive) Modifier.weight(0f) else Modifier.weight(1f).fillMaxHeight()
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -6476,6 +6506,9 @@ private fun SlockAppShellReadyContent(
                                 )
                             }
                         if (showSideColumn && sideThread != null && workspace != null) {
+                            // task #180: the page data key is deliberately independent of Focus mode.
+                            // Toggling re-lays-out the same child page instead of recreating it, which is
+                            // what keeps the reader's scroll position across Focus <-> Standard.
                             val sidePageData =
                                 remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
                                     threadLaunchPageData(sideThread.payload)
@@ -6484,17 +6517,24 @@ private fun SlockAppShellReadyContent(
                                         .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
                                         .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
                                 }
-                            Spacer(
-                                modifier =
-                                    Modifier
-                                        .width(SLOCK_SIDE_THREAD_DIVIDER_DP.dp)
-                                        .fillMaxHeight()
-                                        .background(Color.Black),
-                            )
+                            if (!sideThreadFocusActive) {
+                                Spacer(
+                                    modifier =
+                                        Modifier
+                                            .width(SLOCK_SIDE_THREAD_DIVIDER_DP.dp)
+                                            .fillMaxHeight()
+                                            .background(Color.Black),
+                                )
+                            }
                             SlockKuiklyChildPage(
                                 pageName = THREAD_PAGE,
                                 pageData = sidePageData,
-                                modifier = Modifier.width(SLOCK_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight(),
+                                modifier =
+                                    if (sideThreadFocusActive) {
+                                        Modifier.weight(1f).fillMaxHeight()
+                                    } else {
+                                        Modifier.width(SLOCK_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight()
+                                    },
                                 active = childActive,
                             )
                         }
