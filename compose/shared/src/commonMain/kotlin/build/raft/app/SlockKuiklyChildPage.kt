@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,6 +16,9 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -244,6 +250,9 @@ internal fun SlockKuiklyChildPage(
         remember(pageData.toString(), parentWindowId, parentKeyboardExcludes, parentHostExcludesNav) {
             slockEmbeddedChildPageData(pageData)
                 .apply {
+                    // task #181 follow-up: the page cannot see its own name or host composition, so
+                    // carry the registry key across the @Page boundary in its own params.
+                    put(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM, slockChildPageOriginKey(pageName, pageData))
                     // task #482: the child shares the host window; inherit its id so the
                     // per-window live inset snapshot resolves for this pager too, plus
                     // the host consumption flags that gate how the live snapshot is
@@ -260,9 +269,55 @@ internal fun SlockKuiklyChildPage(
                 }
                 .toString()
         }
+    // task #181 follow-up (Argus): this is a separate Kuikly page, so overlays opened inside it
+    // resolve `positionInRoot()` against THIS page's root, not the window. Measure where the page
+    // actually sits and provide that origin; anchored overlays add it at open time. A full-screen
+    // page measures (0,0) and behaviour is unchanged.
+    // The parent page's origin must also come through the registry: this composable runs in the
+    // PARENT's composition only when the parent is the window root. When the parent is itself a
+    // Kuikly @Page (AppShell tab page), its measured origin lives in the registry under the parent's
+    // key, not in the ambient local. Device logs showed parent=(0,0) while the rail was 66px wide.
+    // The parent identifies itself through its own key param (written by ITS host), with the ambient
+    // local as the fallback for a window-root host.
+    val parentKey = LocalActivity.current.pageData.params.optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM).trim()
+    val parentChildPageOrigin =
+        if (parentKey.isNotEmpty()) {
+            SlockChildPageOriginRegistry.stateFor(parentKey)
+        } else {
+            LocalSlockChildPageOrigin.current
+        }
+    // The measured origin must reach the page's OWN composition, and a CompositionLocal cannot cross
+    // a Kuikly @Page boundary. Publish under a stable key instead; the page looks up the same state.
+    val originKey = slockChildPageOriginKey(pageName, pageData)
+    val childPageOriginState = remember(originKey) { SlockChildPageOriginRegistry.stateFor(originKey) }
+    DisposableEffect(originKey) {
+        onDispose { SlockChildPageOriginRegistry.forget(originKey) }
+    }
+    // Nested child pages are real (AppShell tab page -> detail/thread column page), so a nested
+    // page's window offset is its own position within the parent PLUS the parent's origin. Linked
+    // as a live reference so an outer resize propagates without recomputing a snapshot here.
+    SideEffect { childPageOriginState.linkParentOrigin(parentChildPageOrigin) }
+    CompositionLocalProvider(LocalSlockChildPageOrigin provides childPageOriginState) {
+    // IMPORTANT: measure on the modifier that the HOST passed in, not on a node created inside this
+    // child page. `onGloballyPositioned` reports `positionInRoot()` relative to the enclosing
+    // composition's root -- inside the child page that is the page itself, i.e. (0,0), which is why
+    // the first attempt compensated nothing. The incoming modifier is built in the PARENT
+    // composition, so measuring it yields the child page's real position in the parent.
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
         factory = { SlockKuiklyChildPageView() },
-        modifier = modifier,
+        modifier =
+            modifier.onGloballyPositioned { coordinates ->
+                val measured = coordinates.positionInRoot()
+                // task #180 follow-up: instrumented on Argus's request. If this logs (0,0) the host
+                // measurement is inside the child page's own composition, and the origin must come
+                // from the shell's pane rect instead.
+                slockLogInfo(
+                    "SlockChildPageOrigin",
+                    "measure page=$pageName origin=$measured size=${coordinates.size} " +
+                        "parent=${parentChildPageOrigin.windowOrigin}"
+                )
+                childPageOriginState.updateOrigin(measured)
+            },
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
             updateActive(active)
@@ -280,6 +335,19 @@ internal fun SlockKuiklyChildPage(
             }
         }
     )
+    }
+}
+
+/**
+ * Stable key linking a child page's host measurement to the state read inside that page.
+ * Uses the page name plus the payload's own instance id, which the page can also compute.
+ */
+internal fun slockChildPageOriginKey(pageName: String, pageData: JSONObject): String {
+    val instance =
+        pageData.optString("instanceId").trim()
+            .ifBlank { pageData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim() }
+            .ifBlank { "default" }
+    return "$pageName|$instance"
 }
 
 internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =
@@ -287,6 +355,7 @@ internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =
         put(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, true)
     }
 
+internal const val SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM = "slockChildPageOriginKey"
 internal const val SLOCK_CHILD_LIFECYCLE_DID_APPEAR = "didAppear"
 internal const val SLOCK_CHILD_LIFECYCLE_DID_DISAPPEAR = "didDisappear"
 internal const val SLOCK_CHILD_LIFECYCLE_VIEW_DID_APPEAR = "viewDidAppear"

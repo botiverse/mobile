@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +12,7 @@ import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
 import com.tencent.kuikly.compose.ui.node.GlobalPositionAwareModifierNode
 import com.tencent.kuikly.compose.ui.node.ModifierNodeElement
@@ -50,6 +52,15 @@ internal class SlockPopoverAnchor private constructor(
 ) {
     fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
 
+    /**
+     * The resolved root offset this anchor will place the overlay at.
+     *
+     * Exposed for tests: the child-page origin compensation is invisible otherwise, and a fix that
+     * silently adds zero (as the first attempt did) would pass any state-only assertion. Production
+     * code consumes the offset through [renderInOverlay] and must not branch on it.
+     */
+    internal fun rootOffsetForTest(): Offset = rootOffset
+
     @Composable
     internal fun renderInOverlay(
         contentSize: Size,
@@ -72,6 +83,12 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
+            // Window coordinates end to end. Device evidence (four rounds): the middle column's
+            // long-press menu lands exactly under the finger when the anchor is passed through
+            // unconverted, and shifts left by its page origin (427) as soon as it is converted.
+            // Coordinate conversion is therefore NOT the fix for the thread column -- its Modal
+            // surface is clamped to the window's left 400px regardless of what we pass, which has
+            // to be solved at the host level, not here.
             val popoverOffset =
                 overlayLayout.positionContent(
                     anchor = rootOffset,
@@ -84,7 +101,12 @@ internal class SlockPopoverAnchor private constructor(
                     horizontalPlacement = horizontalPlacement,
                     horizontalAutoFlip = horizontalAutoFlip
                 ) ?: return@SlockFloatingOverlayHost
-            Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
+            // Overlay geometry is WINDOW space end to end: device evidence shows a window-space
+            // anchor of 700 draws exactly under the finger, so the offset must NOT be converted back
+            // into page space (doing that regressed both menus). Only the clamp bound was ever wrong.
+            Box(
+                modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }
+            ) {
                 content()
             }
         }
@@ -102,6 +124,11 @@ internal class SlockPopoverAnchor private constructor(
         )
 
         private var coordinates: LayoutCoordinates? = null
+        /**
+         * Task #181 follow-up: the child-page origin this anchor resolves in. Held as the observable
+         * state (not an Offset snapshot) so `resolve()` reads the CURRENT value at open time.
+         */
+        private var childPageOriginState: SlockChildPageOriginState? = null
         private var captureOwner: Any? = null
         private var captureLease: Long = 0L
         private var placementRevisionState by mutableStateOf(0L)
@@ -111,6 +138,10 @@ internal class SlockPopoverAnchor private constructor(
 
         internal val placementRevision: Long
             get() = placementRevisionState
+
+        internal fun attachChildPageOrigin(state: SlockChildPageOriginState?) {
+            if (childPageOriginState !== state) childPageOriginState = state
+        }
 
         internal fun captureFromLayoutCoordinates(
             next: LayoutCoordinates,
@@ -202,11 +233,131 @@ internal class SlockPopoverAnchor private constructor(
             if (expectedCaptureLease != captureLease) return null
             if (expectedPlacementRevision != null && expectedPlacementRevision != placementRevisionState) return null
             val current = coordinates?.takeIf { it.isAttached } ?: return null
-            val rootOffset = current.localToRoot(localPoint.resolve(current.size))
+            // `localToRoot` is relative to this page's own root. Inside a Kuikly child page that is
+            // NOT the window, so add the host-provided origin. Read here (open time), never cached,
+            // so rotation / pane resize / fold are picked up. Zero outside a child page.
+            val pageOrigin = childPageOriginState?.windowOrigin ?: Offset.Zero
+            val localPointResolved = localPoint.resolve(current.size)
+            val pageRootOffset = current.localToRoot(localPointResolved)
+            val rootOffset = pageRootOffset + pageOrigin
+            // task #180 follow-up: instrumented on Argus's request so a single logcat captures
+            // whether the origin is actually non-zero and where the anchor lands.
+            slockLogInfo(
+                "SlockOverlayAnchor",
+                "resolve identity=$identity local=$localPointResolved pageRoot=$pageRootOffset " +
+                    "origin=$pageOrigin final=$rootOffset"
+            )
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
         }
     }
 }
+
+/**
+ * The window-space origin of the Kuikly page the current composition belongs to.
+ *
+ * Task #181 follow-up (Argus 2026-10-17): a `SlockKuiklyChildPage` is its own Kuikly page, so
+ * `positionInRoot()` / `localToRoot()` inside it are relative to THAT page's root, not the window.
+ * Every overlay anchored through [SlockPopoverAnchor.LiveRef] therefore landed offset by the host
+ * pane's origin -- in the dual-pane detail/side column that meant a menu drawn over the list panel.
+ *
+ * The host that embeds a child page measures its own window position and provides it here; a
+ * single-column or full-screen page provides `Offset.Zero`, which is exactly the old behaviour.
+ *
+ * Deliberately a [SlockChildPageOriginState] (observable) rather than a plain Offset: it is read
+ * inside `resolve()` at the moment an overlay opens, so rotation, a pane resize or a fold is picked
+ * up without caching a stale value.
+ */
+internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
+    var origin: Offset by mutableStateOf(origin)
+        internal set
+
+    /**
+     * The enclosing child page's origin, when this page is itself nested. Child pages nest for real
+     * -- the AppShell tabs are child pages and the detail/thread columns are child pages INSIDE
+     * them -- so the window offset of a nested page is its own `positionInRoot()` relative to the
+     * parent page PLUS the parent's origin. Kept as a live reference (not a summed snapshot) so an
+     * outer resize still propagates to the inner conversion.
+     */
+    var parentOrigin: SlockChildPageOriginState? = null
+        internal set
+
+    /** Window-space origin of this page: own position within its parent plus every ancestor. */
+    val windowOrigin: Offset
+        get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
+
+    internal fun updateOrigin(next: Offset) {
+        if (next != origin) origin = next
+    }
+
+    internal fun linkParentOrigin(next: SlockChildPageOriginState?) {
+        if (next !== this && parentOrigin !== next) parentOrigin = next
+    }
+}
+
+/**
+ * Reads the enclosing child page's origin for [anchorRef] and keeps the ref bound to it.
+ *
+ * Split out because `CompositionLocal.current` is only readable in a @Composable scope, while the
+ * modifier factory itself is not composable. Returns the state so the capture element can also
+ * carry it through modifier updates.
+ */
+@Composable
+internal fun rememberSlockChildPageOriginBinding(
+    anchorRef: SlockLiveRootAnchorRef
+): SlockChildPageOriginState {
+    // Read the state the HOST published for this page. `LocalSlockChildPageOrigin` is the fallback
+    // for same-composition (non-child-page) hosts, but it does NOT cross a Kuikly @Page boundary --
+    // inside ThreadPage it always resolves to a fresh all-zero state, which is precisely the
+    // origin=(0,0) the device logs showed while the host measured 361 / 1454.
+    // The key is computed from the SAME page data the host used, so both sides resolve to one state.
+    // When this composition is not a registered child page the registry yields a zero state, and the
+    // ambient local (also zero by default) agrees -- full-screen behaviour is unchanged.
+    // The host writes its registry key into this page's own params, because a page cannot see its
+    // own name and a CompositionLocal cannot cross the @Page boundary.
+    //
+    // Tolerant by design: composition-only hosts (widget/gesture harnesses, previews) provide no
+    // LocalActivity. There is no child page there, so the correct origin is zero -- use the ambient
+    // local instead of touching the activity.
+    val pageParams = runCatching { LocalActivity.current.pageData.params }.getOrNull()
+    val originKey = pageParams?.optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)?.trim().orEmpty()
+    val state =
+        if (originKey.isNotEmpty()) {
+            SlockChildPageOriginRegistry.stateFor(originKey)
+        } else {
+            LocalSlockChildPageOrigin.current
+        }
+    SideEffect { anchorRef.attachChildPageOrigin(state) }
+    return state
+}
+
+/**
+ * Cross-page handoff for a child page's measured window origin.
+ *
+ * A CompositionLocal CANNOT cross a Kuikly `@Page` boundary: `ThreadPage` is a real `@Page`, so
+ * `LocalSlockChildPageOrigin.current` inside it resolves to the default (all-zero) state no matter
+ * what the host provided. Device logs confirmed exactly that -- the host measured 361 / 1454 while
+ * `resolve()` read `origin=(0,0)` on every round.
+ *
+ * The host measures its own placement (outside the page) and publishes the state here under the
+ * page's identity; the page looks up the same instance and observes it. One state object per page,
+ * live, so a resize still propagates.
+ */
+internal object SlockChildPageOriginRegistry {
+    private val states = mutableMapOf<String, SlockChildPageOriginState>()
+
+    internal fun stateFor(key: String): SlockChildPageOriginState {
+        val normalized = key.trim()
+        if (normalized.isEmpty()) return SlockChildPageOriginState()
+        return states.getOrPut(normalized) { SlockChildPageOriginState() }
+    }
+
+    internal fun forget(key: String) {
+        states.remove(key.trim())
+    }
+}
+
+internal val LocalSlockChildPageOrigin =
+    androidx.compose.runtime.staticCompositionLocalOf { SlockChildPageOriginState() }
 
 internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 
@@ -341,8 +492,36 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
+    // Default anchoring: this page's root coordinates ARE window coordinates. Inside a Kuikly child
+    // page use slockCaptureChildPageRootAnchor instead, which adds the page's window origin.
+    anchorRef.attachChildPageOrigin(null)
     return if (enabled) {
-        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured)
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, null)
+    } else {
+        this
+    }
+}
+
+/**
+ * Child-page-aware popover anchoring.
+ *
+ * Identical to [slockCaptureLiveRootAnchor] except it also binds the enclosing Kuikly child page's
+ * window origin, so `resolve()` converts this page's root coordinates into window coordinates.
+ * Use this inside a `SlockKuiklyChildPage` (dual-pane detail / side-thread column); elsewhere the
+ * plain modifier is fine because a full-screen page's origin is zero anyway.
+ *
+ * Distinct name on purpose: an overload would make `Modifier.slockCaptureLiveRootAnchor(ref)`
+ * ambiguous and silently prefer the @Composable variant at non-composable call sites.
+ */
+@Composable
+internal fun Modifier.slockCaptureChildPageRootAnchor(
+    anchorRef: SlockLiveRootAnchorRef,
+    enabled: Boolean = true,
+    onCaptured: ((IntSize) -> Unit)? = null
+): Modifier {
+    val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
+    return if (enabled) {
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
     } else {
         this
     }
@@ -350,13 +529,14 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
 
 private data class SlockLiveRootAnchorCaptureElement(
     val anchorRef: SlockLiveRootAnchorRef,
-    val onCaptured: ((IntSize) -> Unit)?
+    val onCaptured: ((IntSize) -> Unit)?,
+    val childPageOrigin: SlockChildPageOriginState?
 ) : ModifierNodeElement<SlockLiveRootAnchorCaptureNode>() {
     override fun create(): SlockLiveRootAnchorCaptureNode =
-        SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured)
+        SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured, childPageOrigin)
 
     override fun update(node: SlockLiveRootAnchorCaptureNode) {
-        node.update(anchorRef, onCaptured)
+        node.update(anchorRef, onCaptured, childPageOrigin)
     }
 
     override fun InspectorInfo.inspectableProperties() {
@@ -367,7 +547,8 @@ private data class SlockLiveRootAnchorCaptureElement(
 
 private class SlockLiveRootAnchorCaptureNode(
     private var anchorRef: SlockLiveRootAnchorRef,
-    private var onCaptured: ((IntSize) -> Unit)?
+    private var onCaptured: ((IntSize) -> Unit)?,
+    private var childPageOrigin: SlockChildPageOriginState?
 ) : Modifier.Node(), GlobalPositionAwareModifierNode {
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onAttach() {
@@ -391,12 +572,17 @@ private class SlockLiveRootAnchorCaptureNode(
 
     fun update(
         nextAnchorRef: SlockLiveRootAnchorRef,
-        nextOnCaptured: ((IntSize) -> Unit)?
+        nextOnCaptured: ((IntSize) -> Unit)?,
+        nextChildPageOrigin: SlockChildPageOriginState?
     ) {
         val currentAnchorRef = anchorRef
         val ownerChanged = currentAnchorRef !== nextAnchorRef
         anchorRef = nextAnchorRef
         onCaptured = nextOnCaptured
+        childPageOrigin = nextChildPageOrigin
+        // task #181 follow-up: keep the ref bound after a reuse/update, otherwise a recycled row
+        // would resolve against a stale origin.
+        anchorRef.attachChildPageOrigin(childPageOrigin)
 
         // Kuikly may update a reused lazy-row Modifier.Node without scheduling another global
         // positioning callback when the recycled slot stays at the same coordinates. Capture the

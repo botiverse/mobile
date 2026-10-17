@@ -181,10 +181,18 @@ internal fun SlockFloatingOverlayHost(
             .zIndex(SlockFloatingOverlayHostZIndex)
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
-                overlayLayout = SlockFloatingOverlayLayout(
-                    origin = coordinates.positionInRoot(),
-                    size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                )
+                // Kuikly only implements `positionInRoot()`; `positionInWindow()` throws
+                // PagerNotFoundException and crashed the app shell, so the host can only report
+                // PAGE-local geometry. Callers convert the anchor into that same space.
+                overlayLayout =
+                    SlockFloatingOverlayLayout(
+                        // NB: do NOT use `positionInWindow()` here. Kuikly does not implement
+                        // `localToWindow` -- it throws PagerNotFoundException from
+                        // NodeCoordinator.localToWindow, which crashed the whole app shell on
+                        // entering any channel on a large screen. Only `positionInRoot()` exists.
+                        origin = coordinates.positionInRoot(),
+                        size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                    )
             },
         contentAlignment = Alignment.TopStart
     ) {
@@ -286,7 +294,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     // behavior so the menu does not run off the right edge.
     // #327: improved to pick the side that shows more visible content
     // when both left and right placements would overflow.
-    horizontalAutoFlip: Boolean = false
+    horizontalAutoFlip: Boolean = false,
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
         return null
@@ -309,6 +317,13 @@ internal fun SlockFloatingOverlayLayout.positionContent(
         verticalOffsetAbove = verticalOffsetAbove,
         viewportGap = viewportGap,
         verticalPlacement = verticalPlacement
+    )
+    // task #181 follow-up: Argus needs these five values to tell "off-screen" from "clipped by the
+    // 400px page" without another guess round.
+    slockLogInfo(
+        "SlockPopoverPosition",
+        "anchor=$anchor clamped=(x=$x, y=$y) origin=$origin size=$size contentSize=$contentSize " +
+            "autoFlip=$horizontalAutoFlip placement=$horizontalPlacement"
     )
     return Offset(x, y)
 }
