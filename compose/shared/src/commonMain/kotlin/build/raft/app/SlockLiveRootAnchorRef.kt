@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +103,11 @@ internal class SlockPopoverAnchor private constructor(
         )
 
         private var coordinates: LayoutCoordinates? = null
+        /**
+         * Task #181 follow-up: the child-page origin this anchor resolves in. Held as the observable
+         * state (not an Offset snapshot) so `resolve()` reads the CURRENT value at open time.
+         */
+        private var childPageOriginState: SlockChildPageOriginState? = null
         private var captureOwner: Any? = null
         private var captureLease: Long = 0L
         private var placementRevisionState by mutableStateOf(0L)
@@ -111,6 +117,10 @@ internal class SlockPopoverAnchor private constructor(
 
         internal val placementRevision: Long
             get() = placementRevisionState
+
+        internal fun attachChildPageOrigin(state: SlockChildPageOriginState?) {
+            if (childPageOriginState !== state) childPageOriginState = state
+        }
 
         internal fun captureFromLayoutCoordinates(
             next: LayoutCoordinates,
@@ -202,11 +212,42 @@ internal class SlockPopoverAnchor private constructor(
             if (expectedCaptureLease != captureLease) return null
             if (expectedPlacementRevision != null && expectedPlacementRevision != placementRevisionState) return null
             val current = coordinates?.takeIf { it.isAttached } ?: return null
-            val rootOffset = current.localToRoot(localPoint.resolve(current.size))
+            // `localToRoot` is relative to this page's own root. Inside a Kuikly child page that is
+            // NOT the window, so add the host-provided origin. Read here (open time), never cached,
+            // so rotation / pane resize / fold are picked up. Zero outside a child page.
+            val pageOrigin = childPageOriginState?.origin ?: Offset.Zero
+            val rootOffset = current.localToRoot(localPoint.resolve(current.size)) + pageOrigin
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
         }
     }
 }
+
+/**
+ * The window-space origin of the Kuikly page the current composition belongs to.
+ *
+ * Task #181 follow-up (Argus 2026-10-17): a `SlockKuiklyChildPage` is its own Kuikly page, so
+ * `positionInRoot()` / `localToRoot()` inside it are relative to THAT page's root, not the window.
+ * Every overlay anchored through [SlockPopoverAnchor.LiveRef] therefore landed offset by the host
+ * pane's origin -- in the dual-pane detail/side column that meant a menu drawn over the list panel.
+ *
+ * The host that embeds a child page measures its own window position and provides it here; a
+ * single-column or full-screen page provides `Offset.Zero`, which is exactly the old behaviour.
+ *
+ * Deliberately a [SlockChildPageOriginState] (observable) rather than a plain Offset: it is read
+ * inside `resolve()` at the moment an overlay opens, so rotation, a pane resize or a fold is picked
+ * up without caching a stale value.
+ */
+internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
+    var origin: Offset by mutableStateOf(origin)
+        internal set
+
+    internal fun setOrigin(next: Offset) {
+        if (next != origin) origin = next
+    }
+}
+
+internal val LocalSlockChildPageOrigin =
+    androidx.compose.runtime.staticCompositionLocalOf { SlockChildPageOriginState() }
 
 internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 
@@ -341,6 +382,11 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
+    // task #181 follow-up: bind the enclosing child page's origin so resolve() can convert this
+    // page's root coordinates into window coordinates. Offset.Zero outside a child page, i.e.
+    // unchanged behaviour for single-column / full-screen hosts.
+    val childPageOrigin = LocalSlockChildPageOrigin.current
+    SideEffect { anchorRef.attachChildPageOrigin(childPageOrigin) }
     return if (enabled) {
         this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured)
     } else {

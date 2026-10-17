@@ -47,6 +47,27 @@ Available local-point policies are `Exact`, `BottomStart`, `BottomEnd`, and
 anchors, store `positionInRoot()` snapshots, or construct root offsets in
 business screens.
 
+## Child Pages Are Their Own Root
+
+`SlockKuiklyChildPage` hosts a separate Kuikly page. Inside it, `positionInRoot()` and
+`localToRoot()` are relative to **that page's root, not the window**, so an overlay opened there
+lands offset by the host pane's origin — in the dual-pane detail / side column that means a menu
+drawn over the list panel, often unreachable.
+
+- `SlockKuiklyChildPage` measures its own window position and provides it through
+  `LocalSlockChildPageOrigin` (a `SlockChildPageOriginState`).
+- `SlockPopoverAnchor.LiveRef.resolve()` adds `state.origin` to `localToRoot(...)`. It reads the
+  current value **at open time**, never a cached snapshot, so rotation, a pane resize or a fold is
+  picked up automatically.
+- A full-screen or single-column page measures `(0, 0)`, so its behaviour is unchanged.
+
+Consequences for feature code: use `slockCaptureLiveRootAnchor` + `resolve()` as before — the
+conversion is already handled. Do **not** hand-roll `positionInRoot()` for popover placement inside
+a child page, and do not cache a resolved anchor across layout changes.
+
+Task #180 shipped a thread-panel overflow menu that followed this document literally and was still
+unusable on Android for exactly this reason; the fix is task #181 follow-up.
+
 ## Known Regression Class
 
 Task #258 found this exact bug in `SlockAnchoredToolbarChip`: the trigger anchor

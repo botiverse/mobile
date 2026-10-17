@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,6 +14,9 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -260,9 +264,21 @@ internal fun SlockKuiklyChildPage(
                 }
                 .toString()
         }
+    // task #181 follow-up (Argus): this is a separate Kuikly page, so overlays opened inside it
+    // resolve `positionInRoot()` against THIS page's root, not the window. Measure where the page
+    // actually sits and provide that origin; anchored overlays add it at open time. A full-screen
+    // page measures (0,0) and behaviour is unchanged.
+    val childPageOriginState = remember { SlockChildPageOriginState() }
+    CompositionLocalProvider(LocalSlockChildPageOrigin provides childPageOriginState) {
+    Box(
+        modifier =
+            modifier.onGloballyPositioned { coordinates ->
+                childPageOriginState.setOrigin(coordinates.positionInRoot())
+            }
+    ) {
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
         factory = { SlockKuiklyChildPageView() },
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
             updateActive(active)
@@ -280,6 +296,8 @@ internal fun SlockKuiklyChildPage(
             }
         }
     )
+    }
+    }
 }
 
 internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =
