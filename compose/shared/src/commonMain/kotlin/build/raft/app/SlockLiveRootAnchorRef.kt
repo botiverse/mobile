@@ -411,14 +411,15 @@ internal fun SlockPopoverAnchorResolver.resolveCurrentPlacement(): SlockPopoverA
  * [SlockPopoverAnchorResolver], which still defers root conversion until open. Detached coordinates
  * deliberately fail closed.
  */
+@Composable
 internal fun Modifier.slockCaptureLiveRootAnchor(
     anchorRef: SlockLiveRootAnchorRef,
     enabled: Boolean = true,
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
     // task #181 follow-up: the enclosing child page's origin must be bound so resolve() can convert
-    // this page's root coordinates into window coordinates. Read it in a @Composable scope; a
-    // CompositionLocal cannot be read from a plain modifier factory.
+    // this page's root coordinates into window coordinates. That needs a CompositionLocal read, so
+    // this modifier factory is @Composable; every call site builds its modifier inside composition.
     val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
     return if (enabled) {
         this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
