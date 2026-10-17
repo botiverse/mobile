@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
@@ -16608,6 +16608,8 @@ private fun ThreadHeaderFocusModeMenu(
         onClick = {
             val bus = eventBus ?: return@SlockBrutalIconButton
             val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd) ?: return@SlockBrutalIconButton
+            // Already window space: the shell must not convert this again.
+            val windowAnchor = anchor.rootOffsetOrNull() ?: return@SlockBrutalIconButton
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             bus.post(
@@ -16615,8 +16617,7 @@ private fun ThreadHeaderFocusModeMenu(
                 SlockShellOverlayRequest(
                     requestId = requestId,
                     pageKey = pageKey,
-                    // Already window space: the shell must not convert this again.
-                    anchor = anchor.rootOffsetForTest(),
+                    anchor = windowAnchor,
                     items =
                         items.map {
                             SlockShellOverlayItem(

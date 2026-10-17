@@ -50,6 +50,14 @@ internal class SlockPopoverAnchor private constructor(
 ) {
     fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
 
+    /**
+     * The window-space offset this anchor resolves to.
+     *
+     * task #180: a child page sends this to the shell so the shell can draw the menu without
+     * re-deriving the position (re-deriving is what produced four rounds of wrong placements).
+     */
+    internal fun rootOffsetOrNull(): Offset? = rootOffset.takeIf { it.isSlockUsableAnchor() }
+
     companion object {
         /**
          * task #180: an anchor built directly from a WINDOW-space offset.
