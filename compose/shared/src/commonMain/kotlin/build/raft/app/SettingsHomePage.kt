@@ -34,6 +34,7 @@ import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
 import build.raft.app.components.SlockAnchoredToolbarChip
 import build.raft.app.components.SlockBrutalReadOnlyField
+import build.raft.app.components.SlockBrutalReadOnlyValueField
 import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
@@ -121,6 +122,9 @@ import build.raft.app.data.CONNECTED_APPS_ACTION_REGISTER
 import build.raft.app.data.CONNECTED_APPS_ACTION_UNINSTALL
 import build.raft.app.data.CONNECTED_APPS_ACTION_UPDATE
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.ServerPublicExposedChannel
+import build.raft.app.data.ServerPublicVisibilityRepository
+import com.tencent.tmm.kmmresource.resource.StringResource
 import build.raft.app.data.AnnouncementItem
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.SlockAnnouncementsRemindersApiClient
@@ -7745,6 +7749,8 @@ internal fun SettingsNativeDetailScreen() {
         bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
         timeContext = null,
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
+        serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
+        webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
 }
@@ -7796,6 +7802,8 @@ private fun SettingsNativeDetailPageContent(
     timeContext: SlockTimeContext?,
     diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
+    serverPublicVisibilityRepository: ServerPublicVisibilityRepository? = null,
+    webBaseUrl: String = "",
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -8069,7 +8077,17 @@ private fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsNativeDetailPage.Server ->
+            SettingsNativeDetailPage.Server -> {
+                val currentServer = session?.currentServerSummary()
+                val publicAccess =
+                    rememberSettingsServerPublicAccessBinding(
+                        repository = serverPublicVisibilityRepository,
+                        serverId = currentServer?.id?.value,
+                        role = currentServer?.role,
+                        authDataSource = authDataSource,
+                        webBaseUrl = webBaseUrl,
+                        onCopyUrl = { url -> settingsCapabilities.bridgeCopyToClipboard(url) }
+                    )
                 SharedSettingsServerContent(
                     payload = settingsState.server.toServerPayload(
                         session = session,
@@ -8083,6 +8101,7 @@ private fun SettingsNativeDetailPageContent(
                     serverRole = session?.currentServerSummary()?.role.orEmpty(),
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    publicAccess = publicAccess,
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
@@ -8093,6 +8112,7 @@ private fun SettingsNativeDetailPageContent(
                         else -> Unit
                     }
                 }
+            }
             SettingsNativeDetailPage.Notifications ->
                 SettingsNotificationsContent(
                     state = settingsState.mobile,
@@ -8319,6 +8339,44 @@ private fun SharedSettingsSectionContent(
 }
 
 @Composable
+private fun rememberSettingsServerPublicAccessBinding(
+    repository: ServerPublicVisibilityRepository?,
+    serverId: String?,
+    role: String?,
+    authDataSource: SharedAuthDataSource,
+    webBaseUrl: String,
+    onCopyUrl: (String) -> Unit,
+): SettingsServerPublicAccessBinding? {
+    if (repository == null) return null
+    val scope = rememberCoroutineScope()
+    val store =
+        remember(repository, scope, authDataSource) {
+            ServerPublicVisibilityStore(
+                repository = repository,
+                scope = scope,
+                refreshServerList = { authDataSource.loadServers() }
+            )
+        }
+    LaunchedEffect(store, serverId, role) {
+        store.dispatch(ServerPublicVisibilityIntent.Start(serverId = serverId, role = role))
+    }
+    val state by store.state.collectAsState()
+    return SettingsServerPublicAccessBinding(
+        state = state,
+        webBaseUrl = webBaseUrl,
+        onIntent = store::dispatch,
+        onCopyUrl = onCopyUrl,
+    )
+}
+
+internal data class SettingsServerPublicAccessBinding(
+    val state: ServerPublicVisibilityState,
+    val webBaseUrl: String,
+    val onIntent: (ServerPublicVisibilityIntent) -> Unit,
+    val onCopyUrl: (String) -> Unit,
+)
+
+@Composable
 private fun SharedSettingsServerContent(
     payload: KuiklySharedSettingsPayload,
     profileName: String,
@@ -8349,6 +8407,8 @@ private fun SharedSettingsServerContent(
     onDeleteConfirmationNameChange: (String) -> Unit = {},
     showProfileCard: Boolean = true,
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
+    /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
+    publicAccess: SettingsServerPublicAccessBinding? = null,
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -8367,6 +8427,17 @@ private fun SharedSettingsServerContent(
                     actionState = actionState,
                     onNameChange = onProfileNameChange,
                     onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
+                )
+            }
+        }
+        // Web ServerTabContent order: Profile, then Public access.
+        if (publicAccess != null && publicAccess.state.sectionVisible) {
+            item {
+                SettingsServerPublicAccessCard(
+                    state = publicAccess.state,
+                    webBaseUrl = publicAccess.webBaseUrl,
+                    onIntent = publicAccess.onIntent,
+                    onCopyUrl = publicAccess.onCopyUrl
                 )
             }
         }
@@ -12937,6 +13008,261 @@ private fun SettingsServerMemberPermissionsCard(
                 leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.BrandYellow
             )
+        }
+    }
+}
+
+/**
+ * Owner-only "Public access" section (web SettingsPanel.tsx PublicVisibilitySection,
+ * botiverse/slock@9df0d1b3f lines 2160-2436). State and every write go through
+ * [ServerPublicVisibilityStore]; this composable only renders state and emits intents.
+ * [webBaseUrl] is the active Developer environment web URL and is used for both display and copy.
+ */
+@Composable
+private fun SettingsServerPublicAccessCard(
+    state: ServerPublicVisibilityState,
+    webBaseUrl: String,
+    onIntent: (ServerPublicVisibilityIntent) -> Unit,
+    onCopyUrl: (String) -> Unit,
+) {
+    if (!state.sectionVisible) return
+    val publicUrl = state.publicUrl(webBaseUrl)
+    val channels = state.readback?.exposedChannels.orEmpty()
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Globe,
+        title = stringResource(MR.strings.settings_public_visibility_section_label)
+    ) {
+        SettingsPublicAccessSwitchRow(
+            title = stringResource(MR.strings.settings_public_visibility_title),
+            detail = stringResource(MR.strings.settings_public_visibility_description),
+            checked = state.visibilityChecked,
+            enabled = state.visibilitySwitchEnabled,
+            nested = false,
+            onToggle = { onIntent(ServerPublicVisibilityIntent.VisibilityToggled(!state.visibilityChecked)) }
+        )
+        if (publicUrl != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(MR.strings.settings_public_visibility_public_url).slockDisplayUppercase(),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextMutedGray
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SlockBrutalReadOnlyValueField(
+                        value = publicUrl,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.settings_public_visibility_copy_url),
+                        onClick = { onCopyUrl(publicUrl) },
+                        leadingIcon = SlockLucideIconName.Copy,
+                        minWidth = 72.dp
+                    )
+                }
+            }
+        }
+        if (state.guestJoinApplicable) {
+            SettingsPublicAccessSwitchRow(
+                title = stringResource(MR.strings.settings_public_visibility_allow_guest_join),
+                detail = stringResource(MR.strings.settings_public_visibility_allow_guest_join_description),
+                checked = state.guestJoinChecked,
+                enabled = state.subSwitchesEnabled,
+                nested = true,
+                onToggle = { onIntent(ServerPublicVisibilityIntent.GuestJoinToggled(!state.guestJoinChecked)) }
+            )
+        }
+        SettingsPublicAccessSwitchRow(
+            title = stringResource(MR.strings.settings_public_visibility_allow_search),
+            detail = stringResource(MR.strings.settings_public_visibility_allow_search_description),
+            checked = state.searchChecked,
+            enabled = state.subSwitchesEnabled,
+            nested = true,
+            onToggle = { onIntent(ServerPublicVisibilityIntent.SearchToggled(!state.searchChecked)) }
+        )
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.15f)))
+        Text(
+            stringResource(MR.strings.settings_public_visibility_channel_list_label),
+            style = SlockType.Button.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+        if (state.loading) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .background(SlockColor.EmptyStateGray)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.15f))
+            )
+        } else {
+            SettingsPublicAccessChannelList(channels)
+        }
+        state.error?.let { error ->
+            SettingsFormErrorText(error.serverMessage ?: stringResource(error.kind.fallbackMessage()))
+        }
+    }
+    if (state.confirmOpen) {
+        SlockUnifiedDialog(
+            title = stringResource(MR.strings.settings_public_visibility_confirm_title),
+            onDismiss = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
+            dismissEnabled = !state.saving,
+            uppercaseTitle = false
+        ) {
+            Text(
+                stringResource(MR.strings.settings_public_visibility_confirm_description),
+                style = SlockType.Body,
+                color = SlockColor.TextBlack
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                item { SettingsPublicAccessChannelList(channels) }
+            }
+            SettingsFormDetailText(stringResource(MR.strings.settings_public_visibility_confirm_audience_change))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.common_cancel),
+                    onClick = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
+                    enabled = !state.saving
+                )
+                SlockBrutalActionButton(
+                    label =
+                        if (state.saving) {
+                            stringResource(MR.strings.settings_public_visibility_confirm_saving)
+                        } else {
+                            stringResource(MR.strings.settings_public_visibility_confirm_action)
+                        },
+                    onClick = { onIntent(ServerPublicVisibilityIntent.ConfirmMakePublic) },
+                    enabled = !state.saving,
+                    backgroundColor = SlockColor.AccentPink
+                )
+            }
+        }
+    }
+}
+
+private fun ServerPublicVisibilityErrorKind.fallbackMessage(): StringResource =
+    when (this) {
+        ServerPublicVisibilityErrorKind.Load -> MR.strings.settings_public_visibility_failed_load
+        ServerPublicVisibilityErrorKind.Update -> MR.strings.settings_public_visibility_failed_update
+        ServerPublicVisibilityErrorKind.GuestJoinUpdate -> MR.strings.settings_public_visibility_failed_guest_join_update
+        ServerPublicVisibilityErrorKind.SearchUpdate -> MR.strings.settings_public_visibility_failed_search_update
+    }
+
+@Composable
+private fun SettingsPublicAccessSwitchRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    nested: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (nested) {
+            // Second level (web: indented with a guide line under the main switch).
+            Box(
+                Modifier
+                    .padding(start = 4.dp, end = 14.dp)
+                    .width(2.dp)
+                    .heightIn(min = 40.dp)
+                    .background(SlockColor.BorderBlack.copy(alpha = 0.25f))
+            )
+        }
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .clickable(enabled = enabled, onClick = onToggle)
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                SettingsFormDetailText(detail)
+            }
+            SlockSwitchButton(checked = checked, enabled = enabled)
+        }
+    }
+}
+
+@Composable
+private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedChannel>) {
+    if (channels.isEmpty()) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.25f))
+                    .padding(horizontal = 12.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                stringResource(MR.strings.settings_public_visibility_empty_channels),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        channels.forEachIndexed { index, channel ->
+            if (index > 0) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.15f)))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(28.dp)
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon(SlockLucideIconName.Hash, Modifier.size(14.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        channel.name,
+                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    channel.description?.let {
+                        Text(
+                            it,
+                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }

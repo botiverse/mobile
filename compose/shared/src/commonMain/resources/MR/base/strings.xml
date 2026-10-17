@@ -2236,6 +2236,26 @@
     <string name="auth_private_deployment_web_unreachable">The web address could not be reached. Check it and try again.</string>
     <string name="auth_private_deployment_outdated">This server does not report a supported version (1.13.0 or later). Upgrade the server and try again.</string>
     <string name="auth_private_deployment_failed">Could not save the server settings. Try again.</string>
+    <string name="settings_public_visibility_section_label">Public access</string>
+    <string name="settings_public_visibility_title">Make this server public</string>
+    <string name="settings_public_visibility_description">Anyone can read the channels listed below, without signing in or being invited.</string>
+    <string name="settings_public_visibility_public_url">Public page</string>
+    <string name="settings_public_visibility_copy_url">Copy</string>
+    <string name="settings_public_visibility_allow_guest_join">Allow visitors to join as Guest</string>
+    <string name="settings_public_visibility_allow_guest_join_description">Signed-in visitors can join the server as read-only Guests, follow channels open to Guests, and be invited into other channels.</string>
+    <string name="settings_public_visibility_allow_search">Allow search engines</string>
+    <string name="settings_public_visibility_allow_search_description">Search engines can show the channels visible to anyone, and their threads, in search results. Turning it off stops this, though results already listed can take a while to drop out. The channels stay public.</string>
+    <string name="settings_public_visibility_channel_list_label">Channels visible to anyone</string>
+    <string name="settings_public_visibility_empty_channels">No channels are currently marked visible to Guests.</string>
+    <string name="settings_public_visibility_confirm_title">Make this server public?</string>
+    <string name="settings_public_visibility_confirm_description">These channels will become readable by anyone:</string>
+    <string name="settings_public_visibility_confirm_audience_change">You marked these channels visible to Guests earlier. That choice will now apply to everyone, not only the Guests you invited. You will not be asked again for each channel.</string>
+    <string name="settings_public_visibility_confirm_action">Make public</string>
+    <string name="settings_public_visibility_confirm_saving">Making public…</string>
+    <string name="settings_public_visibility_failed_load">Failed to load public access settings</string>
+    <string name="settings_public_visibility_failed_update">Failed to update public access</string>
+    <string name="settings_public_visibility_failed_guest_join_update">Failed to update Guest joining</string>
+    <string name="settings_public_visibility_failed_search_update">Failed to update search engine access</string>
     <string name="channel_public_page_readable">Anyone can read this channel on the public page</string>
     <string name="layout_server_public_page_live">Public: anyone can read its public channels without signing in</string>
 </resources>

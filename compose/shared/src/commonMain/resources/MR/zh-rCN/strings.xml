@@ -2236,6 +2236,26 @@
     <string name="auth_private_deployment_web_unreachable">前端地址无法访问，请检查后重试。</string>
     <string name="auth_private_deployment_outdated">这个服务器没有返回支持的版本（需要 1.13.0 或更高）。请升级服务器后重试。</string>
     <string name="auth_private_deployment_failed">保存失败，请重试。</string>
+    <string name="settings_public_visibility_section_label">公开访问</string>
+    <string name="settings_public_visibility_title">将此服务器设为公开</string>
+    <string name="settings_public_visibility_description">下面列出的频道，任何人都可以阅读，无需登录，也无需被邀请。</string>
+    <string name="settings_public_visibility_public_url">公开页面</string>
+    <string name="settings_public_visibility_copy_url">复制</string>
+    <string name="settings_public_visibility_allow_guest_join">允许已登录的用户以访客身份加入</string>
+    <string name="settings_public_visibility_allow_guest_join_description">已登录的用户可以以只读访客身份加入服务器，关注对访客开放的频道，也可以被邀请进其他频道。</string>
+    <string name="settings_public_visibility_allow_search">允许搜索引擎收录</string>
+    <string name="settings_public_visibility_allow_search_description">搜索引擎可以在搜索结果中展示任何人可见的频道及其消息列。关闭后会停止收录，已出现的搜索结果可能需要一段时间才会消失；频道仍然公开。</string>
+    <string name="settings_public_visibility_channel_list_label">任何人可见的频道</string>
+    <string name="settings_public_visibility_empty_channels">目前没有标记为「对访客可见」的频道。</string>
+    <string name="settings_public_visibility_confirm_title">将此服务器设为公开？</string>
+    <string name="settings_public_visibility_confirm_description">以下频道将对任何人可见：</string>
+    <string name="settings_public_visibility_confirm_audience_change">这些频道是你此前标记为「对访客可见」的。该选择现在将对所有人生效，不再仅限你邀请的访客；系统不会再逐个频道询问。</string>
+    <string name="settings_public_visibility_confirm_action">设为公开</string>
+    <string name="settings_public_visibility_confirm_saving">正在设为公开…</string>
+    <string name="settings_public_visibility_failed_load">无法加载公开访问设置</string>
+    <string name="settings_public_visibility_failed_update">无法更新公开访问设置</string>
+    <string name="settings_public_visibility_failed_guest_join_update">无法更新访客加入设置</string>
+    <string name="settings_public_visibility_failed_search_update">无法更新搜索引擎收录设置</string>
     <string name="channel_public_page_readable">任何人都能在公开页阅读这个频道</string>
     <string name="layout_server_public_page_live">已公开：任何人不登录也能阅读公开的频道</string>
 </resources>

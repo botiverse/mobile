@@ -18,6 +18,8 @@ import build.raft.app.data.KeyValueFontPreferenceStore
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.NotificationPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
+import build.raft.app.data.NetworkServerPublicVisibilityRepository
+import build.raft.app.data.ServerPublicVisibilityRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedApiEnvironmentStore
@@ -60,6 +62,7 @@ internal data class StandaloneSettingsEnvironment(
     val notificationPreferenceRepository: NotificationPreferenceRepository,
     val storeScope: SlockShellStoreScope,
     val webBaseUrl: String,
+    val serverPublicVisibilityRepository: ServerPublicVisibilityRepository,
 )
 
 /**
@@ -190,8 +193,11 @@ internal fun rememberStandaloneSettingsEnvironment(
                 nativeCache = avatarNativeCache
             )
         }
+    val serverPublicVisibilityRepository =
+        remember(networkClient) { NetworkServerPublicVisibilityRepository(networkClient) }
     return remember(
         dataSource,
+        serverPublicVisibilityRepository,
         authDataSource,
         authStore,
         serverMembersStore,
@@ -211,6 +217,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             notificationPreferenceRepository = notificationPreferenceRepository,
             storeScope = storeScope,
             webBaseUrl = webBaseUrl,
+            serverPublicVisibilityRepository = serverPublicVisibilityRepository,
         )
     }
 }
