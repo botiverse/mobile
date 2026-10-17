@@ -1,12 +1,22 @@
 package build.raft.app.core.data.storage
 
 import android.content.Context
+import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.SlockGeneralLogRing
+import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.shared.ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
+import build.raft.app.shared.SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME
 import java.io.File
 
-private const val SlockDatabaseName = "slock_shared.db"
-private const val SlockImageDiskCacheDir = "image_cache"
-private const val SlockAttachmentDownloadCacheDir = "slock-attachments"
-private const val SlockPickedThreadAttachmentCacheDir = "slock-picked-thread-attachments"
+private const val SlockDatabaseName = SlockAndroidSqlDatabaseContext.DatabaseFileName
+// task #13: every name below comes from the code that writes it. Hand-typed copies
+// drifted (the database row counted a non-existent `slock_shared.db` and always
+// showed 0 B; the temp row counted dirs nothing writes and missed the logs).
+private const val SlockImageDiskCacheDir = SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME
+private const val SlockAttachmentDownloadCacheDir = ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
+
+/** Picked/compressed thread attachments; written by SlockKuiklyActivity. */
+internal const val SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
 
 data class StorageManagementSnapshot(
         val localDatabaseBytes: Long,
@@ -32,7 +42,9 @@ class StorageManagementRepository(private val roots: StorageManagementRoots) {
                     localDatabaseBytes = roots.databaseFiles.sumExistingFileSizes(),
                     imageCacheBytes = roots.imageCacheDirs.sumExistingTreeSizes(),
                     attachmentDownloadBytes = roots.attachmentDownloadCacheDirs.sumExistingTreeSizes(),
-                    temporaryAndLogBytes = roots.temporaryAndLogDirs.sumExistingTreeSizes()
+                    temporaryAndLogBytes =
+                            roots.temporaryAndLogDirs.sumExistingTreeSizes() +
+                                    roots.diagnosticsLogDirs.sumExistingTreeSizes()
             )
 
     fun clear(target: StorageClearTarget): StorageManagementSnapshot {
@@ -56,13 +68,17 @@ data class StorageManagementRoots(
         val databaseFiles: List<File>,
         val imageCacheDirs: List<File>,
         val attachmentDownloadCacheDirs: List<File>,
-        val temporaryAndLogDirs: List<File>
+        val temporaryAndLogDirs: List<File>,
+        /**
+         * Counted in the temporary-and-logs row but NOT deleted by [StorageManagementRepository.clear]:
+         * the log ring holds them open, so they are cleared through
+         * SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles instead.
+         */
+        val diagnosticsLogDirs: List<File> = emptyList()
 ) {
     companion object {
         fun fromContext(context: Context): StorageManagementRoots {
             val database = context.getDatabasePath(SlockDatabaseName)
-            val externalCache = context.externalCacheDir
-            val crashDir = context.getExternalFilesDir(null)?.resolve("crashes")
             return StorageManagementRoots(
                     databaseFiles =
                             listOf(
@@ -74,16 +90,11 @@ data class StorageManagementRoots(
                     imageCacheDirs = listOf(context.cacheDir.resolve(SlockImageDiskCacheDir)),
                     attachmentDownloadCacheDirs = listOf(context.cacheDir.resolve(SlockAttachmentDownloadCacheDir)),
                     temporaryAndLogDirs =
-                            listOfNotNull(
-                                    context.cacheDir.resolve("tmp"),
-                                    context.cacheDir.resolve("temp"),
-                                    context.cacheDir.resolve("logs"),
-                                    context.cacheDir.resolve("diagnostics"),
-                                    context.cacheDir.resolve(SlockPickedThreadAttachmentCacheDir),
-                                    externalCache?.resolve("tmp"),
-                                    externalCache?.resolve("temp"),
-                                    externalCache?.resolve("logs"),
-                                    crashDir
+                            listOf(context.cacheDir.resolve(SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME)),
+                    diagnosticsLogDirs =
+                            listOf(
+                                    SlockGeneralLogRing.logRoot(context),
+                                    SlockAndroidLocalDiagnostics.feedbackDir(context)
                             )
             )
         }

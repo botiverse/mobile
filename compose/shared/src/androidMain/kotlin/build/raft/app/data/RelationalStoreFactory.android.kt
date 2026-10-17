@@ -55,6 +55,14 @@ private class JavaSqliteReadOnlyFile(
 }
 
 object SlockAndroidSqlDatabaseContext {
+    /**
+     * File name of the shared SQLDelight database under the app's databases dir.
+     * The Android host's Storage page sizes this file; it reads the name from here
+     * so it can never drift from the driver again (it counted a non-existent
+     * `slock_shared.db` and always showed 0 B).
+     */
+    const val DatabaseFileName: String = SlockSqlDatabase.DatabaseName
+
     private var context: Context? = null
 
     fun init(context: Context) {

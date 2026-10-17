@@ -301,7 +301,7 @@ object SlockAndroidLocalDiagnostics {
             ?.forEach { it.delete() }
     }
 
-    private fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
+    internal fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
 
 }
 
