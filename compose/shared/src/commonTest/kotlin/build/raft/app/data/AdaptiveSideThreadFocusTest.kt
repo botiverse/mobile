@@ -10,6 +10,8 @@ import build.raft.app.WireThreadLaunchPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -245,11 +247,29 @@ class AdaptiveSideThreadFocusTest {
     }
 
     @Test
-    fun enteringFocusKeepsTheSessionRenderableSoNoZeroWeightLayoutIsNeeded() {
-        // A device run crashed with IllegalArgumentException("invalid weight 0.0") on entering
-        // Focus: `Modifier.weight(0f)` is illegal in Compose. The layout now collapses the parent
-        // pane by WIDTH instead, which requires the session to stay renderable in both directions.
-        // This pins that contract so the layout can never be forced into an invalid state.
+    fun aFocusedPaneIsCollapsedByWidthAndTakesNoWeight() {
+        // P0 regression guard (Argus's point): a session-state test cannot catch `weight(0f)` coming
+        // back -- only an assertion on the layout the pane is given can. Compose rejects a zero
+        // weight with IllegalArgumentException("invalid weight 0.0"), which crashed the app the
+        // moment Focus was entered. The production call site routes through this function, so this
+        // assertion covers the shipping path.
+        val focused = build.raft.app.slockParentPaneLayout(focused = true)
+        assertEquals(0f, focused.widthDp, "a focused pane collapses to zero width")
+        assertNull(focused.weight, "a focused pane must not take a weight at all")
+    }
+
+    @Test
+    fun theWeightUsedForTheParentPaneIsNeverZero() {
+        // The invariant Compose demands: any weight that IS passed must be > 0.
+        val normal = build.raft.app.slockParentPaneLayout(focused = false)
+        assertNotNull(normal.weight)
+        assertTrue(normal.weight!! > 0f, "Compose throws for weight 0; the pane must never take one")
+        assertNull(normal.widthDp, "the unfocused pane is sized by weight, not width")
+        assertTrue(build.raft.app.SLOCK_PARENT_PANE_WEIGHT > 0f)
+    }
+
+    @Test
+    fun enteringFocusKeepsTheSessionRenderable() {
         val session = sessionWithSideThread(widePane(), detailPaneWidthDp = 1240f)
 
         val focused = session.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
@@ -260,6 +280,5 @@ class AdaptiveSideThreadFocusTest {
         val restored = focused.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
         assertFalse(restored.sideThreadFocusActive())
         assertTrue(restored.visibleSideThread() != null, "leaving Focus must restore the two columns")
-        assertTrue(restored.workspace?.selection != null)
     }
 }

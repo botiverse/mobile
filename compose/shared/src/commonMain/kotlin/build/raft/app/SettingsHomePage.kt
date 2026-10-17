@@ -1473,6 +1473,32 @@ internal fun retainedHomeSecondaryDestination(destination: String?): String? =
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
     retainedHomeSecondaryDestination(destination).let { it == null || it == HomeDestinationActivity }
 
+/**
+ * How the parent detail pane gives up its space when Focus mode owns the row.
+ *
+ * task #180 P0: the pane used to collapse with `Modifier.weight(0f)`, which is **illegal** in
+ * Compose -- it throws `IllegalArgumentException("invalid weight 0.0")` and crashed the app the
+ * moment Focus was entered. A zero WIDTH is legal, so Focus collapses the pane by width and the
+ * pane takes no weight at all.
+ *
+ * Exposed as a pure description (not a Modifier) so tests can pin the invariant: when focused the
+ * pane is zero-width and carries no weight, and the weight used anywhere else is always > 0.
+ */
+internal data class SlockParentPaneLayout(
+    val widthDp: Float?,
+    val weight: Float?,
+)
+
+internal fun slockParentPaneLayout(focused: Boolean): SlockParentPaneLayout =
+    if (focused) {
+        SlockParentPaneLayout(widthDp = 0f, weight = null)
+    } else {
+        SlockParentPaneLayout(widthDp = null, weight = SLOCK_PARENT_PANE_WEIGHT)
+    }
+
+/** The only weight the parent pane may ever take. Must be > 0 -- Compose rejects zero. */
+internal const val SLOCK_PARENT_PANE_WEIGHT: Float = 1f
+
 internal fun appShellAppearanceGeneration(
     pageVisibleTick: Int,
     initialAuthRestoreTick: Int
@@ -6419,16 +6445,19 @@ private fun SlockAppShellReadyContent(
                                         }
                                     }
                         ) {
-                        // task #180: in Focus mode the thread owns the row, so the parent channel/DM
-                        // gets no space. NB: `Modifier.weight(0f)` is ILLEGAL in Compose -- it throws
-                        // IllegalArgumentException("invalid weight 0.0") the moment Focus is entered.
-                        // Collapse by WIDTH instead: a legal zero that keeps the Row valid, and the
-                        // weighted pane returns when Focus exits.
+                        // task #180: in Focus mode the thread owns the row and the parent channel/DM
+                        // gets no space. It is collapsed by WIDTH, never by weight -- `weight(0f)` is
+                        // illegal in Compose and threw IllegalArgumentException "invalid weight 0.0"
+                        // the moment Focus was entered. See slockParentPaneLayout.
+                        val paneLayout = slockParentPaneLayout(focused = sideThreadFocusActive)
                         val modifier =
-                            if (sideThreadFocusActive) {
-                                Modifier.width(0.dp).fillMaxHeight()
-                            } else {
-                                Modifier.weight(1f).fillMaxHeight()
+                            when {
+                                // Collapsed by width; a focused pane deliberately takes NO weight.
+                                paneLayout.widthDp != null ->
+                                    Modifier.width(paneLayout.widthDp.dp).fillMaxHeight()
+                                paneLayout.weight != null ->
+                                    Modifier.weight(paneLayout.weight).fillMaxHeight()
+                                else -> Modifier.fillMaxHeight()
                             }
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
