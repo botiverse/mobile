@@ -42,6 +42,14 @@ class XcodeSelectionTest(unittest.TestCase):
         self.run_selection()
         self.assertEqual(self.envfile.read_text(), f"DEVELOPER_DIR={self.developer}\n")
 
+    def test_default_xcode_alias_resolves_to_one_direct_install(self):
+        alias = self.root / "Xcode.app"
+        alias.symlink_to(self.app, target_is_directory=True)
+        self.env["XCODE_APP_PATH"] = ""
+        self.env["DEVELOPER_DIR"] = ""
+        self.run_selection()
+        self.assertEqual(self.envfile.read_text(), f"DEVELOPER_DIR={self.developer}\n")
+
     def test_missing_full_xcode_does_not_export_success(self):
         self.env["XCODE_APP_PATH"] = str(self.root / "Missing.app")
         self.run_selection(False)

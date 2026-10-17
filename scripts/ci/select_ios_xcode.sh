@@ -8,7 +8,32 @@ if [ -n "$app" ]; then
 elif [ -n "${DEVELOPER_DIR:-}" ] && [ -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]; then
   developer="$DEVELOPER_DIR"
 elif [ -x "$trusted_root"/Xcode.app/Contents/Developer/usr/bin/xcodebuild ]; then
-  developer="$trusted_root"/Xcode.app/Contents/Developer
+  # GitHub's macOS image exposes the default Xcode through the conventional
+  # /Applications/Xcode.app alias. Resolve that alias to the one direct
+  # Xcode*.app installation it targets before applying the path checks below.
+  # Explicit XCODE_APP_PATH/DEVELOPER_DIR symlinks remain rejected.
+  app="$trusted_root/Xcode.app"
+  if [ -L "$app" ]; then
+    physical_app="$(cd "$app" 2>/dev/null && pwd -P)" || {
+      echo '::error::Xcode alias target is missing' >&2
+      exit 1
+    }
+    shopt -s nullglob
+    direct_candidates=()
+    for path in "$trusted_root"/Xcode*.app; do
+      [ -L "$path" ] && continue
+      [ -x "$path/Contents/Developer/usr/bin/xcodebuild" ] || continue
+      candidate_physical="$(cd "$path" 2>/dev/null && pwd -P)" || continue
+      [ "$candidate_physical" = "$physical_app" ] || continue
+      direct_candidates+=("$path")
+    done
+    if [ "${#direct_candidates[@]}" -ne 1 ]; then
+      echo '::error::Xcode.app alias does not resolve to exactly one direct Xcode installation' >&2
+      exit 1
+    fi
+    app="${direct_candidates[0]}"
+  fi
+  developer="$app/Contents/Developer"
 else
   shopt -s nullglob
   candidates=()
