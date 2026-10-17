@@ -83,27 +83,36 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
-            // task #181 follow-up: `rootOffset` is now in WINDOW coordinates, but the overlay layout
-            // measures its own box inside this page (a 400px thread column), so positionContent would
-            // clamp a window-space anchor against a 400px viewport and return an off-screen offset --
-            // the menu then draws nothing at all. Convert back into this page's space for layout; the
-            // visual result is identical because the overlay host is drawn in the same page.
-            // The origin state is read from the registry (a CompositionLocal cannot cross the
-            // @Page boundary, so `.current` here would be the zero default again).
-            val pageOriginForLayout =
-                SlockChildPageOriginRegistry.stateFor(
-                    runCatching {
-                        LocalActivity.current.pageData.params
-                            .optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)
-                            .trim()
-                    }.getOrNull().orEmpty()
-                )
-            val anchorInPageSpace =
-                // positionContent subtracts layout.origin itself, so hand back page-local + origin.
-                (rootOffset - pageOriginForLayout.windowOrigin) + overlayLayout.origin
+            // task #181 follow-up. Device evidence: with a WINDOW-space anchor (700) the middle
+            // column's long-press menu landed exactly under the finger, so the overlay IS drawn in
+            // window coordinates -- an earlier attempt to convert back to page space regressed both
+            // menus. The remaining defect was the CLAMP BOUND: this host measures its own pane (a
+            // 400px thread column), and `positionContent` coerced a window-space 1904 into
+            // [gap, 400 - width - gap], pushing the popover off-screen (nothing drawn) or to the
+            // page's left edge (the old sliver).
+            //
+            // Bound it by the ROOT view instead: `pageViewWidth/Height` come from
+            // `rootViewWidth/rootViewHeight`, which is the same window space as the anchor, so the
+            // viewport origin is zero. When the root size is unavailable the historical behaviour is
+            // kept (the host's own box).
+            val pageDataForViewport = runCatching { LocalActivity.current.pageData }.getOrNull()
+            val pageViewportWidth = pageDataForViewport?.pageViewWidth ?: 0f
+            val pageViewportHeight = pageDataForViewport?.pageViewHeight ?: 0f
+            // pageViewWidth/Height come from `rootViewWidth`/`rootViewHeight`, i.e. the ROOT (window)
+            // view, which is the same space the anchor is in now -- so the viewport origin is zero.
+            val viewportOriginOverride =
+                Offset.Zero.takeIf { pageViewportWidth > 0f && pageViewportHeight > 0f }
+            val viewportSizeOverride =
+                if (pageViewportWidth > 0f && pageViewportHeight > 0f) {
+                    Size(pageViewportWidth, pageViewportHeight)
+                } else {
+                    null
+                }
             val popoverOffset =
                 overlayLayout.positionContent(
-                    anchor = anchorInPageSpace,
+                    anchor = rootOffset,
+                    viewportOrigin = viewportOriginOverride,
+                    viewportSize = viewportSizeOverride,
                     contentSize = contentSize,
                     viewportGap = viewportGap,
                     horizontalOffset = horizontalOffset,

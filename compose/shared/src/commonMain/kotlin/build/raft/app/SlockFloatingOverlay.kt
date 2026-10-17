@@ -286,16 +286,27 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     // behavior so the menu does not run off the right edge.
     // #327: improved to pick the side that shows more visible content
     // when both left and right placements would overflow.
-    horizontalAutoFlip: Boolean = false
+    horizontalAutoFlip: Boolean = false,
+    /**
+     * task #181 follow-up: the viewport the overlay is clamped into, in the SAME coordinate space as
+     * [anchor]. Inside a Kuikly child page this host measures only its own pane (e.g. a 400px thread
+     * column) while the anchor is in window coordinates, so clamping a window-space anchor against a
+     * 400px viewport pushed the popover off-screen entirely. Callers that anchor in window space pass
+     * the window viewport here; null keeps the historical behaviour (the host's own box).
+     */
+    viewportOrigin: Offset? = null,
+    viewportSize: Size? = null
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
         return null
     }
-    val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
+    val effectiveOrigin = viewportOrigin ?: origin
+    val effectiveSize = viewportSize ?: size
+    val localAnchor = Offset(anchor.x - effectiveOrigin.x, anchor.y - effectiveOrigin.y)
     val x = slockHorizontalPosition(
         localAnchorX = localAnchor.x,
         contentWidth = contentSize.width,
-        viewportWidth = size.width,
+        viewportWidth = effectiveSize.width,
         horizontalOffset = horizontalOffset,
         viewportGap = viewportGap,
         horizontalPlacement = horizontalPlacement,
