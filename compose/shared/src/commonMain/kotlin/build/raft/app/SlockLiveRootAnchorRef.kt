@@ -51,6 +51,15 @@ internal class SlockPopoverAnchor private constructor(
 ) {
     fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
 
+    /**
+     * The resolved root offset this anchor will place the overlay at.
+     *
+     * Exposed for tests: the child-page origin compensation is invisible otherwise, and a fix that
+     * silently adds zero (as the first attempt did) would pass any state-only assertion. Production
+     * code consumes the offset through [renderInOverlay] and must not branch on it.
+     */
+    internal fun rootOffsetForTest(): Offset = rootOffset
+
     @Composable
     internal fun renderInOverlay(
         contentSize: Size,

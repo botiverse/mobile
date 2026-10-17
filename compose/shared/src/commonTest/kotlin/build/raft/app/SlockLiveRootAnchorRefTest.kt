@@ -261,6 +261,81 @@ class SlockLiveRootAnchorRefTest {
     }
 }
 
+/**
+ * Task #180 follow-up (LiBai): the earlier origin tests only exercised state arithmetic. These drive
+ * the REAL path -- a `LiveRef`, `captureFromLayoutCoordinates`, then `resolve()` -- and assert the
+ * returned root offset actually moves when the child-page origin changes. Without this, a fix that
+ * silently does nothing (as the first attempt did on device) would still pass the suite.
+ */
+class SlockLiveRootAnchorRefChildPageOriginTest {
+    @Test
+    fun resolveAddsTheChildPageOriginToTheResolvedRootOffset() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "thread:menu")
+        val origin = SlockChildPageOriginState()
+        anchorRef.attachChildPageOrigin(origin)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        // No origin: page-root coordinates are used as-is (the old, full-screen behaviour).
+        assertEquals(Offset(10f, 20f), anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest())
+
+        // With the host's pane origin, the same anchor resolves into WINDOW coordinates.
+        origin.updateOrigin(Offset(390f, 0f))
+        assertEquals(Offset(400f, 20f), anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest())
+    }
+
+    @Test
+    fun mutatingTheOriginChangesTheNextResolveWithoutRecapturing() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(0f, 0f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "thread:menu")
+        val origin = SlockChildPageOriginState()
+        anchorRef.attachChildPageOrigin(origin)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        origin.updateOrigin(Offset(100f, 0f))
+        assertEquals(Offset(100f, 0f), anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest())
+
+        // Pane resized / rotated: the origin moves and the NEXT open must follow it.
+        origin.updateOrigin(Offset(250f, 12f))
+        assertEquals(
+            Offset(250f, 12f),
+            anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest(),
+            "resolve must read the origin live rather than a cached snapshot"
+        )
+    }
+
+    @Test
+    fun aNestedOriginReachesTheResolvedOffset() {
+        val parent = SlockChildPageOriginState()
+        val child = SlockChildPageOriginState()
+        child.linkParentOrigin(parent)
+        parent.updateOrigin(Offset(390f, 0f))
+        child.updateOrigin(Offset(60f, 0f))
+
+        val coordinates = FakeLayoutCoordinates(root = Offset(5f, 5f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "nested:menu")
+        anchorRef.attachChildPageOrigin(child)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertEquals(
+            Offset(455f, 5f),
+            anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest(),
+            "nested page must contribute parent + own origin"
+        )
+    }
+
+    @Test
+    fun detachingTheOriginRestoresPageRootBehaviour() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(8f, 9f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "plain:menu")
+        anchorRef.attachChildPageOrigin(SlockChildPageOriginState())
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        anchorRef.attachChildPageOrigin(null)
+
+        assertEquals(Offset(8f, 9f), anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.rootOffsetForTest())
+    }
+}
+
 private class FakeLayoutCoordinates(
     var root: Offset,
     var measuredSize: IntSize = IntSize(width = 10, height = 10),

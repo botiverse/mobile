@@ -276,15 +276,17 @@ internal fun SlockKuiklyChildPage(
     // as a live reference so an outer resize propagates without recomputing a snapshot here.
     SideEffect { childPageOriginState.linkParentOrigin(parentChildPageOrigin) }
     CompositionLocalProvider(LocalSlockChildPageOrigin provides childPageOriginState) {
-    Box(
+    // IMPORTANT: measure on the modifier that the HOST passed in, not on a node created inside this
+    // child page. `onGloballyPositioned` reports `positionInRoot()` relative to the enclosing
+    // composition's root -- inside the child page that is the page itself, i.e. (0,0), which is why
+    // the first attempt compensated nothing. The incoming modifier is built in the PARENT
+    // composition, so measuring it yields the child page's real position in the parent.
+    MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
+        factory = { SlockKuiklyChildPageView() },
         modifier =
             modifier.onGloballyPositioned { coordinates ->
                 childPageOriginState.updateOrigin(coordinates.positionInRoot())
-            }
-    ) {
-    MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
-        factory = { SlockKuiklyChildPageView() },
-        modifier = Modifier.fillMaxSize(),
+            },
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
             updateActive(active)
@@ -302,7 +304,6 @@ internal fun SlockKuiklyChildPage(
             }
         }
     )
-    }
     }
 }
 
