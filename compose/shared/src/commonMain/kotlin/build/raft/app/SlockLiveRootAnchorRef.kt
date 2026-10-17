@@ -303,9 +303,18 @@ internal fun rememberSlockChildPageOriginBinding(
     // ambient local (also zero by default) agrees -- full-screen behaviour is unchanged.
     // The host writes its registry key into this page's own params, because a page cannot see its
     // own name and a CompositionLocal cannot cross the @Page boundary.
-    val params = LocalActivity.current.pageData.params
-    val originKey = params.optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM).trim()
-    val state = SlockChildPageOriginRegistry.stateFor(originKey)
+    //
+    // Tolerant by design: composition-only hosts (widget/gesture harnesses, previews) provide no
+    // LocalActivity. There is no child page there, so the correct origin is zero -- use the ambient
+    // local instead of touching the activity.
+    val pageParams = runCatching { LocalActivity.current.pageData.params }.getOrNull()
+    val originKey = pageParams?.optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)?.trim().orEmpty()
+    val state =
+        if (originKey.isNotEmpty()) {
+            SlockChildPageOriginRegistry.stateFor(originKey)
+        } else {
+            LocalSlockChildPageOrigin.current
+        }
     SideEffect { anchorRef.attachChildPageOrigin(state) }
     return state
 }
