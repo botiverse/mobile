@@ -12489,7 +12489,7 @@ private fun SharedThreadRouteContentContent(
         attachmentCommentsDialogState
             .retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
             ?.let { dialogState ->
-            ThreadAttachmentCommentsDialog(
+            ThreadAttachmentCommentsSheet(
                 state = dialogState,
                 onDismiss = { attachmentCommentsDialogState = null },
                 onFilterChange = { filter ->
@@ -29175,7 +29175,7 @@ private fun ThreadAttachmentChip(
 }
 
 @Composable
-internal fun ThreadAttachmentCommentsDialog(
+internal fun ThreadAttachmentCommentsSheet(
     state: ThreadAttachmentCommentsDialogState,
     onDismiss: () -> Unit,
     onFilterChange: (String) -> Unit,
@@ -29185,25 +29185,78 @@ internal fun ThreadAttachmentCommentsDialog(
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
     onQuote: (ThreadAttachmentCommentItem) -> Unit
 ) {
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.thread_comments_title),
-        onDismiss = onDismiss,
-        minWidth = 312.dp,
-        maxWidth = 360.dp,
-        contentPadding = 18.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        contentSpacing = 12.dp
-    ) {
-        ThreadAttachmentCommentsContent(
-            state = state,
-            onFilterChange = onFilterChange,
-            onDraftChange = onDraftChange,
-            onRetry = onRetry,
-            onSend = onSend,
-            onResolve = onResolve,
-            onQuote = onQuote
-        )
+    // Read before entering Modal: its content is rehosted in a native window where the
+    // page host's safe-area locals are gone (same caveat as SlockUnifiedDialog).
+    val bottomInset = slockBottomSafeAreaPadding()
+    // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on
+    // iOS turns the whole window into one accessibility leaf and hides the comment editor
+    // (see slockModalDialogProperties). Modal + SlockModalDismissBarrier is the established
+    // bottom-sheet pattern for content with text fields (see PrivateDeploymentSheet).
+    Modal(onWillDismiss = { onDismiss() }) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SlockModalDismissBarrier(overlayAlpha = 0.60f, onDismiss = onDismiss)
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + SlockSpacing.Sm)
+                        .padding(end = 4.dp, bottom = 4.dp)
+                        .slockDialogContentPointerBarrier()
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = 4.dp, y = 4.dp)
+                            .background(SlockColor.ShadowBlack)
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.thread_comments_title).slockDisplayUppercase(),
+                            style =
+                                SlockType.PageTitle.copy(
+                                    fontSize = 18.sp,
+                                    lineHeight = 22.sp,
+                                    color = SlockColor.TextBlack
+                                ),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        SlockBrutalIconButton(
+                            iconName = SlockLucideIconName.X,
+                            onClick = onDismiss,
+                            size = 34.dp,
+                            shadowOffset = 3.dp
+                        )
+                    }
+                    ThreadAttachmentCommentsContent(
+                        state = state,
+                        onFilterChange = onFilterChange,
+                        onDraftChange = onDraftChange,
+                        onRetry = onRetry,
+                        onSend = onSend,
+                        onResolve = onResolve,
+                        onQuote = onQuote
+                    )
+                }
+            }
+        }
     }
 }
 
