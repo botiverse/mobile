@@ -414,18 +414,13 @@ internal fun SlockPopoverAnchorResolver.resolveCurrentPlacement(): SlockPopoverA
 internal fun Modifier.slockCaptureLiveRootAnchor(
     anchorRef: SlockLiveRootAnchorRef,
     enabled: Boolean = true,
-    onCaptured: ((IntSize) -> Unit)? = null,
-    /**
-     * task #181 follow-up: the enclosing child page's origin. Feature code should not pass this --
-     * use the @Composable overload, which fills it from [LocalSlockChildPageOrigin]. It stays an
-     * explicit parameter so a build of this modifier outside composition (tests that drive Kuikly's
-     * LayoutNode directly) still works.
-     */
-    childPageOrigin: SlockChildPageOriginState? = null
+    onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
-    anchorRef.attachChildPageOrigin(childPageOrigin)
+    // Default anchoring: this page's root coordinates ARE window coordinates. Inside a Kuikly child
+    // page use slockCaptureChildPageRootAnchor instead, which adds the page's window origin.
+    anchorRef.attachChildPageOrigin(null)
     return if (enabled) {
-        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, null)
     } else {
         this
     }
@@ -449,12 +444,11 @@ internal fun Modifier.slockCaptureChildPageRootAnchor(
     onCaptured: ((IntSize) -> Unit)? = null
 ): Modifier {
     val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
-    return slockCaptureLiveRootAnchor(
-        anchorRef = anchorRef,
-        enabled = enabled,
-        onCaptured = onCaptured,
-        childPageOrigin = childPageOrigin
-    )
+    return if (enabled) {
+        this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
+    } else {
+        this
+    }
 }
 
 private data class SlockLiveRootAnchorCaptureElement(
