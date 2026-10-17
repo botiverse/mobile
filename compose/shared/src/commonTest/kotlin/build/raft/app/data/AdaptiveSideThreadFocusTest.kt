@@ -208,4 +208,39 @@ class AdaptiveSideThreadFocusTest {
         val restored = focused.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
         assertFalse(restored.sideThreadFocusActive())
     }
+
+    @Test
+    fun togglingFocusKeepsTheThreadsPageIdentitySoReadingPositionSurvives() {
+        // Reading position is preserved because the side page is re-laid-out, not recreated: the
+        // child page's remember key is (identity.key, generation), and neither may change across a
+        // Focus toggle. If either moved, the page would be rebuilt and the scroll position lost --
+        // which is exactly what "don't lose reading position" means for this feature.
+        val session = sessionWithSideThread(widePane(), detailPaneWidthDp = 1240f)
+        val before = session.visibleSideThread()
+
+        val focused = session.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+        val afterFocus = focused.visibleSideThread()
+
+        assertEquals(before?.identity?.key, afterFocus?.identity?.key, "identity must not change on entering Focus")
+        assertEquals(before?.generation, afterFocus?.generation, "generation must not change on entering Focus")
+
+        val restored = focused.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+        val afterRestore = restored.visibleSideThread()
+
+        assertEquals(before?.identity?.key, afterRestore?.identity?.key, "identity must not change on leaving Focus")
+        assertEquals(before?.generation, afterRestore?.generation, "generation must not change on leaving Focus")
+    }
+
+    @Test
+    fun togglingFocusNeverDropsOrReplacesTheThread() {
+        // The thread payload itself must be the same object identity-wise: a new payload would mean
+        // the child page reloads, so any scroll offset the user had is gone.
+        val session = sessionWithSideThread(widePane(), detailPaneWidthDp = 1240f)
+        val before = session.visibleSideThread()
+
+        val focused = session.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+
+        assertEquals(before?.payload, focused.visibleSideThread()?.payload)
+        assertEquals(before?.owner, focused.visibleSideThread()?.owner)
+    }
 }

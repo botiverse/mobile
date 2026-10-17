@@ -15231,6 +15231,8 @@ private fun ThreadPageContentContent(
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
                 },
             header = {
+                // task #180: computed once per header composition, outside the header's own scope.
+                val panelFollowAction = threadPanelFollowAction(timelineSlice.originMessage)
                 ThreadPageHeader(
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
@@ -15278,25 +15280,23 @@ private fun ThreadPageContentContent(
                     // task #180: null on hosts without a side column, which also hides the menu item.
                     onToggleFocusMode = callbacks.onToggleFocusMode,
                     focusModeActive = callbacks.focusModeActive,
-                    // task #180 (artin): the follow row reads the origin message's own thread state,
-                    // which is where follow/unfollow already lives per message. Null when there is no
-                    // message to follow, so the row is absent rather than misleading.
-                    threadFollowed = timelineSlice.originMessage?.isThreadFollowed,
+                    // task #180 (artin): the follow row is derived by a pure helper from the same
+                    // per-message state the long-press menu reads, so the two cannot disagree and the
+                    // decision is unit-testable. Null = nothing to follow -> row is absent.
+                    threadFollowed = panelFollowAction?.followed,
                     onToggleThreadFollow =
-                        timelineSlice.originMessage
-                            ?.takeIf { it.threadChannelId?.isNotBlank() == true }
-                            ?.let { message ->
-                                {
-                                    val threadChannelId = message.threadChannelId
-                                    if (message.isThreadFollowed && threadChannelId != null) {
-                                        // The existing handler reads the thread channel from the
-                                        // attachmentId slot: onThreadEvent(action, itemId, attachmentId, tab).
-                                        onThreadEvent("unfollowMessageThread", message.id, threadChannelId, null)
-                                    } else {
-                                        onThreadEvent("followMessageThread", message.id, null, null)
-                                    }
-                                }
-                            },
+                        panelFollowAction?.let { follow ->
+                            {
+                                // The existing handler reads the thread channel from the attachmentId
+                                // slot: onThreadEvent(action, itemId, attachmentId, tab).
+                                onThreadEvent(
+                                    follow.action,
+                                    timelineSlice.originMessage?.id,
+                                    follow.threadChannelId,
+                                    null
+                                )
+                            }
+                        },
                 )
             },
             body = {
@@ -27724,6 +27724,35 @@ internal fun shouldShowThreadFollowAction(
         (replyMetadata.threadChannelId?.isNotBlank() == true ||
             replyMetadata.replyCount > 0 ||
             replyMetadata.isThreadFollowed)
+
+/**
+ * task #180 (artin): what the thread panel's follow row should be, derived from the thread's origin
+ * message -- the same per-message state the long-press menu reads, so the two surfaces cannot
+ * disagree (web reads `followedThreads` from its thread store; this is the mobile equivalent).
+ *
+ * Returns null when there is nothing to follow, in which case the row is ABSENT rather than shown
+ * disabled: an empty thread or a message without a thread channel would otherwise offer an action
+ * that cannot run.
+ */
+internal data class ThreadPanelFollowAction(
+    val followed: Boolean,
+    val threadChannelId: String,
+    val action: String,
+)
+
+internal fun threadPanelFollowAction(message: KuiklyThreadMessageItem?): ThreadPanelFollowAction? {
+    val threadChannelId = message?.threadChannelId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadPanelFollowAction(
+        followed = message.isThreadFollowed,
+        threadChannelId = threadChannelId,
+        // Reuses the two actions the page already dispatches, so the panel does not invent a
+        // second code path for the same operation.
+        action = if (message.isThreadFollowed) UNFOLLOW_THREAD_ACTION else FOLLOW_THREAD_ACTION
+    )
+}
+
+internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
+internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
 internal fun threadFollowMenuIcon(isFollowed: Boolean): SlockLucideIconName =
     if (isFollowed) SlockLucideIconName.MessageCircleOff else SlockLucideIconName.MessageCirclePlus
