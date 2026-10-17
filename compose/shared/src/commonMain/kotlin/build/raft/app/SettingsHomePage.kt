@@ -6420,10 +6420,13 @@ private fun SlockAppShellReadyContent(
                                     }
                         ) {
                         // task #180: in Focus mode the thread owns the row, so the parent channel/DM is
-                        // not laid out at all (weight 0) rather than merely drawn underneath. Its page
+                        // not laid out at all rather than merely drawn underneath. Its page
                         // data is still computed, so leaving Focus restores the same surface.
+                        // Note: RowScope.weight rejects 0f (IllegalArgumentException: invalid
+                        // weight 0.0, ticket 27426a95) — a zero-width child keeps the page composed
+                        // while the weight(1f) side column takes the whole row.
                         val modifier =
-                            if (sideThreadFocusActive) Modifier.weight(0f) else Modifier.weight(1f).fillMaxHeight()
+                            if (sideThreadFocusActive) Modifier.width(0.dp) else Modifier.weight(1f).fillMaxHeight()
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
