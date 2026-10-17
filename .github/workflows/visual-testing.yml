@@ -42,6 +42,10 @@ on:
         description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
         type: boolean
         default: false
+      ios_shards:
+        description: "iOS capture parallelism: N job-owned simulators each take a slice of the case list. 1 = legacy serial behaviour. Suggested max on the single self-hosted Mac: 4."
+        type: number
+        default: 1
 
 concurrency:
   group: visual-testing-${{ github.ref }}
@@ -500,7 +504,7 @@ jobs:
         run: pod install
 
       - name: Boot job-owned simulator
-        run: bash scripts/ci/ios_visual_runner.sh boot
+        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
 
       # Built AFTER simulator boot, pinned to its udid: an unmatched named
       # destination makes xcodebuild silently fall back to a device build.
@@ -543,8 +547,7 @@ jobs:
           app=$(find "$IOS_CAPTURE_TEMP/DerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
           test -n "$app"
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
-          echo "app=$app bundle_id=$bundle_id"
-          xcrun simctl install "$UDID" "$app"
+          echo "app=$app bundle_id=$bundle_id shards=$IOS_CAPTURE_SHARDS"
           mkdir -p visual-testing-results/ios
           python3 -c "
           import json, os
@@ -553,87 +556,44 @@ jobs:
               for c in m['cases']:
                   print(c['caseId'], c['pageName'], json.dumps(c['pageData'], ensure_ascii=False), sep='\t', file=out)
           "
-          launch_pid=
-          stop_console() {
-            if [ -n "$launch_pid" ]; then
-              kill "$launch_pid" 2>/dev/null || true
-              wait "$launch_pid" 2>/dev/null || true
-              launch_pid=
-            fi
-          }
-          trap stop_console EXIT
-          failed=0
-          total=$(wc -l < "$IOS_CAPTURE_TEMP/ios-cases.tsv" | tr -d ' ')
-          echo "capturing $total cases"
+          # Split the manifest into per-shard slices (round-robin keeps shards
+          # balanced even if adjacent cases vary in cost).
+          python3 -c "
+          import os
+          temp = os.environ['IOS_CAPTURE_TEMP']
+          shards = int(os.environ['IOS_CAPTURE_SHARDS'])
+          rows = open(os.path.join(temp, 'ios-cases.tsv')).read().splitlines()
+          for i in range(shards):
+              with open(os.path.join(temp, f'ios-cases.{i}.tsv'), 'w') as out:
+                  out.write('\n'.join(rows[i::shards]) + ('\n' if rows[i::shards] else ''))
+          "
+          # Each shard runs its own simulator + serial launch loop — the same
+          # per-case semantics as before, only parallel across devices.
           i=0
-          while IFS=$'\t' read -r case_id page_name page_data; do
+          pids=
+          while IFS= read -r udid; do
+            bash scripts/ci/ios_visual_capture_shard.sh "$udid" \
+              "$IOS_CAPTURE_TEMP/ios-cases.$i.tsv" visual-testing-results/ios \
+              > "$IOS_CAPTURE_TEMP/shard-log.$i" 2>&1 &
+            pids="$pids $!"
             i=$((i+1))
-            stop_console
-            xcrun simctl terminate "$UDID" "$bundle_id" 2>/dev/null || true
-            : > "$IOS_CAPTURE_TEMP/launch.log"
-            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page_name" \
-            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="$page_data" \
-              xcrun simctl launch --console-pty "$UDID" "$bundle_id" > "$IOS_CAPTURE_TEMP/launch.log" 2>&1 &
-            launch_pid=$!
-            ready=0
-            for _ in $(seq 1 60); do
-              if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page_name" "$IOS_CAPTURE_TEMP/launch.log"; then
-                ready=1; break
-              fi
-              sleep 1
-            done
-            if [ "$ready" != "1" ]; then
-              echo "::warning::[$i/$total] $case_id: READY marker not seen in 60s (page=$page_name)"
-              failed=$((failed+1))
-              continue
-            fi
-            sleep 1
-            # READY alone is not enough: a renderer exception (e.g. resource
-            # init crash, task #421) can pop a "kuikly error" dialog AFTER the
-            # first frame, turning the screenshot into a crash dialog while the
-            # case still counts OK. Check the console log before accepting.
-            #
-            # A handled scroll-boundary rejection is different: the iOS
-            # renderer deliberately logs an attributed [kuikly error] before it
-            # drops a non-finite event/touch so it cannot reach JSON bridging
-            # (task #499). Treating that safety diagnostic as an exception makes
-            # the provider reject a healthy frame and recreates the missing-case
-            # symptom even though the original NSException is gone.
-            handled_scroll_drops="$(
-              grep -iE '\[kuikly error\]\[KRScrollView\] non-finite scroll event value field=.* action=drop_(event|touch)' \
-                "$IOS_CAPTURE_TEMP/launch.log" || true
-            )"
-            unhandled_kuikly_errors="$(
-              grep -i 'kuikly error' "$IOS_CAPTURE_TEMP/launch.log" \
-                | grep -ivE '\[kuikly error\]\[KRScrollView\] non-finite scroll event value field=.* action=drop_(event|touch)' \
-                || true
-            )"
-            if grep -qi '\[Kuikly Exception\]' "$IOS_CAPTURE_TEMP/launch.log" \
-              || [ -n "$unhandled_kuikly_errors" ]; then
-              echo "::warning::[$i/$total] $case_id: renderer exception after READY (kuikly error dialog); not capturing"
-              mkdir -p visual-testing-results/ios-diagnostics
-              xcrun simctl io "$UDID" screenshot "visual-testing-results/ios-diagnostics/$case_id.error.png" || true
-              cp "$IOS_CAPTURE_TEMP/launch.log" "visual-testing-results/ios-diagnostics/$case_id.launch.log" || true
-              failed=$((failed+1))
-              continue
-            fi
-            if [ -n "$handled_scroll_drops" ]; then
-              echo "[$i/$total] $case_id: handled non-finite scroll diagnostic(s); frame remains eligible"
-              printf '%s\n' "$handled_scroll_drops" \
-                | tee "visual-testing-results/ios/$case_id.scroll-safety.log"
-            fi
-            xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
-            # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
-            # after the first frame so the metadata step can merge per-case caps.
-            grep "SLOCK_RICHTEXT_CAPS " "$IOS_CAPTURE_TEMP/launch.log" > "visual-testing-results/ios/$case_id.caps.log" 2>/dev/null || true
-            # task #60 diag: surface per-element inline-box advance dumps so the
-            # trailing-cavity origin is visible in the job log AND the artifact.
-            if grep -q "KR_INLINE_BOX_DIAG" "$IOS_CAPTURE_TEMP/launch.log"; then
-              grep "KR_INLINE_BOX_DIAG" "$IOS_CAPTURE_TEMP/launch.log" | tee "visual-testing-results/ios/$case_id.inlinebox-diag.log"
-            fi
-            echo "[$i/$total] $case_id OK"
-          done < "$IOS_CAPTURE_TEMP/ios-cases.tsv"
+          done < "$IOS_CAPTURE_TEMP/simulator-udids"
+          for pid in $pids; do wait "$pid"; done
+          # Shard order restored for log readability; per-case lines unchanged.
+          i=0
+          while IFS= read -r udid; do
+            sed "s/^/[s$i] /" "$IOS_CAPTURE_TEMP/shard-log.$i"
+            i=$((i+1))
+          done < "$IOS_CAPTURE_TEMP/simulator-udids"
           captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
+          failed=0; total=0
+          for f in "$IOS_CAPTURE_TEMP"/shard-result.*; do
+            [ -f "$f" ] || continue
+            v_c=$(grep -o 'captured=[0-9]*' "$f" | cut -d= -f2)
+            v_f=$(grep -o 'failed=[0-9]*' "$f" | cut -d= -f2)
+            v_t=$(grep -o 'total=[0-9]*' "$f" | cut -d= -f2)
+            failed=$((failed + v_f)); total=$((total + v_t))
+          done
           echo "captured=$captured failed=$failed total=$total"
           cp "$IOS_CAPTURE_TEMP/ios-manifest.json" visual-testing-results/ios-manifest.json
           # Per-case metadata alongside each PNG, mirroring the android
