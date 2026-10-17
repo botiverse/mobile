@@ -422,6 +422,11 @@ private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
 
+// task #387: when the channel initial-access lookup finds the home store still loading, it may
+// await the in-flight home load this long before falling back to a direct repository fetch.
+// Kept below ThreadInitialAccessLookupTimeoutMillis (1000ms) so the outer race retains headroom.
+private const val ThreadHomeSnapshotAwaitTimeoutMs = 800L
+
 internal data class ThreadSystemMessageTimestampLayoutSpec(
     val reserveFullMetadataGutter: Boolean,
     val maxWidthDp: Float
@@ -4059,7 +4064,10 @@ private fun ThreadPageScreen(
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
-                homeSnapshotProvider = sharedHomeStore?.let { store -> store::snapshotFor },
+                homeSnapshotProvider =
+                    sharedHomeStore?.let { store ->
+                        { serverId -> store.awaitSnapshotFor(serverId, ThreadHomeSnapshotAwaitTimeoutMs) }
+                    },
                 channelProfileUpdateSink = { result ->
                     sharedHomeStore?.accept(
                         SharedHomeIntent.ChannelProfileUpdated(

@@ -4018,6 +4018,83 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun awaitSnapshotForReturnsExistingSnapshotWithoutWaiting() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot = sampleHome(ServerId("server-1"))
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+            )
+        store.dispatch(SharedHomeIntent.Start)
+
+        val awaited = store.awaitSnapshotFor(ServerId("server-1"), timeoutMillis = 800L)
+
+        assertEquals(snapshot, awaited)
+        scope.cancel()
+    }
+
+    @Test
+    fun awaitSnapshotForWaitsForInFlightLoadToPublishSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot = sampleHome(ServerId("server-1"))
+        val api = RecordingHomeApi()
+        val blockedLoad = api.blockNextChannels("server-1")
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot, api = api),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+            )
+        store.dispatch(SharedHomeIntent.Start)
+        blockedLoad.awaitStarted()
+        assertNull(store.snapshotFor(ServerId("server-1")))
+
+        var awaited: HomeSnapshot? = null
+        val awaitJob = launch { awaited = store.awaitSnapshotFor(ServerId("server-1"), timeoutMillis = 5_000L) }
+        yield()
+        assertNull(awaited)
+
+        blockedLoad.release()
+        awaitJob.join()
+
+        assertEquals(snapshot, awaited)
+        scope.cancel()
+    }
+
+    @Test
+    fun awaitSnapshotForTimesOutWhileLoadStaysInFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot = sampleHome(ServerId("server-1"))
+        val api = RecordingHomeApi()
+        val blockedLoad = api.blockNextChannels("server-1")
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot, api = api),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+            )
+        store.dispatch(SharedHomeIntent.Start)
+        blockedLoad.awaitStarted()
+
+        val awaited = store.awaitSnapshotFor(ServerId("server-1"), timeoutMillis = 20L)
+
+        assertNull(awaited)
+        blockedLoad.release()
+        scope.cancel()
+    }
+
     private fun source(
         api: SlockHomeApi,
         announcementsApi: SlockAnnouncementsRemindersApi? = null,
