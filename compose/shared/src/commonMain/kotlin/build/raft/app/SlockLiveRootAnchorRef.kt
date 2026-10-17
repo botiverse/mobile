@@ -108,6 +108,17 @@ internal class SlockPopoverAnchor private constructor(
                 } else {
                     null
                 }
+            // This page's own window origin, for converting the window-space draw offset back into
+            // the page space `Modifier.offset` operates in. Zero outside a child page.
+            val pageOriginForDraw =
+                runCatching {
+                    SlockChildPageOriginRegistry
+                        .stateFor(
+                            LocalActivity.current.pageData.params
+                                .optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)
+                                .trim()
+                        ).windowOrigin
+                }.getOrDefault(Offset.Zero)
             val popoverOffset =
                 overlayLayout.positionContent(
                     anchor = rootOffset,
@@ -122,7 +133,21 @@ internal class SlockPopoverAnchor private constructor(
                     horizontalPlacement = horizontalPlacement,
                     horizontalAutoFlip = horizontalAutoFlip
                 ) ?: return@SlockFloatingOverlayHost
-            Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
+            // The overlay host lives INSIDE this page, so `Modifier.offset` is applied in page space.
+            // `popoverOffset` is window space (that is what the anchor and the root-view clamp use),
+            // so subtract this page's window origin before drawing -- otherwise a menu at window x
+            // lands a whole pane-width to the left. The clamp above deliberately stays window-space:
+            // clamping page-relative would squeeze the popover into the 400px thread column.
+            val drawOrigin = pageOriginForDraw
+            Box(
+                modifier =
+                    Modifier.offset {
+                        IntOffset(
+                            (popoverOffset.x - drawOrigin.x).toInt(),
+                            (popoverOffset.y - drawOrigin.y).toInt()
+                        )
+                    }
+            ) {
                 content()
             }
         }

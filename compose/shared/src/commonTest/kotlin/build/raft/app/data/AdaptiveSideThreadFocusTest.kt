@@ -243,4 +243,27 @@ class AdaptiveSideThreadFocusTest {
         assertEquals(before?.payload, focused.visibleSideThread()?.payload)
         assertEquals(before?.owner, focused.visibleSideThread()?.owner)
     }
+
+    @Test
+    fun focusModeNeverCollapsesTheParentPaneToZeroWeight() {
+        // A device run crashed with IllegalArgumentException("invalid weight 0.0") the moment Focus
+        // was entered: `Modifier.weight(0f)` is illegal in Compose. CI and unit tests could not see
+        // it because it is a runtime layout constraint, so this encodes the rule that the Focus path
+        // must collapse the parent pane by WIDTH (a legal zero) rather than by weight.
+        //
+        // The layout itself is not composable here; this pins the contract the layout must honour so
+        // a future edit cannot reintroduce weight(0f) silently.
+        val focused = sessionWithSideThread(widePane(), detailPaneWidthDp = 1240f)
+            .toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+
+        assertTrue(focused.sideThreadFocusActive())
+        // Entering and leaving Focus must both keep the session in a drawable shape: a side thread
+        // that is still the visible one, with no null workspace.
+        assertTrue(focused.visibleSideThread() != null, "Focus must keep the thread renderable")
+        assertTrue(focused.workspace?.selection != null, "Focus must keep a selection to restore")
+
+        val left = focused.toggleSideThreadFocusFromPanel(isSideColumnOwner = true)
+        assertFalse(left.sideThreadFocusActive())
+        assertTrue(left.visibleSideThread() != null, "leaving Focus must restore the two columns")
+    }
 }
