@@ -4375,29 +4375,6 @@ private fun ThreadMembersPageScreen() {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
-    // Read reactively so the label flips between Focus and Standard when it changes.
-    // Availability comes from the session itself: a page whose thread actually occupies the side
-    // column can always be maximised, which is exactly what the column's own open gating proved.
-    val focusWorkspaceStore =
-        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
-    val focusWorkspaceSession by focusWorkspaceStore.state.collectAsState()
-    val threadFocusModeActive = focusWorkspaceSession.sideThreadFocusActive()
-    // Only a page adopted by the side column offers the entry; the predicate is shared with the
-    // tests so "no column host renders no entry" is actually guarded, not just asserted in prose.
-    val isSideColumnOwner = data.adaptiveCloseRequest != null
-    val threadShowsFocusEntry =
-        focusWorkspaceSession.showsSideThreadFocusEntry(isSideColumnOwner)
-    val threadFocusModeToggle: (() -> Unit)? =
-        if (threadShowsFocusEntry) {
-            {
-                focusWorkspaceStore.update { current ->
-                    current.toggleSideThreadFocusFromPanel(isSideColumnOwner)
-                }
-            }
-        } else {
-            null
-        }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val routeOwner =
         remember(pager.pageData.params.toString()) {
@@ -5849,6 +5826,27 @@ private fun SharedThreadRouteContentContent(
         bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
+    // Read reactively so the label flips between Focus and Standard when it changes.
+    // The side page never receives the shell's desktopModeOnLargeScreen, so ownership of the
+    // column (adoption by it) plus a visible side thread stands in for that gate -- a column can
+    // only exist if it already passed the width/posture checks.
+    val focusWorkspaceStore =
+        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    val focusWorkspaceSession by focusWorkspaceStore.state.collectAsState()
+    val threadFocusModeActive = focusWorkspaceSession.sideThreadFocusActive()
+    // Shared with the tests so "no column host renders no entry" is guarded, not just asserted.
+    val isSideColumnOwner = data.adaptiveCloseRequest != null
+    val threadFocusModeToggle: (() -> Unit)? =
+        if (focusWorkspaceSession.showsSideThreadFocusEntry(isSideColumnOwner)) {
+            {
+                focusWorkspaceStore.update { current ->
+                    current.toggleSideThreadFocusFromPanel(isSideColumnOwner)
+                }
+            }
+        } else {
+            null
+        }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val messageBodySettingsRepository =
