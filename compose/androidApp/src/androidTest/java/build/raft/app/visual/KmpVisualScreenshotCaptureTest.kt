@@ -2788,12 +2788,12 @@ class KmpVisualScreenshotCaptureTest {
         val previous = store.getString(HOME_SERVER_AVATAR_PREFERENCE_KEY)
         try {
             store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-            assertFalse(
+            assertTrue(
                 KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
-                caseId = "components.home.titlebar.preference-fresh-off",
+                caseId = "components.home.titlebar.preference-fresh-on",
                 pageName = "compose_home_titlebar_preference_visual",
                 crop = HOME_TITLEBAR_PREFERENCE_CROP
             )
@@ -2842,7 +2842,7 @@ class KmpVisualScreenshotCaptureTest {
         when (phase) {
             "seed-on" -> {
                 slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
                 runBlocking { preferenceStore.saveHomeServerAvatarEnabled(true) }
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
             }
@@ -2864,7 +2864,7 @@ class KmpVisualScreenshotCaptureTest {
                     crop = HOME_TITLEBAR_PREFERENCE_CROP
                 )
                 slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
+                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
             }
             else -> error("Unknown $HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG=$phase")
         }
