@@ -83,9 +83,27 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
+            // task #181 follow-up: `rootOffset` is now in WINDOW coordinates, but the overlay layout
+            // measures its own box inside this page (a 400px thread column), so positionContent would
+            // clamp a window-space anchor against a 400px viewport and return an off-screen offset --
+            // the menu then draws nothing at all. Convert back into this page's space for layout; the
+            // visual result is identical because the overlay host is drawn in the same page.
+            // The origin state is read from the registry (a CompositionLocal cannot cross the
+            // @Page boundary, so `.current` here would be the zero default again).
+            val pageOriginForLayout =
+                SlockChildPageOriginRegistry.stateFor(
+                    runCatching {
+                        LocalActivity.current.pageData.params
+                            .optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)
+                            .trim()
+                    }.getOrNull().orEmpty()
+                )
+            val anchorInPageSpace =
+                // positionContent subtracts layout.origin itself, so hand back page-local + origin.
+                (rootOffset - pageOriginForLayout.windowOrigin) + overlayLayout.origin
             val popoverOffset =
                 overlayLayout.positionContent(
-                    anchor = rootOffset,
+                    anchor = anchorInPageSpace,
                     contentSize = contentSize,
                     viewportGap = viewportGap,
                     horizontalOffset = horizontalOffset,
