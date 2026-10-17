@@ -2741,6 +2741,40 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun warmChannelEntrySeedsWhenProvenanceArrivesAfterConstruction() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        // Feedback f0f13deb: on a warm entry provenance is published from a suspend session
+        // capture, so it can land a few frames AFTER construction. Start with no session, so
+        // currentReplyCacheProvenance() is null and the seed parks on
+        // replyCacheProvenanceState instead of flashing the loading shell for good.
+        val sessionStore = InMemorySlockAuthSessionStore()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = basePayload(),
+            )
+
+        assertEquals("loading", store.state.value.timelineSlice.status)
+
+        // Provenance is only published once a session exists and a resolution scope is read;
+        // cachePayloadForTest performs that read after the session is written.
+        sessionStore.saveSession(sampleSession())
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+
+        val seededState = store.state.value
+        assertEquals("content", seededState.timelineSlice.status)
+        assertEquals("cached body", seededState.timelineSlice.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
     fun sameServerAccountSwitchShowsLoadingShellInsteadOfPreviousOwnersCachedTimeline() = runBlocking {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)

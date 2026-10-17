@@ -165,7 +165,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -915,6 +919,10 @@ internal class SharedThreadPayloadStore(
         SharedReplyThreadAccessFlightStore(scope)
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadOwnedPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
+    // Monotonic write signal for deferred consumers (e.g. the parked first-frame memory-cache
+    // seed) that must retry a cache read after provenance arrives before the payload write.
+    private val payloadMutationTick = MutableStateFlow(0L)
+    internal val mutationTick: StateFlow<Long> = payloadMutationTick
     private val prewarmMutex = Mutex()
     private val prewarmPool = Semaphore(maxConcurrentPrewarms.coerceAtLeast(1))
     private val prewarmStartMutex = Mutex()
@@ -967,6 +975,7 @@ internal class SharedThreadPayloadStore(
                 }
             }
         }
+        payloadMutationTick.update { it + 1 }
     }
 
     fun get(
@@ -994,6 +1003,7 @@ internal class SharedThreadPayloadStore(
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
         payloads.update { current -> current + (key to SharedThreadPayloadEntry(payload, generation)) }
+        payloadMutationTick.update { it + 1 }
     }
 
     fun putIfCurrent(
@@ -1012,6 +1022,7 @@ internal class SharedThreadPayloadStore(
             payloads.update { current ->
                 current + (key to SharedThreadPayloadEntry(payload, generation))
             }
+            payloadMutationTick.update { it + 1 }
         }
     }
 
@@ -1057,6 +1068,7 @@ internal class SharedThreadPayloadStore(
                     previous != null && entry?.generation !== previous
                 }
             }
+            payloadMutationTick.update { it + 1 }
         }
     }
 
@@ -1075,6 +1087,7 @@ internal class SharedThreadPayloadStore(
                         current[candidate]?.generation !== generation
                 }
             }
+            payloadMutationTick.update { it + 1 }
         }
 
     fun values(
@@ -1676,6 +1689,8 @@ internal class SharedThreadDataSource(
     private val replyCacheProvenanceLock = SynchronizedObject()
     private val replyCacheCaptureSequence = atomic(0L)
     private val replyCacheProvenance = MutableStateFlow<ReplyCacheProvenance?>(null)
+    internal val replyCachePayloadMutationTick: StateFlow<Long>
+        get() = payloadCache.mutationTick
     internal val replyCacheProvenanceState: StateFlow<ReplyCacheProvenance?> =
         replyCacheProvenance.asStateFlow()
     private var latestPublishedReplyCacheCapture = 0L
@@ -6141,7 +6156,25 @@ internal class SharedThreadStore(
         if (routeContextPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return routePayload
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey ?: return routePayload
-        val provenance = dataSource.currentReplyCacheProvenance() ?: return routePayload
+        val provenance = dataSource.currentReplyCacheProvenance()
+        if (provenance == null) {
+            // Feedback f0f13deb: provenance is published from a suspend session capture, so on a
+            // warm entry it can arrive a few frames AFTER this synchronous seed attempt — the
+            // window that flashed the ~500ms loading shell. Park the seed inputs and apply the
+            // same chain once the first provenance lands (see deferredMemoryCacheSeed below).
+            parkDeferredMemoryCacheSeed(PendingMemoryCacheSeed(routePayload, routeContextPayload, routeIdentity, threadId))
+            return routePayload
+        }
+        return seedFromMemoryCache(routePayload, routeContextPayload, routeIdentity, threadId, provenance) ?: routePayload
+    }
+
+    private fun seedFromMemoryCache(
+        routePayload: KuiklyThreadScreenPayload,
+        routeContextPayload: KuiklyThreadScreenPayload,
+        routeIdentity: ThreadRouteIdentity,
+        threadId: String,
+        provenance: ReplyCacheProvenance,
+    ): KuiklyThreadScreenPayload? {
         val cached =
             dataSource
                 .cachedPayloadIfCurrent(threadId, provenance)
@@ -6149,7 +6182,7 @@ internal class SharedThreadStore(
                 ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
                 ?.withRouteContext(routeContextPayload)
                 ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
-                ?: return routePayload
+                ?: return null
         dataSource.seedThreadAuthorProfiles(
             serverId = provenance.serverId,
             payload = cached,
@@ -6165,6 +6198,65 @@ internal class SharedThreadStore(
             route = routeIdentity,
             canonicalPayload = cached,
         )
+    }
+
+    private data class PendingMemoryCacheSeed(
+        val routePayload: KuiklyThreadScreenPayload,
+        val routeContextPayload: KuiklyThreadScreenPayload,
+        val routeIdentity: ThreadRouteIdentity,
+        val threadId: String,
+    )
+
+    private var pendingMemoryCacheSeed: PendingMemoryCacheSeed? = null
+    private var deferredMemoryCacheSeedJob: Job? = null
+
+    // Parks the seed inputs and (re)starts the watcher. The job is created lazily, only while a
+    // seed is parked, and cancels itself the moment the seed resolves — it never exists for a
+    // caller that never hits the provenance-late path, and it does not outlive its own parking
+    // window, so callers asserting on scope children see zero extra jobs.
+    private fun parkDeferredMemoryCacheSeed(pending: PendingMemoryCacheSeed) {
+        pendingMemoryCacheSeed = pending
+        if (deferredMemoryCacheSeedJob?.isActive == true) return
+        deferredMemoryCacheSeedJob = scope.launch { deferredMemoryCacheSeed() }
+    }
+
+    // Applies the parked initial-memory-cache seed once provenance is first published, retrying
+    // on every subsequent payload-cache mutation. Retrying matters because provenance can be
+    // published before the matching cachePayload write lands (the read inside the publish frame
+    // then misses and a one-shot job would give up permanently). The job retries on each miss
+    // and cancels itself when the frame gained renderable content through another path, the
+    // route moved on, or a seed actually applied.
+    private suspend fun deferredMemoryCacheSeed() {
+        var lastTriedTick = -1L
+        combine(
+            dataSource.replyCacheProvenanceState,
+            dataSource.replyCachePayloadMutationTick,
+        ) { provenance, tick -> provenance to tick }
+            .collectLatest { (provenance, tick) ->
+                val pending = pendingMemoryCacheSeed ?: return@collectLatest
+                if (provenance == null || tick == lastTriedTick) return@collectLatest
+                lastTriedTick = tick
+                val currentPayload = _state.value.payload
+                if (currentPayload.hasRenderableThreadContent() ||
+                    currentPayload.resolveThreadRouteIdentity().timelineKey != pending.threadId
+                ) {
+                    pendingMemoryCacheSeed = null
+                    currentCoroutineContext()[Job]?.cancel()
+                    return@collectLatest
+                }
+                val seeded =
+                    seedFromMemoryCache(
+                        pending.routePayload,
+                        pending.routeContextPayload,
+                        pending.routeIdentity,
+                        pending.threadId,
+                        provenance,
+                    ) ?: return@collectLatest // cache miss: stay parked for the next tick
+                pendingMemoryCacheSeed = null
+                diagnosticsLogger?.invoke("thread_initial_seed_deferred threadId=${pending.threadId}")
+                reduceState(_state.value.copy(payload = seeded))
+                currentCoroutineContext()[Job]?.cancel()
+            }
     }
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
