@@ -102,6 +102,13 @@ internal class SlockPopoverAnchor private constructor(
                 pageDataForViewport
                     ?.let { if (it.activityHeight > 0f) it.activityHeight else it.deviceHeight }
                     ?: 0f
+            slockLogInfo(
+                "SlockPopoverPosition",
+                "window activity=${pageDataForViewport?.activityWidth}x${pageDataForViewport?.activityHeight} " +
+                    "device=${pageDataForViewport?.deviceWidth}x${pageDataForViewport?.deviceHeight} " +
+                    "pageRoot=${pageDataForViewport?.pageViewWidth}x${pageDataForViewport?.pageViewHeight} " +
+                    "chosen=$windowWidth x $windowHeight"
+            )
             val viewportOriginOverride = Offset.Zero.takeIf { windowWidth > 0f && windowHeight > 0f }
             val viewportSizeOverride =
                 if (windowWidth > 0f && windowHeight > 0f) Size(windowWidth, windowHeight) else null

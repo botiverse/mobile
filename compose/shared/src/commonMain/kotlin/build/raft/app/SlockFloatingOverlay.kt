@@ -315,11 +315,19 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     val y = slockVerticalPosition(
         localAnchorY = localAnchor.y,
         contentHeight = contentSize.height,
-        viewportHeight = size.height,
+        viewportHeight = effectiveSize.height,
         verticalOffset = verticalOffset,
         verticalOffsetAbove = verticalOffsetAbove,
         viewportGap = viewportGap,
         verticalPlacement = verticalPlacement
+    )
+    // task #181 follow-up: Argus needs these five values to tell "off-screen" from "clipped by the
+    // 400px page" without another guess round.
+    slockLogInfo(
+        "SlockPopoverPosition",
+        "anchor=$anchor clamped=(x=$x, y=$y) viewportOrigin=$effectiveOrigin " +
+            "viewportSize=$effectiveSize hostSize=$size contentSize=$contentSize " +
+            "autoFlip=$horizontalAutoFlip placement=$horizontalPlacement"
     )
     return Offset(x, y)
 }
