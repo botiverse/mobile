@@ -83,35 +83,15 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
-            // The page this overlay is hosted in, for the window->page conversion below. Zero when
-            // the page (or the host) sits at the window origin.
-            val overlayPageOrigin =
-                runCatching {
-                    SlockChildPageOriginRegistry
-                        .stateFor(
-                            LocalActivity.current.pageData.params
-                                .optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)
-                                .trim()
-                        ).windowOrigin
-                }.getOrDefault(Offset.Zero)
-            // The anchor is WINDOW space, but the overlay host can only report PAGE-local geometry
-            // (Kuikly has no working positionInWindow). Convert the anchor into the page the host
-            // lives in before laying out.
-            //
-            // This is a no-op for a page at the window origin -- which is why an unconditional
-            // conversion (538befba8) broke the middle column: there the origin is (0,0) and the host
-            // surface already covers the window, so subtracting nothing was correct and my earlier
-            // "convert always" change was not the problem; the problem was that I also changed the
-            // CLAMP bound. Both are now page-space and consistent.
-            val pageSpaceAnchor =
-                if (overlayPageOrigin == Offset.Zero) {
-                    rootOffset
-                } else {
-                    rootOffset - overlayPageOrigin
-                }
+            // Window coordinates end to end. Device evidence (four rounds): the middle column's
+            // long-press menu lands exactly under the finger when the anchor is passed through
+            // unconverted, and shifts left by its page origin (427) as soon as it is converted.
+            // Coordinate conversion is therefore NOT the fix for the thread column -- its Modal
+            // surface is clamped to the window's left 400px regardless of what we pass, which has
+            // to be solved at the host level, not here.
             val popoverOffset =
                 overlayLayout.positionContent(
-                    anchor = pageSpaceAnchor,
+                    anchor = rootOffset,
                     contentSize = contentSize,
                     viewportGap = viewportGap,
                     horizontalOffset = horizontalOffset,
