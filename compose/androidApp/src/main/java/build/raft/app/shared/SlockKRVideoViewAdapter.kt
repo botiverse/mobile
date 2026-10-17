@@ -104,8 +104,15 @@ private class SlockKRVideoView(
                     terminalGate.markStarted(progress.generation)
                     awaitingAttemptStart = false
                 }
-                if (duration > 0L && progress.currentMs >= duration) {
+                if (!progress.terminal && duration > 0L && progress.currentMs >= duration) {
                     terminalGate.markTerminalEligible(progress.generation)
+                    if (terminalGate.acceptsTerminal(progress.generation)) {
+                        val terminal = progressContract.ended(duration, progress.generation)
+                        listener.playTimeDidChangedWithCurrentTime(terminal.currentMs, terminal.durationMs)
+                        reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                        mainHandler.postDelayed(this, PROGRESS_TICK_MS)
+                        return
+                    }
                 }
                 listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
@@ -124,7 +131,6 @@ private class SlockKRVideoView(
                         Player.STATE_BUFFERING ->
                             reportState(KRVideoPlayState.KRVideoPlayStateCaching)
                         Player.STATE_READY -> {
-                            callbackGeneration = progressContract.currentGeneration
                             reportState(
                                 if (player.playWhenReady) {
                                     KRVideoPlayState.KRVideoPlayStatePlaying
@@ -134,18 +140,10 @@ private class SlockKRVideoView(
                             )
                         }
                         Player.STATE_ENDED -> {
-                            // A stale STATE_ENDED notification can arrive after
-                            // replay/seek. The generation observed by the last
-                            // READY attempt fences it in the shared contract.
-                            if (player.duration > 0L && player.currentPosition >= player.duration) {
-                                terminalGate.markTerminalEligible(callbackGeneration)
-                            }
-                            if (!terminalGate.acceptsTerminal(callbackGeneration)) return
-                            val progress = progressContract.ended(player.duration, callbackGeneration)
-                            if (progress.terminal) {
-                                listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
-                                reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
-                            }
+                            // Terminal state is derived by the ticker from a
+                            // duration-qualified active generation. Ignoring
+                            // native STATE_ENDED prevents an old queued event
+                            // from ending the new replay/seek attempt.
                         }
                         Player.STATE_IDLE -> Unit
                     }
