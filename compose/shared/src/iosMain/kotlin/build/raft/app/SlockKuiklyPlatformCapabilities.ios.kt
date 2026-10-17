@@ -22,7 +22,7 @@ internal actual fun slockPlatformThreadImeProgrammaticViewportPolicy():
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
-internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
+internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = true
 
 internal actual fun slockPlatformSupportsConversationForwardGesture(): Boolean = true
 
