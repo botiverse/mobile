@@ -5925,6 +5925,11 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { bridge.log(it) }
             )
         }
+    // task #387: Start must not run inside SharedThreadViewModel.init — viewModelScope reads the
+    // provider-assigned pagerId, which exists only after viewModel() returns. Dispatch it here,
+    // still inside the same composition pass, so the warm path completes inline and the first
+    // frame renders the cached timeline.
+    remember(threadViewModel) { threadViewModel.ensureStarted() }
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
@@ -6138,7 +6143,9 @@ private fun SharedThreadRouteContentContent(
                     "source" to initialPayload.threadRenderDiagnosticsSource()
                 )
         )
-        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+        // task #387: Start was already dispatched in composition via ensureStarted() (inline on
+        // the page thread), so this effect only records the open markers; re-dispatching Start
+        // here would double the load.
     }
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (firstRenderLoggedThreadId != threadInstanceKey) {
