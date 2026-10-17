@@ -91,33 +91,29 @@ private class SlockKRVideoView(
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
 
-    private val timeTicker =
-        object : Runnable {
-            override fun run() {
-                if (stopped) return
-                val duration = player.duration.takeIf { it > 0 } ?: 0L
-                val progress =
-                    progressContract.progress(player.currentPosition, duration, callbackGeneration)
-                if (awaitingAttemptStart && player.isPlaying &&
-                    progress.generation == progressContract.currentGeneration && !progress.terminal
-                ) {
-                    terminalGate.markStarted(progress.generation)
-                    awaitingAttemptStart = false
-                }
-                if (!progress.terminal && duration > 0L && progress.currentMs >= duration) {
-                    terminalGate.markTerminalEligible(progress.generation)
-                    if (terminalGate.acceptsTerminal(progress.generation)) {
-                        val terminal = progressContract.ended(duration, progress.generation)
-                        listener.playTimeDidChangedWithCurrentTime(terminal.currentMs, terminal.durationMs)
-                        reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
-                        mainHandler.postDelayed(this, PROGRESS_TICK_MS)
-                        return
-                    }
-                }
-                listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
-                mainHandler.postDelayed(this, PROGRESS_TICK_MS)
+    private fun scheduleProgressTicker(generation: Long = progressContract.currentGeneration) {
+        mainHandler.postDelayed({
+            if (stopped || generation != progressContract.currentGeneration) return@postDelayed
+            val duration = player.duration.takeIf { it > 0 } ?: 0L
+            val progress = progressContract.progress(player.currentPosition, duration, generation)
+            if (awaitingAttemptStart && player.isPlaying && !progress.terminal) {
+                terminalGate.markStarted(progress.generation)
+                awaitingAttemptStart = false
             }
-        }
+            if (!progress.terminal && duration > 0L && progress.currentMs >= duration) {
+                terminalGate.markTerminalEligible(progress.generation)
+                if (terminalGate.acceptsTerminal(progress.generation)) {
+                    val terminal = progressContract.ended(duration, progress.generation)
+                    listener.playTimeDidChangedWithCurrentTime(terminal.currentMs, terminal.durationMs)
+                    reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                    scheduleProgressTicker(generation)
+                    return@postDelayed
+                }
+            }
+            listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
+            scheduleProgressTicker(generation)
+        }, PROGRESS_TICK_MS)
+    }
 
     init {
         player.addListener(
@@ -174,7 +170,7 @@ private class SlockKRVideoView(
             }
         )
         player.prepare()
-        mainHandler.post(timeTicker)
+        scheduleProgressTicker()
     }
 
     override fun preplay() {
@@ -192,6 +188,7 @@ private class SlockKRVideoView(
             awaitingAttemptStart = true
             listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
             player.seekTo(0L)
+            scheduleProgressTicker(progress.generation)
         }
         player.play()
     }
@@ -205,7 +202,7 @@ private class SlockKRVideoView(
         if (stopped) return
         exitFullscreen()
         stopped = true
-        mainHandler.removeCallbacks(timeTicker)
+        mainHandler.removeCallbacksAndMessages(null)
         playerView.player = null
         player.release()
     }
@@ -238,6 +235,7 @@ private class SlockKRVideoView(
         awaitingAttemptStart = true
         listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
         player.seekTo(progress.currentMs)
+        scheduleProgressTicker(progress.generation)
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
