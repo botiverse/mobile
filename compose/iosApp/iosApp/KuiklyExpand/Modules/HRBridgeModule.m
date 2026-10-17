@@ -3811,19 +3811,28 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         return;
     }
     if ([action isEqualToString:@"appLoginOpen"]) {
-        [[SlockIosMobileOAuthHost shared] openAppLoginWithUrl:SlockBridgeString(params[@"authorizationUrl"])
-                                                   completion:^(NSDictionary *result) {
-            callback(result);
-        }];
+        SlockBridgeRunOnMain(^{
+            // Read UIKit ownership on main, from the actual requesting render
+            // view. Never substitute a key window from another active scene.
+            UIWindow *originWindow = self.hr_rootView.window;
+            [[SlockIosMobileOAuthHost shared] openAppLoginWithUrl:SlockBridgeString(params[@"authorizationUrl"])
+                                                         window:originWindow
+                                                     completion:^(NSDictionary *result) {
+                callback(result);
+            }];
+        });
         return;
     }
     if ([action isEqualToString:@"mobileOAuthLink"]) {
         NSString *provider = SlockBridgeString(params[@"providerId"]);
-        [[SlockIosMobileOAuthHost shared] startWithProvider:provider
-                                                      mode:@"link"
-                                                completion:^(NSDictionary *result) {
-            callback(result);
-        }];
+        SlockBridgeRunOnMain(^{
+            [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+                                                          mode:@"link"
+                                                        window:self.hr_rootView.window
+                                                    completion:^(NSDictionary *result) {
+                callback(result);
+            }];
+        });
         return;
     }
     if ([action isEqualToString:@"promoteFeedbackDraftAttachments"] ||
@@ -4453,11 +4462,14 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
         return;
     }
     NSString *provider = SlockBridgeString(params[@"provider"]);
-    [[SlockIosMobileOAuthHost shared] startWithProvider:provider
-                                                  mode:@"login"
-                                            completion:^(NSDictionary *result) {
-        callback(result);
-    }];
+    SlockBridgeRunOnMain(^{
+        [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+                                                      mode:@"login"
+                                                    window:self.hr_rootView.window
+                                                completion:^(NSDictionary *result) {
+            callback(result);
+        }];
+    });
 }
 
 #pragma mark - Slock persistent attachment store

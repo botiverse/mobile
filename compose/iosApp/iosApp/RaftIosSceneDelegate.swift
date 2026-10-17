@@ -39,11 +39,20 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         RaftIosShellWindowRegistry.register(session: session, context: shellContext)
 
+        // Submit before constructing the page: shared owns the cold-start queue
+        // and consumes only when this shell's route/auth owner is ready.
+        for activity in connectionOptions.userActivities {
+            RaftIosExternalLinkHost.shared.receive(
+                activity, sceneId: session.persistentIdentifier,
+                shellScopeId: shellContext.shellInstanceId
+            )
+        }
+
         // With a custom scene delegate the App's WindowGroup is inert; the
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: ContentView())
+            window.rootViewController = UIHostingController(rootView: ContentView(shellContext: shellContext))
             self.window = window
             window.makeKeyAndVisible()
         }
@@ -74,10 +83,22 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        if RaftIosExternalLinkHost.shared.receive(
+            userActivity, sceneId: scene.session.persistentIdentifier,
+            shellScopeId: shellContext.shellInstanceId
+        ) { return }
         guard let context = RaftIosShellWindowContract.context(from: userActivity) else {
             return
         }
+        // Tear down the previous mapping before changing owners. Re-activating
+        // the same shell must not discard its pending external link.
+        if shellContext.shellInstanceId != context.shellInstanceId ||
+            shellContext.serverId != context.serverId || shellContext.routeOwner != context.routeOwner {
+            _ = RaftIosShellWindowRegistry.unregister(session: scene.session)
+            RaftIosExternalLinkHost.shared.sceneDisconnected(scene.session.persistentIdentifier)
+        }
         shellContext.apply(context)
+        RaftIosShellWindowRegistry.register(session: scene.session, context: shellContext)
         SlockIosDiagnosticsRecord(
             "info",
             "RaftIosShellWindow",
@@ -95,6 +116,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
+        RaftIosExternalLinkHost.shared.sceneDisconnected(scene.session.persistentIdentifier)
         let context = RaftIosShellWindowRegistry.unregister(session: scene.session)
         guard let shellInstanceId = context?.shellInstanceId,
               shellInstanceId != RaftIosShellWindowContract.legacyShellInstanceId else {
