@@ -183,6 +183,7 @@ private class SlockKRVideoView(
         if (stopped) return
         if (player.playbackState == Player.STATE_ENDED) {
             val progress = progressContract.replay()
+            callbackGeneration = progress.generation
             terminalGate.begin(progress.generation)
             awaitingAttemptStart = true
             listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
@@ -228,6 +229,7 @@ private class SlockKRVideoView(
     override fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
         val progress = progressContract.seek(seekToTimeMs)
+        callbackGeneration = progress.generation
         terminalGate.begin(progress.generation)
         awaitingAttemptStart = true
         listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
