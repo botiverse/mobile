@@ -50,6 +50,18 @@ internal class SlockPopoverAnchor private constructor(
 ) {
     fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
 
+    companion object {
+        /**
+         * task #180: an anchor built directly from a WINDOW-space offset.
+         *
+         * Used by the shell overlay host, which receives an already-resolved anchor from a child
+         * page through `SlockShellOverlayContract` and must not re-derive it (the page owns the
+         * conversion; re-deriving is what produced four rounds of wrong positions).
+         */
+        internal fun forRootOffset(rootOffset: Offset): SlockPopoverAnchor =
+            SlockPopoverAnchor(ownerIdentity = "shell-overlay", rootOffset = rootOffset)
+    }
+
     @Composable
     internal fun renderInOverlay(
         contentSize: Size,

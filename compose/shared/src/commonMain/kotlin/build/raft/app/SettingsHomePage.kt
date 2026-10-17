@@ -2228,6 +2228,34 @@ private fun SlockAppShellReadyContent(
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
+    /**
+     * task #180: the menu a child page has asked the shell to draw. Null when no page is asking.
+     * The shell is the only place that can draw outside a child page's pane, which is why this
+     * lives here rather than in the requesting page.
+     */
+    var shellOverlayMenu by remember { mutableStateOf<SlockShellOpenOverlay?>(null) }
+    DisposableEffect(eventBus, storeScope.shellInstanceId) {
+        val subscription =
+            eventBus.observe(SLOCK_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
+                val request = eventData.toSlockShellOverlayRequestOrNull() ?: return@observe
+                // Ignore a request superseded by another page, and honour a cancel from the page
+                // that owns the menu currently on screen.
+                val current = shellOverlayMenu
+                when (eventData.optString(SHELL_OVERLAY_MESSAGE_TYPE)) {
+                    SHELL_OVERLAY_TYPE_CANCEL -> {
+                        if (current != null && current.request.requestId == request.requestId) {
+                            shellOverlayMenu = null
+                        }
+                    }
+                    else -> {
+                        if (!slockShellShouldDropOverlayRequest(current?.request?.requestId, request.requestId)) {
+                            shellOverlayMenu = SlockShellOpenOverlay(request)
+                        }
+                    }
+                }
+            }
+        onDispose { subscription.close() }
+    }
     // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
@@ -6380,6 +6408,49 @@ private fun SlockAppShellReadyContent(
                                         .clickable(onClick = {})
                             )
                         }
+                    }
+                    // task #180: SHELL-RENDERED MENUS. A Kuikly @Page child (thread column, detail
+                    // pane) is its own composition, so a Modal opened inside it is clipped to that
+                    // pane -- device evidence showed nothing drawn outside the window's left 400px
+                    // strip could ever appear, whatever coordinates were passed. Pages therefore ASK
+                    // the shell to draw, and the shell (this composition, spanning the window)
+                    // renders the menu. Same host pattern as the rail server switcher above.
+                    shellOverlayMenu?.let { open ->
+                        val dismissShellOverlay = {
+                            eventBus.post(
+                                SLOCK_SHELL_OVERLAY_RESULT_EVENT,
+                                SlockShellOverlayResult(
+                                    requestId = open.request.requestId,
+                                    dismissed = true
+                                ).toJson()
+                            )
+                            shellOverlayMenu = null
+                        }
+                        SlockBrutalDropdownMenu(
+                            // The anchor arrives already resolved in WINDOW space: the page owns the
+                            // conversion, and re-deriving it here is what produced four rounds of
+                            // wrong positions.
+                            anchor = SlockPopoverAnchor.forRootOffset(open.request.anchor),
+                            items =
+                                open.request.items.map { item ->
+                                    SlockBrutalDropdownMenuItem(
+                                        id = item.id,
+                                        label = item.label,
+                                        enabled = item.enabled
+                                    )
+                                },
+                            onSelect = { id ->
+                                eventBus.post(
+                                    SLOCK_SHELL_OVERLAY_RESULT_EVENT,
+                                    SlockShellOverlayResult(
+                                        requestId = open.request.requestId,
+                                        selectedId = id
+                                    ).toJson()
+                                )
+                                shellOverlayMenu = null
+                            },
+                            onDismiss = dismissShellOverlay
+                        )
                     }
                     if (slackNavMode && slackNavMoreMenuVisible) {
                         SlockSlackNavMoreMenu(
