@@ -237,6 +237,23 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun authoritativePixelAvatarCannotEraseConcreteUrl() = runBlocking {
+        val serverId = ServerId("server-1")
+        val concreteUrl = "https://cdn.raft.build/avatars/server.webp"
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seedProfiles(
+            serverId,
+            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Url(concreteUrl), avatarUrl = concreteUrl))
+        )
+        store.seedProfiles(
+            serverId,
+            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Pixel("robot"), avatarUrl = "pixel:robot"))
+        )
+        assertEquals(concreteUrl, store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue)
+        assertEquals(concreteUrl, store.memberProfileFlow(serverId, "agent-1").first()?.avatarUrl)
+    }
+
+    @Test
     fun statusAndProfileReadsFailClosedWithoutServerScope() = runBlocking {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seed(

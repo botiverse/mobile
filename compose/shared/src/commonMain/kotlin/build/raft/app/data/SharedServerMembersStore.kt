@@ -2931,6 +2931,16 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
     ) {
         return statusMerged
     }
+    // A pixel/fallback avatar is a render candidate, not authoritative identity. It may
+    // populate an empty slot, but it must never erase a concrete URL learned earlier.
+    if (incomingAvatar !is AvatarReference.Url &&
+        ((this.avatar as? AvatarReference.Url) != null || !this.avatarUrl.isNullOrBlank())
+    ) {
+        return statusMerged.copy(
+            avatarUrl = this.avatarUrl,
+            avatar = this.avatar
+        )
+    }
     return statusMerged.copy(
         avatarUrl = (incomingAvatar as? AvatarReference.Url)?.url,
         avatar = incomingAvatar
