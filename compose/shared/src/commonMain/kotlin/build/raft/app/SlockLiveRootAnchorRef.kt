@@ -83,42 +83,28 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
-            // task #181 follow-up. Device evidence: with a WINDOW-space anchor (700) the middle
-            // column's long-press menu landed exactly under the finger, so the overlay IS drawn in
-            // window coordinates -- an earlier attempt to convert back to page space regressed both
-            // menus. The remaining defect was the CLAMP BOUND: this host measures its own pane (a
-            // 400px thread column), and `positionContent` coerced a window-space 1904 into
-            // [gap, 400 - width - gap], pushing the popover off-screen (nothing drawn) or to the
-            // page's left edge (the old sliver).
-            //
-            // Bound it by the ROOT view instead: `pageViewWidth/Height` come from
-            // `rootViewWidth/rootViewHeight`, which is the same window space as the anchor, so the
-            // viewport origin is zero. When the root size is unavailable the historical behaviour is
-            // kept (the host's own box).
+            // task #181 follow-up. Four device rounds pin the contract:
+            //   * the overlay DRAWS in window coordinates (a window-space anchor of 700 lands under
+            //     the finger), so the anchor and the draw offset must both stay window-space;
+            //   * the CLAMP was the only wrong part. Using the host pane (400px thread column)
+            //     squeezed 1904 into [gap, 400-width-gap] -> off-screen or a sliver;
+            //     using `pageViewWidth` did NOT help because that is the page's own root view,
+            //     i.e. still 400.
+            // The bound has to be the ACTIVITY window: `activityWidth/activityHeight` are the
+            // activity's size (falling back to the device size), which is the same space as the
+            // anchor. If unavailable, fall back to the device size, then to the historical host box.
             val pageDataForViewport = runCatching { LocalActivity.current.pageData }.getOrNull()
-            val pageViewportWidth = pageDataForViewport?.pageViewWidth ?: 0f
-            val pageViewportHeight = pageDataForViewport?.pageViewHeight ?: 0f
-            // pageViewWidth/Height come from `rootViewWidth`/`rootViewHeight`, i.e. the ROOT (window)
-            // view, which is the same space the anchor is in now -- so the viewport origin is zero.
-            val viewportOriginOverride =
-                Offset.Zero.takeIf { pageViewportWidth > 0f && pageViewportHeight > 0f }
+            val windowWidth =
+                pageDataForViewport
+                    ?.let { if (it.activityWidth > 0f) it.activityWidth else it.deviceWidth }
+                    ?: 0f
+            val windowHeight =
+                pageDataForViewport
+                    ?.let { if (it.activityHeight > 0f) it.activityHeight else it.deviceHeight }
+                    ?: 0f
+            val viewportOriginOverride = Offset.Zero.takeIf { windowWidth > 0f && windowHeight > 0f }
             val viewportSizeOverride =
-                if (pageViewportWidth > 0f && pageViewportHeight > 0f) {
-                    Size(pageViewportWidth, pageViewportHeight)
-                } else {
-                    null
-                }
-            // This page's own window origin, for converting the window-space draw offset back into
-            // the page space `Modifier.offset` operates in. Zero outside a child page.
-            val pageOriginForDraw =
-                runCatching {
-                    SlockChildPageOriginRegistry
-                        .stateFor(
-                            LocalActivity.current.pageData.params
-                                .optString(SLOCK_CHILD_PAGE_ORIGIN_KEY_PARAM)
-                                .trim()
-                        ).windowOrigin
-                }.getOrDefault(Offset.Zero)
+                if (windowWidth > 0f && windowHeight > 0f) Size(windowWidth, windowHeight) else null
             val popoverOffset =
                 overlayLayout.positionContent(
                     anchor = rootOffset,
@@ -133,20 +119,11 @@ internal class SlockPopoverAnchor private constructor(
                     horizontalPlacement = horizontalPlacement,
                     horizontalAutoFlip = horizontalAutoFlip
                 ) ?: return@SlockFloatingOverlayHost
-            // The overlay host lives INSIDE this page, so `Modifier.offset` is applied in page space.
-            // `popoverOffset` is window space (that is what the anchor and the root-view clamp use),
-            // so subtract this page's window origin before drawing -- otherwise a menu at window x
-            // lands a whole pane-width to the left. The clamp above deliberately stays window-space:
-            // clamping page-relative would squeeze the popover into the 400px thread column.
-            val drawOrigin = pageOriginForDraw
+            // Overlay geometry is WINDOW space end to end: device evidence shows a window-space
+            // anchor of 700 draws exactly under the finger, so the offset must NOT be converted back
+            // into page space (doing that regressed both menus). Only the clamp bound was ever wrong.
             Box(
-                modifier =
-                    Modifier.offset {
-                        IntOffset(
-                            (popoverOffset.x - drawOrigin.x).toInt(),
-                            (popoverOffset.y - drawOrigin.y).toInt()
-                        )
-                    }
+                modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }
             ) {
                 content()
             }
