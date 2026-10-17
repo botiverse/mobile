@@ -255,11 +255,11 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
     val windowOrigin: Offset
         get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
 
-    internal fun setOrigin(next: Offset) {
+    internal fun updateOrigin(next: Offset) {
         if (next != origin) origin = next
     }
 
-    internal fun setParentOrigin(next: SlockChildPageOriginState?) {
+    internal fun linkParentOrigin(next: SlockChildPageOriginState?) {
         if (next !== this && parentOrigin !== next) parentOrigin = next
     }
 }

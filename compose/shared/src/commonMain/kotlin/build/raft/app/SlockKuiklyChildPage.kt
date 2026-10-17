@@ -274,12 +274,12 @@ internal fun SlockKuiklyChildPage(
     // Nested child pages are real (AppShell tab page -> detail/thread column page), so a nested
     // page's window offset is its own position within the parent PLUS the parent's origin. Linked
     // as a live reference so an outer resize propagates without recomputing a snapshot here.
-    SideEffect { childPageOriginState.setParentOrigin(parentChildPageOrigin) }
+    SideEffect { childPageOriginState.linkParentOrigin(parentChildPageOrigin) }
     CompositionLocalProvider(LocalSlockChildPageOrigin provides childPageOriginState) {
     Box(
         modifier =
             modifier.onGloballyPositioned { coordinates ->
-                childPageOriginState.setOrigin(coordinates.positionInRoot())
+                childPageOriginState.updateOrigin(coordinates.positionInRoot())
             }
     ) {
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(

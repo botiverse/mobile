@@ -25,7 +25,7 @@ class SlockChildPageOriginTest {
     @Test
     fun theHostOriginIsWhatGetsAdded() {
         val state = SlockChildPageOriginState()
-        state.setOrigin(Offset(390f, 0f))
+        state.updateOrigin(Offset(390f, 0f))
 
         assertEquals(Offset(390f, 0f), state.origin)
     }
@@ -48,18 +48,18 @@ class SlockChildPageOriginTest {
         val pageRootPoint = Offset(100f, 20f)
         assertEquals(Offset(100f, 20f), pageRootPoint + state.origin)
 
-        state.setOrigin(Offset(390f, 0f))
+        state.updateOrigin(Offset(390f, 0f))
         assertEquals(Offset(490f, 20f), pageRootPoint + state.origin, "must use the new origin")
 
-        state.setOrigin(Offset.Zero)
+        state.updateOrigin(Offset.Zero)
         assertEquals(Offset(100f, 20f), pageRootPoint + state.origin, "returning to zero must also apply")
     }
 
     @Test
     fun settingTheSameOriginTwiceIsStable() {
         val state = SlockChildPageOriginState()
-        state.setOrigin(Offset(240f, 12f))
-        state.setOrigin(Offset(240f, 12f))
+        state.updateOrigin(Offset(240f, 12f))
+        state.updateOrigin(Offset(240f, 12f))
 
         assertEquals(Offset(240f, 12f), state.origin)
     }
@@ -70,7 +70,7 @@ class SlockChildPageOriginTest {
         // positionInRoot() is relative to the parent page, so the window offset is parent + own.
         val parent = SlockChildPageOriginState(origin = Offset(390f, 0f))
         val child = SlockChildPageOriginState(origin = Offset(60f, 0f))
-        child.setParentOrigin(parent)
+        child.linkParentOrigin(parent)
 
         assertEquals(Offset(450f, 0f), child.windowOrigin)
     }
@@ -80,17 +80,17 @@ class SlockChildPageOriginTest {
         // The parent link is live, so resizing the OUTER pane must move an inner overlay too.
         val parent = SlockChildPageOriginState(origin = Offset(0f, 0f))
         val child = SlockChildPageOriginState(origin = Offset(60f, 0f))
-        child.setParentOrigin(parent)
+        child.linkParentOrigin(parent)
         assertEquals(Offset(60f, 0f), child.windowOrigin)
 
-        parent.setOrigin(Offset(390f, 0f))
+        parent.updateOrigin(Offset(390f, 0f))
         assertEquals(Offset(450f, 0f), child.windowOrigin, "outer origin must propagate inward")
     }
 
     @Test
     fun aPageCannotBeItsOwnParent() {
         val state = SlockChildPageOriginState(origin = Offset(10f, 0f))
-        state.setParentOrigin(state)
+        state.linkParentOrigin(state)
 
         assertEquals(Offset(10f, 0f), state.windowOrigin, "self-parenting must not double-count or recurse")
     }
