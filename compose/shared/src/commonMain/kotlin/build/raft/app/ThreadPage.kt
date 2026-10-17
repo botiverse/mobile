@@ -15276,6 +15276,25 @@ private fun ThreadPageContentContent(
                     // task #180: null on hosts without a side column, which also hides the menu item.
                     onToggleFocusMode = callbacks.onToggleFocusMode,
                     focusModeActive = callbacks.focusModeActive,
+                    // task #180 (artin): the follow row reads the origin message's own thread state,
+                    // which is where follow/unfollow already lives per message. Null when there is no
+                    // message to follow, so the row is absent rather than misleading.
+                    threadFollowed = timelineSlice.originMessage?.isThreadFollowed,
+                    onToggleThreadFollow =
+                        timelineSlice.originMessage
+                            ?.takeIf { it.threadChannelId?.isNotBlank() == true }
+                            ?.let { message ->
+                                {
+                                    val threadChannelId = message.threadChannelId
+                                    if (message.isThreadFollowed && threadChannelId != null) {
+                                        // The existing handler reads the thread channel from the
+                                        // attachmentId slot: onThreadEvent(action, itemId, attachmentId, tab).
+                                        onThreadEvent("unfollowMessageThread", message.id, threadChannelId, null)
+                                    } else {
+                                        onThreadEvent("followMessageThread", message.id, null, null)
+                                    }
+                                }
+                            },
                 )
             },
             body = {
@@ -15864,6 +15883,9 @@ internal fun ThreadPageHeader(
      */
     onToggleFocusMode: (() -> Unit)? = null,
     focusModeActive: Boolean = false,
+    /** task #180: null when this thread has no message column to follow. */
+    threadFollowed: Boolean? = null,
+    onToggleThreadFollow: (() -> Unit)? = null,
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
@@ -15999,10 +16021,15 @@ internal fun ThreadPageHeader(
                     if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
-                    onToggleFocusMode?.let { toggleFocus ->
+                    val toggleFocus = onToggleFocusMode
+                    val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
+                    if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
-                            onSelect = toggleFocus
+                            onSelect = { toggleFocus?.invoke() },
+                            followed = threadFollowed,
+                            onToggleFollow = onToggleThreadFollow,
+                            focusEnabled = focusModeActive || toggleFocus != null
                         )
                     }
                 }
@@ -16456,27 +16483,52 @@ private fun String?.threadParticipantHandleKey(): String? =
 @Composable
 private fun ThreadHeaderFocusModeMenu(
     focused: Boolean,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    followed: Boolean? = null,
+    onToggleFollow: (() -> Unit)? = null,
+    focusEnabled: Boolean = true,
 ) {
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
-        listOf(
-            SlockBrutalDropdownMenuItem(
-                id = FOCUS_MODE_MENU_ITEM_ID,
-                label =
-                    stringResource(
-                        if (focused) {
-                            MR.strings.thread_focus_mode_standard
-                        } else {
-                            MR.strings.thread_focus_mode_focus
-                        }
-                    ),
-                // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
-                icon = if (focused) SlockLucideIconName.Square else SlockLucideIconName.Maximize2,
-                enabled = true
+        buildList {
+            add(
+                SlockBrutalDropdownMenuItem(
+                    id = FOCUS_MODE_MENU_ITEM_ID,
+                    label =
+                        stringResource(
+                            if (focused) {
+                                MR.strings.thread_focus_mode_standard
+                            } else {
+                                MR.strings.thread_focus_mode_focus
+                            }
+                        ),
+                    // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
+                    icon = if (focused) SlockLucideIconName.Square else SlockLucideIconName.Maximize2,
+                    enabled = focusEnabled
+                )
             )
-        )
+            // task #180 (artin): follow/unfollow of this thread's message column sits in the same
+            // panel menu. `followed` is null when the thread has no message to follow, in which case
+            // the row is not offered at all rather than shown disabled.
+            if (followed != null && onToggleFollow != null) {
+                add(
+                    SlockBrutalDropdownMenuItem(
+                        id = FOLLOW_THREAD_MENU_ITEM_ID,
+                        label =
+                            stringResource(
+                                if (followed) {
+                                    MR.strings.thread_action_unfollow_thread
+                                } else {
+                                    MR.strings.thread_action_follow_thread
+                                }
+                            ),
+                        icon = threadFollowMenuIcon(followed),
+                        enabled = true
+                    )
+                )
+            }
+        }
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
         onClick = {
@@ -16495,7 +16547,10 @@ private fun ThreadHeaderFocusModeMenu(
             items = items,
             onSelect = { id ->
                 menuAnchor = null
-                if (id == FOCUS_MODE_MENU_ITEM_ID) onSelect()
+                when (id) {
+                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
+                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                }
             },
             onDismiss = { menuAnchor = null }
         )
@@ -16503,6 +16558,7 @@ private fun ThreadHeaderFocusModeMenu(
 }
 
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
+internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
