@@ -23,6 +23,13 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 
+#if DEBUG
+#import <errno.h>
+#import <fcntl.h>
+#import <stdio.h>
+#import <unistd.h>
+#endif
+
 #if __has_include("RaftIosBuildMetadata.h")
 #import "RaftIosBuildMetadata.h"
 #endif
@@ -721,6 +728,77 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
         dispatch_async(dispatch_get_main_queue(), block);
     }
 }
+
+#if DEBUG
+static dispatch_queue_t SlockQaAdaptiveRaceControlQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        queue = dispatch_queue_create("build.raft.app.qa-adaptive-race-control", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+static BOOL SlockQaAdaptiveRaceIdentifier(id value) {
+    return [value isKindOfClass:NSString.class] && [value length] > 0 && [value length] <= 256 &&
+        [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
+}
+
+static NSDictionary *SlockQaAdaptiveRacePoll(NSDictionary *params) {
+    NSString *mode = NSProcessInfo.processInfo.environment[@"SLOCK_QA_ADAPTIVE_RACE_MODE"];
+    NSString *gate = [mode isEqual:@"delete"] ? @"delete" : ([mode isEqual:@"account"] ? @"ready" : nil);
+    NSString *requestId = params[@"requestId"];
+    if (!gate || ![params[@"operation"] isEqual:@"poll"] || ![params[@"gate"] isEqual:gate] ||
+        !SlockQaAdaptiveRaceIdentifier(requestId) ||
+        (params[@"expectedAction"] && ![params[@"expectedAction"] isEqual:@"release"])) return @{};
+
+    // The caller never supplies a path. Publishers must atomically replace this small JSON file.
+    NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory
+                                                       inDomains:NSUserDomainMask].firstObject;
+    if (!caches) return @{};
+    NSString *commandPath = [[caches URLByAppendingPathComponent:@"task28-a4-control.json"] path];
+    NSString *claimPath = [[caches URLByAppendingPathComponent:
+        [NSString stringWithFormat:@"task28-a4-control.%@.claimed", NSUUID.UUID.UUIDString]] path];
+    struct stat before;
+    if (lstat(commandPath.fileSystemRepresentation, &before) != 0 || !S_ISREG(before.st_mode) ||
+        before.st_size <= 0 || before.st_size > 4096) return @{};
+    // Rename owns one immutable published command, so a concurrent producer's new file is untouched.
+    if (rename(commandPath.fileSystemRepresentation, claimPath.fileSystemRepresentation) != 0) return @{};
+    int fd = open(claimPath.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    struct stat claimed;
+    char bytes[4097];
+    size_t length = 0;
+    BOOL readable = fd >= 0 && fstat(fd, &claimed) == 0 && S_ISREG(claimed.st_mode) &&
+        claimed.st_size > 0 && claimed.st_size <= 4096;
+    if (readable) {
+        while (length < sizeof(bytes)) {
+            ssize_t count = read(fd, bytes + length, sizeof(bytes) - length);
+            if (count < 0 && errno == EINTR) continue;
+            if (count < 0) readable = NO;
+            if (count <= 0) break;
+            length += (size_t)count;
+        }
+    }
+    if (fd >= 0) close(fd);
+    id command = readable && length > 0 && length <= 4096
+        ? [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:bytes length:length] options:0 error:nil]
+        : nil;
+    NSSet *keys = [NSSet setWithArray:@[@"gate", @"requestId", @"action", @"commandId"]];
+    BOOL matches = [command isKindOfClass:NSDictionary.class] &&
+        [[NSSet setWithArray:[command allKeys]] isEqual:keys] &&
+        [command[@"gate"] isEqual:gate] && [command[@"requestId"] isEqual:requestId] &&
+        [command[@"action"] isEqual:@"release"] && SlockQaAdaptiveRaceIdentifier(command[@"commandId"]);
+    if (matches) {
+        // Deliver only after successful one-shot consumption. Shared still owns its request fence.
+        return unlink(claimPath.fileSystemRepresentation) == 0 ? command : @{};
+    }
+    // Preserve an unmatched request for its own poll, without overwriting a newer published command.
+    if (link(claimPath.fileSystemRepresentation, commandPath.fileSystemRepresentation) == 0 || errno == EEXIST) {
+        unlink(claimPath.fileSystemRepresentation);
+    }
+    return @{};
+}
+#endif
 
 static NSUInteger SlockDiagnosticsMemoryStart = 0;
 static NSUInteger SlockDiagnosticsMemoryCount = 0;
@@ -3060,6 +3138,32 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         // Shared receives the target event, or retains state on timeout if no target survived.
         if (callback && ![SlockBridgeString(params[@"action"]) isEqual:@"commit"]) callback(result);
     });
+}
+
+- (void)qaAdaptiveRaceControl:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) return;
+#if DEBUG
+    NSDictionary *params = [SlockBridgeParams(args) copy];
+    __weak HRBridgeModule *weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        HRBridgeModule *owner = weakSelf;
+        if (!owner || !owner.hr_rootView) return;
+        __weak UIView *weakRoot = owner.hr_rootView;
+        dispatch_async(SlockQaAdaptiveRaceControlQueue(), ^{
+            NSDictionary *result = SlockQaAdaptiveRacePoll(params);
+            SlockBridgeRunOnMain(^{
+                HRBridgeModule *currentOwner = weakSelf;
+                UIView *root = weakRoot;
+                if (!currentOwner || !root || currentOwner.hr_rootView != root) return;
+                callback(result);
+            });
+        });
+    });
+#else
+    // A stale QA call must be harmless on a production carrier, including method dispatch.
+    SlockBridgeRunOnMain(^{ callback(@{}); });
+#endif
 }
 
 - (void)conversationForwardGesture:(NSDictionary *)args {

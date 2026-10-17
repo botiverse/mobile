@@ -448,9 +448,21 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (NSDictionary *)p_mergeExtParamsWithOriditalParam:(NSDictionary *)pageParam {
     NSMutableDictionary *mParam = [(pageParam ?: @{}) mutableCopy];
     SlockKuiklyPutHostTimeContextIfMissing(mParam);
+    // These QA intents are host-owned and cannot be inherited from a route payload.
+    [mParam removeObjectForKey:@"slockQaAdaptiveRaceMode"];
+    [mParam removeObjectForKey:@"slockQaDeleteAnchorId"];
 #if DEBUG
     // Local test-carrier launch intent, never inherited as product content or enabled by default.
     mParam[@"slockQaReplaceAdaptiveEditor"] = @([NSProcessInfo.processInfo.environment[@"SLOCK_QA_REPLACE_ADAPTIVE_EDITOR"] isEqual:@"1"]);
+    NSString *raceMode = NSProcessInfo.processInfo.environment[@"SLOCK_QA_ADAPTIVE_RACE_MODE"];
+    if ([raceMode isEqual:@"delete"] || [raceMode isEqual:@"account"]) {
+        mParam[@"slockQaAdaptiveRaceMode"] = raceMode;
+        NSString *anchorId = NSProcessInfo.processInfo.environment[@"SLOCK_QA_DELETE_ANCHOR_ID"];
+        if ([raceMode isEqual:@"delete"] && anchorId.length > 0 && anchorId.length <= 256 &&
+            [anchorId rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound) {
+            mParam[@"slockQaDeleteAnchorId"] = anchorId;
+        }
+    }
 #endif
     // iOS Kuikly pageData safeAreaInsets are reported in native pixels, while
     // shared Compose layout uses dp. Mark the unit so shared safe-area helpers

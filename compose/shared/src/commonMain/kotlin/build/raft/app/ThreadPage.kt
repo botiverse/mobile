@@ -32,6 +32,7 @@ import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
+import build.raft.app.data.authSessionTerminalSourceOrNull
 import build.raft.app.data.ForwardMessageBatchExecuteRequest
 import build.raft.app.data.ForwardMessageBatchResult
 import build.raft.app.data.ForwardMessageDestination
@@ -3766,6 +3767,12 @@ private fun ThreadPageScreen(
     // QA-only carrier: native injects this Debug launch flag into each source pager.
     val qaReplaceAdaptiveEditor = params.optBoolean("slockQaReplaceAdaptiveEditor", false)
     val qaPreparedEditorRef = remember { mutableStateOf<Int?>(null) }
+    val qaAdaptiveRaceMode = params.optString("slockQaAdaptiveRaceMode")
+    val qaDeleteGate = remember(pager.pagerId, qaAdaptiveRaceMode) {
+        if (qaAdaptiveRaceMode == "delete") {
+            QaAdaptiveDeleteGate(params.optString("slockQaDeleteAnchorId"))
+        } else null
+    }
     val adaptiveDetailOpenInitiator =
         remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
             if (!isStandaloneThreadPage) return@remember null
@@ -3816,13 +3823,24 @@ private fun ThreadPageScreen(
                     bridge.dispatchAdaptiveCancel(requestId, token)
                 },
                 captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
+                    if (qaDeleteGate != null && !qaDeleteGate.beforeDraftCapture(
+                            requestId = requestId,
+                            bridge = bridge,
+                            readTimeline = { adaptiveInitiationCaptureHolder.qaReadTimeline?.invoke() },
+                            readAuthority = {
+                                qaReadAdaptiveAuthWitness(sharedStores.authStore.authSessionTerminalSourceOrNull())
+                            },
+                        )
+                    ) return@captureLatestDraftForAdoption null
                     val capture =
                         adaptiveInitiationCaptureHolder.captureLatestDraft
                             ?: return@captureLatestDraftForAdoption null
                     capture(requestId)
                 },
                 captureAnchor = captureAnchorForAdoption@{ requestId ->
-                    adaptiveInitiationCaptureHolder.captureAnchor?.invoke(requestId)
+                    adaptiveInitiationCaptureHolder.captureAnchor?.invoke(requestId).also { anchor ->
+                        qaDeleteGate?.captured(anchor, adaptiveInitiationCaptureHolder.qaReadTimeline?.invoke())
+                    }
                 },
                 log = { message -> bridge.log("adaptive_initiate $message") },
                 logWarn = { message -> bridge.logWarn("adaptive_initiate $message") },
@@ -3851,13 +3869,23 @@ private fun ThreadPageScreen(
                             return@LaunchedEffect
                         }
             ) ?: return@LaunchedEffect
-        val outcome =
+        val requestId = "adopt-${pager.pagerId}-${Uuid.random()}"
+        val outcome = try {
             initiator.initiate(
                 identity = identity,
                 launchPayload = launchPayload,
                 windowFact = event.toSlockAdaptiveOpenWindowFact(defaultNowMillis()),
-                requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
+                requestId = requestId,
             )
+        } finally {
+            // The QA pause is before native prepare; disposal must not leave its staged
+            // anchor behind when the normal initiator has no prepared token to cancel yet.
+            if (qaDeleteGate != null && !qaDeleteGate.wasReleased(requestId)) {
+                sharedStores.adaptiveScrollAnchorStore(storeScope)
+                    .discard(storeScope.shellInstanceId, identity, requestId)
+                bridge.log("adaptive_qa delete_gate_cleanup requestId=$requestId")
+            }
+        }
         bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
     }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
@@ -5415,6 +5443,8 @@ internal class ThreadAdaptiveInitiationCaptureHolder {
     // identities is NOT a match. Null = the read/persist barrier failed.
     var captureLatestDraft: (suspend (requestId: String) -> SharedThreadComposerDraftSnapshot?)? = null
     var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
+    // QA-only readback of identities, never timeline content or an alternate data provider.
+    var qaReadTimeline: (() -> QaAdaptiveTimelineObservation)? = null
 }
 
 /**
@@ -17199,6 +17229,8 @@ private fun ThreadMessagesListContent(
     }
     var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
     val adaptiveReadyPosted = data.adaptiveReadyPosted
+    val qaDeleteRestore = adaptivePager.pageData.params.optString("slockQaAdaptiveRaceMode") == "delete"
+    var qaRestoreOrdinal by remember(threadInstanceKey, closeReq) { mutableStateOf(0) }
     // A4 restore (task #18): while a staged viewport anchor is pending for this destination,
     // the initial bottom-anchor loop must not dispatch FollowLatest — it races the restore and
     // re-pins the viewport to the latest item after scrollToItem already ran (v14 non-empty
@@ -17536,6 +17568,23 @@ private fun ThreadMessagesListContent(
             }
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
         val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        if (qaDeleteRestore) {
+            qaRestoreOrdinal += 1
+            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+            val targetIndex = renderPayload.messages.indexOfFirst { it.id == anchor?.messageId }
+            val fallbackMessage = anchor?.let {
+                renderPayload.messages.getOrNull(it.fallbackIndex - firstMessageIndex)?.id
+            }
+            postDetailReadyTrace("qa_first_restore_input") {
+                put("restoreOrdinal", qaRestoreOrdinal)
+                put("requestId", anchor?.requestId.orEmpty())
+                put("anchorMessageId", anchor?.messageId.orEmpty())
+                put("targetPresent", targetIndex >= 0)
+                put("fallbackIndex", anchor?.fallbackIndex ?: -1)
+                put("fallbackMessageId", fallbackMessage.orEmpty())
+                put("firstMessageIndex", firstMessageIndex)
+            }
+        }
         // Success = the target message's item is visible AND sits at the staged
         // viewport-relative offset (item.offset, negative when scrolled above the top edge).
         // Comparing the target's own rendered offset — not firstVisibleItemIndex — keeps the
@@ -17860,6 +17909,14 @@ private fun ThreadMessagesListContent(
     DisposableEffect(adaptiveInitiationCaptureHolder, threadInstanceKey) {
         val holder = adaptiveInitiationCaptureHolder
         if (holder != null) {
+            holder.qaReadTimeline = {
+                QaAdaptiveTimelineObservation(
+                    instanceKey = threadInstanceKey,
+                    status = latestTimelineSlice.status,
+                    messageIds = latestTimelineSlice.messages.map { it.id },
+                    userScrollGeneration = userScrollGeneration.value,
+                )
+            }
             holder.captureAnchor = anchor@{ requestId ->
                 val first =
                     listState.threadFirstVisibleMessageAnchor(
@@ -17885,7 +17942,10 @@ private fun ThreadMessagesListContent(
             }
         }
         onDispose {
-            if (holder != null) holder.captureAnchor = null
+            if (holder != null) {
+                holder.captureAnchor = null
+                holder.qaReadTimeline = null
+            }
         }
     }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }

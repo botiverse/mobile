@@ -3337,11 +3337,107 @@ private fun SlockAppShellReadyContent(
             .optInt("slockQaDelayFirstAdaptiveReadyMs", 0).coerceIn(0, 30_000).toLong()
         val qaSecondReadyDelayMillis = pager.pageData.params
             .optInt("slockQaDelaySecondAdaptiveReadyMs", 0).coerceIn(0, 9_000).toLong()
+        // QA carrier only (SLOCK_QA_ADAPTIVE_RACE_MODE=account): at this READY ingress capture
+        // exactly one real A1 envelope and withhold it; after a genuine A1→B→A2 account cycle,
+        // briefly hold A2's own real READY while the unchanged A1 envelope is re-posted so its
+        // rejection (shell fence, then pending/generation match) is observed. Process-owned
+        // holder in QaAdaptiveRaceHooks; expires in 600s or on finish. Never fabricates READY.
+        val qaAccountRace = pager.pageData.params
+            .optString("slockQaAdaptiveRaceMode") == "account"
+        var qaLastWitness: QaAdaptiveAuthWitness? = null
+        val qaAuthorityObserver =
+            if (qaAccountRace) {
+                appShellCoroutineScope.launch {
+                    qaLastWitness = qaReadAdaptiveAuthWitness(authSessionTerminalSource)
+                    QaAdaptiveReadyReplay.observeAuthority(qaLastWitness)
+                    authSessionTerminalSource?.authSessionTerminalEvents?.collect {
+                        qaLastWitness = qaReadAdaptiveAuthWitness(authSessionTerminalSource)
+                        val stage = QaAdaptiveReadyReplay.observeAuthority(qaLastWitness)
+                        bridge.log(
+                            "adaptive_qa authority_observed stage=$stage " +
+                                "account=${qaLastWitness?.accountId?.take(8).orEmpty()}"
+                        )
+                    }
+                }
+            } else null
+        fun qaAdaptiveReadyAdmission(eventData: JSONObject): QaAdaptiveReadyAdmission? {
+            if (!qaAccountRace) return null
+            // Find the pending request matching this READY's detail generation — the same
+            // lookup completeSlockAdaptiveDetailOpen performs — so admit() can fence on it.
+            val generation = eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+            val requestId = adaptiveWorkspaceStore.snapshot().pendingDetailOpens.values
+                .firstOrNull { it.detailGeneration == generation }?.requestId.orEmpty()
+            val witness = qaLastWitness ?: return null
+            return QaAdaptiveReadyReplay.admit(
+                requestId = requestId,
+                envelope = eventData.toString(),
+                authority = witness,
+            )
+        }
         val readySubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
                 crossProcess = true,
             ) { eventData ->
+                if (qaAccountRace && eventData != null) {
+                    val generation =
+                        eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+                    val identityKey =
+                        eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+                    // Observe BEFORE the production shell fence: a replayed foreign-shell
+                    // envelope must log its delivery here even when the fence then drops it.
+                    when (val admission = qaAdaptiveReadyAdmission(eventData)) {
+                        is QaAdaptiveReadyAdmission.Captured -> {
+                            bridge.log(
+                                "adaptive_qa ready_captured requestId=${admission.saved.requestId} " +
+                                    "shell=${admission.saved.shellId} gen=${admission.saved.detailGeneration}"
+                            )
+                            return@observe
+                        }
+                        QaAdaptiveReadyAdmission.DuplicateHeld -> {
+                            bridge.log("adaptive_qa ready_duplicate_held gen=$generation")
+                            return@observe
+                        }
+                        is QaAdaptiveReadyAdmission.HoldReturnedAccount -> {
+                            val saved = admission.saved
+                            val replayEnvelope = QaAdaptiveReadyReplay.beginReplay(
+                                caseId = saved.requestId,
+                                receiverShell = storeScope.shellInstanceId,
+                                authority = admission.authority,
+                            )
+                            bridge.log(
+                                "adaptive_qa ready_hold_replay requestId=${saved.requestId} " +
+                                    "shell=${saved.shellId}->${storeScope.shellInstanceId} " +
+                                    "gen=${saved.detailGeneration} replayPosted=${replayEnvelope != null}"
+                            )
+                            if (replayEnvelope != null) {
+                                sharedStores.eventBus.post(
+                                    eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                                    eventData = JSONObject(replayEnvelope),
+                                    crossProcess = true,
+                                    source = "adaptive_detail_ready",
+                                )
+                            }
+                            // Re-post delivery is synchronous on this bus; log whether the
+                            // replayed envelope was seen at the receiver-shell ingress, then
+                            // close the QA case so later READY events are untouched.
+                            val replayProcessed =
+                                QaAdaptiveReadyReplay.wasProcessed(saved.requestId)
+                            bridge.log(
+                                "adaptive_qa ready_replay_outcome requestId=${saved.requestId} " +
+                                    "processed=$replayProcessed"
+                            )
+                            QaAdaptiveReadyReplay.finish(saved.requestId)
+                            // A2's own READY now falls through to the normal path; its pending
+                            // and ACK deadlines are unchanged.
+                        }
+                        else -> Unit
+                    }
+                    // Note whether the just-delivered event was the replayed A1 envelope and
+                    // whether this shell actually processed it (post-fence outcome is logged
+                    // separately by ready_received/ready_no_pending).
+                    QaAdaptiveReadyReplay.recordProcessed(eventData, storeScope.shellInstanceId)
+                }
                 val validForThisShell = eventData != null &&
                     eventData.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID).trim() == storeScope.shellInstanceId &&
                     eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).isNotBlank() &&
@@ -3498,6 +3594,7 @@ private fun SlockAppShellReadyContent(
         onDispose {
             openSubscription.close()
             qaDelayedReadyJobs.forEach { it.cancel() }
+            qaAuthorityObserver?.cancel()
             readySubscription.close()
             cancelSubscription.close()
             preparedSubscription.close()
