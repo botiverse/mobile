@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
+import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
