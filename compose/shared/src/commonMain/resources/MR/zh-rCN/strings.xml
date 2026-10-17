@@ -2203,6 +2203,9 @@
     <string name="app_update_download_paused">下载已暂停，等待继续</string>
     <string name="app_update_download_failed">下载失败，点击重试重新下载。</string>
     <string name="thread_audio_playback_position">播放位置</string>
+    <string name="thread_focus_mode_focus">专注模式</string>
+    <string name="thread_focus_mode_standard">标准模式</string>
+    <string name="thread_focus_mode_menu_more">回复串面板菜单</string>
     <string name="member_runtime_usage_title">账号用量</string>
     <string name="member_runtime_usage_attention">用量需留意</string>
     <string name="member_runtime_usage_reading">读取中…</string>

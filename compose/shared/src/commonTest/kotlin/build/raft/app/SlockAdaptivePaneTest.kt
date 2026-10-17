@@ -24,7 +24,10 @@ class SlockAdaptivePaneTest {
     }
 
     @Test
-    fun halfFoldedWindowStaysCompactEvenWhenWide() {
+    fun halfFoldedWindowTakesDualPaneWhenWideEnough() {
+        // task #180 (artin 2026-10-17): a half-folded posture is no longer excluded from the second
+        // pane. 2200px / 2f density = 1100dp, above the 840dp rule, so it is DualPane. This reverses
+        // the previous "half-fold never opens a second pane" contract on purpose.
         val state =
             reduceSlockAdaptivePane(
                 SlockAdaptivePaneState(),
@@ -36,7 +39,48 @@ class SlockAdaptivePaneTest {
                 )
             )
 
+        assertEquals(SlockAdaptivePaneLayout.DualPane, state.layout)
+    }
+
+    @Test
+    fun halfFoldedWindowStaysCompactBelowTheWidthRule() {
+        // Half-fold is now judged by width like every other posture -- it must not claim a second
+        // pane just because it is folded.
+        val state =
+            reduceSlockAdaptivePane(
+                SlockAdaptivePaneState(),
+                SlockAdaptivePaneEvent(
+                    widthPx = 1600,
+                    heightPx = 1200,
+                    density = 2f,
+                    posture = SlockAdaptivePanePosture.HalfFolded
+                )
+            )
+
         assertEquals(SlockAdaptivePaneLayout.Compact, state.layout)
+    }
+
+    @Test
+    fun foldedAndFlatAgreeWithHalfFoldedAtTheSameWidth() {
+        // Posture must no longer change the layout decision; only width (and Unknown) does.
+        val width = 2200
+        val density = 2f
+        listOf(
+            SlockAdaptivePanePosture.Flat,
+            SlockAdaptivePanePosture.Folded,
+            SlockAdaptivePanePosture.HalfFolded,
+        ).forEach { posture ->
+            val state =
+                reduceSlockAdaptivePane(
+                    SlockAdaptivePaneState(),
+                    SlockAdaptivePaneEvent(width, 1200, density, posture)
+                )
+            assertEquals(
+                SlockAdaptivePaneLayout.DualPane,
+                state.layout,
+                "posture $posture should follow the width rule"
+            )
+        }
     }
 
     @Test

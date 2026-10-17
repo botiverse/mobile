@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
+import build.raft.app.data.sideThreadFocusActive
+import build.raft.app.data.showsSideThreadFocusEntry
+import build.raft.app.data.toggleSideThreadFocusFromPanel
 import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -5824,6 +5827,27 @@ private fun SharedThreadRouteContentContent(
         bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
+    // Read reactively so the label flips between Focus and Standard when it changes.
+    // The side page never receives the shell's desktopModeOnLargeScreen, so ownership of the
+    // column (adoption by it) plus a visible side thread stands in for that gate -- a column can
+    // only exist if it already passed the width/posture checks.
+    val focusWorkspaceStore =
+        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
+    val focusWorkspaceSession by focusWorkspaceStore.state.collectAsState()
+    val threadFocusModeActive = focusWorkspaceSession.sideThreadFocusActive()
+    // Shared with the tests so "no column host renders no entry" is guarded, not just asserted.
+    val isSideColumnOwner = data.adaptiveCloseRequest != null
+    val threadFocusModeToggle: (() -> Unit)? =
+        if (focusWorkspaceSession.showsSideThreadFocusEntry(isSideColumnOwner)) {
+            {
+                focusWorkspaceStore.update { current ->
+                    current.toggleSideThreadFocusFromPanel(isSideColumnOwner)
+                }
+            }
+        } else {
+            null
+        }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val messageBodySettingsRepository =
@@ -10602,6 +10626,9 @@ private fun SharedThreadRouteContentContent(
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
+                // task #180: forwarded from the route scope, which owns the workspace store.
+                onToggleFocusMode = threadFocusModeToggle,
+                focusModeActive = threadFocusModeActive,
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -13882,7 +13909,7 @@ private fun ThreadDeferredLoadingRouteContent(
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: SlockMemberAvatarResolver,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -14031,6 +14058,9 @@ private class ThreadPageContentCallbacks(
     val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     val onSaveShareImage: suspend (String) -> JSONObject?,
     val onFirstContentReady: () -> Unit,
+    /** task #180: null when this surface has no side column to maximise. */
+    val onToggleFocusMode: (() -> Unit)? = null,
+    val focusModeActive: Boolean = false,
     val onVisibleReadTailChange: (Int?) -> Unit,
     val onViewportFollowsLatestChange: (Boolean) -> Unit,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
@@ -14141,12 +14171,16 @@ fun ThreadPageContent(
     onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
-    onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
+    onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 )
  {
     ThreadFollowersOverlayHost {
     ThreadPageContentContent(
         modifier = Modifier,
+        onToggleFocusMode = onToggleFocusMode,
+        focusModeActive = focusModeActive,
         data =
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
@@ -14212,6 +14246,8 @@ fun ThreadPageContent(
         callbacks =
             ThreadPageContentCallbacks(
                 scaffold = scaffold,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
                 onSelectedTabChanged = onSelectedTabChanged,
                 onSuggestionDemandChanged = onSuggestionDemandChanged,
                 onToggleActivityMute = onToggleActivityMute,
@@ -14257,6 +14293,8 @@ private fun ThreadPageContentContent(
     modifier: Modifier = Modifier,
     data: ThreadPageContentData,
     callbacks: ThreadPageContentCallbacks,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
 ) {
     val scaffold = callbacks.scaffold
     val threadInstanceKey = data.threadInstanceKey
@@ -15193,6 +15231,8 @@ private fun ThreadPageContentContent(
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
                 },
             header = {
+                // task #180: computed once per header composition, outside the header's own scope.
+                val panelFollowAction = threadPanelFollowAction(timelineSlice.originMessage)
                 ThreadPageHeader(
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
@@ -15236,7 +15276,27 @@ private fun ThreadPageContentContent(
                             { threadHeaderScrollToTopRequest += 1 }
                         } else {
                             null
-                        }
+                        },
+                    // task #180: null on hosts without a side column, which also hides the menu item.
+                    onToggleFocusMode = callbacks.onToggleFocusMode,
+                    focusModeActive = callbacks.focusModeActive,
+                    // task #180 (artin): the follow row is derived by a pure helper from the same
+                    // per-message state the long-press menu reads, so the two cannot disagree and the
+                    // decision is unit-testable. Null = nothing to follow -> row is absent.
+                    threadFollowed = panelFollowAction?.followed,
+                    onToggleThreadFollow =
+                        panelFollowAction?.let { follow ->
+                            {
+                                // The existing handler reads the thread channel from the attachmentId
+                                // slot: onThreadEvent(action, itemId, attachmentId, tab).
+                                onThreadEvent(
+                                    follow.action,
+                                    timelineSlice.originMessage?.id,
+                                    follow.threadChannelId,
+                                    null
+                                )
+                            }
+                        },
                 )
             },
             body = {
@@ -15818,7 +15878,16 @@ internal fun ThreadPageHeader(
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    /**
+     * task #180: web parity (#9172/#9335). Null when this host cannot host a side column, which is
+     * also when the menu item is hidden -- Focus mode relaxes layout, it never creates a column.
+     */
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
+    /** task #180: null when this thread has no message column to follow. */
+    threadFollowed: Boolean? = null,
+    onToggleThreadFollow: (() -> Unit)? = null,
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
@@ -15953,6 +16022,17 @@ internal fun ThreadPageHeader(
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
+                    }
+                    val toggleFocus = onToggleFocusMode
+                    val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
+                    if (hasPanelMenu) {
+                        ThreadHeaderFocusModeMenu(
+                            focused = focusModeActive,
+                            onSelect = { toggleFocus?.invoke() },
+                            followed = threadFollowed,
+                            onToggleFollow = onToggleThreadFollow,
+                            focusEnabled = focusModeActive || toggleFocus != null
+                        )
                     }
                 }
                 }
@@ -16394,6 +16474,93 @@ private fun String?.threadParticipantHandleKey(): String? =
         ?.takeIf { it.isNotBlank() }
         ?.lowercase()
         ?.let { "handle:$it" }
+
+/**
+ * task #180 (web parity #9172/#9335): the thread panel's overflow menu, anchored in the header.
+ *
+ * Web puts Focus mode as the first item of this menu; mobile had no thread-panel overflow at all,
+ * so this is that menu with its first (and for now only) entry. Kept generic so later parity items
+ * can join it instead of adding more permanent header icons.
+ */
+@Composable
+private fun ThreadHeaderFocusModeMenu(
+    focused: Boolean,
+    onSelect: () -> Unit,
+    followed: Boolean? = null,
+    onToggleFollow: (() -> Unit)? = null,
+    focusEnabled: Boolean = true,
+) {
+    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
+    val items =
+        buildList {
+            add(
+                SlockBrutalDropdownMenuItem(
+                    id = FOCUS_MODE_MENU_ITEM_ID,
+                    label =
+                        stringResource(
+                            if (focused) {
+                                MR.strings.thread_focus_mode_standard
+                            } else {
+                                MR.strings.thread_focus_mode_focus
+                            }
+                        ),
+                    // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
+                    icon = if (focused) SlockLucideIconName.Square else SlockLucideIconName.Maximize2,
+                    enabled = focusEnabled
+                )
+            )
+            // task #180 (artin): follow/unfollow of this thread's message column sits in the same
+            // panel menu. `followed` is null when the thread has no message to follow, in which case
+            // the row is not offered at all rather than shown disabled.
+            if (followed != null && onToggleFollow != null) {
+                add(
+                    SlockBrutalDropdownMenuItem(
+                        id = FOLLOW_THREAD_MENU_ITEM_ID,
+                        label =
+                            stringResource(
+                                if (followed) {
+                                    MR.strings.thread_action_unfollow_thread
+                                } else {
+                                    MR.strings.thread_action_follow_thread
+                                }
+                            ),
+                        icon = threadFollowMenuIcon(followed),
+                        enabled = true
+                    )
+                )
+            }
+        }
+    SlockBrutalIconButton(
+        iconName = SlockLucideIconName.Ellipsis,
+        onClick = {
+            anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
+        },
+        enabled = true,
+        size = 28.dp,
+        shadowOffset = SlockShadow.BrutalSmall,
+        iconSize = 14.dp,
+        modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
+        contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
+    )
+    menuAnchor?.let { anchor ->
+        SlockBrutalDropdownMenu(
+            anchor = anchor,
+            items = items,
+            onSelect = { id ->
+                menuAnchor = null
+                when (id) {
+                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
+                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                }
+            },
+            onDismiss = { menuAnchor = null }
+        )
+    }
+}
+
+internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
+internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
@@ -27557,6 +27724,35 @@ internal fun shouldShowThreadFollowAction(
         (replyMetadata.threadChannelId?.isNotBlank() == true ||
             replyMetadata.replyCount > 0 ||
             replyMetadata.isThreadFollowed)
+
+/**
+ * task #180 (artin): what the thread panel's follow row should be, derived from the thread's origin
+ * message -- the same per-message state the long-press menu reads, so the two surfaces cannot
+ * disagree (web reads `followedThreads` from its thread store; this is the mobile equivalent).
+ *
+ * Returns null when there is nothing to follow, in which case the row is ABSENT rather than shown
+ * disabled: an empty thread or a message without a thread channel would otherwise offer an action
+ * that cannot run.
+ */
+internal data class ThreadPanelFollowAction(
+    val followed: Boolean,
+    val threadChannelId: String,
+    val action: String,
+)
+
+internal fun threadPanelFollowAction(message: KuiklyThreadMessageItem?): ThreadPanelFollowAction? {
+    val threadChannelId = message?.threadChannelId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadPanelFollowAction(
+        followed = message.isThreadFollowed,
+        threadChannelId = threadChannelId,
+        // Reuses the two actions the page already dispatches, so the panel does not invent a
+        // second code path for the same operation.
+        action = if (message.isThreadFollowed) UNFOLLOW_THREAD_ACTION else FOLLOW_THREAD_ACTION
+    )
+}
+
+internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
+internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
 internal fun threadFollowMenuIcon(isFollowed: Boolean): SlockLucideIconName =
     if (isFollowed) SlockLucideIconName.MessageCircleOff else SlockLucideIconName.MessageCirclePlus
