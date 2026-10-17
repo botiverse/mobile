@@ -169,9 +169,13 @@ private fun fontFamilyFor(role: String, preference: FontPreference, fontWeight: 
         "heading" -> preference.headingFamily
         else -> preference.monoFamily
     }
-    // null == the "system" option: leaving the family unset lets the host pick its own face,
-    // which is exactly what the option promises.
-    if (base == null) return FontFamily.Default
+    // null means "this role has no bundled family". The right fallback depends on the role:
+    // the mono role must land on the platform's MONOSPACE face. Returning FontFamily.Default here
+    // would hand back the platform sans face, so code blocks and timestamps would render
+    // proportionally even though the option promises the host's own type, mono included.
+    if (base == null) {
+        return if (role == "mono") FontFamily.Monospace else FontFamily.Default
+    }
     val suffix = when {
         // Mono ships only Regular/Bold per family. Asking for SpaceMono-Medium would miss in
         // resolveTypeface() and fall back to the SANS face, i.e. render mono text in a
