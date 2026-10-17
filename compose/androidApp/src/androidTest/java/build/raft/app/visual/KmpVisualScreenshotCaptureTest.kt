@@ -1796,6 +1796,7 @@ class KmpVisualScreenshotCaptureTest {
                 )
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        finishLeakedPredecessorActivities()
         var before: Bitmap? = null
         var afterSwipe: Bitmap? = null
         var afterTap: Bitmap? = null
@@ -4108,6 +4109,37 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
+    /**
+     * Finish predecessor fixture activities leaked by an abandoned teardown
+     * (see [closeScenarioBounded]). Since #3043 gave SlockKuiklyActivity a
+     * translucent window, a leaked predecessor is only PAUSED — never STOPPED —
+     * when the next case launches on top of it: it stays visible underneath,
+     * keeps receiving frames, and its churn starves the new case's main thread.
+     * On the loaded 10-16 nightly that turned the compact-last render gate RED:
+     * the first poll took 29.7s and the reported-open modal had not painted a
+     * single pixel yet. Call right after ActivityScenario.launch — at that
+     * point launch has blocked until the new activity is RESUMED, so every
+     * non-RESUMED activity is a predecessor. finish() is idempotent for an
+     * activity already being destroyed by its own scenario.
+     */
+    private fun finishLeakedPredecessorActivities() {
+        runOnMainSyncBounded {
+            val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+            val leaked =
+                listOf(Stage.PAUSED, Stage.STARTED, Stage.STOPPED, Stage.CREATED, Stage.PRE_ON_CREATE)
+                    .flatMap { monitor.getActivitiesInStage(it) }
+                    .distinct()
+            leaked.forEach { activity ->
+                Log.w(
+                    VISUAL_LOG_TAG,
+                    "finishing leaked predecessor ${activity.javaClass.simpleName} " +
+                        "left behind by an abandoned teardown"
+                )
+                activity.finish()
+            }
+        }
+    }
+
     private fun captureKmpHomeCase(
         caseId: String,
         pageData: JSONObject,
@@ -4122,6 +4154,7 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
@@ -4213,6 +4246,7 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it, hideKeyboard = suppressSoftKeyboard) }
             waitForIdleBounded()
