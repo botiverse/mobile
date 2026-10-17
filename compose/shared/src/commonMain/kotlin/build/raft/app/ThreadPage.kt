@@ -16544,18 +16544,25 @@ private fun ThreadHeaderFocusModeMenu(
                 )
             }
         }
-    SlockBrutalIconButton(
-        iconName = SlockLucideIconName.Ellipsis,
-        onClick = {
-            anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
-        },
-        enabled = true,
-        size = 28.dp,
-        shadowOffset = SlockShadow.BrutalSmall,
-        iconSize = 14.dp,
-        modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
-        contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
-    )
+    // Same component and metrics as the neighbouring header actions (search / settings / members /
+    // open-in-channel). Previously this hand-rolled SlockBrutalIconButton at 28dp/14dp, which made
+    // the "..." render visibly smaller and thinner than the buttons beside it.
+    val menuDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
+    Box(
+        modifier =
+            Modifier
+                .slockCaptureLiveRootAnchor(anchorRef)
+                // The shared header action button carries no description of its own, so keep the
+                // menu trigger labelled here instead of dropping the a11y label with the old button.
+                .semantics { contentDescription = menuDescription }
+    ) {
+        ThreadHeaderIconButton(
+            icon = SlockLucideIconName.Ellipsis,
+            onClick = {
+                anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
+            }
+        )
+    }
     menuAnchor?.let { anchor ->
         SlockBrutalDropdownMenu(
             anchor = anchor,

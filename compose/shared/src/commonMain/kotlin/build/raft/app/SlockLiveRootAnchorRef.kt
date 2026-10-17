@@ -215,7 +215,7 @@ internal class SlockPopoverAnchor private constructor(
             // `localToRoot` is relative to this page's own root. Inside a Kuikly child page that is
             // NOT the window, so add the host-provided origin. Read here (open time), never cached,
             // so rotation / pane resize / fold are picked up. Zero outside a child page.
-            val pageOrigin = childPageOriginState?.origin ?: Offset.Zero
+            val pageOrigin = childPageOriginState?.windowOrigin ?: Offset.Zero
             val rootOffset = current.localToRoot(localPoint.resolve(current.size)) + pageOrigin
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
         }
@@ -241,8 +241,26 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
     var origin: Offset by mutableStateOf(origin)
         internal set
 
+    /**
+     * The enclosing child page's origin, when this page is itself nested. Child pages nest for real
+     * -- the AppShell tabs are child pages and the detail/thread columns are child pages INSIDE
+     * them -- so the window offset of a nested page is its own `positionInRoot()` relative to the
+     * parent page PLUS the parent's origin. Kept as a live reference (not a summed snapshot) so an
+     * outer resize still propagates to the inner conversion.
+     */
+    var parentOrigin: SlockChildPageOriginState? = null
+        internal set
+
+    /** Window-space origin of this page: own position within its parent plus every ancestor. */
+    val windowOrigin: Offset
+        get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
+
     internal fun setOrigin(next: Offset) {
         if (next != origin) origin = next
+    }
+
+    internal fun setParentOrigin(next: SlockChildPageOriginState?) {
+        if (next !== this && parentOrigin !== next) parentOrigin = next
     }
 }
 

@@ -63,4 +63,42 @@ class SlockChildPageOriginTest {
 
         assertEquals(Offset(240f, 12f), state.origin)
     }
+
+    @Test
+    fun aNestedPageAddsItsParentOriginAndItsOwnPosition() {
+        // AppShell tab page (parent) -> detail / thread column page (child). The child's
+        // positionInRoot() is relative to the parent page, so the window offset is parent + own.
+        val parent = SlockChildPageOriginState(origin = Offset(390f, 0f))
+        val child = SlockChildPageOriginState(origin = Offset(60f, 0f))
+        child.setParentOrigin(parent)
+
+        assertEquals(Offset(450f, 0f), child.windowOrigin)
+    }
+
+    @Test
+    fun anOuterChangePropagatesToTheNestedPageWithoutRecomputingALocalSnapshot() {
+        // The parent link is live, so resizing the OUTER pane must move an inner overlay too.
+        val parent = SlockChildPageOriginState(origin = Offset(0f, 0f))
+        val child = SlockChildPageOriginState(origin = Offset(60f, 0f))
+        child.setParentOrigin(parent)
+        assertEquals(Offset(60f, 0f), child.windowOrigin)
+
+        parent.setOrigin(Offset(390f, 0f))
+        assertEquals(Offset(450f, 0f), child.windowOrigin, "outer origin must propagate inward")
+    }
+
+    @Test
+    fun aPageCannotBeItsOwnParent() {
+        val state = SlockChildPageOriginState(origin = Offset(10f, 0f))
+        state.setParentOrigin(state)
+
+        assertEquals(Offset(10f, 0f), state.windowOrigin, "self-parenting must not double-count or recurse")
+    }
+
+    @Test
+    fun aTopLevelPageHasNoParentAndReportsItsOwnOrigin() {
+        val state = SlockChildPageOriginState(origin = Offset(120f, 8f))
+
+        assertEquals(Offset(120f, 8f), state.windowOrigin)
+    }
 }

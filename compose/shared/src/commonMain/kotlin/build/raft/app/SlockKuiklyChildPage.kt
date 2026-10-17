@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BasePager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -268,7 +269,12 @@ internal fun SlockKuiklyChildPage(
     // resolve `positionInRoot()` against THIS page's root, not the window. Measure where the page
     // actually sits and provide that origin; anchored overlays add it at open time. A full-screen
     // page measures (0,0) and behaviour is unchanged.
+    val parentChildPageOrigin = LocalSlockChildPageOrigin.current
     val childPageOriginState = remember { SlockChildPageOriginState() }
+    // Nested child pages are real (AppShell tab page -> detail/thread column page), so a nested
+    // page's window offset is its own position within the parent PLUS the parent's origin. Linked
+    // as a live reference so an outer resize propagates without recomputing a snapshot here.
+    SideEffect { childPageOriginState.setParentOrigin(parentChildPageOrigin) }
     CompositionLocalProvider(LocalSlockChildPageOrigin provides childPageOriginState) {
     Box(
         modifier =
