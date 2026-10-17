@@ -27,6 +27,8 @@ import kotlin.concurrent.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Cache dir the avatar store writes and Settings → Storage measures as the image cache. */
+internal const val SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME = "image_cache"
 private const val SLOCK_ANDROID_AVATAR_NAMESPACE = "avatar_durable_v1"
 private const val SLOCK_ANDROID_AVATAR_STAGING_DIRECTORY = "transport-staging"
 private const val SLOCK_ANDROID_AVATAR_MAX_ENTRY_BYTES = 5L * 1024L * 1024L
@@ -832,7 +834,7 @@ internal class SlockAndroidAvatarCacheController internal constructor(
         internal fun create(context: Context): SlockAndroidAvatarCacheController {
             val root =
                 context.applicationContext.cacheDir
-                    .resolve("image_cache")
+                    .resolve(SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME)
                     .resolve(SLOCK_ANDROID_AVATAR_NAMESPACE)
             val stagingRoot = root.resolve(SLOCK_ANDROID_AVATAR_STAGING_DIRECTORY)
             val stagingRecovered = recoverSlockAndroidAvatarTransportStaging(stagingRoot)

@@ -107,6 +107,7 @@ import build.raft.app.core.data.diagnostics.SlockPerformanceDiagnostics
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
 import build.raft.app.core.data.storage.StorageManagementSnapshot
+import build.raft.app.core.data.storage.SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
 import build.raft.app.data.SlockInProcessNotifyModule
@@ -227,7 +228,7 @@ private class ThreadAttachmentImageCompressionException(
 
 private class ThreadImageCompressionCancelledException : IOException("cancelled")
 
-private const val THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+private const val THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME
 private const val THREAD_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
 private const val THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH = 128
 private const val THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH = 256
@@ -2996,7 +2997,7 @@ open class SlockKuiklyActivity :
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
-        private const val PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+        private const val PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME
 
         fun start(
             context: Context,
@@ -6034,9 +6035,15 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     repository.clear(clearTarget)
                 }
-        if (clearTarget == StorageClearTarget.TemporaryAndLogs) {
-            SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
-        }
+        val finalSnapshot =
+                if (clearTarget == StorageClearTarget.TemporaryAndLogs) {
+                    SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
+                    // Diagnostics logs are measured in this row but cleared here, after
+                    // the repository snapshot; measure again so the row is not stale.
+                    repository.snapshot()
+                } else {
+                    snapshot
+                }
         val feedback =
                 when (clearTarget) {
                     StorageClearTarget.ImageCache -> "Image cache cleared."
@@ -6044,7 +6051,7 @@ internal class SlockKuiklyBridgeModule(
                     StorageClearTarget.TemporaryAndLogs -> "Temporary files and diagnostics logs cleared."
                 }
         SlockAppLog.record("SlockStorage", "shared_clear target=$target")
-        return loadSettingsStorage(snapshot = snapshot, feedback = feedback)
+        return loadSettingsStorage(snapshot = finalSnapshot, feedback = feedback)
     }
 
     private fun storageRowJson(
