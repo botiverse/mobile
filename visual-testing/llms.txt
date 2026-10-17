@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-17 11:13:01 UTC
+Generated: 2026-10-17 11:35:44 UTC
 Latest run: 0a9cefbb-20261017111106
 Latest commit: 0a9cefbb-20261017111106
 Commit subject: ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)
 Providers: react vs android
 Summary: total 99, same 0, pass 0, basic-pass 1, different 90, missing 8
-AI analysis: ready 1 / total 99, pending 98
+AI analysis: ready 17 / total 99, pending 82
 Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

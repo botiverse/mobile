@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-10-17T11:13:01.215Z",
+  "generatedAt": "2026-10-17T11:35:44.582Z",
   "latestRunId": "0a9cefbb-20261017111106",
   "latest": {
     "runId": "0a9cefbb-20261017111106",
     "commit": "0a9cefbb-20261017111106",
     "commitSubject": "ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)",
-    "generatedAt": "2026-10-17T11:13:01.215Z",
+    "generatedAt": "2026-10-17T11:35:44.582Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 1,
-      "pending": 98
+      "ready": 17,
+      "pending": 82
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "0a9cefbb-20261017111106",
       "commit": "0a9cefbb-20261017111106",
       "commitSubject": "ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)",
-      "generatedAt": "2026-10-17T11:13:01.215Z",
+      "generatedAt": "2026-10-17T11:35:44.582Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 1,
-        "pending": 98
+        "ready": 17,
+        "pending": 82
       },
       "comparisons": [
         "react__android"
