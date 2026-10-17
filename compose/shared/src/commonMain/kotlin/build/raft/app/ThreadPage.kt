@@ -16612,6 +16612,11 @@ private fun ThreadHeaderFocusModeMenu(
             val windowAnchor = anchor.rootOffsetOrNull() ?: return@SlockBrutalIconButton
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
+            // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
+            slockLogInfo(
+                "SlockShellOverlay",
+                "page_post requestId=$requestId pageKey=$pageKey windowAnchor=$windowAnchor items=${items.size}"
+            )
             bus.post(
                 SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
                 SlockShellOverlayRequest(

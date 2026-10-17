@@ -2398,7 +2398,16 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(eventBus) {
         val subscription =
             eventBus.observe(SLOCK_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
-                val request = eventData.toSlockShellOverlayRequestOrNull() ?: return@observe
+                // task #180 diagnostics (Argus): point 2 of 3 -- the shell saw a request (or why not).
+                val request = eventData.toSlockShellOverlayRequestOrNull()
+                slockLogInfo(
+                    "SlockShellOverlay",
+                    "shell_observe parsed=${request != null} requestId=${request?.requestId} " +
+                        "pageKey=${request?.pageKey} anchor=${request?.anchor} items=${request?.items?.size} " +
+                        "rawRequestId=${eventData?.optString(SHELL_OVERLAY_REQUEST_ID)} " +
+                        "type=${eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)}"
+                )
+                if (request == null) return@observe
                 // Ignore a request superseded by another page, and honour a cancel from the page
                 // that owns the menu currently on screen.
                 val current = shellOverlayMenu
@@ -6425,6 +6434,12 @@ private fun SlockAppShellReadyContent(
                     // the shell to draw, and the shell (this composition, spanning the window)
                     // renders the menu. Same host pattern as the rail server switcher above.
                     shellOverlayMenu?.let { open ->
+                        // task #180 diagnostics (Argus): point 3 of 3 -- the host is composing.
+                        slockLogInfo(
+                            "SlockShellOverlay",
+                            "shell_host_compose requestId=${open.request.requestId} " +
+                                "anchor=${open.request.anchor} items=${open.request.items.size}"
+                        )
                         val dismissShellOverlay = {
                             eventBus.post(
                                 SLOCK_SHELL_OVERLAY_RESULT_EVENT,
