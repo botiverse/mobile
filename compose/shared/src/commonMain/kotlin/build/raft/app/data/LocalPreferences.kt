@@ -157,6 +157,117 @@ enum class MyMessageAlignmentPreference(val storageKey: String) {
     }
 }
 
+/**
+ * Task #179 (artin 2026-10-17): the reader picks which typeface the app renders in.
+ *
+ * The options are PAIRED exactly the way web pairs them through raft-ui's
+ * `fonts.css` theme variables, so "align with web" is one identity, not four
+ * loose families:
+ *
+ * - [HankenGrotesk] — web `brutal` (the default): sans + heading Hanken Grotesk.
+ * - [GeistInter] — web `elegant`: sans Geist, heading Inter.
+ * - [SpaceGrotesk] — the face mobile shipped before this option existed:
+ *   sans Space Grotesk, mono Space Mono.
+ * - [System] — the host platform's own UI face, no bundled font.
+ *
+ * Mono follows the option (Space Mono for [SpaceGrotesk]); it is not picked
+ * separately. Local-only preference: artin scoped the first cut to the device,
+ * so this deliberately does NOT go through the server appearance fields.
+ */
+enum class FontPreference(val storageKey: String) {
+    HankenGrotesk("hanken_grotesk"),
+    GeistInter("geist_inter"),
+    SpaceGrotesk("space_grotesk"),
+    System("system");
+
+    /**
+     * Resource-backed family name for the body/sans role. `null` means "use the
+     * host platform face" — the app then leaves `fontFamily` unset rather than
+     * naming a bundled family.
+     */
+    val sansFamily: String?
+        get() = when (this) {
+            HankenGrotesk -> "hanken_grotesk"
+            GeistInter -> "geist"
+            SpaceGrotesk -> "space_grotesk"
+            System -> null
+        }
+
+    /** Heading/display face. Falls back to [sansFamily] where web has no separate display face. */
+    val headingFamily: String?
+        get() = when (this) {
+            GeistInter -> "inter"
+            else -> sansFamily
+        }
+
+    /** Monospace face used by code, timestamps and other `FontFamily.Monospace` sites. */
+    val monoFamily: String?
+        get() = when (this) {
+            // Web's mono is Geist Mono in BOTH themes, so the two web-aligned options use it.
+            HankenGrotesk, GeistInter -> "geist_mono"
+            SpaceGrotesk -> "space_mono"
+            // "System" means system all the way through, including mono.
+            System -> null
+        }
+
+    companion object {
+        /** Web's default theme is `brutal`, so the mobile default matches it. */
+        val Default: FontPreference = HankenGrotesk
+
+        fun fromStorageKey(value: String?): FontPreference {
+            val normalized = value?.trim()?.lowercase()
+            if (normalized.isNullOrEmpty()) return Default
+            return entries.firstOrNull { it.storageKey == normalized } ?: Default
+        }
+    }
+}
+
+/** Task #179: read/select the local font face, mirroring the locale repository shape. */
+data class FontPreferenceSnapshot(
+    val current: FontPreference,
+    val supported: List<FontPreference> = FontPreference.entries
+)
+
+interface FontPreferenceRepository {
+    suspend fun getFontPreference(): FontPreferenceSnapshot
+    suspend fun selectFontPreference(font: FontPreference): FontPreferenceSnapshot
+}
+
+class PersistentFontPreferenceRepository(
+    private val store: FontPreferenceStore
+) : FontPreferenceRepository {
+    override suspend fun getFontPreference(): FontPreferenceSnapshot =
+        FontPreferenceSnapshot(current = store.readFontPreference())
+
+    override suspend fun selectFontPreference(font: FontPreference): FontPreferenceSnapshot {
+        store.saveFontPreference(font)
+        return FontPreferenceSnapshot(current = font)
+    }
+}
+
+interface FontPreferenceStore {
+    fun readFontPreferenceSync(): FontPreference
+    suspend fun readFontPreference(): FontPreference
+    suspend fun saveFontPreference(font: FontPreference)
+}
+
+class KeyValueFontPreferenceStore(
+    private val store: SharedPreferenceStore
+) : FontPreferenceStore {
+    override fun readFontPreferenceSync(): FontPreference =
+        FontPreference.fromStorageKey(store.getString(KEY_FONT_PREFERENCE))
+
+    override suspend fun readFontPreference(): FontPreference = readFontPreferenceSync()
+
+    override suspend fun saveFontPreference(font: FontPreference) {
+        store.putString(KEY_FONT_PREFERENCE, font.storageKey)
+    }
+
+    private companion object {
+        const val KEY_FONT_PREFERENCE = "appearance:font_preference"
+    }
+}
+
 const val DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN = true
 
 /** Task status badges on Activity rows (Settings > Mobile); on unless the user turned it off (1.13.0, artin). */
