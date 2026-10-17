@@ -26,7 +26,6 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
-import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
@@ -59,7 +58,6 @@ import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
 import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
@@ -1233,7 +1231,7 @@ internal fun appShellBottomTabs(
         SlockBottomTabItemPayload(
             key = key,
             label = labelFor(key),
-            iconName = appShellSlackNavTabIcon(key),
+            iconName = appShellTabIcon(key),
             selected = selectedKey == key
         )
     }
@@ -1243,7 +1241,7 @@ internal fun appShellBottomTabs(
 // union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
 // child-page lookup, tap normalization and retained-tab bookkeeping.
 private val retainedAppShellTabKeys =
-    listOf("home", "tasks", "members", "settings") + SlockSlackNavTabs.DefaultOrder
+    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more")
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
@@ -1264,9 +1262,9 @@ internal fun appShellSharedDetailSurfaceVisible(
     pageVisible &&
         (
             (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null) ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                retainedAppShellSelectedTab(selectedTab) == "activity" ||
                 // task #33: the Slack-nav DMs tab hosts the same list + detail split.
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                retainedAppShellSelectedTab(selectedTab) == "dms" ||
                 // task #34: the Tasks board hosts the detail in a bounded overlay while a task
                 // opened from the board is showing.
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
@@ -1296,8 +1294,8 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectionPresent &&
         (
             railInlineSecondaryDestination != null ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Dms ||
+                retainedAppShellSelectedTab(selectedTab) == "activity" ||
+                retainedAppShellSelectedTab(selectedTab) == "dms" ||
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
         )
 
@@ -1348,7 +1346,7 @@ internal fun appShellAllowedTabKeys(
     activityReachedThisSession: Boolean,
 ): List<String> =
     if (railActive || railInlineSecondaryDestination != null || activityReachedThisSession) {
-        if (SlockSlackNavTabs.Activity in tabKeys) tabKeys else tabKeys + SlockSlackNavTabs.Activity
+        if ("activity" in tabKeys) tabKeys else tabKeys + "activity"
     } else {
         tabKeys
     }
@@ -1684,9 +1682,9 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "tasks" -> "kuikly_tasks"
         "members" -> "kuikly_members"
         "settings" -> "kuikly_settings"
-        SlockSlackNavTabs.Dms -> "kuikly_dms"
-        SlockSlackNavTabs.Activity -> "kuikly_activity"
-        SlockSlackNavTabs.More -> "kuikly_more"
+        "dms" -> "kuikly_dms"
+        "activity" -> "kuikly_activity"
+        "more" -> "kuikly_more"
         else -> "kuikly_home"
     }
 
@@ -1971,7 +1969,7 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
     if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
 
 @Composable
-private fun AppShellTabs(
+private fun AppShellTabPager(
     selectedTab: String,
     pageVisible: Boolean,
     childHostShellId: String,
@@ -2190,7 +2188,7 @@ private fun SlockAppShellReadyContent(
     // More keeps selectedTab at "more" while rendering its destination inline.
     val tasksSurfaceActive =
         selectedTab == "tasks" ||
-            (selectedTab == SlockSlackNavTabs.More &&
+            (selectedTab == "more" &&
                 slackNavMoreDestination == SlockSlackNavMoreDestination.Tasks)
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
@@ -3139,42 +3137,9 @@ private fun SlockAppShellReadyContent(
     val tasksRoute = tasksBinding.route
     val tasksViewModel = tasksRoute.viewModel
     val tasksState = tasksBinding.state
-    // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
-    // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
-    // locked rule). The resolved ordered keys are the single source for the bottom bar,
-    // child-page slots, retained-tab bookkeeping and tab content dispatch.
-    val chatLayoutPreferenceStore =
-        remember(sharedStores) {
-            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
-        }
-    val slackNavOverrideRevision by
-        ProcessDiagnosticFeatureFlagOverrides.registry
-            .revisionFor(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY)
-            .collectAsState()
-    val slackNavEnabled =
-        remember(readyServerId, readySession?.user?.id, slackNavOverrideRevision, sharedStores) {
-            val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() }
-            val serverEffective =
-                sharedStores.serverFeatureFlags.isEnabled(
-                    serverId?.let(::ServerId),
-                    MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
-                )
-            resolveSlackNavEnabled(
-                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
-                serverEffective = serverEffective,
-                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                accountId = readySession?.user?.id.orEmpty(),
-                serverId = serverId.orEmpty()
-            )
-        }
-    val slackNavTabKeys =
-        remember(chatLayoutPreferenceStore, slackNavEnabled, slackNavOverrideRevision) {
-            SlockSlackNavTabs.resolveAppShellTabKeys(
-                slackNavEnabled = slackNavEnabled,
-                persistedRawOrder = chatLayoutPreferenceStore.readSlackNavTabOrderSync()
-            )
-        }
-    val slackNavMode = slackNavTabKeys != SlockSlackNavTabs.LegacyOrder
+    // Slack-aligned navigation was retired; persisted/flagged Slack tabs are ignored.
+    val slackNavTabKeys = listOf("home", "tasks", "members", "settings")
+    val slackNavMode = false
     // Clamp a deep link / stale selection onto the active ordered key set: with the gate off
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
     // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
@@ -3196,7 +3161,7 @@ private fun SlockAppShellReadyContent(
                 paneState = shellScope.adaptivePane
             )
         if (
-            retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity &&
+            retainedAppShellSelectedTab(selectedTab) == "activity" &&
             (railActive || railInlineSecondaryDestination != null)
         ) {
             railActivityReached = true
@@ -4045,7 +4010,7 @@ private fun SlockAppShellReadyContent(
             state = homeState,
             // task #94: the DMs tab renders the same home store; starting the parent home
             // store must not be gated on the literal "home" tab while Slack nav is active.
-            homeLikeTabs = if (slackNavMode) setOf(SlockSlackNavTabs.Dms) else emptySet()
+            homeLikeTabs = if (slackNavMode) setOf("dms") else emptySet()
         )
     LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
         bridge.log(
@@ -4250,9 +4215,9 @@ private fun SlockAppShellReadyContent(
                 }
             // task #94: DMs renders the same home store; Activity forwards foreground refresh
             // to ActivityStore, and More is the settings surface.
-            SlockSlackNavTabs.Dms -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-            SlockSlackNavTabs.Activity -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-            SlockSlackNavTabs.More -> Unit
+            "dms" -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+            "activity" -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+            "more" -> Unit
             "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
             "members" -> {
                 membersListRefreshKey += 1
@@ -5034,7 +4999,7 @@ private fun SlockAppShellReadyContent(
                         session.workspace?.selection != null &&
                             // The DMs tab does not show (so must not dismiss) a channel selection.
                             (
-                                retainedAppShellSelectedTab(selectedTab) != SlockSlackNavTabs.Dms ||
+                                retainedAppShellSelectedTab(selectedTab) != "dms" ||
                                     appShellDmsTabShowsDetail(
                                         surfaceKind = session.launchPayload?.surfaceKind,
                                         parentSurfaceKind = session.launchPayload?.parentSurfaceKind,
@@ -5798,9 +5763,9 @@ private fun SlockAppShellReadyContent(
                     "tasks" -> tasksTabLabel
                     "members" -> membersTabLabel
                     "settings" -> settingsTabLabel
-                    SlockSlackNavTabs.Dms -> dmsTabLabel
-                    SlockSlackNavTabs.Activity -> activityTabLabel
-                    SlockSlackNavTabs.More -> moreTabLabel
+                    "dms" -> dmsTabLabel
+                    "activity" -> activityTabLabel
+                    "more" -> moreTabLabel
                     else -> key.uppercase()
                 }
             }
@@ -6154,7 +6119,7 @@ private fun SlockAppShellReadyContent(
                     val railBottomItems =
                         remember(slackNavMode, settingsTabLabel, selectedTab) {
                             val settingsTab =
-                                if (slackNavMode) SlockSlackNavTabs.More else "settings"
+                                if (slackNavMode) "more" else "settings"
                             listOf(
                                 SlockBottomTabItemPayload(
                                     key = settingsTab,
@@ -6164,7 +6129,7 @@ private fun SlockAppShellReadyContent(
                                         retainedAppShellSelectedTab(selectedTab) == "settings" ||
                                             (
                                                 slackNavMode &&
-                                                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
+                                                    retainedAppShellSelectedTab(selectedTab) == "more" &&
                                                     slackNavMoreDestination == SlockSlackNavMoreDestination.Settings
                                             ),
                                 )
@@ -6218,15 +6183,15 @@ private fun SlockAppShellReadyContent(
                                     // Legacy nav has no Activity tab; the rail must still
                                     // expose it so wide screens can reach the three-pane
                                     // surface directly.
-                                    if (none { it.key == SlockSlackNavTabs.Activity }) {
+                                    if (none { it.key == "activity" }) {
                                         add(
                                             SlockBottomTabItemPayload(
-                                                key = SlockSlackNavTabs.Activity,
+                                                key = "activity",
                                                 label = activityTabLabel,
                                                 iconName = SlockLucideIconName.Bell,
                                                 selected =
                                                     railInlineSecondaryDestination == null &&
-                                                        retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity,
+                                                        retainedAppShellSelectedTab(selectedTab) == "activity",
                                             )
                                         )
                                     }
@@ -6281,7 +6246,7 @@ private fun SlockAppShellReadyContent(
                             bottomItems = railBottomItems,
                             onBottomItemSelect = { key ->
                                 railServerSwitcherOpen = false
-                                if (slackNavMode && key == SlockSlackNavTabs.More) {
+                                if (slackNavMode && key == "more") {
                                     // The rail's settings gear must land on the real Settings
                                     // destination — bypass the More tap→menu interception the
                                     // bottom bar path performs.
@@ -6367,7 +6332,7 @@ private fun SlockAppShellReadyContent(
                         SlockSlackNavMoreMenu(
                             selected =
                                 slackNavMoreDestination.takeIf {
-                                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More
+                                    retainedAppShellSelectedTab(selectedTab) == "more"
                                 },
                             bottomInset = shellScope.globalDialogBottomInset(showAppShellBottomTabs),
                             onDismiss = { slackNavMoreMenuVisible = false },
@@ -6376,7 +6341,7 @@ private fun SlockAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("more_menu_select:${destination.name}")
                                 bridge.log("app_shell_more_menu_select destination=${destination.name} from=$selectedTab")
                                 slackNavMoreDestination = destination
-                                val moreTab = SlockSlackNavTabs.More
+                                val moreTab = "more"
                                 if (shouldHandleAppShellTabSelection(selectedTab, moreTab)) {
                                     if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, moreTab)) {
                                         homeFocusLossDismissEpoch += 1
@@ -6837,82 +6802,7 @@ private fun SlockAppShellReadyContent(
                             { homeListPositions = it }
                         )
                     }
-                    // task #337: DMs tab = SharedDmsScreen (WeChat-style rows, task #332) fed by
-                    // the same projection chain the home shell uses. Replaces the PR2 placeholder
-                    // (home store filtered to ConversationKind.DirectMessage).
-                    val dmsTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        PerformanceSceneEffect(bridge, "kuikly_dms", active = active)
-                        val projectedDirectMessages =
-                            rememberProjectedDirectMessageItems(
-                                state = homeState,
-                                conversationIdentityProvider =
-                                    sharedStores.conversationIdentityProvider(storeScope),
-                                draftPersistSlice = composerDraftPersistSlice
-                            )
-
-                        val dmsContentSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
-                        LaunchedEffect(active, readyServerId, dmsContentSnapshot != null) {
-                            if (!active || readyServerId.isNullOrBlank() || dmsContentSnapshot == null) return@LaunchedEffect
-                            val accountId = readySession?.user?.id
-                                ?: dmsContentSnapshot.currentMember.id.value.takeIf { it.isNotBlank() }
-                                ?: return@LaunchedEffect
-                            dmPreviewPrefetchCoordinator.enqueue(
-                                serverId = ServerId(readyServerId),
-                                accountId = accountId,
-                                directMessages = dmsContentSnapshot.directMessages,
-                                scope = this,
-                            )
-                        }
-
-                        val dmsMemberAvatarResolver =
-                            remember(appShellServerMembersStore, readyServerId) {
-                                slockMemberAvatarResolver(appShellServerMembersStore, readyServerId)
-                            }
-                        val liveDmsTimeContext =
-                            hostThreadTimeContextProvider.current?.withTimeFormat(sessionTimeFormat) ?: threadTimeContext
-                        // task #33: on DualPane the DMs list stays at left and the opened DM renders
-                        // in the shared workspace detail slot, like the Home and Activity tabs.
-                        // Before this, OpenDetail updated a detail no surface on this tab showed.
-                        val dmsListPane: @Composable (Boolean) -> Unit = { listActive ->
-                        SharedDmsScreen(
-                            active = listActive,
-                            directMessages = projectedDirectMessages,
-                            onOpenConversation = { identity ->
-                                openHomeConversation(identity, "dms")
-                            },
-                            // Only highlight while the detail is actually visible beside the list:
-                            // with desktop mode OFF or a single pane, a parked selection has no
-                            // visible detail and must not mark a row.
-                            selectedThreadId =
-                                adaptiveWorkspaceState
-                                    ?.takeIf {
-                                        desktopModeOnLargeScreen &&
-                                            it.pane.layout == SlockAdaptivePaneLayout.DualPane
-                                    }
-                                    ?.selection?.identity?.threadId,
-                            showHeader = true,
-                            scrollToTopRequest = tabScrollToTopRequests.dms,
-                            bottomContentPadding = appShellBottomContentInset,
-                            currentServerId = readyServerId,
-                            agentStatusResolver = createChannelAgentStatusResolver,
-                            memberAvatarResolver = dmsMemberAvatarResolver,
-                            timeContext = liveDmsTimeContext,
-                            refreshing = sharedHomeHeaderRefreshing(homeState),
-                            onRefresh = {
-                                homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-                            }
-                        )
-                        }
-                        adaptiveSplitListDetail(
-                            desktopModeOnLargeScreen,
-                            active,
-                            dmsListPane,
-                            appShellDmsTabShowsDetail(
-                                surfaceKind = adaptiveDetailLaunchPayload?.surfaceKind,
-                                parentSurfaceKind = adaptiveDetailLaunchPayload?.parentSurfaceKind,
-                            ),
-                        )
-                    }
+                    val dmsTabContent: @Composable (active: Boolean) -> Unit = { }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
                     // the same screen the home secondary Activity destination renders.
                     // task #13: on DualPane the inbox stays as the 360dp left list and the
@@ -7056,9 +6946,9 @@ private fun SlockAppShellReadyContent(
                                 "tasks" -> tasksTabContent(active)
                                 "members" -> membersTabContent(active)
                                 "settings" -> settingsTabContent(active)
-                                SlockSlackNavTabs.Dms -> dmsTabContent(active)
-                                SlockSlackNavTabs.Activity -> activityTabContent(active)
-                                SlockSlackNavTabs.More -> moreTabContent(active)
+                                "dms" -> dmsTabContent(active)
+                                "activity" -> activityTabContent(active)
+                                "more" -> moreTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
@@ -7177,7 +7067,7 @@ private fun SlockAppShellReadyContent(
                             true,
                         )
                     } else {
-                    AppShellTabs(
+                    AppShellTabPager(
                         selectedTab = selectedTab,
                         pageVisible = pageVisible,
                         childHostShellId = childTabShellId,
@@ -26619,7 +26509,7 @@ internal enum class SlockSlackNavMoreDestination {
 /** task #401: in Slack-nav mode every More tap (including re-taps while More is selected)
  *  opens the destination menu instead of switching straight to a sticky sub-page. */
 internal fun slockSlackNavMoreTapOpensMenu(slackNavMode: Boolean, tappedTab: String): Boolean =
-    slackNavMode && tappedTab == SlockSlackNavTabs.More
+    slackNavMode && tappedTab == "more"
 
 @Composable
 private fun SlockSlackNavMoreMenu(

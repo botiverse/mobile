@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.SlockSlackNavTabs
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -29,7 +28,7 @@ data class SharedHomeShellState(
         get() = home.notifications
 
     val isActivityVisible: Boolean
-        get() = destination == SharedHomeShellDestinationActivity || selectedTab == SlockSlackNavTabs.Activity
+        get() = destination == SharedHomeShellDestinationActivity || selectedTab == "activity"
 }
 
 sealed interface SharedHomeShellIntent {
@@ -214,7 +213,7 @@ class SharedHomeShellStore(
     private fun setSelectedTab(tab: String) {
         val previousTab = _state.value.selectedTab
         _state.value = _state.value.copy(selectedTab = tab)
-        if (tab == SlockSlackNavTabs.Activity && previousTab != SlockSlackNavTabs.Activity) {
+        if (tab == "activity" && previousTab != "activity") {
             dispatchActivity(SharedActivityIntent.Refresh)
         }
     }
@@ -248,7 +247,7 @@ class SharedHomeShellStore(
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
             SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
             null ->
-                if (_state.value.selectedTab == SlockSlackNavTabs.Activity) {
+                if (_state.value.selectedTab == "activity") {
                     dispatchActivity(SharedActivityIntent.Refresh)
                 } else {
                     dispatchHome(SharedHomeIntent.ForegroundRefresh)

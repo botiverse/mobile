@@ -1484,7 +1484,7 @@ class SlockAppShellTest {
     fun appShellActiveChildTabFollowsSlackOrderedKeys() {
         // task #94: with Slack-aligned ordered keys, the Slack tabs are child pages and the
         // legacy hidden keys are not; the legacy default still applies without the param.
-        val slackKeys = SlockSlackNavTabs.DefaultOrder
+        val slackKeys = listOf("home", "dms", "activity", "more")
         assertEquals("home", appShellActiveChildPagerTab("home", slackKeys))
         assertEquals("dms", appShellActiveChildPagerTab("dms", slackKeys))
         assertEquals("activity", appShellActiveChildPagerTab("activity", slackKeys))
