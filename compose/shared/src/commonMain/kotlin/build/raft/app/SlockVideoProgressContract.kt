@@ -34,6 +34,8 @@ class SlockVideoPlaybackAttemptGate(initialGeneration: Long = 0L) {
         if (generation == activeGeneration && started) terminalEligible = true
     }
 
+    fun acceptsProgress(generation: Long): Boolean = generation == activeGeneration
+
     fun acceptsTerminal(generation: Long): Boolean =
         started && terminalEligible && generation == activeGeneration
 }

@@ -55,6 +55,8 @@ class SlockVideoProgressContractTest {
         val gate = SlockVideoPlaybackAttemptGate()
         gate.begin(1L)
 
+        assertEquals(false, gate.acceptsProgress(0L))
+        assertEquals(true, gate.acceptsProgress(1L))
         assertEquals(false, gate.acceptsTerminal(0L))
         assertEquals(false, gate.acceptsTerminal(1L))
 
@@ -62,5 +64,15 @@ class SlockVideoProgressContractTest {
         assertEquals(false, gate.acceptsTerminal(1L))
         gate.markTerminalEligible(1L)
         assertEquals(true, gate.acceptsTerminal(1L))
+    }
+
+    @Test
+    fun oldTickerAfterReplayCannotBeLabeledAsTheNewAttempt() {
+        val gate = SlockVideoPlaybackAttemptGate(initialGeneration = 0L)
+        gate.begin(1L)
+        gate.markStarted(1L)
+
+        assertEquals(false, gate.acceptsProgress(0L))
+        assertEquals(true, gate.acceptsProgress(1L))
     }
 }

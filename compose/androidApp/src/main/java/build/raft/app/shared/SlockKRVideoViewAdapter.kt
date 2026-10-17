@@ -93,7 +93,7 @@ private class SlockKRVideoView(
 
     private fun scheduleProgressTicker(generation: Long = progressContract.currentGeneration) {
         mainHandler.postDelayed({
-            if (stopped || generation != progressContract.currentGeneration) return@postDelayed
+            if (stopped || !terminalGate.acceptsProgress(generation)) return@postDelayed
             val duration = player.duration.takeIf { it > 0 } ?: 0L
             val progress = progressContract.progress(player.currentPosition, duration, generation)
             if (awaitingAttemptStart && player.isPlaying && !progress.terminal) {
