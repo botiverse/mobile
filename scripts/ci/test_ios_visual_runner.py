@@ -17,7 +17,13 @@ if args == ['simctl', 'list', 'runtimes', '-j']:
  print(json.dumps({'runtimes': [{'identifier': 'ios9', 'version': '9.0', 'platform': 'iOS', 'isAvailable': True}, {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-2', 'version': '18.2', 'isAvailable': True}]}))
 elif args == ['simctl', 'list', 'devicetypes', '-j']:
  print(json.dumps({'devicetypes': [{'name': 'iPhone 14', 'identifier': 'iphone14'}]}))
-elif args[:2] == ['simctl', 'create']: print('01234567-89AB-CDEF-0123-456789ABCDEF')
+elif args[:2] == ['simctl', 'create']:
+ name = args[2]
+ suffix = name.rsplit('-s', 1)[-1]
+ if name.endswith('-s' + suffix) and suffix.isdigit():
+     print('01234567-89AB-CDEF-0123-456789ABCD' + format(int(suffix), '02x'))
+ else:
+     print('01234567-89AB-CDEF-0123-456789ABCDEF')
 elif len(args) > 1 and args[1] == os.environ.get('FAIL_COMMAND'): sys.exit(7)
 '''
 
@@ -88,6 +94,20 @@ class RunnerTest(unittest.TestCase):
         import shutil
         shutil.rmtree(self.env["RUNNER_TEMP"])
         self.assertEqual(json.loads(self.receipt.read_text())["udid"], UDID)
+
+    def test_multi_shard_creates_and_cleans_all_devices(self):
+        self.env["IOS_CAPTURE_SHARDS"] = "3"
+        self.run_phase("boot")
+        creates = [c for c in self.calls() if c[:2] == ["simctl", "create"]]
+        self.assertEqual(len(creates), 3)
+        udids = [self.calls()[i][-1] for i, c in enumerate(self.calls())
+                 if c[:2] == ["simctl", "boot"]]
+        self.assertEqual(sorted(set(udids)), sorted(
+            ["01234567-89AB-CDEF-0123-456789ABCD0%d" % i for i in range(3)]))
+        self.run_phase("cleanup")
+        deletes = [c[-1] for c in self.calls() if c[:2] == ["simctl", "delete"]]
+        self.assertEqual(sorted(deletes), sorted(udids))
+        self.assertFalse(self.capture.exists())
 
     def test_pre_boot_failure_cleanup_never_touches_simulators(self):
         before = self.calls()
