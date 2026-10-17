@@ -14,6 +14,24 @@ data class SlockVideoProgressSnapshot(
     val terminal: Boolean,
 )
 
+/** Keeps terminal callbacks closed until a new playback attempt starts. */
+class SlockVideoPlaybackAttemptGate(initialGeneration: Long = 0L) {
+    private var activeGeneration = initialGeneration
+    private var started = true
+
+    fun begin(generation: Long) {
+        activeGeneration = generation
+        started = false
+    }
+
+    fun markStarted(generation: Long) {
+        if (generation == activeGeneration) started = true
+    }
+
+    fun acceptsTerminal(generation: Long): Boolean =
+        started && generation == activeGeneration
+}
+
 class SlockVideoProgressContract {
     private var generation = 0L
     private var currentMs = 0L

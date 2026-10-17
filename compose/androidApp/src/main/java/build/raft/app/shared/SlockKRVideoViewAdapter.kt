@@ -23,6 +23,7 @@ import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewListener
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoPlayState
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoViewContentMode
 import build.raft.app.SlockVideoProgressContract
+import build.raft.app.SlockVideoPlaybackAttemptGate
 
 /**
  * Media3 (ExoPlayer) backed Kuikly video view (task #556).
@@ -54,6 +55,8 @@ private class SlockKRVideoView(
     private var stopped = false
     private var lastReportedState: KRVideoPlayState? = null
     private val progressContract = SlockVideoProgressContract()
+    private val terminalGate = SlockVideoPlaybackAttemptGate(progressContract.currentGeneration)
+    private var awaitingAttemptStart = false
     // Media3 does not attach an attempt id to callbacks. Keep the generation
     // observed by the current READY attempt so a late callback from the prior
     // replay/seek attempt is rejected by the shared contract.
@@ -95,6 +98,12 @@ private class SlockKRVideoView(
                 val duration = player.duration.takeIf { it > 0 } ?: 0L
                 val progress =
                     progressContract.progress(player.currentPosition, duration, callbackGeneration)
+                if (awaitingAttemptStart && player.isPlaying &&
+                    progress.generation == progressContract.currentGeneration && !progress.terminal
+                ) {
+                    terminalGate.markStarted(progress.generation)
+                    awaitingAttemptStart = false
+                }
                 listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
                 mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
@@ -125,6 +134,7 @@ private class SlockKRVideoView(
                             // A stale STATE_ENDED notification can arrive after
                             // replay/seek. The generation observed by the last
                             // READY attempt fences it in the shared contract.
+                            if (!terminalGate.acceptsTerminal(callbackGeneration)) return
                             val progress = progressContract.ended(player.duration, callbackGeneration)
                             if (progress.terminal) {
                                 listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
@@ -173,6 +183,8 @@ private class SlockKRVideoView(
         if (stopped) return
         if (player.playbackState == Player.STATE_ENDED) {
             val progress = progressContract.replay()
+            terminalGate.begin(progress.generation)
+            awaitingAttemptStart = true
             listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
             player.seekTo(0L)
         }
@@ -216,6 +228,8 @@ private class SlockKRVideoView(
     override fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
         val progress = progressContract.seek(seekToTimeMs)
+        terminalGate.begin(progress.generation)
+        awaitingAttemptStart = true
         listener.playTimeDidChangedWithCurrentTime(progress.currentMs, progress.durationMs)
         player.seekTo(progress.currentMs)
     }

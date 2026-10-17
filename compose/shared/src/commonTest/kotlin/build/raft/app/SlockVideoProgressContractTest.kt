@@ -49,4 +49,16 @@ class SlockVideoProgressContractTest {
         assertEquals(seek, contract.ended(2_000L, callbackGeneration = oldGeneration))
         assertEquals(true, contract.ended(2_000L).terminal)
     }
+
+    @Test
+    fun terminalGateRejectsOldEndedAfterNewReadyUntilPlaybackStarts() {
+        val gate = SlockVideoPlaybackAttemptGate()
+        gate.begin(1L)
+
+        assertEquals(false, gate.acceptsTerminal(0L))
+        assertEquals(false, gate.acceptsTerminal(1L))
+
+        gate.markStarted(1L)
+        assertEquals(true, gate.acceptsTerminal(1L))
+    }
 }
