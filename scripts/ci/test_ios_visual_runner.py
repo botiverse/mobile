@@ -109,6 +109,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(sorted(deletes), sorted(udids))
         self.assertFalse(self.capture.exists())
 
+    def test_shards_out_of_range_rejected(self):
+        self.env["IOS_CAPTURE_SHARDS"] = "99"
+        result = subprocess.run(["bash", str(SCRIPT), "boot"], env=self.env,
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("out of range", result.stderr)
+        # Refuses before touching simctl create.
+        self.assertFalse(any(c[:2] == ["simctl", "create"] for c in self.calls()))
+
     def test_pre_boot_failure_cleanup_never_touches_simulators(self):
         before = self.calls()
         self.run_phase("cleanup")

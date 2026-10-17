@@ -4,10 +4,22 @@
 # each shard captures its own slice in its own UDID. Default remains 1 —
 # behaviour identical to the pre-sharding version.
 set -euo pipefail
+# Hard ceiling on job-owned simulators: the job runs on a single self-hosted
+# Mac and each shard owns a real device + app instance. 8 is generous headroom
+# over the recommended 4; anything above is treated as a misconfigured input,
+# not silently clamped.
+MAX_SHARDS=8
 shards_of() {
   case "${IOS_CAPTURE_SHARDS:-1}" in
     ''|*[!0-9]*) echo 'IOS_CAPTURE_SHARDS must be a positive integer' >&2; exit 1 ;;
-    *) echo "${IOS_CAPTURE_SHARDS:-1}" ;;
+    *)
+      local n="${IOS_CAPTURE_SHARDS:-1}"
+      if [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_SHARDS" ]; then
+        echo "IOS_CAPTURE_SHARDS=$n out of range 1..$MAX_SHARDS" >&2
+        exit 1
+      fi
+      echo "$n"
+      ;;
   esac
 }
 case "${1:-}" in
