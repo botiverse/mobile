@@ -411,16 +411,19 @@ internal fun SlockPopoverAnchorResolver.resolveCurrentPlacement(): SlockPopoverA
  * [SlockPopoverAnchorResolver], which still defers root conversion until open. Detached coordinates
  * deliberately fail closed.
  */
-@Composable
 internal fun Modifier.slockCaptureLiveRootAnchor(
     anchorRef: SlockLiveRootAnchorRef,
     enabled: Boolean = true,
-    onCaptured: ((IntSize) -> Unit)? = null
+    onCaptured: ((IntSize) -> Unit)? = null,
+    /**
+     * task #181 follow-up: the enclosing child page's origin. Feature code should not pass this --
+     * use the @Composable overload, which fills it from [LocalSlockChildPageOrigin]. It stays an
+     * explicit parameter so a build of this modifier outside composition (tests that drive Kuikly's
+     * LayoutNode directly) still works.
+     */
+    childPageOrigin: SlockChildPageOriginState? = null
 ): Modifier {
-    // task #181 follow-up: the enclosing child page's origin must be bound so resolve() can convert
-    // this page's root coordinates into window coordinates. That needs a CompositionLocal read, so
-    // this modifier factory is @Composable; every call site builds its modifier inside composition.
-    val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
+    anchorRef.attachChildPageOrigin(childPageOrigin)
     return if (enabled) {
         this then SlockLiveRootAnchorCaptureElement(anchorRef, onCaptured, childPageOrigin)
     } else {
@@ -428,10 +431,29 @@ internal fun Modifier.slockCaptureLiveRootAnchor(
     }
 }
 
+/**
+ * Popover anchoring for feature code: binds the enclosing child page's origin so `resolve()` can
+ * convert this page's root coordinates into window coordinates.
+ */
+@Composable
+internal fun Modifier.slockCaptureLiveRootAnchor(
+    anchorRef: SlockLiveRootAnchorRef,
+    enabled: Boolean = true,
+    onCaptured: ((IntSize) -> Unit)? = null
+): Modifier {
+    val childPageOrigin = rememberSlockChildPageOriginBinding(anchorRef)
+    return slockCaptureLiveRootAnchor(
+        anchorRef = anchorRef,
+        enabled = enabled,
+        onCaptured = onCaptured,
+        childPageOrigin = childPageOrigin
+    )
+}
+
 private data class SlockLiveRootAnchorCaptureElement(
     val anchorRef: SlockLiveRootAnchorRef,
     val onCaptured: ((IntSize) -> Unit)?,
-    val childPageOrigin: SlockChildPageOriginState
+    val childPageOrigin: SlockChildPageOriginState?
 ) : ModifierNodeElement<SlockLiveRootAnchorCaptureNode>() {
     override fun create(): SlockLiveRootAnchorCaptureNode =
         SlockLiveRootAnchorCaptureNode(anchorRef, onCaptured, childPageOrigin)
@@ -449,7 +471,7 @@ private data class SlockLiveRootAnchorCaptureElement(
 private class SlockLiveRootAnchorCaptureNode(
     private var anchorRef: SlockLiveRootAnchorRef,
     private var onCaptured: ((IntSize) -> Unit)?,
-    private var childPageOrigin: SlockChildPageOriginState
+    private var childPageOrigin: SlockChildPageOriginState?
 ) : Modifier.Node(), GlobalPositionAwareModifierNode {
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onAttach() {
@@ -474,7 +496,7 @@ private class SlockLiveRootAnchorCaptureNode(
     fun update(
         nextAnchorRef: SlockLiveRootAnchorRef,
         nextOnCaptured: ((IntSize) -> Unit)?,
-        nextChildPageOrigin: SlockChildPageOriginState
+        nextChildPageOrigin: SlockChildPageOriginState?
     ) {
         val currentAnchorRef = anchorRef
         val ownerChanged = currentAnchorRef !== nextAnchorRef
