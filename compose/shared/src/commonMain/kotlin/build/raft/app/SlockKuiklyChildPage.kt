@@ -269,8 +269,22 @@ internal fun SlockKuiklyChildPage(
     // resolve `positionInRoot()` against THIS page's root, not the window. Measure where the page
     // actually sits and provide that origin; anchored overlays add it at open time. A full-screen
     // page measures (0,0) and behaviour is unchanged.
-    val parentChildPageOrigin = LocalSlockChildPageOrigin.current
-    val childPageOriginState = remember { SlockChildPageOriginState() }
+    // The parent page's origin must also come through the registry: this composable runs in the
+    // PARENT's composition only when the parent is the window root. When the parent is itself a
+    // Kuikly @Page (AppShell tab page), its measured origin lives in the registry under the parent's
+    // key, not in the ambient local. Device logs showed parent=(0,0) while the rail was 66px wide.
+    val parentPageData = LocalActivity.current.pageData
+    val parentChildPageOrigin =
+        SlockChildPageOriginRegistry.stateFor(
+            slockChildPageOriginKey(parentPageData.pageName, parentPageData.params)
+        )
+    // The measured origin must reach the page's OWN composition, and a CompositionLocal cannot cross
+    // a Kuikly @Page boundary. Publish under a stable key instead; the page looks up the same state.
+    val originKey = slockChildPageOriginKey(pageName, pageData)
+    val childPageOriginState = remember(originKey) { SlockChildPageOriginRegistry.stateFor(originKey) }
+    DisposableEffect(originKey) {
+        onDispose { SlockChildPageOriginRegistry.forget(originKey) }
+    }
     // Nested child pages are real (AppShell tab page -> detail/thread column page), so a nested
     // page's window offset is its own position within the parent PLUS the parent's origin. Linked
     // as a live reference so an outer resize propagates without recomputing a snapshot here.
@@ -314,6 +328,18 @@ internal fun SlockKuiklyChildPage(
         }
     )
     }
+}
+
+/**
+ * Stable key linking a child page's host measurement to the state read inside that page.
+ * Uses the page name plus the payload's own instance id, which the page can also compute.
+ */
+internal fun slockChildPageOriginKey(pageName: String, pageData: JSONObject): String {
+    val instance =
+        pageData.optString("instanceId").trim()
+            .ifBlank { pageData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim() }
+            .ifBlank { "default" }
+    return "$pageName|$instance"
 }
 
 internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =

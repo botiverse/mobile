@@ -3,6 +3,7 @@ package build.raft.app
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Task #181 follow-up (Argus 2026-10-17): a Kuikly child page is its own page, so an anchored
@@ -100,5 +101,44 @@ class SlockChildPageOriginTest {
         val state = SlockChildPageOriginState(origin = Offset(120f, 8f))
 
         assertEquals(Offset(120f, 8f), state.windowOrigin)
+    }
+
+    @Test
+    fun theRegistrySharesOneStateBetweenHostAndPage() {
+        // A CompositionLocal does not cross a Kuikly @Page boundary, so the host publishes by key and
+        // the page looks up the same instance. This is the mechanism the device logs proved we needed.
+        val key = "compose_thread|thread-ch-1"
+        val hostSide = SlockChildPageOriginRegistry.stateFor(key)
+        val pageSide = SlockChildPageOriginRegistry.stateFor(key)
+
+        assertTrue(hostSide === pageSide, "host and page must share one state object")
+
+        hostSide.updateOrigin(Offset(1454f, 0f))
+        assertEquals(Offset(1454f, 0f), pageSide.windowOrigin, "a host measurement must be visible in the page")
+    }
+
+    @Test
+    fun differentPagesGetIndependentStates() {
+        val a = SlockChildPageOriginRegistry.stateFor("compose_thread|main")
+        val b = SlockChildPageOriginRegistry.stateFor("compose_thread|side")
+        a.updateOrigin(Offset(361f, 0f))
+        b.updateOrigin(Offset(1454f, 0f))
+
+        assertTrue(a !== b)
+        assertEquals(Offset(361f, 0f), a.windowOrigin)
+        assertEquals(Offset(1454f, 0f), b.windowOrigin)
+    }
+
+    @Test
+    fun aNestedPageAccumulatesTheParentsRegisteredOrigin() {
+        // AppShell tab page (rail 66px) -> detail column at 361. Window origin must be 427, which is
+        // what the device logs said the correct answer was.
+        val parent = SlockChildPageOriginRegistry.stateFor("app_shell|tab-home")
+        val child = SlockChildPageOriginRegistry.stateFor("compose_thread|main")
+        child.linkParentOrigin(parent)
+        parent.updateOrigin(Offset(66f, 0f))
+        child.updateOrigin(Offset(361f, 0f))
+
+        assertEquals(Offset(427f, 0f), child.windowOrigin)
     }
 }

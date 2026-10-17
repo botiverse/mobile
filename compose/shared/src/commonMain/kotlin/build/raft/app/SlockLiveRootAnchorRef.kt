@@ -12,6 +12,7 @@ import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
 import com.tencent.kuikly.compose.ui.node.GlobalPositionAwareModifierNode
 import com.tencent.kuikly.compose.ui.node.ModifierNodeElement
@@ -293,9 +294,43 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
 internal fun rememberSlockChildPageOriginBinding(
     anchorRef: SlockLiveRootAnchorRef
 ): SlockChildPageOriginState {
-    val state = LocalSlockChildPageOrigin.current
+    // Read the state the HOST published for this page. `LocalSlockChildPageOrigin` is the fallback
+    // for same-composition (non-child-page) hosts, but it does NOT cross a Kuikly @Page boundary --
+    // inside ThreadPage it always resolves to a fresh all-zero state, which is precisely the
+    // origin=(0,0) the device logs showed while the host measured 361 / 1454.
+    // The key is computed from the SAME page data the host used, so both sides resolve to one state.
+    // When this composition is not a registered child page the registry yields a zero state, and the
+    // ambient local (also zero by default) agrees -- full-screen behaviour is unchanged.
+    val pageData = LocalActivity.current.pageData
+    val state = SlockChildPageOriginRegistry.stateFor(slockChildPageOriginKey(pageData.pageName, pageData.params))
     SideEffect { anchorRef.attachChildPageOrigin(state) }
     return state
+}
+
+/**
+ * Cross-page handoff for a child page's measured window origin.
+ *
+ * A CompositionLocal CANNOT cross a Kuikly `@Page` boundary: `ThreadPage` is a real `@Page`, so
+ * `LocalSlockChildPageOrigin.current` inside it resolves to the default (all-zero) state no matter
+ * what the host provided. Device logs confirmed exactly that -- the host measured 361 / 1454 while
+ * `resolve()` read `origin=(0,0)` on every round.
+ *
+ * The host measures its own placement (outside the page) and publishes the state here under the
+ * page's identity; the page looks up the same instance and observes it. One state object per page,
+ * live, so a resize still propagates.
+ */
+internal object SlockChildPageOriginRegistry {
+    private val states = mutableMapOf<String, SlockChildPageOriginState>()
+
+    internal fun stateFor(key: String): SlockChildPageOriginState {
+        val normalized = key.trim()
+        if (normalized.isEmpty()) return SlockChildPageOriginState()
+        return states.getOrPut(normalized) { SlockChildPageOriginState() }
+    }
+
+    internal fun forget(key: String) {
+        states.remove(key.trim())
+    }
 }
 
 internal val LocalSlockChildPageOrigin =
