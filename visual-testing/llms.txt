@@ -1,24 +1,22 @@
 # Raft Visual Testing
 
-Generated: 2026-09-11 22:15:38 UTC
-Latest run: d78af8ed-20260911220901
-Latest commit: d78af8ed-20260911220901
-Commit subject: fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)
-Providers: react vs android, react vs ios, android vs ios
-Summary: total 99, same 0, pass 0, basic-pass 0, different 91, missing 8
-AI analysis: ready 91 / total 99, pending 8
-Visual coverage matrix: active 108 / total 127, pending 16, skipped 3
+Generated: 2026-10-17 11:13:01 UTC
+Latest run: 0a9cefbb-20261017111106
+Latest commit: 0a9cefbb-20261017111106
+Commit subject: ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)
+Providers: react vs android
+Summary: total 99, same 0, pass 0, basic-pass 1, different 90, missing 8
+AI analysis: ready 1 / total 99, pending 98
+Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 99, same 0, pass 0, basic-pass 0, different 91, missing 8
-- react__ios: total 99, same 0, pass 11, basic-pass 13, different 57, missing 18
-- android__ios: total 99, same 0, pass 16, basic-pass 20, different 45, missing 18
+- react__android: total 99, same 0, pass 0, basic-pass 1, different 90, missing 8
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 90, pending 2, total 94
+- Components Parity (component-fixture): active 90, pending 3, total 95
 - Screens Parity (real-screen): active 18, pending 14, total 33
 
 ## Provider Coverage
@@ -31,6 +29,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 ## Pending Coverage Rows
 
 - screens.home.choose-server: Missing true Home top-bar choose-server capture after opening the server selector from the app shell; distinct from the post-login auth choose-server gate.
+- components.settings.integrations.permission-review: Settings Integrations Permission Review
 - screens.auth.choose-server: Missing post-login choose-server gate parity; this is distinct from the Home top-bar server switcher opened inside the app shell.
 - components.members.agent-lifecycle-actions: Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent management dropdown. The Android fixture opens the same lifecycle action menu state so Stop Agent and Restart / Reset are visible.
 - components.members.avatar-management: Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states.
@@ -116,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 0a9cefbb-20261017111106: react vs android, total 99, pass 0, basic-pass 1, different 90, matrix runs/0a9cefbb-20261017111106/component-matrix.json, page runs/0a9cefbb-20261017111106/
 - d78af8ed-20260911220901: react vs android, total 99, pass 0, basic-pass 0, different 91, matrix runs/d78af8ed-20260911220901/component-matrix.json, page runs/d78af8ed-20260911220901/
 - 18dff553-20260910220915: react vs android, total 99, pass 0, basic-pass 0, different 91, matrix runs/18dff553-20260910220915/component-matrix.json, page runs/18dff553-20260910220915/
 - 9e487358-20260906215817: react vs android, total 99, pass 0, basic-pass 0, different 90, matrix runs/9e487358-20260906215817/component-matrix.json, page runs/9e487358-20260906215817/

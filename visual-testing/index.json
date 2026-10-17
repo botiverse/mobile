@@ -1,43 +1,41 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-11T22:15:38.040Z",
-  "latestRunId": "d78af8ed-20260911220901",
+  "generatedAt": "2026-10-17T11:13:01.215Z",
+  "latestRunId": "0a9cefbb-20261017111106",
   "latest": {
-    "runId": "d78af8ed-20260911220901",
-    "commit": "d78af8ed-20260911220901",
-    "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
-    "generatedAt": "2026-09-11T22:15:38.040Z",
+    "runId": "0a9cefbb-20261017111106",
+    "commit": "0a9cefbb-20261017111106",
+    "commitSubject": "ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)",
+    "generatedAt": "2026-10-17T11:13:01.215Z",
     "baseline": "react",
     "current": "android",
     "summary": {
       "total": 99,
       "same": 0,
       "pass": 0,
-      "basic-pass": 0,
-      "different": 91,
+      "basic-pass": 1,
+      "different": 90,
       "missing": 8
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 91,
-      "pending": 8
+      "ready": 1,
+      "pending": 98
     },
     "comparisons": [
-      "react__android",
-      "react__ios",
-      "android__ios"
+      "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 127,
+      "total": 128,
       "active": 108,
-      "pending": 16,
+      "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 94,
+          "total": 95,
           "active": 90,
-          "pending": 2,
+          "pending": 3,
           "skipped": 2
         },
         "real-screen": {
@@ -74,20 +72,20 @@
         }
       }
     },
-    "href": "runs/d78af8ed-20260911220901/",
-    "componentMatrix": "runs/d78af8ed-20260911220901/component-matrix.json",
-    "llms": "runs/d78af8ed-20260911220901/metadata.json"
+    "href": "runs/0a9cefbb-20261017111106/",
+    "componentMatrix": "runs/0a9cefbb-20261017111106/component-matrix.json",
+    "llms": "runs/0a9cefbb-20261017111106/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 127,
+    "total": 128,
     "active": 108,
-    "pending": 16,
+    "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 94,
+        "total": 95,
         "active": 90,
-        "pending": 2,
+        "pending": 3,
         "skipped": 2
       },
       "real-screen": {
@@ -125,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "0a9cefbb-20261017111106",
+      "commit": "0a9cefbb-20261017111106",
+      "commitSubject": "ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)",
+      "generatedAt": "2026-10-17T11:13:01.215Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 99,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 1,
+        "different": 90,
+        "missing": 8
+      },
+      "analysisSummary": {
+        "total": 99,
+        "ready": 1,
+        "pending": 98
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 128,
+        "active": 108,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 90,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 97,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 110
+          },
+          "android": {
+            "active": 89,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/0a9cefbb-20261017111106/",
+      "componentMatrix": "runs/0a9cefbb-20261017111106/component-matrix.json",
+      "llms": "runs/0a9cefbb-20261017111106/metadata.json"
+    },
     {
       "runId": "d78af8ed-20260911220901",
       "commit": "d78af8ed-20260911220901",

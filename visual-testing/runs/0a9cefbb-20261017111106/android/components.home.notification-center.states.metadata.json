@@ -1,0 +1,52 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.home.notification-center.states",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_home_notification_center_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.home.notification-center.states.png",
+              "viewport": { "width": 1170, "height": 2532, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 395,
+                  "dominantRatio": 0.9025884
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 54,
+    "laidOutViews": 53,
+    "visibleContentLeafViews": 2,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4898,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "9af77c18ebefc81ef9c2c16515df65fa",
+                "bootId": "1661f950-a221-4e75-ad4a-a75df306fa3d",
+                "capturedAtEpochMs": 1792235110098,
+                "capturedAtMonotonicNs": 440670079352
+              },
+              "clampedToShortWindow": false,
+              "capturedAt": "1792235110098"
+            }

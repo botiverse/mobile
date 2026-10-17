@@ -1,0 +1,14 @@
+{
+  "baselineWidth": 1026,
+  "baselineHeight": 870,
+  "currentWidth": 1026,
+  "currentHeight": 870,
+  "comparisonWidth": 1026,
+  "comparisonHeight": 870,
+  "rgbSimilarity": 0.8424739626008778,
+  "pixelPerfectSimilarity": 0.685371154578656,
+  "pixelMismatchRatio": 0.31462884542134395,
+  "compositor": "sharp",
+  "displayMode": "preserve-provider-raw-size",
+  "metricMode": "rgb-resize-pixel-pad-no-crop"
+}
