@@ -6138,9 +6138,7 @@ private fun SharedThreadRouteContentContent(
                     "source" to initialPayload.threadRenderDiagnosticsSource()
                 )
         )
-        // task #387: the ViewModel self-dispatches Start at creation (inline on the page
-        // thread), so this effect only records the open markers; re-dispatching Start here
-        // would double the load.
+        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (firstRenderLoggedThreadId != threadInstanceKey) {
