@@ -6120,60 +6120,9 @@ internal class SharedThreadStore(
     },
 ) {
     private val readStateProjection = ThreadReadStateProjection()
-    // task #387: seed the first frame from the in-memory reply cache synchronously, so a warm
-    // channel entry renders content immediately instead of flashing the loading shell for the
-    // ~one frame the async Start intent needs to reach the same cache. Only the memory cache is
-    // consulted here (all synchronous); the durable last-known frame stays with start(), which
-    // re-runs the full seed chain right after and converges to the same payload.
-    private val _state = MutableStateFlow(SharedThreadState(payload = memoryCacheSeededInitialPayload(initialPayload)))
+    private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
 
-    private fun memoryCacheSeededInitialPayload(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        fun miss(reason: String): KuiklyThreadScreenPayload {
-            diagnosticsLogger?.invoke(
-                "thread_initial_seed hit=false reason=$reason " +
-                    "route=${routePayload.instanceId.ifBlank { "?" }} status=${routePayload.status}"
-            )
-            return routePayload
-        }
-        // A route payload that already carries renderable content (e.g. a launch-time page) is
-        // shown as-is; only the bare loading shell is replaced by the cache.
-        if (routePayload.hasRenderableThreadContent()) return miss("route_has_content")
-        val routeContextPayload =
-            routePayload
-                .withoutRouteCandidateContent()
-                .withoutTransientLocalSendingMessages()
-        // Reply threads keep the start() path: their cached-parent enrichment needs the session,
-        // which is only reachable through a suspend capture.
-        if (routeContextPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return miss("reply_thread")
-        val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
-        val threadId = routeIdentity.timelineKey ?: return miss("no_timeline_key")
-        val provenance = dataSource.currentReplyCacheProvenance() ?: return miss("no_provenance")
-        if (!routeIdentity.canRenderTimelineCandidates) return miss("route_not_renderable")
-        val cacheHit =
-            dataSource.cachedPayloadIfCurrent(threadId, provenance)
-                ?: return miss("cache_miss threadId=$threadId")
-        if (!cacheHit.isUsableCachedPayloadForRoute(routeContextPayload)) return miss("stale_for_route threadId=$threadId")
-        val cached =
-            cacheHit
-                .withRouteContext(routeContextPayload)
-                .withStoreResolvedReplyOriginFrom(routeContextPayload)
-        dataSource.seedThreadAuthorProfiles(
-            serverId = provenance.serverId,
-            payload = cached,
-            source = "initial_memory_cache"
-        )
-        diagnosticsLogger?.invoke(
-            "thread_initial_seed threadId=$threadId hit=true messages=${cached.messages.size}"
-        )
-        // Same pending-send restoration start() applies to its visible candidate, so journaled
-        // local sends are already in the first frame on a warm entry.
-        return dataSource.restorePendingLocalSends(
-            provenance = provenance,
-            route = routeIdentity,
-            canonicalPayload = cached,
-        )
-    }
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
             .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
@@ -10351,6 +10300,19 @@ internal class SharedThreadViewModel(
             )
         }
     private val store: SharedThreadStore by storeDelegate
+
+    init {
+        // task #387: self-dispatch Start at creation. viewModelScope's ComposeDispatcher is
+        // immediate on the Kuikly page thread, so the store's warm path (in-memory identity
+        // capture + payload cache hit) completes inline during the composition that creates this
+        // ViewModel — the first frame already renders the cached timeline instead of flashing the
+        // loading shell for one turn. Any genuinely suspending step (durable read, network)
+        // yields and the shell renders exactly as before. This is the only Start dispatch for a
+        // fresh page; the page's LaunchedEffect only records markers and handles retained-route
+        // intent updates.
+        dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+
     val state: StateFlow<SharedThreadState>
         get() = store.state
     val currentPayload: KuiklyThreadScreenPayload
