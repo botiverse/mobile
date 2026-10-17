@@ -83,40 +83,13 @@ internal class SlockPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
-            // task #181 follow-up. Four device rounds pin the contract:
-            //   * the overlay DRAWS in window coordinates (a window-space anchor of 700 lands under
-            //     the finger), so the anchor and the draw offset must both stay window-space;
-            //   * the CLAMP was the only wrong part. Using the host pane (400px thread column)
-            //     squeezed 1904 into [gap, 400-width-gap] -> off-screen or a sliver;
-            //     using `pageViewWidth` did NOT help because that is the page's own root view,
-            //     i.e. still 400.
-            // The bound has to be the ACTIVITY window: `activityWidth/activityHeight` are the
-            // activity's size (falling back to the device size), which is the same space as the
-            // anchor. If unavailable, fall back to the device size, then to the historical host box.
-            val pageDataForViewport = runCatching { LocalActivity.current.pageData }.getOrNull()
-            val windowWidth =
-                pageDataForViewport
-                    ?.let { if (it.activityWidth > 0f) it.activityWidth else it.deviceWidth }
-                    ?: 0f
-            val windowHeight =
-                pageDataForViewport
-                    ?.let { if (it.activityHeight > 0f) it.activityHeight else it.deviceHeight }
-                    ?: 0f
-            slockLogInfo(
-                "SlockPopoverPosition",
-                "window activity=${pageDataForViewport?.activityWidth}x${pageDataForViewport?.activityHeight} " +
-                    "device=${pageDataForViewport?.deviceWidth}x${pageDataForViewport?.deviceHeight} " +
-                    "pageRoot=${pageDataForViewport?.pageViewWidth}x${pageDataForViewport?.pageViewHeight} " +
-                    "chosen=$windowWidth x $windowHeight"
-            )
-            val viewportOriginOverride = Offset.Zero.takeIf { windowWidth > 0f && windowHeight > 0f }
-            val viewportSizeOverride =
-                if (windowWidth > 0f && windowHeight > 0f) Size(windowWidth, windowHeight) else null
+            // The overlay host now measures itself in WINDOW space (positionInWindow), so its
+            // `origin` and `size` are directly comparable with the window-space anchor -- no
+            // viewport override is needed or wanted. Keep this comment as the record of why: the
+            // earlier overrides existed only to compensate for a page-root measurement.
             val popoverOffset =
                 overlayLayout.positionContent(
                     anchor = rootOffset,
-                    viewportOrigin = viewportOriginOverride,
-                    viewportSize = viewportSizeOverride,
                     contentSize = contentSize,
                     viewportGap = viewportGap,
                     horizontalOffset = horizontalOffset,

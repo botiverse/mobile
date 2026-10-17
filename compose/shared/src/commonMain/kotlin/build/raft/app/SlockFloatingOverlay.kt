@@ -21,6 +21,7 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.layout.positionInWindow
 import com.tencent.kuikly.compose.ui.zIndex
 
 internal expect fun Modifier.slockNativeDispatchCapture(): Modifier
@@ -181,10 +182,16 @@ internal fun SlockFloatingOverlayHost(
             .zIndex(SlockFloatingOverlayHostZIndex)
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
-                overlayLayout = SlockFloatingOverlayLayout(
-                    origin = coordinates.positionInRoot(),
-                    size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                )
+                // task #181 follow-up: WINDOW coordinates, not page-root. `Modal`'s container is
+                // screen-sized, but inside a Kuikly child page `positionInRoot()` still reports
+                // against the 400px page root -- exactly the "origin=(0,0) size=400x1200" the device
+                // logs showed while the anchor was window-space (1904). Measuring in window space
+                // makes anchor and viewport agree, which is what lets the popover lay out at all.
+                overlayLayout =
+                    SlockFloatingOverlayLayout(
+                        origin = coordinates.positionInWindow(),
+                        size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                    )
             },
         contentAlignment = Alignment.TopStart
     ) {
@@ -287,26 +294,15 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     // #327: improved to pick the side that shows more visible content
     // when both left and right placements would overflow.
     horizontalAutoFlip: Boolean = false,
-    /**
-     * task #181 follow-up: the viewport the overlay is clamped into, in the SAME coordinate space as
-     * [anchor]. Inside a Kuikly child page this host measures only its own pane (e.g. a 400px thread
-     * column) while the anchor is in window coordinates, so clamping a window-space anchor against a
-     * 400px viewport pushed the popover off-screen entirely. Callers that anchor in window space pass
-     * the window viewport here; null keeps the historical behaviour (the host's own box).
-     */
-    viewportOrigin: Offset? = null,
-    viewportSize: Size? = null
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
         return null
     }
-    val effectiveOrigin = viewportOrigin ?: origin
-    val effectiveSize = viewportSize ?: size
-    val localAnchor = Offset(anchor.x - effectiveOrigin.x, anchor.y - effectiveOrigin.y)
+    val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
     val x = slockHorizontalPosition(
         localAnchorX = localAnchor.x,
         contentWidth = contentSize.width,
-        viewportWidth = effectiveSize.width,
+        viewportWidth = size.width,
         horizontalOffset = horizontalOffset,
         viewportGap = viewportGap,
         horizontalPlacement = horizontalPlacement,
@@ -315,7 +311,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     val y = slockVerticalPosition(
         localAnchorY = localAnchor.y,
         contentHeight = contentSize.height,
-        viewportHeight = effectiveSize.height,
+        viewportHeight = size.height,
         verticalOffset = verticalOffset,
         verticalOffsetAbove = verticalOffsetAbove,
         viewportGap = viewportGap,
@@ -325,8 +321,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     // 400px page" without another guess round.
     slockLogInfo(
         "SlockPopoverPosition",
-        "anchor=$anchor clamped=(x=$x, y=$y) viewportOrigin=$effectiveOrigin " +
-            "viewportSize=$effectiveSize hostSize=$size contentSize=$contentSize " +
+        "anchor=$anchor clamped=(x=$x, y=$y) origin=$origin size=$size contentSize=$contentSize " +
             "autoFlip=$horizontalAutoFlip placement=$horizontalPlacement"
     )
     return Offset(x, y)
