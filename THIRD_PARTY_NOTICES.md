@@ -65,6 +65,19 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 ## Tooling — npm (compose/package.json; dev/CI only, not shipped)
 MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router, koa-static, koa-whistle, mime-types, uuid, yargs, file-loader, gulp, gulp-zip, husky, querystring, shell · BSD-3-Clause: md5, shelljs · Unlicense: big-integer.
 
+## Bundled font assets (compose/androidApp, compose/ohosApp, compose/iosApp)
+| Family | Weights | Upstream | License |
+| --- | --- | --- | --- |
+| Space Grotesk | 300/400/500/600/700 (+variable) | google/fonts ofl/spacegrotesk — https://fonts.googleapis.com/css2?family=Space+Grotesk | SIL OFL 1.1 (`compose/androidApp/SpaceGrotesk-OFL.txt`) |
+| Space Mono | 400/700 | google/fonts ofl/spacemono — https://fonts.googleapis.com/css2?family=Space+Mono | SIL OFL 1.1 (`compose/androidApp/SpaceMono-OFL.txt`) |
+| Hanken Grotesk | 300/400/500/600/700 | google/fonts ofl/hankengrotesk (`HankenGrotesk[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/HankenGrotesk-OFL.txt`) |
+| Geist | 300/400/500/600/700 | google/fonts ofl/geist (`Geist[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/Geist-OFL.txt`) |
+| Inter | 300/400/500/600/700 | google/fonts ofl/inter (`Inter[opsz,wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/Inter-OFL.txt`) |
+| Geist Mono | 400/700 | google/fonts ofl/geistmono (`GeistMono[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/GeistMono-OFL.txt`) |
+
+Sources were instanced to static weights with `fonttools varLib.instancer`. Details:
+`compose/androidApp/FONTS-PROVENANCE.md`.
+
 ## Copyleft check
 No GPL / LGPL / AGPL / MPL component found in any ecosystem. EPL-1.0 (junit) is test-only. The only non-OSI terms are the KuiklyUI license (permissive + no-hot-update clause) and Google's Android SDK license (binary dependency).
 

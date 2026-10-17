@@ -109,6 +109,7 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
+import build.raft.app.data.FontPreference
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
@@ -8048,9 +8049,17 @@ private fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     fontSizeDraft = appearanceMessageFontSizeDraft,
                     activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                    // Task #179: the observable face state is the source of truth for the picker, so
+                    // the row reflects what is actually rendering.
+                    fontPreference = SlockFontFaceState.preference,
                     bottomContentPadding = bottomContentPadding,
                     onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
                     onActivitySenderAvatarsChange = onActivitySenderAvatarsSelected,
+                    onFontPreferenceChange = { preference ->
+                        onSettingsIntent(
+                            SharedSettingsIntent.SetFontPreference(preference.storageKey)
+                        )
+                    },
                     onSave = {
                         onSettingsIntent(
                             SharedSettingsIntent.UpdateAppearance(
@@ -9302,9 +9311,11 @@ private fun SettingsAppearanceContent(
     actionState: SharedSettingsActionState?,
     fontSizeDraft: String,
     activitySenderAvatarsEnabled: Boolean,
+    fontPreference: FontPreference,
     bottomContentPadding: Dp,
     onFontSizeDraftChange: (String) -> Unit,
     onActivitySenderAvatarsChange: (Boolean) -> Unit,
+    onFontPreferenceChange: (FontPreference) -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit
 ) {
@@ -9316,6 +9327,14 @@ private fun SettingsAppearanceContent(
             SettingsActivitySenderAvatarsCard(
                 enabled = activitySenderAvatarsEnabled,
                 onEnabledChange = onActivitySenderAvatarsChange
+            )
+        }
+        // Task #179: the font preference is local, so its card renders regardless of whether the
+        // server-backed appearance snapshot loaded. A failed appearance load must not hide it.
+        item {
+            SettingsAppearanceFontCard(
+                preference = fontPreference,
+                onPreferenceChange = onFontPreferenceChange
             )
         }
         when (state) {
@@ -9397,6 +9416,71 @@ private fun SettingsActivitySenderAvatarsCard(
             enabled = true,
             onCheckedChange = onEnabledChange
         )
+    }
+}
+
+/**
+ * Task #179: font face picker.
+ *
+ * A vertical list rather than a SegmentedControl: the option labels ("Space Grotesk + Space
+ * Mono") are long and four of them in one Row overflow on a phone.
+ *
+ * The rows are paired exactly the way web pairs its faces, so the label is the option, not a
+ * single family name.
+ */
+@Composable
+private fun SettingsAppearanceFontCard(
+    preference: FontPreference,
+    onPreferenceChange: (FontPreference) -> Unit
+) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_font)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_appearance_font_detail))
+        FontPreference.entries.forEach { option ->
+            SettingsFontOptionRow(
+                label = option.displayLabel(),
+                selected = option == preference,
+                onSelected = { onPreferenceChange(option) }
+            )
+        }
+    }
+}
+
+/** i18n label for a font option. Kept next to the card so a new option cannot ship unlabelled. */
+@Composable
+private fun FontPreference.displayLabel(): String =
+    when (this) {
+        FontPreference.HankenGrotesk -> stringResource(MR.strings.settings_appearance_font_hanken)
+        FontPreference.GeistInter -> stringResource(MR.strings.settings_appearance_font_geist)
+        FontPreference.SpaceGrotesk -> stringResource(MR.strings.settings_appearance_font_space)
+        FontPreference.System -> stringResource(MR.strings.settings_appearance_font_system)
+    }
+
+@Composable
+private fun SettingsFontOptionRow(
+    label: String,
+    selected: Boolean,
+    onSelected: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !selected, onClick = onSelected)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Button.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (selected) {
+            SlockLucideIcon(SlockLucideIconName.CircleCheck, modifier = Modifier.size(16.dp))
+        }
     }
 }
 
@@ -25142,9 +25226,11 @@ private fun SettingsVisualAppearanceContent() {
         actionState = null,
         fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
         activitySenderAvatarsEnabled = false,
+        fontPreference = FontPreference.Default,
         bottomContentPadding = SlockSpacing.Lg,
         onFontSizeDraftChange = {},
         onActivitySenderAvatarsChange = {},
+        onFontPreferenceChange = {},
         onSave = {},
         onRetry = {}
     )

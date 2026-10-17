@@ -3504,11 +3504,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     internal fun useResourceTypefaceFor(fontFamily: String?): Boolean {
         val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
+        // Resource-backed (single TTF via ResourcesCompat) rather than CustomFallbackBuilder:
+        // CustomFallbackBuilder's per-glyph resolver is what turns U+0031 into a sans-serif glyph
+        // on affected hosts, so every mono face stays on the single-resource path.
         return fontName in setOf(
                 "SpaceMono-Regular",
                 "space_mono_regular",
                 "SpaceMono-Bold",
-                "space_mono_bold"
+                "space_mono_bold",
+                "GeistMono-Regular",
+                "geist_mono_regular",
+                "GeistMono-Bold",
+                "geist_mono_bold"
         )
     }
 
@@ -3553,6 +3560,12 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
         val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
+        // Task #179: the Settings>Appearance font option can select the host face. That has to be
+        // an explicit branch — the `else -> null` fallthrough below lands on inputTypeface(),
+        // which is Space Grotesk, so an unknown name would silently look like a bundled font.
+        if (fontName == "system" || fontName == "sans-serif") {
+            return Typeface.SANS_SERIF
+        }
         val fontSpec = when (fontName) {
             "SpaceGrotesk-Regular", "space_grotesk_regular" -> SlockFontSpec(R.font.space_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
             "SpaceGrotesk-Medium", "space_grotesk_medium" -> SlockFontSpec(R.font.space_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
@@ -3561,6 +3574,41 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             "SpaceGrotesk-Light", "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
             "SpaceGrotesk-Variable", "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
             "Space Grotesk", "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
+
+            // Task #179: Hanken Grotesk (web `brutal` default, the mobile default option).
+            "HankenGrotesk-Light", "hanken_grotesk_light" -> SlockFontSpec(R.font.hanken_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
+            "HankenGrotesk-Regular", "hanken_grotesk_regular" -> SlockFontSpec(R.font.hanken_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
+            "HankenGrotesk-Medium", "hanken_grotesk_medium" -> SlockFontSpec(R.font.hanken_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
+            "HankenGrotesk-SemiBold", "hanken_grotesk_semibold" -> SlockFontSpec(R.font.hanken_grotesk_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
+            "HankenGrotesk-Bold", "hanken_grotesk_bold" -> SlockFontSpec(R.font.hanken_grotesk_bold, FontStyle.FONT_WEIGHT_BOLD)
+
+            // Task #179: Geist — web `elegant` sans (body role of the "Geist + Inter" option).
+            "Geist-Light", "geist_light" -> SlockFontSpec(R.font.geist_light, FontStyle.FONT_WEIGHT_LIGHT)
+            "Geist-Regular", "geist_regular" -> SlockFontSpec(R.font.geist_regular, FontStyle.FONT_WEIGHT_NORMAL)
+            "Geist-Medium", "geist_medium" -> SlockFontSpec(R.font.geist_medium, FontStyle.FONT_WEIGHT_MEDIUM)
+            "Geist-SemiBold", "geist_semibold" -> SlockFontSpec(R.font.geist_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
+            "Geist-Bold", "geist_bold" -> SlockFontSpec(R.font.geist_bold, FontStyle.FONT_WEIGHT_BOLD)
+
+            // Task #179: Inter — web `elegant` heading face (heading role of the same option).
+            "Inter-Light", "inter_light" -> SlockFontSpec(R.font.inter_light, FontStyle.FONT_WEIGHT_LIGHT)
+            "Inter-Regular", "inter_regular" -> SlockFontSpec(R.font.inter_regular, FontStyle.FONT_WEIGHT_NORMAL)
+            "Inter-Medium", "inter_medium" -> SlockFontSpec(R.font.inter_medium, FontStyle.FONT_WEIGHT_MEDIUM)
+            "Inter-SemiBold", "inter_semibold" -> SlockFontSpec(R.font.inter_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
+            "Inter-Bold", "inter_bold" -> SlockFontSpec(R.font.inter_bold, FontStyle.FONT_WEIGHT_BOLD)
+
+            // Task #179: Geist Mono — web's mono in both themes (mono role of the Hanken and
+            // Geist+Inter options). Only Regular/Bold are bundled, matching Space Mono.
+            "GeistMono-Regular", "geist_mono_regular" -> SlockFontSpec(
+                    R.font.geist_mono_regular,
+                    FontStyle.FONT_WEIGHT_NORMAL,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
+            "GeistMono-Bold", "geist_mono_bold" -> SlockFontSpec(
+                    R.font.geist_mono_bold,
+                    FontStyle.FONT_WEIGHT_BOLD,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
+
             // Keep Space Mono as one resource-backed face. CustomFallbackBuilder's per-glyph
             // resolver is the path that turns U+0031 into a sans-serif glyph on affected hosts.
             "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(

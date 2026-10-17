@@ -53,7 +53,9 @@ internal val SlockCollapsibleSectionCountTextStyle =
     SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
 internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 internal val SlockMainTabHeaderStartPadding = 8.dp
-internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+// Task #179: getter so the header follows the Settings font option.
+internal val SlockMainTabHeaderTitleStyle: TextStyle
+    get() = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
 internal val SlockTopPageHeaderContentStartPadding = 18.dp
 internal val SlockTopPageHeaderContentSpacing = 12.dp
 

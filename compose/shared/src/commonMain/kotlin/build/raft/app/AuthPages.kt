@@ -67,6 +67,7 @@ import com.tencent.kuikly.compose.ui.input.key.onPreviewKeyEvent
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -2114,11 +2115,17 @@ internal fun authTermsAgreementText(
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
 private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
-private val AuthLegalNoticeTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
-private val AuthLegalNoticeLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
+// Task #179: getter, not val -- a captured style would keep the face active at class-init and
+// ignore the Settings font option.
+private val AuthLegalNoticeTextStyle: TextStyle
+    get() = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
+private val AuthLegalNoticeLinkStyle: TextStyle
+    get() = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 private val AuthTermsTextColor = SlockColor.TextBlack.copy(alpha = 0.70f)
-private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
-private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
+private val AuthTermsTextStyle: TextStyle
+    get() = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+private val AuthTermsLinkStyle: TextStyle
+    get() = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 @Composable
 private fun LoginContentPreview() {

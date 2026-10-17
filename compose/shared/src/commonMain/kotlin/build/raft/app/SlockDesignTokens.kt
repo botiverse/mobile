@@ -1,7 +1,11 @@
 package build.raft.app
 
+import build.raft.app.data.FontPreference
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.designtokens.RaftUiThemeColors
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -98,6 +102,33 @@ internal object SlockShadow {
 // A single FontFamily with multiple weights would always pick the first entry.
 // We must use one FontFamily per weight and manually dispatch.
 // See KuiklyTextExtension.toKuiklyFontFamily() for the serialization constraint.
+
+/**
+ * Task #179: process-scoped, OBSERVABLE current font face.
+ *
+ * Every type token below resolves its family through this. There are ~1109 callsites of the
+ * SlockType / SlockMonoFamily helpers, so the preference cannot be threaded per-call-site.
+ * Instead the root reads [SlockFontFaceState.preference] during composition; changing it
+ * repaints every text style that re-resolves a token.
+ *
+ * Deliberately a Compose state, not a bare getter: a plain field would change the value but
+ * leave already-composed text on the old face.
+ */
+internal object SlockFontFaceState {
+    var preference: FontPreference by mutableStateOf(FontPreference.Default)
+        private set
+
+    /**
+     * @return true when the face actually changed, so callers can decide to force a rebuild
+     * (the Settings screen uses this to repaint surfaces that cached their own TextStyle).
+     */
+    fun apply(next: FontPreference): Boolean {
+        if (next == preference) return false
+        preference = next
+        return true
+    }
+}
+
 private val SpaceGroteskBold = FontFamily(KuiklyFont("SpaceGrotesk-Bold", FontWeight.Bold, FontStyle.Normal))
 private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("SpaceGrotesk-SemiBold", FontWeight.SemiBold, FontStyle.Normal))
 private val SpaceGroteskMedium = FontFamily(KuiklyFont("SpaceGrotesk-Medium", FontWeight.Medium, FontStyle.Normal))
@@ -109,16 +140,65 @@ private val SpaceGroteskFamilies = setOf(
     SpaceGroteskRegular
 )
 
-private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
-    when {
-        fontWeight >= FontWeight.Bold -> SpaceGroteskBold
-        fontWeight >= FontWeight.SemiBold -> SpaceGroteskSemiBold
-        fontWeight >= FontWeight.Medium -> SpaceGroteskMedium
-        else -> SpaceGroteskRegular
+/**
+ * Task #179: the "is this a family we encoded a weight into?" test used to be a fixed set of the
+ * four Space Grotesk faces. With a selectable face the set has to follow the active preference,
+ * otherwise a Hanken/Geist/Inter style would silently skip weight resolution and render at the
+ * default weight.
+ */
+private fun slockEncodedFamilies(): Set<FontFamily> {
+    val preference = SlockFontFaceState.preference
+    if (preference == FontPreference.SpaceGrotesk) return SpaceGroteskFamilies
+    if (preference.sansFamily == null) return emptySet()
+    return listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
+        .mapTo(mutableSetOf()) { fontFamilyFor("sans", preference, it) }
+}
+
+private fun isSlockEncodedFamily(fontFamily: FontFamily?): Boolean =
+    fontFamily != null && fontFamily in slockEncodedFamilies()
+
+// Task #179: one family set per selectable option. The names match the Android
+// `SlockKuiklyActivity.resolveTypeface()` aliases and the OHOS/iOS registration names.
+// Families are cached because this runs on every text style construction; a fresh FontFamily
+// per call would allocate on a hot path for no behavioural gain.
+private val slockFamilyCache = mutableMapOf<Triple<String, FontPreference, String>, FontFamily>()
+
+private fun fontFamilyFor(role: String, preference: FontPreference, fontWeight: FontWeight): FontFamily {
+    val base = when (role) {
+        "sans" -> preference.sansFamily
+        "heading" -> preference.headingFamily
+        else -> preference.monoFamily
     }
+    // null means "this role has no bundled family". The right fallback depends on the role:
+    // the mono role must land on the platform's MONOSPACE face. Returning FontFamily.Default here
+    // would hand back the platform sans face, so code blocks and timestamps would render
+    // proportionally even though the option promises the host's own type, mono included.
+    if (base == null) {
+        return if (role == "mono") FontFamily.Monospace else FontFamily.Default
+    }
+    val suffix = when {
+        // Mono ships only Regular/Bold per family. Asking for SpaceMono-Medium would miss in
+        // resolveTypeface() and fall back to the SANS face, i.e. render mono text in a
+        // proportional font. Collapse mono to the two weights that actually exist.
+        role == "mono" -> if (fontWeight >= FontWeight.Bold) "Bold" else "Regular"
+        fontWeight >= FontWeight.Bold -> "Bold"
+        fontWeight >= FontWeight.SemiBold -> "SemiBold"
+        fontWeight >= FontWeight.Medium -> "Medium"
+        fontWeight >= FontWeight.Light && fontWeight < FontWeight.Normal -> "Light"
+        else -> "Regular"
+    }
+    return slockFamilyCache.getOrPut(Triple(role, preference, suffix)) {
+        // KuiklyFont names use PascalWithDashes ("HankenGrotesk-SemiBold"); the storage key is
+        // snake_case ("hanken_grotesk"), so rebuild the display name from the parts.
+        val display = base.split('_').joinToString("") { part ->
+            part.replaceFirstChar { it.uppercaseChar() }
+        }
+        FontFamily(KuiklyFont("$display-$suffix", fontWeight, FontStyle.Normal))
+    }
+}
 
 internal fun slockFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
-    spaceGroteskFamily(fontWeight ?: FontWeight.Normal)
+    fontFamilyFor("sans", SlockFontFaceState.preference, fontWeight ?: FontWeight.Normal)
 
 private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
     when (this) {
@@ -136,30 +216,21 @@ private fun renderedSpaceGroteskWeight(fontFamily: FontFamily, requestedWeight: 
         FontWeight.Normal
     }
 
-// Space Mono mirrors the Space Grotesk wiring above: one FontFamily per weight,
-// manually dispatched (Kuikly drops weight info from the serialized family name,
-// so the weight must be encoded in the font name). React renders mono text
-// (`font-mono`) in Space Mono, which ships only Regular (400) and Bold (700), so
-// semibold-or-heavier maps to Bold and everything lighter maps to Regular.
-private val SpaceMonoBold = FontFamily(KuiklyFont("SpaceMono-Bold", FontWeight.Bold, FontStyle.Normal))
-private val SpaceMonoRegular = FontFamily(KuiklyFont("SpaceMono-Regular", FontWeight.Normal, FontStyle.Normal))
-
-private fun spaceMonoFamily(fontWeight: FontWeight): FontFamily =
-    when {
-        fontWeight >= FontWeight.SemiBold -> SpaceMonoBold
-        else -> SpaceMonoRegular
-    }
-
+// Mono resolves through the same per-weight name encoding: Kuikly drops weight info from the
+// serialized family name, so the weight has to live in the font name. Space Mono ships only
+// Regular (400) and Bold (700); the Light/Medium/SemiBold slots simply resolve to whichever
+// bundled mono weight the host has, and the platform resolver falls back when a name is absent.
 internal fun slockMonoFamilyForWeight(fontWeight: FontWeight?): FontFamily =
-    spaceMonoFamily(fontWeight ?: FontWeight.Normal)
+    fontFamilyFor("mono", SlockFontFaceState.preference, fontWeight ?: FontWeight.Normal)
 
 // Convenience token for the common regular-weight mono callsites (task numbers,
 // timestamps, counts, handles, codes). Use slockMonoFamilyForWeight() when a
-// callsite needs bold mono.
-internal val SlockMonoFamily: FontFamily = SpaceMonoRegular
+// callsite needs bold mono. Task #179: read through the preference so mono follows the face choice.
+internal val SlockMonoFamily: FontFamily
+    get() = slockMonoFamilyForWeight(FontWeight.Normal)
 
 private fun TextStyle.withSlockRenderedFontWeight(): TextStyle {
-    val family = fontFamily?.takeIf { it in SpaceGroteskFamilies } ?: return this
+    val family = fontFamily?.takeIf { isSlockEncodedFamily(it) } ?: return this
     return copy(fontWeight = renderedSpaceGroteskWeight(family, fontWeight ?: FontWeight.Normal))
 }
 
@@ -169,7 +240,7 @@ private fun slockTextStyle(
     lineHeight: TextUnit,
     letterSpacing: TextUnit
 ): TextStyle {
-    val fontFamily = spaceGroteskFamily(fontWeight)
+    val fontFamily = fontFamilyFor("sans", SlockFontFaceState.preference, fontWeight)
     return TextStyle(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight),
@@ -180,7 +251,7 @@ private fun slockTextStyle(
 }
 
 internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle {
-    val fontFamily = spaceGroteskFamily(fontWeight)
+    val fontFamily = fontFamilyFor("sans", SlockFontFaceState.preference, fontWeight)
     return copy(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight)
@@ -188,7 +259,7 @@ internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle {
 }
 
 internal fun slockSpanStyleForWeight(fontWeight: FontWeight): SpanStyle {
-    val fontFamily = spaceGroteskFamily(fontWeight)
+    val fontFamily = fontFamilyFor("sans", SlockFontFaceState.preference, fontWeight)
     return SpanStyle(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight)
@@ -205,7 +276,7 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle {
                     fontWeight = renderedSpaceGroteskWeight(family, requestedWeight ?: FontWeight.Normal)
                 )
             }
-        fontFamily in SpaceGroteskFamilies && requestedWeight != null && requestedWeight != FontWeight.Normal ->
+        isSlockEncodedFamily(fontFamily) && requestedWeight != null && requestedWeight != FontWeight.Normal ->
             slockFontFamilyForWeight(requestedWeight).let { family ->
                 copy(fontFamily = family, fontWeight = renderedSpaceGroteskWeight(family, requestedWeight))
             }
@@ -215,12 +286,24 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle {
 }
 
 internal object SlockType {
-    val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
-    val SectionLabel = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
-    val Body = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
-    val Caption = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
-    val Button = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
-    val ButtonBold = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
-    val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
-    val Input = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+    // Task #179: these are GETTERS, not vals. A `val` is evaluated once at object initialisation
+    // and then keeps whatever face was active at first touch -- pressing a font option would write
+    // the preference and repaint nothing, because ~970 call sites read this object. A getter
+    // re-resolves against SlockFontFaceState.preference on every read, so a change reaches them all.
+    val PageTitle: TextStyle
+        get() = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
+    val SectionLabel: TextStyle
+        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
+    val Body: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+    val Caption: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
+    val Button: TextStyle
+        get() = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
+    val ButtonBold: TextStyle
+        get() = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
+    val TabLabel: TextStyle
+        get() = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+    val Input: TextStyle
+        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
 }
