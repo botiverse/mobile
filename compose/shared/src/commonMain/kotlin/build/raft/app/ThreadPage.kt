@@ -15903,6 +15903,8 @@ internal fun ThreadPageHeader(
     /** task #180: null when this thread has no message column to follow. */
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
+    /** task #180: the menu is requested from the shell, so the page needs the bus. */
+    eventBus: build.raft.app.data.SlockEventBus? = null,
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
@@ -16045,6 +16047,7 @@ internal fun ThreadPageHeader(
                     val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
+                            eventBus = eventBus,
                             focused = focusModeActive,
                             onSelect = { toggleFocus?.invoke() },
                             followed = threadFollowed,
@@ -16507,13 +16510,13 @@ private fun String?.threadParticipantHandleKey(): String? =
  */
 @Composable
 private fun ThreadHeaderFocusModeMenu(
+    eventBus: build.raft.app.data.SlockEventBus?,
     focused: Boolean,
     onSelect: () -> Unit,
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
 ) {
-    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
         buildList {
@@ -16554,10 +16557,59 @@ private fun ThreadHeaderFocusModeMenu(
                 )
             }
         }
+    // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
+    // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
+    // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
+    // anchor here -- in window space -- and ask the shell to draw it.
+    val pageData = LocalActivity.current.pageData
+    val pageKey = slockChildPageOriginKey(pageData.params.optString(SHELL_OVERLAY_PAGE_KEY_PARAM), pageData.params)
+    var openRequestId by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(eventBus, pageKey) {
+        val bus = eventBus ?: return@DisposableEffect onDispose {}
+        val subscription =
+            bus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                if (!slockShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
+                openRequestId = null
+                val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
+                when (selectedId) {
+                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
+                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    else -> Unit // dismissed
+                }
+            }
+        onDispose {
+            // Leaving the page retires the menu; the shell drops a cancel for anything it is not
+            // currently showing, so this cannot close another page's menu.
+            openRequestId?.let { requestId ->
+                bus.post(SLOCK_SHELL_OVERLAY_REQUEST_EVENT, cancelSlockShellOverlayJson(requestId))
+            }
+            subscription.close()
+        }
+    }
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
         onClick = {
-            anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
+            val bus = eventBus ?: return@SlockBrutalIconButton
+            val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd) ?: return@SlockBrutalIconButton
+            val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
+            openRequestId = requestId
+            bus.post(
+                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
+                SlockShellOverlayRequest(
+                    requestId = requestId,
+                    pageKey = pageKey,
+                    // Already window space: the shell must not convert this again.
+                    anchor = anchor.rootOffsetForTest(),
+                    items =
+                        items.map {
+                            SlockShellOverlayItem(
+                                id = it.id,
+                                label = it.label,
+                                enabled = it.enabled
+                            )
+                        }
+                ).toJson()
+            )
         },
         enabled = true,
         size = 28.dp,
@@ -16566,20 +16618,6 @@ private fun ThreadHeaderFocusModeMenu(
         modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
     )
-    menuAnchor?.let { anchor ->
-        SlockBrutalDropdownMenu(
-            anchor = anchor,
-            items = items,
-            onSelect = { id ->
-                menuAnchor = null
-                when (id) {
-                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
-                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
-                }
-            },
-            onDismiss = { menuAnchor = null }
-        )
-    }
 }
 
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
