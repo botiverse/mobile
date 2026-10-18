@@ -94,6 +94,7 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
@@ -1143,7 +1144,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         pendingEnvironment = null
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
         SlockTopPageHeader(
             title =
                 when (destination) {
@@ -2060,11 +2061,13 @@ internal fun AuthTermsAgreement(
                 .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
                 .padding(top = 2.dp)
                 .size(18.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
+                // foreground and an inverse check.
+                .background(if (checked) SlockColor.TextBlack else SlockColor.Card, RoundedCornerShape(SlockRadius.Sticker))
+                .border(SlockStroke.Control, if (checked) SlockColor.TextBlack else SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
-            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp))
+            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp), color = slockArgbHex(SlockColor.ForegroundInverse))
         }
         Spacer(Modifier.width(10.dp))
         Text(
