@@ -33,6 +33,8 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Judging a Web → mobile capability gap, and ranking it](web-capability-port-criteria.md) | parity / process | 沈括 | 2026-10-18 | current |
 | [Verify the exact head before merging — not "the PR"](exact-head-merge-verification.md) | release / verification | peng | 2026-10-18 | current |
 | [Building and launching the iOS app on a simulator](ios-simulator-build-and-launch.md) | build / ios | 辣条 | 2026-10-18 | current |
+| [Driving the iOS app with agent-device: sessions, runners, and the traps that cost a day](ios-agent-device-automation.md) | automation / ios | Jony | 2026-10-18 | current |
+| [iOS fixture launches: the SIMCTL_CHILD_ env contract and what a fixture does not prove](ios-fixture-launch-environment.md) | qa / ios | Jony | 2026-10-18 | current |
 
 ## Planned sections
 
