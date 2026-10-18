@@ -18240,8 +18240,27 @@ private fun ThreadMessagesListContent(
     // alone would not recompose this reader -- keying on the value is what makes the flip reach us.
     // Outside that transition both halves of the key are stable, so the state (and the user's scroll
     // position) is preserved exactly as before.
+    // The first composition of a thread instance is the starting point, not a transition: nothing
+    // has been "previous" yet. After that, the remembered value tracks what we last built with, so
+    // `threadReverseLayoutNeedsRebuild` sees a real false -> true edge exactly once.
+    var previousDirectionDecided by remember(threadInstanceKey) {
+        mutableStateOf(reverseLayoutDecided)
+    }
+    // Driven by the same predicate the tests exercise, so the tested rule and the production
+    // decision cannot drift apart (review point from @LiBai: a helper only tests call is dead code
+    // dressed up as coverage).
+    val rebuildListForDirection =
+        threadReverseLayoutNeedsRebuild(
+            previousDecided = previousDirectionDecided,
+            nextDecided = reverseLayoutDecided
+        )
+    SideEffect {
+        if (previousDirectionDecided != reverseLayoutDecided) {
+            previousDirectionDecided = reverseLayoutDecided
+        }
+    }
     val rawListState =
-        key(threadInstanceKey, reverseLayoutDecided, reverseLayoutRequested) {
+        key(threadInstanceKey, rebuildListForDirection, reverseLayoutRequested) {
             rememberLazyListState(
                 // Kuikly commits a non-top initial Compose viewport to native ScrollView
                 // before its first child placement. Start at the final latest viewport;
@@ -18316,10 +18335,14 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
-    var allowBottomAutoAnchor by remember(threadInstanceKey) {
+    // task #193: keyed on the list instance, NOT only the thread. When the direction settles the
+    // scroll state is rebuilt (see rawListState), and anchor state that survived that rebuild would
+    // describe a list that no longer exists -- `initialBottomAnchorReady = true` left over from the
+    // old state suppresses the first bottom anchor of the new one, which is the blank-list path.
+    var allowBottomAutoAnchor by remember(threadInstanceKey, rawListState) {
         mutableStateOf(true)
     }
-    var initialBottomAnchorReady by remember(threadInstanceKey) {
+    var initialBottomAnchorReady by remember(threadInstanceKey, rawListState) {
         mutableStateOf(false)
     }
     // Non-empty destination path (continues the READY chain opened above): restore the
@@ -18370,11 +18393,14 @@ private fun ThreadMessagesListContent(
                 excludedMessageIds = renderPayload.gapRefillMessageIds,
             )
         }
-    var viewportControllerState by remember(threadInstanceKey) {
+    // task #193: like the anchor flags above, the viewport controller and its generation describe a
+    // specific list. Keeping them across a direction-driven rebuild would leave a pending intent
+    // aimed at the previous scroll state.
+    var viewportControllerState by remember(threadInstanceKey, rawListState) {
         diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
         mutableStateOf(LazyViewportControllerState())
     }
-    var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
+    var viewportLayoutGeneration by remember(threadInstanceKey, rawListState) { mutableStateOf(0L) }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         val previousIntent = viewportControllerState.intent
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)

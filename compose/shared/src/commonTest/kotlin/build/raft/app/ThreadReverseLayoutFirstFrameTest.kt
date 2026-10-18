@@ -108,5 +108,4 @@ class ThreadReverseLayoutFirstFrameTest {
             "an explicitly chosen layout must not rebuild when the gate arrives"
         )
     }
-
 }
