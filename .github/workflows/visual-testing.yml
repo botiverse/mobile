@@ -503,11 +503,26 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Boot job-owned simulator
-        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
+      # Sync the K/N framework as its own step (same as test.yml's iOS job) so
+      # Gradle output is visible and cached, instead of running nested and
+      # silent inside xcodebuild's [CP-User] Build shared phase — that nested
+      # build is where single-shard runs sat until the job timeout.
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
 
-      # Built AFTER simulator boot, pinned to its udid: an unmatched named
-      # destination makes xcodebuild silently fall back to a device build.
+      # Generic simulator destination with -sdk iphonesimulator: building needs
+      # no booted device, so it can neither fall back to a device build nor
+      # fail with "Unable to find a device" when CoreSimulator is still busy
+      # booting N shards. Simulators are booted after the build.
       - name: Build iOS app for simulator
         working-directory: compose/iosApp
         run: |
@@ -523,9 +538,11 @@ jobs:
             -scheme iosApp \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${UDID}" \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             build > "$log" 2>&1
           status=$?
           tail -200 "$log"
@@ -536,6 +553,9 @@ jobs:
             cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
           fi
           exit "$status"
+
+      - name: Boot job-owned simulator
+        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
 
       - name: Generate case manifest
         run: |
