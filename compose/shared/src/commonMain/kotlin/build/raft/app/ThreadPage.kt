@@ -4591,11 +4591,28 @@ private fun ThreadMembersPageScreen() {
      */
     fun openMemberProfile(memberId: MemberId, kind: MemberKind) {
         val identity = MemberDetailIdentity(memberId = memberId, kind = kind)
-        val pageData = route.toMemberDetailPageData(identity) ?: return
+        val pageData = route.toMemberDetailPageData(identity)
+        if (pageData == null) {
+            // task #5: this used to `?: return` with no trace, so a broken route building
+            // silently looked like "nothing happened" on device.
+            bridge.logWarn(
+                "thread_member_profile_skip reason=missing_route_data memberId=${memberId.value} " +
+                    "instanceId=${route.instanceId}"
+            )
+            return
+        }
         memberScope.launch {
             if (authorityGateway.capture(routeOwner) == null) {
+                bridge.logWarn(
+                    "thread_member_profile_skip reason=authority_lost memberId=${memberId.value} " +
+                        "instanceId=${route.instanceId}"
+                )
                 return@launch
             }
+            bridge.log(
+                "thread_member_profile_open memberId=${memberId.value} kind=${kind.name} " +
+                    "instanceId=${route.instanceId}"
+            )
             pager.openSlockPage(
                 pageName = MEMBER_DETAIL_PAGE,
                 pageData = pageData,
