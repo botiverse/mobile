@@ -80,13 +80,21 @@ class SlockAndroidWebViewWarmupTest {
     }
 
     @Test
-    fun scheduleFromConcurrentCallersStillConstructsOnce() {
+    fun concurrentCallersAreRejectedAtTheGateBeforeConstruction() {
+        // Proves the stronger property that distinguishes this from a "create then discard"
+        // design: the single-shot gate closes BEFORE any construction work starts, so callers
+        // that lose the race never enter the factory at all. A design that constructs first and
+        // publishes under a lock would still show constructions > 1 here, because the slow first
+        // construction is what every later caller would run into.
         val constructions = AtomicInteger(0)
         val entered = CountDownLatch(1)
+        val releaseConstruction = CountDownLatch(1)
         SlockAndroidWebViewWarmup.createWarmInstance = {
             constructions.incrementAndGet()
             entered.countDown()
-            Thread.sleep(50)
+            // Block inside the factory so a gate that is not closed up-front has every
+            // opportunity to let another caller in.
+            releaseConstruction.await(2, TimeUnit.SECONDS)
             Any()
         }
         SlockAndroidWebViewWarmup.resolveContext = { context }
@@ -95,18 +103,25 @@ class SlockAndroidWebViewWarmupTest {
             true
         }
 
-        val callers =
-            (1..8).map {
-                Thread { scheduleWarmup() }.apply {
-                    isDaemon = true
-                    start()
-                }
-            }
-        callers.forEach { it.join(2_000) }
+        val first = Thread { scheduleWarmup() }.apply { isDaemon = true; start() }
+        assertTrue("first warm-up never entered construction", entered.await(2, TimeUnit.SECONDS))
 
-        assertTrue("warm-up never started", entered.await(2, TimeUnit.SECONDS))
-        Thread.sleep(250)
-        assertEquals("only one caller may win the gate", 1, constructions.get())
+        // While the first caller is still blocked inside the factory, the gate is already shut.
+        assertTrue(SlockAndroidWebViewWarmup.hasScheduled())
+        assertEquals("gate must close before construction begins", 1, constructions.get())
+
+        val latecomers =
+            (1..8).map {
+                Thread { scheduleWarmup() }.apply { isDaemon = true; start() }
+            }
+        latecomers.forEach { it.join(2_000) }
+
+        // Latecomers must return immediately without ever reaching the factory.
+        assertEquals("lost callers must not construct", 1, constructions.get())
+
+        releaseConstruction.countDown()
+        first.join(2_000)
+        assertEquals("exactly one provider construction", 1, constructions.get())
     }
 
     @Test
