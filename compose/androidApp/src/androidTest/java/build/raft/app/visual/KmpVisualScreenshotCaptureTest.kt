@@ -984,7 +984,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row")
                     .put("visualFixture", "default"),
             crop = THREAD_MESSAGE_ROW_CROP,
-            requireReactionAtlas = true
+            requireReactionAtlas = true,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message.row", "visual-thread-message-row", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -1715,7 +1716,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-deleted-human")
                     .put("visualFixture", "deleted_human"),
-            crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP
+            crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.deleted-human", "visual-thread-message-row-deleted-human", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -2354,7 +2356,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-long-inline-code")
                     .put("visualFixture", "long_inline_code"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.long-inline-code", "visual-thread-message-row-long-inline-code", widthDp = 390) }
         )
     }
 
@@ -2385,7 +2388,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-link-ref")
                     .put("visualFixture", "md_link_ref"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-link-ref", "visual-thread-message-row-md-link-ref", widthDp = 390) }
         )
     }
 
@@ -2398,7 +2402,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-slice1")
                     .put("visualFixture", "md_wrap_slice1"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-slice1", "visual-thread-message-row-md-wrap-slice1", widthDp = 260) }
         )
     }
 
@@ -2411,7 +2416,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-status606")
                     .put("visualFixture", "md_wrap_status606"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-status606", "visual-thread-message-row-md-wrap-status606", widthDp = 390) }
         )
     }
 
@@ -2450,7 +2456,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-latest-release")
                     .put("visualFixture", "md_latest_release"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-latest-release", "visual-thread-message-row-md-latest-release", widthDp = 390) }
         )
     }
 
@@ -2595,7 +2602,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("visualFixture", "md_wrap_adjacent"),
             // Standard 390dp width: the '#31 / #521' adjacent pair must stay on
             // one line (task #60 acceptance), so no narrow wrap column here.
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-adjacent", "visual-thread-message-row-md-wrap-adjacent", widthDp = 390) }
         )
     }
 
@@ -2621,7 +2629,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-clarify")
                     .put("visualFixture", "md_wrap_clarify"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-clarify", "visual-thread-message-row-md-wrap-clarify", widthDp = 260) }
         )
     }
 
@@ -2634,7 +2643,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-task607")
                     .put("visualFixture", "md_wrap_task607"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-task607", "visual-thread-message-row-md-wrap-task607", widthDp = 260) }
         )
     }
 
@@ -5416,6 +5426,39 @@ class KmpVisualScreenshotCaptureTest {
             "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
                 "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
         )
+    }
+
+    /**
+     * Component-bounds crop for the content-sized markdown message rows: the
+     * React baseline crops the MessageItem element itself, so wait for the
+     * host's reported bottom edge rather than cropping a full viewport.
+     */
+    private fun awaitThreadRowContentCrop(
+        caseId: String,
+        instanceId: String,
+        widthDp: Int,
+        insetDp: Int = 0
+    ): VisualCrop {
+        val token = "thread_visual_content_bounds instanceId=$instanceId "
+        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            val bottomPx =
+                logcatLastTokenLine(token)
+                    ?.substringAfter("contentBottomPx=", "")
+                    ?.trim()
+                    ?.takeWhile { it.isDigit() }
+                    ?.toIntOrNull()
+            if (bottomPx != null && bottomPx > 0) {
+                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+                // [insetDp]: the host's own padding around the row (React's p-4
+                // page), cropped away on the top/left and off the bottom.
+                val heightDp = (kotlin.math.ceil(bottomPx / density).toInt() - insetDp * 2).coerceIn(1, 844 - insetDp)
+                Log.i(VISUAL_LOG_TAG, "$caseId content bottom ${bottomPx}px -> ${widthDp}x${heightDp}dp crop")
+                return VisualCrop(leftDp = insetDp, topDp = insetDp, widthDp = widthDp, heightDp = heightDp)
+            }
+            Thread.sleep(FULL_HEIGHT_POLL_MS)
+        }
+        throw AssertionError("$caseId content-bounds token '$token' not seen within ${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms")
     }
 
     /** Last logcat line containing [token] (same tag-filtered snapshot read as [logcatContainsToken]). */

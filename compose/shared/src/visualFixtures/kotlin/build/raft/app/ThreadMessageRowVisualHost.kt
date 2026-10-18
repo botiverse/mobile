@@ -397,6 +397,7 @@ internal fun ThreadMessageVisualScreenContent() {
     // composition is active; the capture harness requires this token before
     // accepting a screenshot for the regression case.
     val visualReadyBridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    var lastLoggedContentBottom by remember { mutableStateOf(-1) }
     LaunchedEffect(visualFixture, instanceId) {
         if (visualFixture.isNotBlank()) {
             visualReadyBridge.log("thread_visual_ready fixtureKey=$visualFixture")
@@ -474,17 +475,20 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
-        // task #415: measure unbounded (see the default fixture Column below).
+        // React docks the selection toolbar at the bottom of the 390x844
+        // viewport (web MessageList), so the rows sit at the top and the
+        // toolbar at the viewport bottom.
         Column(
             modifier =
                 Modifier
                     .width(390.dp)
-                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .height(844.dp)
                     .background(SlockColor.SurfaceWhite)
         ) {
             Column(modifier = Modifier.padding(SlockSpacing.Md)) {
                 messages.forEach { selectedMessage ->
                     ThreadMessageCard(
+                        memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                         message = selectedMessage,
                         messageBodyTextStyle = messageBodyTextStyle,
                         agentStatusResolver = agentStatusResolver,
@@ -511,10 +515,11 @@ internal fun ThreadMessageVisualScreenContent() {
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = 0.dp
+                        outerPadding = SlockSpacing.Sm
                     )
                 }
             }
+            Spacer(modifier = Modifier.weight(1f))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
                 selectableCount = messages.size,
@@ -557,6 +562,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     Spacer(Modifier.height(SlockSpacing.Sm))
                 }
                 ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                     message = visualMessage,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
@@ -579,7 +585,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     onOpenAttachment = {},
                     onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
-                    outerPadding = 0.dp
+                    outerPadding = SlockSpacing.Sm
                 )
             }
         }
@@ -751,7 +757,10 @@ internal fun ThreadMessageVisualScreenContent() {
             Column(
                 modifier =
                     Modifier
-                        .width(threadMessageVisualWidth(visualFixture))
+                        // React renders the row 390 wide inside a p-4 page (the
+                        // viewport clips its right 16px), so the padded host
+                        // keeps the row itself at the fixture width.
+                        .width(threadMessageVisualWidth(visualFixture) + threadMessageVisualHostPadding(visualFixture))
                         // task #415: the visual route's window gives BOUNDED height
                         // constraints (unlike production's LazyColumn, whose items
                         // measure unbounded). TextStringRichNode clamps the natively
@@ -760,8 +769,24 @@ internal fun ThreadMessageVisualScreenContent() {
                         // window overlapped the siblings placed at the clamped height.
                         // Measure unbounded like production.
                         .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                        .onGloballyPositioned { coordinates ->
+                            // Component-bounds crop: the capture harness waits
+                            // for this bottom edge instead of guessing a fixed
+                            // height for content-sized rows.
+                            val bottom = (coordinates.positionInRoot().y + coordinates.size.height).toInt()
+                            if (bottom != lastLoggedContentBottom) {
+                                lastLoggedContentBottom = bottom
+                                visualReadyBridge.log(
+                                    "thread_visual_content_bounds instanceId=$instanceId contentBottomPx=$bottom"
+                                )
+                            }
+                        }
                         .background(SlockColor.SurfaceWhite)
-                        .padding(SlockSpacing.Md)
+                        .padding(
+                            start = threadMessageVisualHostPadding(visualFixture),
+                            top = threadMessageVisualHostPadding(visualFixture),
+                            bottom = threadMessageVisualHostPadding(visualFixture)
+                        )
             ) {
             if (interactionProbe == "reply-timestamp-owner") {
                 Spacer(modifier = Modifier.height(32.dp))
@@ -830,6 +855,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     )
                 }
                 ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                     message = message,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
@@ -875,7 +901,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     onLongPressInputReady = onLongPressInputReady,
-                    outerPadding = 0.dp
+                    outerPadding = SlockSpacing.Sm
                 )
                 compactMenuAnchor?.let { anchor ->
                     ThreadNewMessageMenu(
@@ -981,6 +1007,8 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
             ) {
                 items(renderedMessages.size, key = { index -> renderedMessages[index].id }) { index ->
                     val message = renderedMessages[index]
+                    // No fixture avatar resolver here: the compact-menu oracle
+                    // needs a near-monochrome frame (task #228 saturated floor).
                     ThreadMessageCard(
                         message = message,
                         replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
@@ -1009,7 +1037,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = 0.dp
+                        outerPadding = SlockSpacing.Sm
                     )
                 }
             }
