@@ -1,10 +1,18 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.MessageAggregateField
+
 /** One restored V2 scope (top-level or, task #168 step 3, reply thread), ready to be projected as the thread screen's offline first frame. */
 internal data class ThreadDurableLastKnownFrame(
     val scope: SyncScopeKey,
     val envelopes: List<CanonicalMessageEnvelopeV2>,
     val cursor: PersistedCursor,
+    /**
+     * Task #14a: the partial facts' unknown aggregates (absent id = all known). Their envelopes hold
+     * placeholders (no description, no reactions), which is how the stand-in renders them; never a value
+     * to compare against or write back.
+     */
+    val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
 )
 
 /**
@@ -160,6 +168,11 @@ internal class CanonicalMessageV2DurableLastKnownReader(
             return null
         }
         val cursor = restored.cursor ?: return null
-        return ThreadDurableLastKnownFrame(scope = scope, envelopes = restored.envelopes, cursor = cursor)
+        return ThreadDurableLastKnownFrame(
+            scope = scope,
+            envelopes = restored.envelopes,
+            cursor = cursor,
+            unknownFieldsByFactId = restored.unknownFieldsByFactId,
+        )
     }
 }

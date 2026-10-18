@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.SlockSqlDatabase
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -82,11 +83,19 @@ data class CanonicalMessageV2IncrementalFrame(
      * channel the user reads. A scope without a stored cursor gets `now` as before.
      */
     val preserveUpdatedAt: Boolean = false,
+    /**
+     * Task #14a: per fact id, the aggregates this frame does not know (a subset of
+     * [CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES]; absent = all known). The envelope holds neutral
+     * placeholders for them. The store merges so that a known value is never replaced by an unknown one.
+     */
+    val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
 )
 
 data class RestoredCanonicalMessageV2Scope(
     val envelopes: List<CanonicalMessageEnvelopeV2>,
     val cursor: PersistedCursor?,
+    /** Task #14a: the partial facts' unknown aggregates (the stored marker); absent id = every aggregate known. */
+    val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
 )
 
 interface CanonicalMessageV2Store {
@@ -328,7 +337,16 @@ class CanonicalMessageV2ScopePoisoned(
     val factId: String? = null,
 ) : RuntimeException("$CANONICAL_MESSAGE_V2_SCOPE_POISONED at $scope fact=${factId.orEmpty()}")
 
-/** Existing message/cursor tables, but a disjoint V2 consumer partition and a strict full-v6 row codec. */
+/**
+ * Existing message/cursor tables, but a disjoint V2 consumer partition and a strict full-v6 row codec.
+ *
+ * Task #14a partial facts: a fact may be stored with some aggregates unknown (`unknownFields`, only ever a
+ * subset of [CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES]). Every write merges with the stored fact
+ * of the same id so a known value always beats an unknown one: a full write (snapshot, page, catch-up, full
+ * `message:updated`) completes a partial fact and clears its marker (`canonical_v2_partial_completed`); a
+ * partial write never erases what the stored fact knows; an insert-only `New` keeps the stored fact and
+ * only fills in what it did not know.
+ */
 internal class SqlDelightCanonicalMessageV2Store(
     private val database: SlockSqlDatabase,
     private val now: () -> Long,
@@ -336,6 +354,8 @@ internal class SqlDelightCanonicalMessageV2Store(
     private val retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
     /** One `scope_evicted` line per retention eviction (scope, scopeKind, reason). */
     private val logger: (String) -> Unit = {},
+    /** Task #14a: one self-tagged `canonical_v2_partial_completed` line per completed partial fact. */
+    private val factLogger: (String) -> Unit = {},
 ) : CanonicalMessageV2Store {
     override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) =
         applyFrame(frame.scope, frame.envelopes, frame.cursor, rebaseline = true, insertOnly = false, preserveUpdatedAt = false)
@@ -348,6 +368,7 @@ internal class SqlDelightCanonicalMessageV2Store(
             rebaseline = false,
             insertOnly = frame.insertOnly,
             preserveUpdatedAt = frame.preserveUpdatedAt,
+            unknownFieldsByFactId = frame.unknownFieldsByFactId,
         )
 
     private suspend fun applyFrame(
@@ -357,16 +378,25 @@ internal class SqlDelightCanonicalMessageV2Store(
         rebaseline: Boolean,
         insertOnly: Boolean,
         preserveUpdatedAt: Boolean,
+        unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
     ): CanonicalMessageV2StoreWriteResult {
         requireV2Scope(scope)
         require(envelopes.map { it.fact.id }.distinct().size == envelopes.size) { "duplicate V2 fact id in frame" }
         envelopes.forEach { envelope -> requireEnvelopeMatchesScope(scope, envelope) }
         requireCursorMatchesScope(scope, cursor, envelopes)
+        require(
+            unknownFieldsByFactId.all { (id, fields) ->
+                fields.isNotEmpty() && CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.containsAll(fields) &&
+                    envelopes.any { it.fact.id == id }
+            },
+        ) { "unknown V2 aggregates outside the allowed set or the frame" }
         val evictedScopes = mutableSetOf<SyncScopeKey>()
         var committedCursor: PersistedCursor? = null
         database.transaction {
             // Read before anything is written in this transaction (task #168 retention rank).
             val keptUpdatedAtMs = if (preserveUpdatedAt) selectCursorUpdatedAtMs(scope) else null
+            // Task #14a: the stored facts of the frame's ids, read before a snapshot clears the scope.
+            val storedBefore = envelopes.associate { it.fact.id to selectStoredFactInsideTransaction(scope, it.fact.id) }
             if (rebaseline) {
                 queries.clearUnpinnedCanonicalFactsForScope(
                     environmentId = scope.environmentId,
@@ -377,7 +407,23 @@ internal class SqlDelightCanonicalMessageV2Store(
                     channelId = scope.scopeId,
                 )
             }
-            envelopes.forEach { envelope ->
+            envelopes.forEach { incoming ->
+                val incomingUnknown = unknownFieldsByFactId[incoming.fact.id].orEmpty()
+                val storedRow = storedBefore[incoming.fact.id]
+                val storedUnknown = storedRow?.let { decodeUnknownFields(scope, incoming.fact.id, it.unknownFields) }.orEmpty()
+                // Only a fact one side does not fully know needs the stored bytes.
+                val stored = storedRow?.takeIf { storedUnknown.isNotEmpty() || incomingUnknown.isNotEmpty() }?.let {
+                    StoredFact(decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson), storedUnknown)
+                }
+                val (envelope, unknown) = when {
+                    stored == null -> incoming to incomingUnknown
+                    // The stored fact stays as it is; only what it did not know is filled in.
+                    insertOnly -> stored.envelope.withAggregatesFrom(incoming, stored.unknown - incomingUnknown) to
+                        (stored.unknown intersect incomingUnknown)
+                    // The frame replaces the fact, except for what it does not know and the stored fact does.
+                    else -> incoming.withAggregatesFrom(stored.envelope, incomingUnknown - stored.unknown) to
+                        (incomingUnknown intersect stored.unknown)
+                }
                 val bytes = encodeCanonicalMessageV2(envelope, scope.serverId)
                 queries.insertCanonicalFactIfAbsent(
                     environmentId = scope.environmentId,
@@ -392,11 +438,21 @@ internal class SqlDelightCanonicalMessageV2Store(
                     canonicalFactJson = bytes,
                 )
                 // A snapshot replaces (its scope was cleared above), a page refreshes; an insert-only
-                // frame leaves an already stored fact exactly as it is.
-                if (!insertOnly) queries.updateCanonicalFact(
+                // frame leaves an already stored fact exactly as it is, unless it completes a partial one.
+                if (!insertOnly || stored != null) queries.updateCanonicalFact(
                     seq = envelope.fact.seq,
                     createdAt = envelope.fact.createdAt,
                     canonicalFactJson = bytes,
+                    id = envelope.fact.id,
+                    environmentId = scope.environmentId,
+                    serverId = scope.serverId,
+                    principalId = scope.principalId,
+                    consumerId = scope.consumerId,
+                    scopeKind = scope.scopeKind,
+                    channelId = scope.scopeId,
+                )
+                queries.setCanonicalFactUnknownFields(
+                    unknownFields = encodeUnknownFields(unknown),
                     id = envelope.fact.id,
                     environmentId = scope.environmentId,
                     serverId = scope.serverId,
@@ -415,6 +471,13 @@ internal class SqlDelightCanonicalMessageV2Store(
                         channelId = scope.scopeId,
                     ).executeAsOne() != 1L
                 ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)
+                val completed = CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in storedUnknown && it !in unknown }
+                if (completed.isNotEmpty()) {
+                    factLogger(
+                        "canonical_v2_partial_completed server=${scope.serverId} scope=${scope.scopeId} " +
+                            "scopeKind=${scope.scopeKind} msg=${envelope.fact.id} fields=${completed.joinToString(",")}",
+                    )
+                }
             }
             // The per-scope cap runs before the cursor is written, so the cursor that lands on disk
             // never claims a window edge the cap just pruned away.
@@ -452,14 +515,15 @@ internal class SqlDelightCanonicalMessageV2Store(
 
     override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope {
         requireV2Scope(scope)
-        val envelopes = database.queries.selectServerBackedMessagesForChannel(
+        val rows = database.queries.selectServerBackedMessagesForChannel(
             environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
             consumerId = scope.consumerId,
             scopeKind = scope.scopeKind,
             channelId = scope.scopeId,
-        ).executeAsList().map { row ->
+        ).executeAsList()
+        val envelopes = rows.map { row ->
             val accepted = decodeCanonicalMessageV2(row.canonicalFactJson, scope.serverId)
                 as? CanonicalMessageV2DecodeResult.Accepted
                 ?: throw CanonicalMessageV2ScopePoisoned(scope, row.id)
@@ -475,9 +539,41 @@ internal class SqlDelightCanonicalMessageV2Store(
             requireEnvelopeMatchesScope(scope, envelope)
             envelope
         }
+        val unknownFieldsByFactId = rows.mapNotNull { row ->
+            decodeUnknownFields(scope, row.id, row.unknownFields).takeIf { it.isNotEmpty() }?.let { row.id to it }
+        }.toMap()
         val cursor = selectCursor(scope)
         if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope)
-        return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor)
+        return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor, unknownFieldsByFactId = unknownFieldsByFactId)
+    }
+
+    private class StoredFact(val envelope: CanonicalMessageEnvelopeV2, val unknown: Set<MessageAggregateField>)
+
+    private fun selectStoredFactInsideTransaction(scope: SyncScopeKey, id: String) =
+        database.queries.selectCanonicalFactInScope(
+            id = id,
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsOneOrNull()
+
+    private fun decodeStoredFact(scope: SyncScopeKey, id: String, bytes: String): CanonicalMessageEnvelopeV2 =
+        (decodeCanonicalMessageV2(bytes, scope.serverId) as? CanonicalMessageV2DecodeResult.Accepted)
+            ?.envelope?.takeIf { it.fact.id == id }
+            ?: throw CanonicalMessageV2ScopePoisoned(scope, id)
+
+    /** The stored marker: only names of the allowed set, each once, in canonical order; else poisoned. */
+    private fun decodeUnknownFields(scope: SyncScopeKey, id: String, encoded: String?): Set<MessageAggregateField> {
+        if (encoded == null) return emptySet()
+        val fields = encoded.split(",").map { name ->
+            CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.firstOrNull { it.name == name }
+                ?: throw CanonicalMessageV2ScopePoisoned(scope, id)
+        }
+        if (encodeUnknownFields(fields.toSet()) != encoded) throw CanonicalMessageV2ScopePoisoned(scope, id)
+        return fields.toSet()
     }
 
     override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? {
@@ -851,6 +947,24 @@ internal fun requireV2Scope(scope: SyncScopeKey) {
 }
 
 private const val THREAD_SCOPE_KIND: String = "thread"
+
+/** Task #14a: the `unknownFields` column value; `null` = every aggregate known. */
+private fun encodeUnknownFields(fields: Set<MessageAggregateField>): String? =
+    CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in fields }.joinToString(",").ifEmpty { null }
+
+/** This envelope with [fields] (allowed-unknown aggregates only) taken from [source]. */
+private fun CanonicalMessageEnvelopeV2.withAggregatesFrom(
+    source: CanonicalMessageEnvelopeV2,
+    fields: Set<MessageAggregateField>,
+): CanonicalMessageEnvelopeV2 =
+    fields.fold(this) { merged, field ->
+        when (field) {
+            MessageAggregateField.SenderDescription ->
+                merged.copy(fact = merged.fact.copy(senderDescription = source.fact.senderDescription))
+            MessageAggregateField.Reactions -> merged.copy(fact = merged.fact.copy(reactions = source.fact.reactions))
+            else -> error("$field is not an allowed unknown V2 aggregate")
+        }
+    }
 
 private fun requireEnvelopeMatchesScope(scope: SyncScopeKey, envelope: CanonicalMessageEnvelopeV2) {
     val diagnostic = validateCanonicalMessageV2(envelope, scope.serverId)

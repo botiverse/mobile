@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
@@ -11,6 +12,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CommitResult
+import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
@@ -18,6 +20,7 @@ import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
+import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
 import build.raft.app.network.sync.CanonicalMessageV2Store
 import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
 import build.raft.app.network.sync.DurablePartitionKey
@@ -28,7 +31,9 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.SyncScopeKey
+import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.decodeCanonicalMessageWire
+import build.raft.app.network.sync.toThreadMessageItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -38,6 +43,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -60,6 +66,8 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     private val channelA = SyncScopeKey(partition, "channel-a", "channel")
     private val channelB = SyncScopeKey(partition, "channel-b", "channel")
     private val channelC = SyncScopeKey(partition, "channel-c", "channel")
+    private val thread1 = SyncScopeKey(partition, "thread-1", "thread")
+    private val thread1Parent = ThreadDurableReplyParent(parentChannelId = "channel-a", rootMessageId = "root-1")
 
     // ---- T1 every windowed channel ------------------------------------------------------------------
 
@@ -539,9 +547,19 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         expectedContinuity = CanonicalMessageV2ScopeContinuity.Discontinuous,
     )
 
+    /** Task #14a: an update without `reactions` (allowed unknown) is written; the stored roster is kept. */
     @Test
-    fun t6APartialUpdateMarksTheWindowDiscontinuous() = updateCase(
+    fun t6AnUpdateWithoutReactionsIsWrittenAndKeepsTheStoredRoster() = updateCase(
         update = { rig -> rig.messageUpdated(channelA, "m6", 6L, content = "edited", partial = true) },
+        expectedContent = "edited",
+        expectedContinuity = CanonicalMessageV2ScopeContinuity.Continuous,
+        expectedIncrementals = 1,
+    )
+
+    /** Twin: an update also without `mentions` (not allowed unknown) marks the window discontinuous. */
+    @Test
+    fun t6AnUpdateWithoutMentionsMarksTheWindowDiscontinuous() = updateCase(
+        update = { rig -> rig.messageUpdated(channelA, "m6", 6L, content = "edited", partial = true, omit = setOf("mentions")) },
         expectedContent = "body-m6",
         expectedContinuity = CanonicalMessageV2ScopeContinuity.Discontinuous,
     )
@@ -817,6 +835,286 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         assertEquals(false, over.hasLoadedOldest, "the window no longer reaches the beginning")
     }
 
+    // ---- task #14a: realtime replies of an entered reply thread are display only -----------------------
+    //
+    // No positive per-thread delivery signal exists on the server (thread rooms are never joined at connect,
+    // `join:channel` has no ack, replies under private/dm/joint parents go only to `user:<followerId>` rooms),
+    // so a reply-thread enter commits its page but leaves the window `thread_delivery_unconfirmed`.
+
+    @Test
+    fun t10AnEnteredThreadKeepsItsPageButARealtimeReplyIsDisplayOnly() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            rig.enterThread(thread1, thread1Parent)
+            val loads = rig.server.pageLoads()
+
+            val r2 = rig.replyNew(thread1, "r2", 2L)
+            assertTrue(rig.deliver(r2))
+            assertEquals(r2, rig.projected.last(), "displayed")
+
+            assertEquals(setOf("r1"), rig.storedIds(thread1), "the enter page is written, the realtime reply is not")
+            assertEquals(0, rig.store.incrementalWrites)
+            assertEquals(loads, rig.server.pageLoads(), "a realtime frame never loads")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
+            assertTrue(
+                rig.logs.any {
+                    it.startsWith("canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread ") &&
+                        it.endsWith(" continuity=discontinuous reason=thread_delivery_unconfirmed")
+                },
+                rig.logs.toString(),
+            )
+            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
+                .readReplyThread(partition, "thread-1", thread1Parent)
+            assertEquals(listOf("r1"), offline?.envelopes?.map { it.fact.id }, "the durable read serves the enter page")
+
+            // Control: the same kind of frame on an entered CHANNEL window is written.
+            rig.server.has(channelA, "a1" to 1L)
+            rig.enter(channelA)
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a2", 2L)))
+            assertEquals(setOf("a1", "a2"), rig.storedIds(channelA))
+            assertEquals(1, rig.store.incrementalWrites)
+        }
+    }
+
+    @Test
+    fun t10AReplyDuringTheThreadEnterFetchIsDisplayedButNotReplayed() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            val hold = rig.server.holdNextPage()
+            val entering = async { rig.enterThread(thread1, thread1Parent) }
+            hold.read.await()
+            val r2 = rig.replyNew(thread1, "r2", 2L)
+            assertTrue(rig.deliver(r2))
+            assertEquals(r2, rig.projected.last(), "displayed while the page loads")
+            hold.release.complete(Unit)
+            entering.await()
+
+            assertEquals(setOf("r1"), rig.storedIds(thread1), "a buffered reply is never replayed into an unconfirmed thread")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r3", 3L)))
+            assertEquals(setOf("r1"), rig.storedIds(thread1))
+            assertEquals(0, rig.store.incrementalWrites)
+        }
+    }
+
+    // ---- task #14a: partial facts ("store partial, fill in when data arrives") -------------------------
+
+    /**
+     * The production `message:new` (no `senderDescription`, no `reactions` key) is written as a PARTIAL fact:
+     * the window stays continuous (the next frame is appended), the durable read serves the message with no
+     * description and no reactions, and the store's marker names both as unknown (never as empty).
+     */
+    @Test
+    fun t11TheProductionNewIsWrittenPartialAndTheWindowStaysContinuous() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.has(channelA, "a1" to 1L)
+            rig.enter(channelA)
+
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a2", 2L, omit = PRODUCTION_NEW_OMITS)))
+
+            assertEquals(setOf("a1", "a2"), rig.storedIds(channelA))
+            assertEquals(mapOf("a2" to BOTH_UNKNOWN), rig.store.restore(channelA).unknownFieldsByFactId)
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(channelA))
+            assertTrue(
+                rig.logs.any {
+                    it == "canonical_v2_canary written server=server-1 scope=channel-a source=incremental " +
+                        "partial=SenderDescription,Reactions"
+                },
+                rig.logs.toString(),
+            )
+            val offline = assertNotNull(
+                CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true }).read(partition, "channel-a"),
+            )
+            assertEquals(mapOf("a2" to BOTH_UNKNOWN), offline.unknownFieldsByFactId)
+            val row = assertNotNull(offline.envelopes.single { it.fact.id == "a2" }.toThreadMessageItem(currentUserId = "user-9"))
+            assertEquals(null, row.authorDescription)
+            assertEquals(emptyList(), row.reactions)
+
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a3", 3L, omit = PRODUCTION_NEW_OMITS)))
+            assertEquals(setOf("a1", "a2", "a3"), rig.storedIds(channelA), "the window kept appending")
+        }
+    }
+
+    /** Twin: the same frame also without `mentions` (not allowed unknown) is display only, as before. */
+    @Test
+    fun t11AProductionNewAlsoMissingMentionsIsNotWrittenAndTheWindowTurnsDiscontinuous() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.has(channelA, "a1" to 1L)
+            rig.enter(channelA)
+
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a2", 2L, omit = PRODUCTION_NEW_OMITS + "mentions")))
+
+            assertEquals(setOf("a1"), rig.storedIds(channelA))
+            assertEquals(emptyMap(), rig.store.restore(channelA).unknownFieldsByFactId)
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channelA))
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a3", 3L, omit = PRODUCTION_NEW_OMITS)))
+            assertEquals(setOf("a1"), rig.storedIds(channelA), "display only until the next enter")
+        }
+    }
+
+    /**
+     * A partial fact is completed by the next full source of the same id — the enter snapshot, the gap
+     * catch-up page, or a full `message:updated` — and its marker is cleared. Twin per source: without that
+     * source the fact stays partial.
+     */
+    @Test
+    fun t11APartialFactIsCompletedByEveryFullSource() {
+        fun run(complete: suspend (Rig) -> Unit): Triple<Map<String, Set<MessageAggregateField>>, String?, List<String>> =
+            withFreshDatabase { database ->
+                val rig = Rig(database)
+                bounded {
+                    rig.server.has(channelA, "a1" to 1L)
+                    rig.enter(channelA)
+                    rig.deliver(rig.messageNew(channelA, "a2", 2L, omit = PRODUCTION_NEW_OMITS))
+                    rig.server.describe("a2", senderDescription = "\"Release bot\"", reactions = ROSTER)
+                    complete(rig)
+                    val restored = rig.store.restore(channelA)
+                    val a2 = restored.envelopes.single { it.fact.id == "a2" }.fact
+                    Triple(
+                        restored.unknownFieldsByFactId,
+                        a2.senderDescription + "|" + a2.reactions.joinToString(",") { "${it.emoji}x${it.count}" },
+                        rig.logs.filter { it.startsWith("canonical_v2_partial_completed") },
+                    )
+                }
+            }
+        val completedLine = listOf(
+            "canonical_v2_partial_completed server=server-1 scope=channel-a scopeKind=channel msg=a2 " +
+                "fields=SenderDescription,Reactions",
+        )
+        assertEquals(Triple(emptyMap(), "Release bot|👀x2", completedLine), run { it.enter(channelA) })
+        assertEquals(Triple(emptyMap(), "Release bot|👀x2", completedLine), run { it.catchUp(channelA) })
+        assertEquals(
+            Triple(emptyMap(), "Release bot|👀x2", completedLine),
+            run {
+                it.deliver(
+                    it.messageUpdated(channelA, "a2", 2L, content = "body-a2", reactions = ROSTER, senderDescription = "\"Release bot\""),
+                )
+            },
+        )
+        assertEquals(Triple(mapOf("a2" to BOTH_UNKNOWN), "null|", emptyList()), run { })
+    }
+
+    /** A partial frame for a fact already stored in full never erases what is known (insert-only `New` and update). */
+    @Test
+    fun t11APartialFrameNeverErasesAStoredFullFact() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.has(channelA, "a1" to 1L, "a2" to 2L)
+            rig.server.describe("a2", senderDescription = "\"Release bot\"", reactions = ROSTER)
+            rig.enter(channelA)
+            suspend fun a2() = rig.store.restore(channelA).envelopes.single { it.fact.id == "a2" }.fact
+
+            // The same message's production `message:new` arriving late (a second entry / redelivery).
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a2", 2L, omit = PRODUCTION_NEW_OMITS)))
+            assertEquals("Release bot", a2().senderDescription)
+            assertEquals(listOf("👀" to 2), a2().reactions.map { it.emoji to it.count })
+
+            // An edit whose frame omits both keys: content changes, the known aggregates stay.
+            assertTrue(
+                rig.deliver(rig.messageUpdated(channelA, "a2", 2L, content = "edited", omit = PRODUCTION_NEW_OMITS)),
+            )
+            assertEquals("edited", a2().content)
+            assertEquals("Release bot", a2().senderDescription)
+            assertEquals(listOf("👀" to 2), a2().reactions.map { it.emoji to it.count })
+            assertEquals(emptyMap(), rig.store.restore(channelA).unknownFieldsByFactId)
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(channelA))
+        }
+    }
+
+    /**
+     * Reactions on a partial fact: the server announces a reaction change as a `message:updated` with the whole
+     * roster, which makes the roster known (the description stays unknown); an update without `reactions` never
+     * turns an unknown roster into an empty "known" one, nor a known one back into unknown.
+     */
+    @Test
+    fun t11AReactionUpdateOnAPartialFactSetsTheWholeRosterAndNothingElseTouchesIt() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.has(channelA, "a1" to 1L, "a3" to 3L)
+            rig.enter(channelA)
+            rig.deliver(rig.messageNew(channelA, "a4", 4L, omit = PRODUCTION_NEW_OMITS))
+            rig.deliver(rig.messageNew(channelA, "a5", 5L, omit = PRODUCTION_NEW_OMITS))
+            suspend fun fact(id: String) = rig.store.restore(channelA).envelopes.single { it.fact.id == id }.fact
+            suspend fun unknown() = rig.store.restore(channelA).unknownFieldsByFactId
+
+            // a4: a reaction was added (roster frame, no description key).
+            assertTrue(
+                rig.deliver(rig.messageUpdated(channelA, "a4", 4L, content = "body-a4", omit = setOf("senderDescription"), reactions = ROSTER)),
+            )
+            assertEquals(listOf("👀" to 2), fact("a4").reactions.map { it.emoji to it.count })
+            assertEquals(setOf(MessageAggregateField.SenderDescription), unknown()["a4"])
+            // ...then an edit without `reactions`: the known roster stays known.
+            rig.deliver(rig.messageUpdated(channelA, "a4", 4L, content = "edited", omit = PRODUCTION_NEW_OMITS))
+            assertEquals(listOf("👀" to 2), fact("a4").reactions.map { it.emoji to it.count })
+            assertEquals(setOf(MessageAggregateField.SenderDescription), unknown()["a4"])
+
+            // a5 (twin): only an edit without `reactions`: the roster stays UNKNOWN, not "known empty".
+            rig.deliver(rig.messageUpdated(channelA, "a5", 5L, content = "edited", omit = PRODUCTION_NEW_OMITS))
+            assertEquals(emptyList(), fact("a5").reactions)
+            assertEquals(BOTH_UNKNOWN, unknown()["a5"])
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(channelA))
+        }
+    }
+
+    /**
+     * Thread scope: the production reply `message:new` is display only (`thread_delivery_unconfirmed`); the
+     * paired channel case is [t11TheProductionNewIsWrittenPartialAndTheWindowStaysContinuous].
+     */
+    @Test
+    fun t11TheProductionReplyIsDisplayOnlyInAnEnteredThread() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            rig.enterThread(thread1, thread1Parent)
+
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L, omit = PRODUCTION_NEW_OMITS)))
+
+            assertEquals(setOf("r1"), rig.storedIds(thread1))
+            assertEquals(emptyMap(), rig.store.restore(thread1).unknownFieldsByFactId)
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
+            assertTrue(rig.logs.none { "partial=" in it }, rig.logs.toString())
+            assertTrue(
+                rig.logs.any {
+                    it == "canonical_v2_canary skip=discontinuous server=server-1 scope=thread-1 scopeKind=thread kind=new msg=r2 seq=2"
+                },
+                rig.logs.toString(),
+            )
+        }
+    }
+
+    /** A stored marker outside the allowed set (or out of canonical order) poisons the scope; a valid one reads. */
+    @Test
+    fun t11AnInvalidStoredMarkerPoisonsTheScope() {
+        fun restoreWithMarker(marker: String): Result<RestoredCanonicalMessageV2Scope> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.has(channelA, "a1" to 1L)
+                rig.enter(channelA)
+                database.queries.setCanonicalFactUnknownFields(
+                    unknownFields = marker,
+                    id = "a1",
+                    environmentId = channelA.environmentId,
+                    serverId = channelA.serverId,
+                    principalId = channelA.principalId,
+                    consumerId = channelA.consumerId,
+                    scopeKind = channelA.scopeKind,
+                    channelId = channelA.scopeId,
+                )
+                runCatching { rig.store.restore(channelA) }
+            }
+        }
+        assertEquals(mapOf("a1" to BOTH_UNKNOWN), restoreWithMarker("SenderDescription,Reactions").getOrThrow().unknownFieldsByFactId)
+        assertIs<CanonicalMessageV2ScopePoisoned>(restoreWithMarker("Mentions").exceptionOrNull())
+        assertIs<CanonicalMessageV2ScopePoisoned>(restoreWithMarker("Reactions,SenderDescription").exceptionOrNull())
+    }
+
     // ---- rig ------------------------------------------------------------------------------------------
 
     /** Every hold-based test is bounded: a regression that blocks on a held page fails instead of hanging. */
@@ -839,6 +1137,13 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         /** The page is short (the channel's beginning is in it) when true. */
         @Volatile var reachesBeginning = false
 
+        /** Task #14a: what the REST node of a message carries for `senderDescription` / `reactions` (JSON values). */
+        private val details = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+        fun describe(id: String, senderDescription: String, reactions: String) {
+            details[id] = senderDescription to reactions
+        }
+
         fun has(scope: SyncScopeKey, vararg messages: Pair<String, Long>) = synchronized(nodes) {
             val channel = nodes.getOrPut(scope.scopeId) { linkedMapOf() }
             messages.forEach { (id, seq) -> if (id !in channel) channel[id] = seq to "body-$id" }
@@ -852,6 +1157,13 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         fun remove(scope: SyncScopeKey, id: String) = synchronized(nodes) { nodes[scope.scopeId]?.remove(id) }
 
         fun holdNextPage(failing: Boolean = false): PageHold = PageHold(failing).also { nextHold = it }
+
+        /** Task #14a: `channels/{thread}` answers a reply thread under this parent. */
+        private val threads = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+        fun thread(scope: SyncScopeKey, parentChannelId: String, rootMessageId: String) {
+            threads[scope.scopeId] = parentChannelId to rootMessageId
+        }
 
         fun pageLoads(): Int = paths.count { it.startsWith("messages/channel/") }
 
@@ -889,14 +1201,22 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             }
             if (path.endsWith("/threads")) return HomeNetworkResponse(200, "{}")
             val channelId = path.removePrefix("channels/")
+            threads[channelId]?.let { (parentChannelId, rootMessageId) ->
+                return HomeNetworkResponse(
+                    200,
+                    """{"id":"$channelId","type":"thread","parentChannelId":"$parentChannelId","parentMessageId":"$rootMessageId"}""",
+                )
+            }
             return HomeNetworkResponse(200, """{"id":"$channelId","type":"channel"}""")
         }
 
-        private fun node(channelId: String, id: String, seq: Long, content: String): String =
-            """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"user-1",""" +
+        private fun node(channelId: String, id: String, seq: Long, content: String): String {
+            val (description, reactions) = details[id] ?: ("null" to "[]")
+            return """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"user-1",""" +
                 """"content":"$content","messageType":"chat","randomId":null,"threadId":null,""" +
-                """"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,""" +
-                """"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null}"""
+                """"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":$description,""" +
+                """"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":$reactions,"commentRef":null,"actionMetadata":null}"""
+        }
     }
 
     private inner class Rig(
@@ -904,13 +1224,15 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
     ) {
         @Volatile var clock = 100L
-        val store = CountingStore(SqlDelightCanonicalMessageV2Store(database, now = { clock }, retention = retention))
+        val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+        val store = CountingStore(
+            SqlDelightCanonicalMessageV2Store(database, now = { clock }, retention = retention, factLogger = { logs += it }),
+        )
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val canary = CanonicalMessageV2ProductionCanary(
             isEnabledForServer = { true },
             generationEngine = engine,
@@ -952,6 +1274,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         suspend fun enter(scope: SyncScopeKey) {
             if (!connected) connect(1L)
             loader.loadOnEnter(partition, scope.scopeId) { true }
+        }
+
+        /** Task #14a: the user opens reply thread [scope]: the real reply-thread enter loader against [server]. */
+        suspend fun enterThread(scope: SyncScopeKey, parent: ThreadDurableReplyParent) {
+            if (!connected) connect(1L)
+            loader.loadReplyThreadOnEnter(partition, scope.scopeId, parent) { true }
         }
 
         private val writer = CanonicalMessageV2AdjacentPageWriter(
@@ -1005,15 +1333,48 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                 },
             ).also { it.installCanonicalMessageV2OwnerGateway(gateway) }
 
-        /** Real `message:new` wire JSON (server `projectMessageSocketPayload` + rich aggregates) via the mapper. */
-        fun messageNew(scope: SyncScopeKey, id: String, seq: Long): MessageNew {
-            val event = mapper.map(RealtimeSocketEvents.MessageNew, wire(scope, id, seq, "body-$id", threadId = null, partial = false))
+        /**
+         * Real `message:new` wire JSON (server `projectMessageSocketPayload` + rich aggregates) via the mapper.
+         * [omit]: wire keys the frame leaves out — the production send pipeline omits `senderDescription` and
+         * `reactions` ([PRODUCTION_NEW_OMITS]).
+         */
+        fun messageNew(scope: SyncScopeKey, id: String, seq: Long, omit: Set<String> = emptySet()): MessageNew {
+            val event = mapper.map(
+                RealtimeSocketEvents.MessageNew,
+                wire(scope, id, seq, "body-$id", threadId = null, partial = false, omit = omit),
+            )
             val messageNew = assertIs<MessageNew>(event)
             requireNotNull(messageNew.decodedCanonical) { "the wire frame must decode canonically" }
             return messageNew
         }
 
-        /** Real `message:updated` wire JSON; [partial] drops `reactions` (a content-only update). */
+        /**
+         * Task #14a: a reply's real `message:new` wire JSON: `channelId` is the thread channel, the context names
+         * the thread's parent channel and root message.
+         */
+        fun replyNew(
+            scope: SyncScopeKey,
+            id: String,
+            seq: Long,
+            parentChannelId: String = "channel-a",
+            rootMessageId: String = "root-1",
+            omit: Set<String> = emptySet(),
+        ): MessageNew {
+            val context = """{ "channelType": "thread", "parentChannelId": "$parentChannelId", """ +
+                """"parentChannelType": "channel", "parentMessageId": "$rootMessageId" }"""
+            val event = mapper.map(
+                RealtimeSocketEvents.MessageNew,
+                wire(scope, id, seq, "body-$id", threadId = null, partial = false, conversationContext = context, omit = omit),
+            )
+            val messageNew = assertIs<MessageNew>(event)
+            requireNotNull(messageNew.decodedCanonical) { "the wire frame must decode canonically" }
+            return messageNew
+        }
+
+        /**
+         * Real `message:updated` wire JSON; [partial] drops `reactions` (a content-only update), [omit] drops more
+         * keys; [reactions] / [senderDescription] are the JSON values sent when the key is present.
+         */
         fun messageUpdated(
             scope: SyncScopeKey,
             id: String,
@@ -1021,16 +1382,34 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             content: String,
             threadId: String? = null,
             partial: Boolean = false,
+            omit: Set<String> = emptySet(),
+            reactions: String = "[]",
+            senderDescription: String = "null",
         ): MessageUpdated {
-            val event = mapper.map(RealtimeSocketEvents.MessageUpdated, wire(scope, id, seq, content, threadId, partial))
+            val event = mapper.map(
+                RealtimeSocketEvents.MessageUpdated,
+                wire(scope, id, seq, content, threadId, partial, omit = omit, reactions = reactions, senderDescription = senderDescription),
+            )
             val updated = assertIs<MessageUpdated>(event)
             requireNotNull(updated.decodedCanonical) { "the wire frame must decode canonically" }
             return updated
         }
 
-        private fun wire(scope: SyncScopeKey, id: String, seq: Long, content: String, threadId: String?, partial: Boolean): String {
+        private fun wire(
+            scope: SyncScopeKey,
+            id: String,
+            seq: Long,
+            content: String,
+            threadId: String?,
+            partial: Boolean,
+            conversationContext: String = """{ "channelType": "channel" }""",
+            omit: Set<String> = emptySet(),
+            reactions: String = "[]",
+            senderDescription: String = "null",
+        ): String {
             val thread = threadId?.let { "\"$it\"" } ?: "null"
-            val reactions = if (partial) "" else "\"reactions\": [],"
+            val omitted = if (partial) omit + "reactions" else omit
+            fun key(name: String, value: String) = if (name in omitted) "" else "\"$name\": $value,"
             return """
                 {
                   "id": "$id", "seq": $seq, "channelId": "${scope.scopeId}",
@@ -1039,9 +1418,9 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                   "taskStatus": null, "taskNumber": null, "taskAssigneeType": null, "taskAssigneeId": null,
                   "taskClaimedAt": null, "taskCompletedAt": null,
                   "createdAt": "2026-07-17T00:00:00.000Z", "updatedAt": "2026-07-17T00:00:00.000Z",
-                  "senderName": "Alice", "senderDescription": null, "senderMembershipStatus": null,
-                  "mentions": [], "attachments": [], $reactions
-                  "conversationContext": { "channelType": "channel" }
+                  "senderName": "Alice", ${key("senderDescription", senderDescription)} "senderMembershipStatus": null,
+                  ${key("mentions", "[]")} "attachments": [], ${key("reactions", reactions)}
+                  "conversationContext": $conversationContext
                 }
             """.trimIndent()
         }
@@ -1090,6 +1469,13 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             delegate.baselinedScopeKinds(partition, scopeId)
         override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = delegate.readCursor(scope)
         override suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean = delegate.containsFact(scope, factId)
+    }
+
+    private companion object {
+        /** The keys botiverse/slock's ordinary `message:new` leaves out (task #14a). */
+        val PRODUCTION_NEW_OMITS = setOf("senderDescription", "reactions")
+        val BOTH_UNKNOWN = setOf(MessageAggregateField.SenderDescription, MessageAggregateField.Reactions)
+        const val ROSTER = """[{"emoji":"👀","count":2,"reactorIds":["user-1","user-2"],"reactorNames":["Alice","Bob"]}]"""
     }
 
     private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {

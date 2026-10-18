@@ -101,6 +101,9 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 -- state is persisted (author display / body / timestamp label / delivery are projected at read time via
 -- CanonicalMessageRow.toAppMessage). Pending/optimistic/outbox rows NEVER enter this table — `seq NOT NULL`
 -- makes that structural, so `clearScope` is a plain full-scope delete (no exceptions).
+-- `unknownFields` (schema v9, task #14a): the aggregates a V2 fact written from a realtime frame does not
+-- know (comma-separated, canonical order); NULL = all known. The fact's bytes hold neutral placeholders
+-- for them, and unknown is never read as empty.
 CREATE TABLE messageEntity (
   environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
@@ -112,6 +115,7 @@ CREATE TABLE messageEntity (
   seq INTEGER NOT NULL,
   createdAt TEXT NOT NULL,
   canonicalFactJson TEXT NOT NULL,
+  unknownFields TEXT,
   PRIMARY KEY (environmentId, serverId, principalId, consumerId, id)
 );
 
@@ -596,6 +600,31 @@ INSERT OR IGNORE INTO messageEntity(
 updateCanonicalFact:
 UPDATE messageEntity
 SET seq = ?, createdAt = ?, canonicalFactJson = ?
+WHERE id = ?
+  AND environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?;
+
+-- Task #14a: one stored fact of THIS full scope (partial merge / completion), read inside the write
+-- transaction. 0 rows = absent (or a contractually impossible cross-scope id).
+selectCanonicalFactInScope:
+SELECT canonicalFactJson, unknownFields FROM messageEntity
+WHERE id = ?
+  AND environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?;
+
+-- Task #14a: the unknown-aggregate marker of one fact, written right after its upsert in the same
+-- transaction. NULL = every aggregate known.
+setCanonicalFactUnknownFields:
+UPDATE messageEntity
+SET unknownFields = ?
 WHERE id = ?
   AND environmentId = ?
   AND serverId = ?
