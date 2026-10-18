@@ -2252,7 +2252,6 @@ HSPLbuild/raft/app/shared/SlockKuiklyActivity;->$r8$lambda$OHq0wv49NUh3-CCSoiC9L
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;->$r8$lambda$ogVuDHmvjNFRohmatJ_ifZ2UH-4(Landroid/content/Context;)Lcom/tencent/kuikly/core/render/android/export/IKuiklyRenderViewExport;
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;->$r8$lambda$yNdG2lciqRNIn5obFdpOybmzQew(Lbuild/raft/app/shared/SlockKuiklyActivity;Landroid/view/ViewGroup;)V
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;-><init>()V
-HSPLbuild/raft/app/shared/SlockKuiklyActivity;->applySlockInputTypeface(Landroid/view/View;)V
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;->attachKuiklyHost()V
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;->createPageSpec()Lbuild/raft/app/shared/SlockKuiklyPageSpec;
 HSPLbuild/raft/app/shared/SlockKuiklyActivity;->debugLogEnable()Z

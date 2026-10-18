@@ -129,6 +129,18 @@ internal object SlockFontFaceState {
     }
 }
 
+/**
+ * Regular sans face name of the active font preference (e.g. "HankenGrotesk-Regular"), or null
+ * for [FontPreference.System]. Native hosts read this to style editors the Compose text style
+ * does not reach, so they follow Settings > Appearance instead of a fixed face.
+ */
+fun slockInputFontFaceName(): String? = slockSansRegularFaceName(SlockFontFaceState.preference)
+
+internal fun slockSansRegularFaceName(preference: FontPreference): String? =
+    preference.sansFamily?.let { base ->
+        base.split('_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } } + "-Regular"
+    }
+
 private val SpaceGroteskBold = FontFamily(KuiklyFont("SpaceGrotesk-Bold", FontWeight.Bold, FontStyle.Normal))
 private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("SpaceGrotesk-SemiBold", FontWeight.SemiBold, FontStyle.Normal))
 private val SpaceGroteskMedium = FontFamily(KuiklyFont("SpaceGrotesk-Medium", FontWeight.Medium, FontStyle.Normal))

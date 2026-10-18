@@ -77,6 +77,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
+import build.raft.app.slockInputFontFaceName
 import build.raft.app.MainActivity
 import build.raft.app.BuildConfig
 import build.raft.app.androidExternalBrowserIntent
@@ -1388,7 +1389,6 @@ open class SlockKuiklyActivity :
         super.onResume()
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         suppressVisualKeyboard()
-        applySlockInputTypeface()
         if (kuiklyHostAttached) {
             kuiklyRenderViewDelegator.onResume()
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
@@ -1670,15 +1670,16 @@ open class SlockKuiklyActivity :
 
     private fun installSlockInputFontBridge(container: ViewGroup) {
         updateDefaultShellDisplayMetrics(container)
+        // Only display metrics are tracked here. Input typefaces are owned by
+        // SlockKuiklyTextFieldView (selected face by default, explicit fontFamily honoured);
+        // re-forcing a face on every EditText each layout overrode both.
         val listener =
                 ViewTreeObserver.OnGlobalLayoutListener {
-                    container.applySlockInputTypeface()
                     updateDefaultShellDisplayMetrics(container)
                 }
         inputFontLayoutListener = listener
         container.viewTreeObserver.addOnGlobalLayoutListener(listener)
         container.post {
-            container.applySlockInputTypeface()
             updateDefaultShellDisplayMetrics(container)
         }
     }
@@ -1695,21 +1696,6 @@ open class SlockKuiklyActivity :
             container.viewTreeObserver.removeOnGlobalLayoutListener(listener)
         }
         inputFontLayoutListener = null
-    }
-
-    private fun applySlockInputTypeface() {
-        findViewById<ViewGroup?>(R.id.slock_kuikly_container)?.applySlockInputTypeface()
-    }
-
-    private fun View.applySlockInputTypeface() {
-        if (this is EditText) {
-            SlockKuiklyFontAdapter.inputTypeface(context)?.let { typeface = it }
-        }
-        if (this is ViewGroup) {
-            for (index in 0 until childCount) {
-                getChildAt(index).applySlockInputTypeface()
-            }
-        }
     }
 
     internal fun requestAttachmentSaveAs(
@@ -3488,7 +3474,6 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     )
 
     private var context: Context? = null
-    private var inputTypeface: Typeface? = null
     @Volatile
     private var hostDisplayMetrics: DisplayMetrics? = null
     private val typefaceCache = mutableMapOf<Int, Typeface>()
@@ -3497,10 +3482,15 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
         this.context = context.applicationContext
     }
 
+    /**
+     * The face native editors use: the Regular sans face of the user's Settings > Appearance
+     * choice, or the host sans face for "System". Resolved on every call (the underlying
+     * Typeface is cached) so a font change reaches EditTexts on the next layout pass instead of
+     * staying on whatever face was resolved first.
+     */
     fun inputTypeface(context: Context): Typeface? {
-        inputTypeface?.let { return it }
-        return resolveTypeface("space_grotesk_regular", context)
-                ?.also { inputTypeface = it }
+        val faceName = slockInputFontFaceName() ?: return Typeface.SANS_SERIF
+        return bundledTypeface(faceName, context) ?: Typeface.SANS_SERIF
     }
 
     internal fun useResourceTypefaceFor(fontFamily: String?): Boolean {
@@ -3562,11 +3552,16 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
         val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
         // Task #179: the Settings>Appearance font option can select the host face. That has to be
-        // an explicit branch — the `else -> null` fallthrough below lands on inputTypeface(),
-        // which is Space Grotesk, so an unknown name would silently look like a bundled font.
+        // an explicit branch, otherwise "system" would fall through to the unknown-name path.
         if (fontName == "system" || fontName == "sans-serif") {
             return Typeface.SANS_SERIF
         }
+        // Unknown names follow the user's selected face (see inputTypeface), never a fixed one.
+        return bundledTypeface(fontName, context) ?: inputTypeface(context)
+    }
+
+    /** A bundled face by its Kuikly/resource name, or null when the name is not bundled. */
+    private fun bundledTypeface(fontName: String, context: Context): Typeface? {
         val fontSpec = when (fontName) {
             "SpaceGrotesk-Regular", "space_grotesk_regular" -> SlockFontSpec(R.font.space_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
             "SpaceGrotesk-Medium", "space_grotesk_medium" -> SlockFontSpec(R.font.space_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
@@ -3624,11 +3619,7 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             )
             else -> null
         }
-        return if (fontSpec != null) {
-            cachedTypeface(context.applicationContext, fontSpec)
-        } else {
-            inputTypeface(context)
-        }
+        return fontSpec?.let { cachedTypeface(context.applicationContext, it) }
     }
 
     private fun cachedTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? =
