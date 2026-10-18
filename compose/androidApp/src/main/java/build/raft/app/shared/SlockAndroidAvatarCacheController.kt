@@ -17,10 +17,12 @@ import build.raft.app.data.SlockAvatarNativeStageFinish
 import build.raft.app.data.SlockAvatarNativeStageOpen
 import build.raft.app.data.SlockAvatarNativeStageSink
 import build.raft.app.data.SlockAvatarNativeStagedCandidate
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
@@ -895,6 +897,29 @@ internal class SlockAndroidAvatarStartupGate {
     fun reset(): Unit = scheduled.set(false)
 }
 
+internal class SlockAndroidAvatarStartupScheduler(
+    private val executor: Executor,
+    private val create: () -> Unit,
+    private val publish: () -> Unit,
+    private val onFailure: (Throwable) -> Unit,
+) {
+    private val gate = SlockAndroidAvatarStartupGate()
+
+    fun start(): Boolean {
+        if (!gate.trySchedule()) return false
+        executor.execute {
+            try {
+                create()
+                publish()
+            } catch (error: Throwable) {
+                gate.reset()
+                onFailure(error)
+            }
+        }
+        return true
+    }
+}
+
 internal object SlockAndroidAvatarCacheProcess {
     private val lock = Any()
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -928,7 +953,10 @@ internal object SlockAndroidAvatarCacheProcess {
                 }
             } catch (error: Throwable) {
                 startupGate.reset()
-                SlockAppLog.e("SlockAndroidAvatarCache", "startup recovery failed", error)
+                SlockAppLog.e(
+                    "SlockAndroidAvatarCache",
+                    "startup recovery failed: ${error::class.simpleName}: ${error.message}",
+                )
             }
         }
     }
