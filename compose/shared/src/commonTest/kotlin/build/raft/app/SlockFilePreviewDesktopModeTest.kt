@@ -69,4 +69,30 @@ class SlockFilePreviewDesktopModeTest {
         assertFalse(script.contains("user-scalable=no"), "must not block pinch zoom")
         assertFalse(script.contains("maximum-scale=1"), "must not cap zoom for readability")
     }
+    /**
+     * task #188, caught on device (Android 12, 720x1280): toggling desktop mode only changed Compose
+     * state. `injectedJavaScript` runs at DOCUMENT START, so the document already on screen never got
+     * the new viewport -- `innerWidth` stayed 480 and the page's own timer kept running. The fix reloads
+     * the document, so this locks in that the script is a per-document operation: it must be able to
+     * take over a page that already rendered at the wrong width.
+     */
+    @Test
+    fun theScriptRewritesEveryViewportMetaSoAControlThatAlreadyRanIsFixed() {
+        // Argus's criterion fixture `desktop-mode-with-viewport.html` ships exactly this meta, and it is
+        // parsed AFTER our document-start injection.
+        val script = slockFilePreviewDesktopViewportScript()
+
+        // Not "find the first meta and create one if absent" -- that loses to the page's own meta.
+        assertTrue(script.contains("querySelectorAll"), "must rewrite every viewport meta, not just the first")
+        assertTrue(script.contains("setAttribute"), "must overwrite content in place")
+        assertTrue(
+            script.contains("DOMContentLoaded"),
+            "must re-apply once the page's own meta has been parsed"
+        )
+        assertTrue(
+            script.contains("MutationObserver"),
+            "must survive a meta inserted after load (dynamic fixture)"
+        )
+    }
+
 }

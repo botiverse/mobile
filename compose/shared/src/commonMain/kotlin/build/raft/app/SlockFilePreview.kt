@@ -1710,6 +1710,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
     // within the page, but only for authority/expiry reasons on the SAME attachment.
     var htmlDesktopMode by remember { mutableStateOf(false) }
+    // task #188: set only by the menu action, so the reload effect fires on a user toggle and not on
+    // first composition (where the WebView is already loading the document at the right width).
+    var htmlWideViewPortReloadPending by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -3671,14 +3674,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 if (payload.kind == "html") {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewDesktopModeActionId,
-                        label =
-                            stringResource(
-                                if (htmlDesktopMode) {
-                                    MR.strings.file_preview_desktop_mode_on
-                                } else {
-                                    MR.strings.file_preview_desktop_mode_off
-                                }
-                            ),
+                        // A constant action label: `selected` already renders the checkmark, so
+                        // swapping the text to "Adaptive mode" while desktop mode was ON read like
+                        // "currently adaptive" (caught on device, Android 12).
+                        label = stringResource(MR.strings.file_preview_desktop_mode_off),
                         icon = SlockLucideIconName.Monitor,
                         selected = htmlDesktopMode
                     )
@@ -3775,7 +3774,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
                 // task #188: toggle the HTML desktop viewport. Selection goes through this one
                 // dispatcher; SlockRaftUiMenuItem itself is data-only.
-                SlockFilePreviewDesktopModeActionId -> htmlDesktopMode = !htmlDesktopMode
+                SlockFilePreviewDesktopModeActionId -> {
+                    // The injected viewport only takes effect on a fresh document, so request a reload.
+                    htmlWideViewPortReloadPending = true
+                    htmlDesktopMode = !htmlDesktopMode
+                }
             }
         }
     ) {
@@ -7771,6 +7774,17 @@ internal fun SlockFilePreviewPayloadContent(
             ) {
                 val previewUrl = payload.externalUrl.orEmpty()
                 if (previewUrl.isNotBlank()) {
+                    // task #188: the desktop viewport is injected at DOCUMENT START, so flipping the
+                    // toggle cannot affect the document already on screen -- the WebView has to load
+                    // again. Holding the controller lets us reload instead of rebuilding.
+                    val htmlWideViewPortController = rememberSlockWebViewController()
+                    LaunchedEffect(htmlDesktopMode) {
+                        // Skip the initial composition: the WebView is loading that document already.
+                        if (htmlWideViewPortReloadPending) {
+                            htmlWideViewPortReloadPending = false
+                            htmlWideViewPortController.reload()
+                        }
+                    }
                     SlockSandboxWebView(
                         url = previewUrl,
                         allowScripts = true,
@@ -7790,6 +7804,7 @@ internal fun SlockFilePreviewPayloadContent(
                         // Android ignores `width=` in the viewport meta unless this is on, so the
                         // injected desktop viewport needs it; other platforms have no equivalent flag.
                         useWideViewPort = htmlDesktopMode,
+                        controller = htmlWideViewPortController,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
