@@ -95,4 +95,27 @@ class SlockFilePreviewDesktopModeTest {
         )
     }
 
+    /**
+     * task #188, caught on device: injecting `width=1280, initial-scale=1.0` renders a 1280-wide
+     * layout at 100%, so on a 720px phone only ~480px of it is visible -- desktop mode looked broken
+     * on the default case (pages that ship their own viewport meta). Width alone lets overview mode
+     * fit the whole page, matching a browser's "Request desktop site".
+     *
+     * Zoom is still the user's: the script must never forbid scaling.
+     */
+    @Test
+    fun theViewportPinsWidthWithoutForcingAZoomLevel() {
+        val script = slockFilePreviewDesktopViewportScript()
+
+        assertTrue(script.contains("width=1280"), "must pin the desktop width")
+        assertFalse(
+            script.contains("initial-scale"),
+            "initial-scale would draw 1280 at 100% and show only the left ~480px"
+        )
+        assertFalse(
+            script.contains("user-scalable=no") || script.contains("maximum-scale"),
+            "zoom must stay available to the user"
+        )
+    }
+
 }

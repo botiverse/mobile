@@ -7232,14 +7232,22 @@ internal const val SlockFilePreviewDesktopViewportWidth = 1280
  *     been parsed yet, so creating one gets overwritten a moment later;
  *  2. pages may insert their viewport meta dynamically.
  * So this rewrites EVERY existing viewport meta, re-runs on DOMContentLoaded, and observes later
- * insertions. `user-scalable=no` / `maximum-scale` are never set: desktop mode changes layout, not
- * the user's ability to zoom.
+ * insertions.
  */
 internal fun slockFilePreviewDesktopViewportScript(
-    width: Int = SlockFilePreviewDesktopViewportWidth,
-    initialScale: Float = 1f
+    width: Int = SlockFilePreviewDesktopViewportWidth
 ): String {
-    val content = "width=$width, initial-scale=$initialScale"
+    // Width ONLY -- deliberately no `initial-scale`.
+    //
+    // With `initial-scale=1.0` a 1280-wide layout is drawn at 100%, so on a 720px-wide phone only
+    // about 480px of it is visible: desktop mode looked broken on exactly the default case, pages
+    // that ship their own viewport meta. Omitting initial-scale lets the WebView's overview mode fit
+    // the whole 1280 to the screen, which is what a browser's "Request desktop site" does, and keeps
+    // a/b/c visually consistent.
+    //
+    // `user-scalable=no` / `maximum-scale` are still never set: desktop mode changes layout, not
+    // the user's ability to zoom.
+    val content = "width=$width"
     return "(function(){" +
         "var c='$content';" +
         "function apply(){" +
