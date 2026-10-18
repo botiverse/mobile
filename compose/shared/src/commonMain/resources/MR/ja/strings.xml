@@ -1181,6 +1181,8 @@
     <string name="file_preview_markdown_open_with_hint">このファイルを確認するには、システムビューアーで開いてください。</string>
     <string name="file_preview_truncated_open_with_hint">プレビューは省略されています。ファイル全体はシステムビューアーで開いてください。</string>
     <string name="file_preview_error_hidden">ファイルは非表示です: %1$s</string>
+    <string name="file_preview_desktop_mode_off">デスクトップ表示</string>
+    <string name="file_preview_desktop_mode_on">自動調整表示</string>
     <string name="tasks_title">タスク</string>
     <string name="tasks_header_channel_tasks">チャンネルのタスク</string>
     <string name="tasks_header_channel_tasks_count">チャンネルのタスク %1$d 件</string>

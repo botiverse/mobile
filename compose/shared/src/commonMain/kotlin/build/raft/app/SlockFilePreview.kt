@@ -568,6 +568,9 @@ internal object SlockImageEditGroupReconcile {
         else copy(rejects = rejects + reason)
 }
 private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
+
+/** task #188: toggles the HTML attachment's desktop viewport. */
+internal const val SlockFilePreviewDesktopModeActionId = "html-desktop-mode"
 private const val SlockFilePreviewSaveToFilesActionId = "save-to-files"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -1700,6 +1703,9 @@ internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(Authentic
 
 @Composable
 private fun SlockFilePreviewStandalonePageContent() {
+    // task #188: per-open view state, deliberately NOT persisted -- every preview starts adaptive,
+    // matching browser behaviour and avoiding "the text shrank" on first open.
+    var htmlDesktopMode by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -3657,6 +3663,24 @@ private fun SlockFilePreviewStandalonePageContent() {
             if (composerImageEditMode) {
                 emptyList()
             } else listOfNotNull(
+                // task #188: only HTML attachments get a desktop-mode toggle.
+                if (payload.kind == "html") {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewDesktopModeActionId,
+                        label =
+                            stringResource(
+                                if (htmlDesktopMode) {
+                                    MR.strings.file_preview_desktop_mode_on
+                                } else {
+                                    MR.strings.file_preview_desktop_mode_off
+                                }
+                            ),
+                        icon = SlockLucideIconName.Monitor,
+                        onSelect = { htmlDesktopMode = !htmlDesktopMode }
+                    )
+                } else {
+                    null
+                },
                 if (photosActionState != SlockFilePreviewPhotosActionState.Hidden) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewSaveToPhotosActionId,
@@ -3767,6 +3791,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewPayloadContent(
                     payload = payload,
                     onOpenUrl = {},
+                    htmlDesktopMode = htmlDesktopMode,
                     onExternalBrowserOpen =
                         if (
                             payload.source == SlockFilePreviewSourceThreadAttachment &&
@@ -7187,6 +7212,29 @@ internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: St
         fileName.endsWith(".markdown", ignoreCase = true)
 }
 
+/** Desktop-mode render width in CSS pixels, matching a common desktop browser viewport. */
+internal const val SlockFilePreviewDesktopViewportWidth = 1280
+
+/**
+ * task #188: the script that makes an HTML attachment render as the desktop layout.
+ *
+ * A WebView sizes the page from the page's own viewport meta, so "desktop mode" is exactly what a
+ * browser's "Request desktop site" does: pin a desktop-width viewport. Injecting this at
+ * document-start works on all three platforms through the existing `injectedJavaScript` channel,
+ * so there is no per-platform native code.
+ *
+ * The device width is pinned rather than the zoom level because the page's responsive breakpoints
+ * are what actually pick the wide layout; shrinking it afterwards would show the narrow one.
+ */
+internal fun slockFilePreviewDesktopViewportScript(
+    width: Int = SlockFilePreviewDesktopViewportWidth,
+    initialScale: Float = 1f
+): String =
+    "(function(){var m=document.querySelector('meta[name=viewport]');" +
+        "if(!m){m=document.createElement('meta');m.name='viewport';" +
+        "document.head.appendChild(m);}" +
+        "m.setAttribute('content','width=$width, initial-scale=$initialScale');})();"
+
 internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     val normalizedName = fileName.substringBefore('?').substringBefore('#')
@@ -7514,6 +7562,8 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
 internal fun SlockFilePreviewPayloadContent(
     payload: SlockFilePreviewPayload,
     onOpenUrl: (String) -> Unit,
+    /** task #188: HTML attachments render as the desktop layout when true. */
+    htmlDesktopMode: Boolean = false,
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
@@ -7701,6 +7751,13 @@ internal fun SlockFilePreviewPayloadContent(
                     SlockSandboxWebView(
                         url = previewUrl,
                         allowScripts = true,
+                        // task #188: desktop mode pins a desktop-width viewport at document start, so
+                        // the page's own responsive breakpoints pick the wide layout -- the same thing
+                        // a browser's "Request desktop site" does. Injection is the shared mechanism:
+                        // all three platforms already route `injectedJavaScript` (iOS via
+                        // WKUserScript at document start). Off -> empty, i.e. the page's own meta.
+                        injectedJavaScript =
+                            if (htmlDesktopMode) slockFilePreviewDesktopViewportScript() else "",
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

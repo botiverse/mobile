@@ -1188,6 +1188,8 @@
     <string name="file_preview_markdown_open_with_hint">Open with the system viewer to inspect this file.</string>
     <string name="file_preview_truncated_open_with_hint">Preview truncated. Open with the system viewer for the full file.</string>
     <string name="file_preview_error_hidden">File hidden: %1$s</string>
+    <string name="file_preview_desktop_mode_off">Desktop mode</string>
+    <string name="file_preview_desktop_mode_on">Adaptive mode</string>
     <string name="tasks_title">Tasks</string>
     <string name="tasks_header_channel_tasks">Channel tasks</string>
     <string name="tasks_header_channel_tasks_count">%1$d channel tasks</string>
