@@ -578,23 +578,41 @@ jobs:
             pids="$pids $!"
             i=$((i+1))
           done < "$IOS_CAPTURE_TEMP/simulator-udids"
-          for pid in $pids; do wait "$pid"; done
+          # Collect every shard's exit status before failing, so all shard logs
+          # are still printed when one shard dies.
+          shard_errors=0
+          for pid in $pids; do wait "$pid" || shard_errors=$((shard_errors+1)); done
           # Shard order restored for log readability; per-case lines unchanged.
           i=0
           while IFS= read -r udid; do
             sed "s/^/[s$i] /" "$IOS_CAPTURE_TEMP/shard-log.$i"
             i=$((i+1))
           done < "$IOS_CAPTURE_TEMP/simulator-udids"
+          if [ "$shard_errors" != 0 ]; then
+            echo "::error::$shard_errors iOS capture shard(s) exited nonzero"
+            exit 1
+          fi
           captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
-          failed=0; total=0
-          for f in "$IOS_CAPTURE_TEMP"/shard-result.*; do
-            [ -f "$f" ] || continue
+          shard_count=$(wc -l < "$IOS_CAPTURE_TEMP/simulator-udids" | tr -d ' ')
+          expected=$(wc -l < "$IOS_CAPTURE_TEMP/ios-cases.tsv" | tr -d ' ')
+          results=0; ok=0; failed=0; total=0
+          while IFS= read -r udid; do
+            f="$IOS_CAPTURE_TEMP/shard-result.$udid"
+            [ -f "$f" ] || { echo "::error::missing shard result for $udid"; exit 1; }
             v_c=$(grep -o 'captured=[0-9]*' "$f" | cut -d= -f2)
             v_f=$(grep -o 'failed=[0-9]*' "$f" | cut -d= -f2)
             v_t=$(grep -o 'total=[0-9]*' "$f" | cut -d= -f2)
-            failed=$((failed + v_f)); total=$((total + v_t))
-          done
+            results=$((results + 1))
+            ok=$((ok + v_c)); failed=$((failed + v_f)); total=$((total + v_t))
+          done < "$IOS_CAPTURE_TEMP/simulator-udids"
           echo "captured=$captured failed=$failed total=$total"
+          # Per-case READY/renderer failures stay warnings (legacy behaviour);
+          # a shard that lost cases or PNGs is a capture-infrastructure failure.
+          if [ "$results" != "$shard_count" ] || [ "$total" != "$expected" ] \
+            || [ "$ok" != "$captured" ] || [ $((ok + failed)) != "$total" ]; then
+            echo "::error::iOS shard tallies inconsistent: shards=$results/$shard_count total=$total/$expected ok=$ok png=$captured failed=$failed"
+            exit 1
+          fi
           cp "$IOS_CAPTURE_TEMP/ios-manifest.json" visual-testing-results/ios-manifest.json
           # Per-case metadata alongside each PNG, mirroring the android
           # provider's <caseId>.metadata.json so the CLI panels don't show n/a.

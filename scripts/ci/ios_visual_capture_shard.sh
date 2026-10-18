@@ -10,7 +10,10 @@
 # Per-case artifacts land in <out-dir> (PNGs) so shards can write disjoint
 # files into a shared results tree without collision; diagnostics go to
 # <out-dir>/../ios-diagnostics when the caller passes visual-testing-results/ios.
-set -u
+# -e: an unexpected simctl/screenshot failure must fail the shard (and the
+# job), as it did in the legacy inline step; expected per-case failures are
+# counted explicitly below. No pipefail: `find | head -1` may SIGPIPE find.
+set -eu
 udid=$1
 cases_tsv=$2
 out_dir=$3
@@ -18,7 +21,7 @@ diag_dir=$(dirname "$out_dir")/ios-diagnostics
 
 app=$(find "$IOS_CAPTURE_TEMP/DerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
 test -n "$app" || { echo "no built .app under $IOS_CAPTURE_TEMP/DerivedData" >&2; exit 1; }
-bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+bundle_id=$("${PLISTBUDDY:-/usr/libexec/PlistBuddy}" -c 'Print CFBundleIdentifier' "$app/Info.plist")
 echo "shard udid=$udid app=$app bundle_id=$bundle_id"
 xcrun simctl install "$udid" "$app"
 

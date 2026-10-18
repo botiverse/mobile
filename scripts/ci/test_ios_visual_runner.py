@@ -134,5 +134,56 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(self.neighbor.exists())
 
 
+SHARD_SCRIPT = Path(__file__).with_name("ios_visual_capture_shard.sh").resolve()
+SHARD_FAKE = '''#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+if args[:2] == ['simctl', 'launch']:
+    print('SLOCK_VISUAL_FIXTURE_READY page=' + os.environ['SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE'], flush=True)
+elif args[:3] == ['simctl', 'io', args[2] if len(args) > 2 else ''] and 'screenshot' in args:
+    if os.environ.get('FAIL_SCREENSHOT'):
+        sys.exit(7)
+    open(args[-1], 'wb').write(b'png')
+'''
+
+
+class ShardCaptureTest(unittest.TestCase):
+    """The shard loop must fail closed on unexpected simctl failures."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        for name, body in (("xcrun", SHARD_FAKE), ("plistbuddy", "#!/bin/sh\necho test.bundle\n")):
+            tool = self.root / name
+            tool.write_text(body)
+            tool.chmod(0o755)
+        self.temp = self.root / "capture"
+        (self.temp / "DerivedData/Build/Products/Debug-iphonesimulator/App.app").mkdir(parents=True)
+        self.cases = self.temp / "ios-cases.0.tsv"
+        self.cases.write_text("case-a\tPageA\t{}\n")
+        self.out = self.root / "results/ios"
+        self.env = dict(os.environ, IOS_CAPTURE_TEMP=str(self.temp),
+                        PLISTBUDDY=str(self.root / "plistbuddy"),
+                        PATH=str(self.root) + os.pathsep + os.environ["PATH"])
+
+    def run_shard(self):
+        return subprocess.run(["bash", str(SHARD_SCRIPT), UDID, str(self.cases), str(self.out)],
+                              env=self.env, capture_output=True, text=True)
+
+    def test_successful_case_writes_png_and_tally(self):
+        result = self.run_shard()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertTrue((self.out / "case-a.png").exists())
+        tally = (self.temp / f"shard-result.{UDID}").read_text()
+        self.assertEqual("captured=1\nfailed=0\ntotal=1\n", tally)
+
+    def test_screenshot_failure_fails_shard_without_tally(self):
+        self.env["FAIL_SCREENSHOT"] = "1"
+        result = self.run_shard()
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse((self.temp / f"shard-result.{UDID}").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
