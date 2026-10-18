@@ -357,10 +357,12 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         ) {
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
-            val remotePushActive = isRemotePushActive(appContext, sessionStore, serverId)
+            // notification:push reaches every server's events over this one socket: decide by the
+            // event's server, not the socket's selected [serverId].
+            val remotePushActive = isRemotePushActive(appContext, sessionStore, event)
             SlockAppLog.w(
                 LOG_TAG,
-                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground remote_push_active=$remotePushActive"
+                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground eventServerId=${event.serverId.value} remote_push_active=$remotePushActive"
             )
             if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)) {
                 SlockAppLog.w(
@@ -398,11 +400,11 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         private suspend fun isRemotePushActive(
             appContext: Context,
             sessionStore: SlockAuthSessionStore,
-            serverId: ServerId
+            event: NotificationPushReceived
         ): Boolean =
             try {
                 SlockRealtimeAppScopePolicy.isRemotePushActive(
-                    serverId = serverId,
+                    serverId = event.serverId,
                     environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
                     currentUserId = sessionStore.readSession()?.user?.id,
                     installationId = SlockAndroidPushRegistrationBridge.installationIdOrNull(),

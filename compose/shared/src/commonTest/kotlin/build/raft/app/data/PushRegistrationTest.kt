@@ -429,6 +429,26 @@ class PushRegistrationTest {
     }
 
     @Test
+    fun answerRequestedBeforeANewRegistrationSettledIsDropped() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm(token = "fid-one"))
+        clock.advanceBeyondRequestSpacing()
+
+        // A periodic request is in flight when a new FID registers and settles.
+        api.onDeliveryStatus = {
+            api.onDeliveryStatus = null
+            runBlocking { assertTrue(coordinator.registerFcm(token = "fid-two")) }
+        }
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "periodic"))
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+    }
+
+    @Test
     fun deliveryStatusRequestsAreSpacedUnlessNoAnswerExists() = runBlocking {
         val clock = TestClock()
         val store = InMemorySlockKeyValueStore()

@@ -441,6 +441,7 @@ internal class SlockPushRegistrationCoordinator(
             infoLogger("delivery_status_deferred reason=shared_runtime_unavailable trigger=$reason")
             return false
         }
+        var admittedRegistration: String? = null
         val admitted = mutex.withLock {
             if (!registrationSettledFor(userId)) {
                 infoLogger("delivery_status_deferred reason=registration_not_settled trigger=$reason")
@@ -455,11 +456,12 @@ internal class SlockPushRegistrationCoordinator(
             }
             lastDeliveryStatusRequestAtMillis = now
             deliveryStatusRequestInFlight = true
+            admittedRegistration = store.getString(LAST_REGISTERED_PAYLOAD_KEY)
             true
         }
         if (!admitted) return false
         try {
-            return requestDeliveryStatus(api, reason, environmentProvider, environmentId, userId, installationId)
+            return requestDeliveryStatus(api, reason, environmentProvider, environmentId, userId, installationId, admittedRegistration)
         } finally {
             deliveryStatusRequestInFlight = false
         }
@@ -471,7 +473,8 @@ internal class SlockPushRegistrationCoordinator(
         environmentProvider: () -> String?,
         environmentId: String,
         userId: String,
-        installationId: String
+        installationId: String,
+        admittedRegistration: String?
     ): Boolean {
         val response = api.deliveryStatus(installationId)
         val body = response.bodyText
@@ -511,6 +514,8 @@ internal class SlockPushRegistrationCoordinator(
                 registrationSuspended ||
                 current != userId ||
                 !registrationSettledFor(userId) ||
+                // A new registration (FID, topic, version) settled meanwhile: this answer predates it.
+                store.getString(LAST_REGISTERED_PAYLOAD_KEY) != admittedRegistration ||
                 currentInstallationId() != installationId ||
                 normalizedPushEnvironmentId(environmentProvider()) != environmentId
             ) {
