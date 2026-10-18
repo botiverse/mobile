@@ -272,3 +272,38 @@ internal enum RaftIosShellWindowContract {
         )
     }
 }
+
+/// ObjC-facing entry point for `HRBridgeModule`: the shared server-switch flow
+/// ships the document-shell flag + route owner triple inside `pageData`
+/// (`slockDocumentShell`, `slockRouteEnvironmentId`, `slockRouteAccountId`,
+/// `slockRouteServerId`). When the flag is set, the switch targets a shell
+/// window keyed by that owner instead of pushing a page in the current scene —
+/// the same contract Android implements via document-task identity.
+@objcMembers
+final class RaftIosShellWindowBridge: NSObject {
+    /// Returns true when the owner is valid and a scene activation request was
+    /// dispatched (caller must not open the page in the current scene); false
+    /// when the owner is missing/invalid and the caller should fall back to
+    /// opening the page locally.
+    static func activateShell(
+        environmentId: String?,
+        accountId: String?,
+        serverId: String?,
+        source: String
+    ) -> Bool {
+        guard let owner = RaftIosShellRouteOwner(
+            environmentId: environmentId ?? "",
+            accountId: accountId ?? "",
+            serverId: serverId ?? ""
+        ).normalizedOrNull() else {
+            SlockIosDiagnosticsRecord(
+                "warn",
+                "RaftIosShellWindow",
+                "document_shell_rejected reason=invalid_owner source=\(source)"
+            )
+            return false
+        }
+        RaftIosShellWindowContract.activateShell(for: owner, source: source)
+        return true
+    }
+}

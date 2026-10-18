@@ -5887,6 +5887,22 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 
 - (void)slock_openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData replaceCurrent:(BOOL)replaceCurrent {
     SlockBridgeRunOnMain(^{
+        // task #473: a server switch marked `slockDocumentShell` targets a shell
+        // window keyed by the route owner triple instead of a page in this
+        // scene. On iPad this activates/reuses the matching scene; on a
+        // single-scene surface (iPhone) the activation resolves to the current
+        // scene, and the shared side then opens the target page via the normal
+        // render path once the (re)activated shell loads.
+        if (SlockBridgeBool(pageData[@"slockDocumentShell"]) &&
+            [RaftIosShellWindowBridge activateShellWithEnvironmentId:SlockBridgeString(pageData[@"slockRouteEnvironmentId"])
+                                                         accountId:SlockBridgeString(pageData[@"slockRouteAccountId"])
+                                                          serverId:SlockBridgeString(pageData[@"slockRouteServerId"])
+                                                            source:@"server_switch"]) {
+            return;
+        }
+        if (SlockBridgeBool(pageData[@"slockDocumentShell"])) {
+            SlockDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
+        }
         UIViewController *controller = [self slock_currentViewController];
         KuiklyRenderViewController *renderViewController =
             [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:pageData ?: @{}];
