@@ -1,0 +1,56 @@
+name: Knowledge-base index
+
+# The KB index (docs/kb/README.md) is prose, not a generated artifact, so nothing
+# notices when it drifts from the files on disk.  Two failure modes matter and
+# they fail in opposite directions:
+#
+#   * an article that exists but has no row  -> ships reachable only by link;
+#   * a row pointing at a deleted article    -> keeps asserting something exists
+#     long after it stopped being true.  This side survives reviews because
+#     nobody re-reads the table after a deletion.
+#
+# This runs for every pull request rather than only on docs/kb changes: an
+# article can be added in one PR and indexed in another, and the drift is only
+# visible when the whole tree is checked.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kb-index:
+    name: KB index invariant
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact change
+        uses: actions/checkout@v5
+        with:
+          # Bind the check to the submitted PR head, not GitHub's synthetic
+          # merge ref. Push/manual runs use the event SHA directly.
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Assert exact checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_SHA" "$actual"
+          test "$actual" = "$EXPECTED_SHA"
+
+      - name: Run checker self-test and live index check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/check_kb_index.py --self-test
+          python3 scripts/ci/check_kb_index.py
