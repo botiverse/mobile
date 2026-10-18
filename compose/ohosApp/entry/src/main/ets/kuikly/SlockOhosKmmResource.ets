@@ -35,7 +35,7 @@ let slockOhosAppLocaleTag: string | null = null;
 let slockOhosOverrideResourceManager: resourceManager.ResourceManager | null = null;
 
 /**
- * Normalizes an incoming app-locale tag for `resourceManager.Configuration.language`.
+ * Normalizes an incoming app-locale tag for `resourceManager.Configuration.locale`.
  * Empty/`system` clears the override (follow the system locale); underscores
  * become hyphens so both `zh_CN` and `zh-CN` shapes are accepted. Returns
  * null when no override should apply.
@@ -69,10 +69,10 @@ export class SlockOhosAppLocaleServiceImpl implements SlockOhosAppLocaleService 
       return;
     }
     try {
-      const configuration: resourceManager.Configuration = {
-        deviceType: resourceManager.DeviceType.DEVICE_TYPE_PHONE,
-        language: normalized
-      };
+      // Configuration is a class (no object literal): start from the current
+      // device configuration and override only the locale field.
+      const configuration = OhosResourceServiceImpl.context.resourceManager.getConfigurationSync();
+      configuration.locale = normalized;
       slockOhosOverrideResourceManager =
         OhosResourceServiceImpl.context.resourceManager.getOverrideResourceManager(configuration);
       SlockOhosDiagnostics.record(KMM_RESOURCE_LOG_TAG, `app_locale set to ${normalized}`);
