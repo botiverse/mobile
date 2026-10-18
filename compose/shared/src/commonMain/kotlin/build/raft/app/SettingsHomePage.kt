@@ -1207,10 +1207,10 @@ private val settingsPageVisualPayload: KuiklySharedSettingsPayload
     }
 
 private val bottomTabBarSmokeItems = listOf(
-    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = true),
-    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig),
-    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users),
-    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
+    SlockBottomTabItemPayload("home", "Home", SlockLucideIconName.House, selected = true),
+    SlockBottomTabItemPayload("tasks", "Tasks", SlockLucideIconName.SquareCheckBig),
+    SlockBottomTabItemPayload("members", "Members", SlockLucideIconName.Users),
+    SlockBottomTabItemPayload("settings", "Settings", SlockLucideIconName.Settings)
 )
 
 /** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
@@ -12378,7 +12378,8 @@ private fun SettingsServerDeleteConfirmationDialog(
                         Modifier
                             .fillMaxWidth()
                             .slockRaftOverlaySurface(SlockRadius.Dialog)
-                            .padding(24.dp),
+                            // raft-ui Dialog: p-5 insets.
+                            .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Row(
@@ -12386,14 +12387,14 @@ private fun SettingsServerDeleteConfirmationDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // raft-ui Dialog title: 17/22 bold in source case (web
+                        // "Delete Server"), with the ghost 32dp close.
                         Text(
-                            stringResource(MR.strings.settings_delete_server),
+                            stringResource(MR.strings.settings_server_action_delete),
                             style =
-                                SlockType.PageTitle.copy(
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    color = SlockColor.TextBlack
-                                ),
+                                SlockType.PageTitle
+                                    .copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack)
+                                    .withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
@@ -12403,7 +12404,9 @@ private fun SettingsServerDeleteConfirmationDialog(
                             enabled = !deleteBusy,
                             iconName = SlockLucideIconName.X,
                             onClick = onDismiss,
-                            size = 34.dp,
+                            backgroundColor = Color.Transparent,
+                            size = 32.dp,
+                            iconSize = 18.dp,
                             shadowOffset = 3.dp
                         )
                     }

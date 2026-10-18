@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftActive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -218,11 +219,19 @@ internal fun SlockModalDismissBarrier(
     dismissEnabled: Boolean = true
 ) {
     val currentOnDismiss = rememberUpdatedState(onDismiss)
+    // raft-ui dialogs dim with the `--layer-backdrop` token (black 65% light /
+    // 60% dark); lighter, sheet-style veils keep their own alpha.
+    val veil =
+        if (slockRaftActive() && overlayAlpha >= 0.5f) {
+            SlockColor.Backdrop
+        } else {
+            SlockColor.TextBlack.copy(alpha = overlayAlpha)
+        }
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
+                .background(veil)
                 .slockNativeDispatchCapture()
                 .slockModalDismissPointerBarrier(dismissEnabled) {
                     currentOnDismiss.value.invoke()

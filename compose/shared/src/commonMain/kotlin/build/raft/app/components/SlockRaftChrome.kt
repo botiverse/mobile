@@ -79,6 +79,9 @@ internal data class SlockRaftButtonChrome(
     val pressedOverlay: Color
 )
 
+/** True inside a dialog footer row, where raft-ui renders the paper secondary as ghost. */
+internal val LocalSlockRaftDialogFooter = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 /**
  * Maps the brutal fill a caller passes onto the raft-ui 0.6.0 button variant.
  * raft-ui's `primary` and `accent` both render the pink accent sticker (yellow is for

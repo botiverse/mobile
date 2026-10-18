@@ -490,12 +490,14 @@ internal fun SlockDialogFooter(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
+    CompositionLocalProvider(build.raft.app.components.LocalSlockRaftDialogFooter provides true) {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
 }
 
 @Composable

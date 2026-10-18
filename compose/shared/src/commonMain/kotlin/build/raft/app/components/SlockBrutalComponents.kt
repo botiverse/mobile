@@ -1710,7 +1710,16 @@ private fun SlockRaftActionButton(
     textStyle: TextStyle,
     trailingContent: (@Composable () -> Unit)?
 ) {
-    val chrome = slockRaftButtonChrome(backgroundColor)
+    // raft-ui dialog footers pair the primary sticker with a ghost Cancel; a
+    // paper (white) button inside SlockDialogFooter is that ghost secondary.
+    val chrome =
+        slockRaftButtonChrome(
+            if (LocalSlockRaftDialogFooter.current && backgroundColor == SlockColor.SurfaceWhite) {
+                Color.Transparent
+            } else {
+                backgroundColor
+            }
+        )
     var pressed by remember { mutableStateOf(false) }
     val height: Dp
     val horizontalPadding: Dp
