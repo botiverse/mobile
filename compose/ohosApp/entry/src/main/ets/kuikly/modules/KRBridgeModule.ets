@@ -27,7 +27,19 @@ import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
   normalizeSlockOhosImagePickerFileName,
+  SLOCK_OHOS_ATTACHMENT_CACHE_DIR_NAME,
+  SLOCK_OHOS_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME,
 } from '../SlockOhosPickedAttachmentCache';
+import {
+  clearSlockOhosAttachmentStaging,
+  clearSlockOhosTemporaryFiles,
+  formatSlockOhosStorageSizeLabel,
+  measureSlockOhosStorage,
+  SlockOhosStorageRoots,
+  slockOhosStorageRoots,
+  SlockOhosStorageSnapshot,
+  slockOhosStorageTotalBytes,
+} from '../SlockOhosStorageUsage';
 import { slockOhosHandsFeedbackAttachmentPaths } from '../SlockOhosHandsFeedbackAttachments';
 import {
   discardSlockOhosFeedbackDraftAttachments,
@@ -124,7 +136,6 @@ class SlockThreadImageCompressionCancelledError extends Error {
   }
 }
 
-const SLOCK_THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = 'slock-picked-thread-attachments';
 const SLOCK_THREAD_IMAGE_COMPRESSION_SOURCE = 'composer_image_compressor';
 const SLOCK_THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH = 128;
 const SLOCK_THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH = 256;
@@ -863,7 +874,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         callback({ "status": "failed", "message": "Unable to download attachment" });
         return;
       }
-      const cacheDir = `${context.cacheDir}/slock-attachments`;
+      const cacheDir = `${context.cacheDir}/${SLOCK_OHOS_ATTACHMENT_CACHE_DIR_NAME}`;
       ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
       const path = privateCommitted
@@ -1264,7 +1275,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     this.activePhotoExportGeneration = exportGeneration;
     const context = getContext(this) as common.UIAbilityContext;
     try {
-      const cacheDir = `${context.cacheDir}/slock-attachments`;
+      const cacheDir = `${context.cacheDir}/${SLOCK_OHOS_ATTACHMENT_CACHE_DIR_NAME}`;
       ensureSlockOhosAttachmentCacheDirectory(cacheDir);
       this.cleanupAttachmentCache(cacheDir);
       const path = `${cacheDir}/${ownerKey}-${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, claimedMimeType)}`;
@@ -1752,11 +1763,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
         case "loadStorage": {
-          callback(this.loadStorageCapability());
+          callback(await this.loadStorageCapability());
           return;
         }
         case "clearStorage": {
-          callback(this.clearStorageCapability(records));
+          callback(await this.clearStorageCapability(records));
           return;
         }
         case "loadAbout": {
@@ -1859,46 +1870,99 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private loadStorageCapability(feedback: string = ""): Record<string, Object> {
+  private storageRoots(): SlockOhosStorageRoots {
+    const context = getContext(this) as common.UIAbilityContext;
+    return slockOhosStorageRoots(context.filesDir, context.cacheDir);
+  }
+
+  private async loadStorageCapability(feedback: string = ""): Promise<Record<string, Object>> {
+    // Directory walks use the promise-based @ohos.file.fs API, so the I/O runs off the UI thread.
+    return this.storagePayload(await measureSlockOhosStorage(this.storageRoots()), feedback);
+  }
+
+  // Row details and feedback strings must stay byte-equal to Android (SlockKuiklyActivity
+  // loadSettingsStorage/clearSettingsStorage): the shared UI localizes them by exact match.
+  private storagePayload(snapshot: SlockOhosStorageSnapshot, feedback: string): Record<string, Object> {
     const rows: Array<OhosStorageRowPayload> = [
       {
         target: "database",
         title: "Local database",
-        detail: "OHOS storage usage is not exposed through the host capability yet.",
-        sizeLabel: "--",
+        detail: "Messages, task metadata, and server snapshots stored on this device.",
+        sizeLabel: formatSlockOhosStorageSizeLabel(snapshot.localDatabaseBytes),
         clearEnabled: false
       },
       {
         target: "imageCache",
         title: "Image cache",
-        detail: "Image cache clearing is not available on OHOS yet.",
-        sizeLabel: "--",
+        detail: "Downloaded image previews kept for faster viewing.",
+        sizeLabel: formatSlockOhosStorageSizeLabel(snapshot.imageCacheBytes),
+        // No OHOS image disk cache exists (in-memory PixelMap cache only); nothing to clear.
         clearEnabled: false
+      },
+      {
+        target: "attachmentDownloads",
+        title: "Attachment staging",
+        detail: "Temporary data from active or failed downloads. Completed files remain in Downloads.",
+        sizeLabel: formatSlockOhosStorageSizeLabel(snapshot.attachmentDownloadBytes),
+        clearEnabled: true
       },
       {
         target: "temporaryAndLogs",
         title: "Temporary files and logs",
-        detail: "Use Diagnostics clear logs for the local diagnostics buffer.",
-        sizeLabel: "--",
-        clearEnabled: false
+        detail: "Debug logs and temporary files generated by the app.",
+        sizeLabel: formatSlockOhosStorageSizeLabel(snapshot.temporaryAndLogBytes),
+        clearEnabled: true
       }
     ];
     return {
       "status": "ok",
-      "totalSizeLabel": "Unavailable",
+      "totalSizeLabel": formatSlockOhosStorageSizeLabel(slockOhosStorageTotalBytes(snapshot)),
       "feedback": feedback,
       "rows": rows
     };
   }
 
-  private clearStorageCapability(records: Record<string, Object>): Record<string, Object> {
-    const target = records["target"] as string;
-    SlockOhosDiagnostics.record("Settings", `storage_clear_unsupported target=${target}`);
-    return {
-      "status": "error",
-      "code": "settings_storage_clear_unsupported",
-      "message": "Storage clearing is not available on OHOS yet."
-    };
+  private async clearStorageCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
+    const target = (records["target"] as string | undefined) ?? "";
+    const roots = this.storageRoots();
+    let feedback = "";
+    switch (target) {
+      case "attachmentDownloads": {
+        // Fence: never pull files out from under an in-flight download/export/photo save.
+        if (this.activePrivateDownloadId.length > 0 || this.privateExportActive ||
+          this.activePhotoExportDownloadId.length > 0) {
+          SlockOhosDiagnostics.record("Settings", `storage_clear_busy target=${target}`);
+          return { "status": "error", "code": "settings_storage_clear_failed" };
+        }
+        if (!(await clearSlockOhosAttachmentStaging(roots))) {
+          SlockOhosDiagnostics.record("Settings", `storage_clear_failed target=${target}`);
+          return { "status": "error", "code": "settings_storage_clear_failed" };
+        }
+        feedback = "Attachment staging cleared. Completed Downloads were not removed.";
+        break;
+      }
+      case "temporaryAndLogs": {
+        if (this.threadImageCompressionOperations.size > 0 || this.feedbackDiagnosticsUploads.size > 0) {
+          SlockOhosDiagnostics.record("Settings", `storage_clear_busy target=${target}`);
+          return { "status": "error", "code": "settings_storage_clear_failed" };
+        }
+        const temporaryCleared = await clearSlockOhosTemporaryFiles(roots);
+        // Owns the open current-launch log: clears the ring + files, then starts a fresh session.
+        SlockOhosAppDiagnostics.clearLocalFiles(getContext(this) as common.UIAbilityContext);
+        if (!temporaryCleared) {
+          SlockOhosDiagnostics.record("Settings", `storage_clear_failed target=${target}`);
+          return { "status": "error", "code": "settings_storage_clear_failed" };
+        }
+        feedback = "Temporary files and diagnostics logs cleared.";
+        break;
+      }
+      default: {
+        SlockOhosDiagnostics.record("Settings", `storage_clear_unsupported target=${target}`);
+        return { "status": "error", "code": "settings_storage_clear_unsupported" };
+      }
+    }
+    SlockOhosDiagnostics.record("Settings", `storage_clear target=${target}`);
+    return this.loadStorageCapability(feedback);
   }
 
   private async loadAboutCapability(): Promise<Record<string, Object>> {
@@ -2415,7 +2479,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
       const context = getContext(this) as common.UIAbilityContext;
-      const outputDirectory = `${context.cacheDir}/${SLOCK_THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME}`;
+      const outputDirectory = `${context.cacheDir}/${SLOCK_OHOS_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME}`;
       // UUID-backed names avoid collisions across remounted renderers and make every output an
       // operation-owned cache object.  Encoding first targets the sibling .part; a same-directory
       // rename publishes the final .jpg atomically.
@@ -2772,7 +2836,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const files: Array<OhosPickedThreadAttachment> = [];
     const errors: Array<Record<string, Object>> = [];
     const context = getContext(this) as common.UIAbilityContext;
-    const cacheDir = `${context.cacheDir}/slock-attachments`;
+    const cacheDir = `${context.cacheDir}/${SLOCK_OHOS_ATTACHMENT_CACHE_DIR_NAME}`;
     if (compressImages) {
       await this.ensureThreadImageCompressionCacheDirectory(cacheDir);
     } else {

@@ -1,6 +1,11 @@
 import { fileUri } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
 
+/** cacheDir child holding downloaded/opened attachments and picked composer files. */
+export const SLOCK_OHOS_ATTACHMENT_CACHE_DIR_NAME: string = 'slock-attachments';
+/** cacheDir child holding composer image compression outputs. */
+export const SLOCK_OHOS_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME: string = 'slock-picked-thread-attachments';
+
 export interface SlockOhosAttachmentCacheDirectoryBackend {
   createDirectory(path: string): void;
   isDirectory(path: string): boolean;
