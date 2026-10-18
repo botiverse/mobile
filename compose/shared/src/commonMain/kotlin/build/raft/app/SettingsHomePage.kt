@@ -269,6 +269,7 @@ import build.raft.app.data.SlockShellOpenOverlay
 import build.raft.app.data.SlockShellOverlayResult
 import build.raft.app.data.SlockShellOverlayItem
 import build.raft.app.data.slockShellShouldDropOverlayRequest
+import build.raft.app.data.shellOverlayRequestIdOrNull
 import build.raft.app.data.toSlockShellOverlayRequestOrNull
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.attemptSlockDatabaseLaunch
@@ -1745,7 +1746,6 @@ internal fun appShellBottomTabsVisible(
         // behind them so returning does not recreate it after the root is already visible.
         "home" ->
             selectedHomeDestination == null ||
-                retainedHomeSecondaryDestination(selectedHomeDestination) != HomeDestinationSaved &&
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
         else -> true
     }
@@ -2397,10 +2397,21 @@ private fun SlockAppShellReadyContent(
      * lives here rather than in the requesting page.
      */
     var shellOverlayMenu by remember { mutableStateOf<SlockShellOpenOverlay?>(null) }
+    var shellOverlayContent by remember { mutableStateOf<SlockShellOverlayContentEntry?>(null) }
     DisposableEffect(eventBus) {
         val subscription =
             eventBus.observe(SLOCK_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
                 // task #180 diagnostics (Argus): point 2 of 3 -- the shell saw a request (or why not).
+                val messageType = eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)
+                val incomingRequestId = eventData?.shellOverlayRequestIdOrNull()
+                if (messageType == SHELL_OVERLAY_TYPE_CANCEL) {
+                    val current = shellOverlayMenu
+                    if (current != null && current.request.requestId == incomingRequestId) {
+                        shellOverlayContent = null
+                        shellOverlayMenu = null
+                    }
+                    return@observe
+                }
                 val request = eventData.toSlockShellOverlayRequestOrNull()
                 slockTraceToPlatformLog(
                     "SlockShellOverlay",
@@ -2413,17 +2424,9 @@ private fun SlockAppShellReadyContent(
                 // Ignore a request superseded by another page, and honour a cancel from the page
                 // that owns the menu currently on screen.
                 val current = shellOverlayMenu
-                when (eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)) {
-                    SHELL_OVERLAY_TYPE_CANCEL -> {
-                        if (current != null && current.request.requestId == request.requestId) {
-                            shellOverlayMenu = null
-                        }
-                    }
-                    else -> {
-                        if (!slockShellShouldDropOverlayRequest(current?.request?.requestId, request.requestId)) {
-                            shellOverlayMenu = SlockShellOpenOverlay(request)
-                        }
-                    }
+                if (!slockShellShouldDropOverlayRequest(current?.request?.requestId, request.requestId)) {
+                    shellOverlayContent = SlockShellOverlayContentRegistry.take(request.requestId)
+                    shellOverlayMenu = SlockShellOpenOverlay(request)
                 }
             }
         onDispose { subscription.close() }
@@ -6454,8 +6457,12 @@ private fun SlockAppShellReadyContent(
                         slockTraceToPlatformLog(
                             "SlockShellOverlay",
                             "shell_host_compose requestId=${open.request.requestId} " +
-                                "anchor=${open.request.anchor} items=${open.request.items.size}"
+                                "anchor=${open.request.anchor} items=${open.request.items.size} " +
+                                "content=${shellOverlayContent != null}"
                         )
+                        val customContent = shellOverlayContent?.takeIf {
+                            it.requestId == open.request.requestId
+                        }
                         val dismissShellOverlay = {
                             eventBus.post(
                                 SLOCK_SHELL_OVERLAY_RESULT_EVENT,
@@ -6464,33 +6471,57 @@ private fun SlockAppShellReadyContent(
                                     dismissed = true
                                 ).toJson()
                             )
+                            shellOverlayContent = null
                             shellOverlayMenu = null
                         }
-                        SlockBrutalDropdownMenu(
-                            // The anchor arrives already resolved in WINDOW space: the page owns the
-                            // conversion, and re-deriving it here is what produced four rounds of
-                            // wrong positions.
-                            anchor = SlockPopoverAnchor.forRootOffset(open.request.anchor),
-                            items =
-                                open.request.items.map { item ->
-                                    SlockBrutalDropdownMenuItem(
-                                        id = item.id,
-                                        label = item.label,
-                                        enabled = item.enabled
+                        if (customContent != null) {
+                            // The shell is the full-window composition. Keep the exact child menu
+                            // composable (including its reaction atlas and group dividers), but
+                            // mount it in this window-level Modal surface rather than the 400dp
+                            // child-page surface.
+                            SlockModalAnchoredPopover(
+                                anchor = SlockPopoverAnchor.forRootOffset(open.request.anchor),
+                                contentSize = customContent.contentSize,
+                                onDismiss = dismissShellOverlay,
+                                viewportGap = customContent.viewportGap,
+                                horizontalOffset = customContent.horizontalOffset,
+                                verticalOffset = customContent.verticalOffset,
+                                horizontalAutoFlip = true,
+                                verticalPlacement = SlockFloatingVerticalPlacement.Auto
+                            ) {
+                                customContent.content { id ->
+                                    customContent.onSelected(id)
+                                    shellOverlayContent = null
+                                    shellOverlayMenu = null
+                                }
+                            }
+                        } else {
+                            SlockBrutalDropdownMenu(
+                                // The anchor arrives already resolved in WINDOW space: the page owns the
+                                // conversion, and re-deriving it here is what produced four rounds of
+                                // wrong positions.
+                                anchor = SlockPopoverAnchor.forRootOffset(open.request.anchor),
+                                items =
+                                    open.request.items.map { item ->
+                                        SlockBrutalDropdownMenuItem(
+                                            id = item.id,
+                                            label = item.label,
+                                            enabled = item.enabled
+                                        )
+                                    },
+                                onSelect = { id ->
+                                    eventBus.post(
+                                        SLOCK_SHELL_OVERLAY_RESULT_EVENT,
+                                        SlockShellOverlayResult(
+                                            requestId = open.request.requestId,
+                                            selectedId = id
+                                        ).toJson()
                                     )
+                                    shellOverlayMenu = null
                                 },
-                            onSelect = { id ->
-                                eventBus.post(
-                                    SLOCK_SHELL_OVERLAY_RESULT_EVENT,
-                                    SlockShellOverlayResult(
-                                        requestId = open.request.requestId,
-                                        selectedId = id
-                                    ).toJson()
-                                )
-                                shellOverlayMenu = null
-                            },
-                            onDismiss = dismissShellOverlay
-                        )
+                                onDismiss = dismissShellOverlay
+                            )
+                        }
                     }
                     if (slackNavMode && slackNavMoreMenuVisible) {
                         SlockSlackNavMoreMenu(
@@ -19616,8 +19647,8 @@ private fun SharedHomeScreen(
             val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
                 remember(serverMembersState, snapshot.server.id) {
                     { memberId ->
-                        serverMembersStore
-                            ?.memberProfile(snapshot.server.id, memberId)
+                        serverMembersState
+                            .memberProfile(snapshot.server.id, memberId)
                             ?.toSlockHomePinnedMemberItem()
                     }
                 }
