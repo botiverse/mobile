@@ -27,6 +27,8 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Thread fast-scroll blank rows: the reverseLayout re-anchor case](android-thread-scroll-blank-raft13.md) | thread / rendering | Mahua | 2026-10-18 | current |
 | [Kuikly release-set pin upgrade recipe](kuikly-release-pin-recipe.md) | build / dependencies | Mahua | 2026-10-18 | current |
 | [Mermaid preview gesture ownership: keep diagram panning inside the card](mermaid-preview-gesture-boundary.md) | mermaid / gestures | Nathan | 2026-10-18 | current |
+| [What a screenshot proves: grading mobile visual evidence](mobile-visual-evidence-ceiling.md) | verification / visual | 辣条 | 2026-10-18 | current |
+| [Does the package contain the fix? Read the build's source, not the version string](release-provenance-containment.md) | release / provenance | 辣条 | 2026-10-18 | current |
 | [Judging a Web → mobile capability gap, and ranking it](web-capability-port-criteria.md) | parity / process | 沈括 | 2026-10-18 | current |
 
 ## Planned sections
