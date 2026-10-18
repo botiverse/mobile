@@ -19,6 +19,7 @@ import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
 import build.raft.app.network.installAndroidNetworkKmmAppIdentity
 import build.raft.app.network.installAndroidSlockNetworkTransportAtStartup
+import build.raft.app.push.AndroidPushRegistration
 import kotlinx.coroutines.runBlocking
 
 class SlockApplication : Application() {
@@ -91,6 +92,7 @@ class SlockApplication : Application() {
         installAndroidExternalShareInbox(this)
         installAndroidAppScopeEventBus(this)
         AndroidAppScopeRealtimeOwner.install(this)
+        AndroidPushRegistration.start(this)
         runCatching {
             runBlocking {
                 KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@SlockApplication)).readSession()

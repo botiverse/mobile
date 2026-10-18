@@ -73,6 +73,7 @@ androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "a
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
 kuikly-core = { group = "com.tencent.kuikly-open", name = "core", version.ref = "kuiklyAndroid" }
 kuikly-core-annotations = { group = "com.tencent.kuikly-open", name = "core-annotations", version.ref = "kuiklyAndroid" }
 kuikly-compose = { group = "com.tencent.kuikly-open", name = "compose", version.ref = "kuiklyAndroid" }
