@@ -1389,7 +1389,6 @@ open class SlockKuiklyActivity :
         super.onResume()
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         suppressVisualKeyboard()
-        applySlockInputTypeface()
         if (kuiklyHostAttached) {
             kuiklyRenderViewDelegator.onResume()
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
@@ -1671,15 +1670,16 @@ open class SlockKuiklyActivity :
 
     private fun installSlockInputFontBridge(container: ViewGroup) {
         updateDefaultShellDisplayMetrics(container)
+        // Only display metrics are tracked here. Input typefaces are owned by
+        // SlockKuiklyTextFieldView (selected face by default, explicit fontFamily honoured);
+        // re-forcing a face on every EditText each layout overrode both.
         val listener =
                 ViewTreeObserver.OnGlobalLayoutListener {
-                    container.applySlockInputTypeface()
                     updateDefaultShellDisplayMetrics(container)
                 }
         inputFontLayoutListener = listener
         container.viewTreeObserver.addOnGlobalLayoutListener(listener)
         container.post {
-            container.applySlockInputTypeface()
             updateDefaultShellDisplayMetrics(container)
         }
     }
@@ -1696,21 +1696,6 @@ open class SlockKuiklyActivity :
             container.viewTreeObserver.removeOnGlobalLayoutListener(listener)
         }
         inputFontLayoutListener = null
-    }
-
-    private fun applySlockInputTypeface() {
-        findViewById<ViewGroup?>(R.id.slock_kuikly_container)?.applySlockInputTypeface()
-    }
-
-    private fun View.applySlockInputTypeface() {
-        if (this is EditText) {
-            SlockKuiklyFontAdapter.inputTypeface(context)?.let { typeface = it }
-        }
-        if (this is ViewGroup) {
-            for (index in 0 until childCount) {
-                getChildAt(index).applySlockInputTypeface()
-            }
-        }
     }
 
     internal fun requestAttachmentSaveAs(
