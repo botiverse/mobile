@@ -7221,22 +7221,38 @@ internal const val SlockFilePreviewDesktopViewportWidth = 1280
 /**
  * task #188: the script that makes an HTML attachment render as the desktop layout.
  *
- * A WebView sizes the page from the page's own viewport meta, so "desktop mode" is exactly what a
- * browser's "Request desktop site" does: pin a desktop-width viewport. Injecting this at
- * document-start works on all three platforms through the existing `injectedJavaScript` channel,
- * so there is no per-platform native code.
+ * Pinning the viewport WIDTH is what a browser's "Request desktop site" does, and it is the width
+ * that makes the page's own responsive breakpoints choose the wide layout.
  *
- * The device width is pinned rather than the zoom level because the page's responsive breakpoints
- * are what actually pick the wide layout; shrinking it afterwards would show the narrow one.
+ * Two things make the naive version (find-or-create the meta at document-start) wrong, both from
+ * Argus's review:
+ *  1. at document-start the page's own `<meta name=viewport content="width=device-width">` has not
+ *     been parsed yet, so creating one gets overwritten a moment later;
+ *  2. pages may insert their viewport meta dynamically.
+ * So this rewrites EVERY existing viewport meta, re-runs on DOMContentLoaded, and observes later
+ * insertions. `user-scalable=no` / `maximum-scale` are never set: desktop mode changes layout, not
+ * the user's ability to zoom.
  */
 internal fun slockFilePreviewDesktopViewportScript(
     width: Int = SlockFilePreviewDesktopViewportWidth,
     initialScale: Float = 1f
-): String =
-    "(function(){var m=document.querySelector('meta[name=viewport]');" +
-        "if(!m){m=document.createElement('meta');m.name='viewport';" +
-        "document.head.appendChild(m);}" +
-        "m.setAttribute('content','width=$width, initial-scale=$initialScale');})();"
+): String {
+    val content = "width=$width, initial-scale=$initialScale"
+    return "(function(){" +
+        "var c='$content';" +
+        "function apply(){" +
+        "var ms=document.querySelectorAll('meta[name=viewport]');" +
+        "if(ms.length===0){" +
+        "var m=document.createElement('meta');m.name='viewport';" +
+        "(document.head||document.documentElement).appendChild(m);ms=[m];}" +
+        "for(var i=0;i<ms.length;i++){if(ms[i].getAttribute('content')!==c)ms[i].setAttribute('content',c);}}" +
+        "apply();" +
+        "if(document.readyState==='loading'){" +
+        "document.addEventListener('DOMContentLoaded',apply);}" +
+        "if(window.MutationObserver){" +
+        "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});}" +
+        "})();"
+}
 
 internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
@@ -7767,6 +7783,9 @@ internal fun SlockFilePreviewPayloadContent(
                         // global, so the fence wrapper (which calls it in place) leaves it intact.
                         injectedJavaScript =
                             if (htmlDesktopMode) slockFilePreviewDesktopViewportScript() else "",
+                        // Android ignores `width=` in the viewport meta unless this is on, so the
+                        // injected desktop viewport needs it; other platforms have no equivalent flag.
+                        useWideViewPort = htmlDesktopMode,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

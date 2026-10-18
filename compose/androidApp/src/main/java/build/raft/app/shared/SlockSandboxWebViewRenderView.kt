@@ -65,6 +65,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var allowScripts: Boolean = true
     private var allowNavigation: Boolean = false
     private var domStorageEnabled: Boolean = false
+    private var useWideViewPort: Boolean = false
     private var cacheEnabled: Boolean = false
     private var ephemeral: Boolean = true
     private var injectedJavaScript: String = ""
@@ -188,6 +189,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             PROP_DOM_STORAGE_ENABLED -> {
                 updateDomStorageEnabled(false)
+                true
+            }
+            PROP_USE_WIDE_VIEW_PORT -> {
+                updateUseWideViewPort(false)
                 true
             }
             PROP_CACHE_ENABLED -> {
@@ -321,6 +326,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         webView.settings.apply {
             javaScriptEnabled = allowScripts
             domStorageEnabled = this@SlockSandboxWebViewRenderView.domStorageEnabled
+            // task #188: without this Android ignores `width=` in the page's viewport meta, so a
+            // desktop-width viewport injection does nothing.
+            useWideViewPort = this@SlockSandboxWebViewRenderView.useWideViewPort
+            webView.settings.useWideViewPort = useWideViewPort
+            webView.settings.loadWithOverviewMode = useWideViewPort
             databaseEnabled = false
             allowFileAccess = false
             allowContentAccess = false
@@ -578,6 +588,16 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (domStorageEnabled == next) return
         domStorageEnabled = next
         webView.settings.domStorageEnabled = next
+    }
+
+    private fun updateUseWideViewPort(next: Boolean) {
+        if (destroyed) return
+        if (useWideViewPort == next) return
+        useWideViewPort = next
+        // task #188: gate this pair together -- useWideViewPort alone leaves the page rendered at the
+        // meta width without fitting it to the view, which reads as a zoomed-in crop.
+        webView.settings.useWideViewPort = next
+        webView.settings.loadWithOverviewMode = next
     }
 
     private fun updateCacheEnabled(next: Boolean) {
@@ -996,6 +1016,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
         private const val PROP_ALLOW_NAVIGATION = "allowNavigation"
         private const val PROP_DOM_STORAGE_ENABLED = "domStorageEnabled"
+        private const val PROP_USE_WIDE_VIEW_PORT = "useWideViewPort"
         private const val PROP_CACHE_ENABLED = "cacheEnabled"
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"

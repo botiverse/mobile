@@ -33,6 +33,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         allowScripts: Boolean,
         allowNavigation: Boolean,
         domStorageEnabled: Boolean,
+        useWideViewPort: Boolean = false,
         cacheEnabled: Boolean,
         ephemeral: Boolean,
         injectedJavaScript: String,
@@ -46,6 +47,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             appliedAllowScripts == allowScripts &&
             appliedAllowNavigation == allowNavigation &&
             appliedDomStorageEnabled == domStorageEnabled &&
+            appliedUseWideViewPort == useWideViewPort &&
             appliedCacheEnabled == cacheEnabled &&
             appliedEphemeral == ephemeral &&
             appliedInjectedJavaScript == injectedJavaScript &&
@@ -58,6 +60,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         appliedAllowScripts = allowScripts
         appliedAllowNavigation = allowNavigation
         appliedDomStorageEnabled = domStorageEnabled
+        appliedUseWideViewPort = useWideViewPort
         appliedCacheEnabled = cacheEnabled
         appliedEphemeral = ephemeral
         appliedInjectedJavaScript = injectedJavaScript
@@ -67,6 +70,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             allowScripts(allowScripts)
             allowNavigation(allowNavigation)
             domStorageEnabled(domStorageEnabled)
+            useWideViewPort(useWideViewPort)
             cacheEnabled(cacheEnabled)
             ephemeral(ephemeral)
             injectedJavaScript(injectedJavaScript)
@@ -113,8 +117,12 @@ internal class SlockSandboxWebViewAttr : Attr() {
         return this
     }
 
-    fun domStorageEnabled(value: Boolean): SlockSandboxWebViewAttr {
-        "domStorageEnabled" with value
+    /**
+     * task #188: lets the WebView honour `width=` in the page's viewport meta. Android ignores it
+     * otherwise, so a desktop-width viewport injection has no effect there.
+     */
+    fun useWideViewPort(value: Boolean): SlockSandboxWebViewAttr {
+        "useWideViewPort" with value
         return this
     }
 

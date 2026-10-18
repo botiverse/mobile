@@ -20,11 +20,31 @@ class SlockFilePreviewDesktopModeTest {
         // Pins a desktop-width viewport (what selects the wide layout).
         assertTrue(script.contains("width=1280"), script)
         // Reuses an existing meta rather than adding a second one (two metas = undefined behaviour).
-        assertTrue(script.contains("querySelector"), "must reuse the existing viewport meta")
+        assertTrue(script.contains("querySelectorAll"), "must reuse existing viewport metas")
         assertTrue(script.contains("createElement"), "must create one only when absent")
         // Self-invoking so it runs at document start without leaking globals.
         assertTrue(script.trimStart().startsWith("(function()"), script)
         assertTrue(script.trimEnd().endsWith("})();"), script)
+    }
+
+    @Test
+    fun theScriptRewritesEveryExistingViewportMeta() {
+        // Argus: at document-start the page's own `width=device-width` has not been parsed yet, so a
+        // find-or-create would be overwritten moments later. Rewriting ALL metas is what survives it.
+        val script = slockFilePreviewDesktopViewportScript()
+
+        assertTrue(script.contains("querySelectorAll"), script)
+        assertTrue(script.contains("for("), "must iterate and rewrite each meta, not just the first")
+    }
+
+    @Test
+    fun theScriptReappliesAfterTheDocumentLoadsAndOnLaterInsertions() {
+        // Pages may insert their viewport meta dynamically, and the document may not be ready when a
+        // document-start script runs. Both re-apply paths must be present.
+        val script = slockFilePreviewDesktopViewportScript()
+
+        assertTrue(script.contains("DOMContentLoaded"), "must re-apply once the page is parsed")
+        assertTrue(script.contains("MutationObserver"), "must re-apply on later insertions")
     }
 
     @Test
