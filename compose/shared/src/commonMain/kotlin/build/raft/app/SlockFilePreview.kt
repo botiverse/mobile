@@ -1705,6 +1705,10 @@ internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(Authentic
 private fun SlockFilePreviewStandalonePageContent() {
     // task #188: per-open view state, deliberately NOT persisted -- every preview starts adaptive,
     // matching browser behaviour and avoiding "the text shrank" on first open.
+    //
+    // Plain `remember` is correct here: this composable backs a per-attachment @Page, so a different
+    // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
+    // within the page, but only for authority/expiry reasons on the SAME attachment.
     var htmlDesktopMode by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
