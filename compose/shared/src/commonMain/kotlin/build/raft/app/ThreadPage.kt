@@ -18259,8 +18259,28 @@ private fun ThreadMessagesListContent(
             previousDirectionDecided = reverseLayoutDecided
         }
     }
+    // task #193: the remember key must be a STABLE value, not the edge predicate.
+    //
+    // `rebuildListForDirection` is a one-shot pulse: it goes true for the composition where the gate
+    // lands, then the SideEffect above advances `previousDirectionDecided` and the next composition
+    // computes it as false again. Using that pulse as a key bounced the LazyListState to a new
+    // instance and then straight back to the original key on the following frame -- two rebuilds
+    // where one was intended, re-firing every effect keyed on the state and undoing the "rebuild
+    // exactly once" guarantee.
+    //
+    // So: the decided value is the key (it moves once, false -> true, and stays), and the edge
+    // predicate only gates whether that move is allowed to matter. Once decided, later changes are
+    // ignored on purpose -- re-mapping indices under a list the user may have scrolled is worse than
+    // keeping a slightly stale direction.
+    val listDirectionKey =
+        if (rebuildListForDirection || reverseLayoutDecided) {
+            reverseLayoutDecided to reverseLayoutRequested
+        } else {
+            // Undecided: no rebuild yet, and the placeholder direction is not part of the identity.
+            false to reverseLayoutRequested
+        }
     val rawListState =
-        key(threadInstanceKey, rebuildListForDirection, reverseLayoutRequested) {
+        key(threadInstanceKey, listDirectionKey) {
             rememberLazyListState(
                 // Kuikly commits a non-top initial Compose viewport to native ScrollView
                 // before its first child placement. Start at the final latest viewport;
