@@ -1793,7 +1793,8 @@ internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): MarkdownPa
 private const val SlockMarkdownDefaultPreparseLimit = 20
 
 private val SlockMarkdownBodyFontSize get() = SlockTextSize.Content
-private val SlockMarkdownBodyLineHeight get() = SlockTextSize.ContentLineHeight
+// Markdown body keeps its taller 22sp line box (unchanged from before the shared size token).
+private val SlockMarkdownBodyLineHeight = 22.sp
 internal val SlockMarkdownTaskCheckboxSize = 14.dp
 internal val SlockMarkdownTaskCheckboxFirstLineOffset =
     ((22.dp - SlockMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)

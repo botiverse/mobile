@@ -112,12 +112,16 @@ class SlockDesignTokensTest {
     @Test
     fun contentTextSharesOneSize() {
         // artin 2026-10-18 (1.14.1): body copy, the composer, message text and sidebar names share
-        // SlockTextSize.Content (16/22) instead of each hardcoding its own size.
-        assertEquals(16.sp, SlockTextSize.Content)
-        assertEquals(22.sp, SlockTextSize.ContentLineHeight)
-        for (style in listOf(SlockType.Body, SlockType.Input, SlockType.ListItem, SlockType.ListItemBold, slockMessageBodyTextStyle(null))) {
+        // SlockTextSize.Content instead of each hardcoding its own size (14sp after the 16sp trial).
+        assertEquals(14.sp, SlockTextSize.Content)
+        assertEquals(20.sp, SlockTextSize.ContentLineHeight)
+        for (style in listOf(SlockType.Body, SlockType.Input, slockMessageBodyTextStyle(null))) {
             assertEquals(SlockTextSize.Content, style.fontSize)
             assertEquals(SlockTextSize.ContentLineHeight, style.lineHeight)
+        }
+        for (style in listOf(SlockType.ListItem, SlockType.ListItemBold)) {
+            assertEquals(SlockTextSize.Content, style.fontSize)
+            assertEquals(SlockTextSize.ListItemLineHeight, style.lineHeight)
         }
     }
 

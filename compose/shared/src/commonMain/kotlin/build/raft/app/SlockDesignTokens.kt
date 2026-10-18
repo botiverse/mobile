@@ -304,11 +304,14 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle {
 
 /**
  * The one content text size (artin 2026-10-18, 1.14.1): message text, the composer, body copy and
- * sidebar conversation names all read from here so they stay the same size.
+ * sidebar conversation names all read from here so they stay the same size. 16sp was tried on
+ * device and reverted to the shipped 14sp.
  */
 internal object SlockTextSize {
-    val Content = 16.sp
-    val ContentLineHeight = 22.sp
+    val Content = 14.sp
+    val ContentLineHeight = 20.sp
+    /** Single-line list rows (sidebar names) keep the tighter line height buttons always had. */
+    val ListItemLineHeight = 18.sp
 }
 
 internal object SlockType {
@@ -334,7 +337,7 @@ internal object SlockType {
         get() = slockTextStyle(FontWeight.Normal, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
     /** Sidebar conversation names: content size, button weights. */
     val ListItem: TextStyle
-        get() = slockTextStyle(FontWeight.Medium, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
+        get() = slockTextStyle(FontWeight.Medium, SlockTextSize.Content, SlockTextSize.ListItemLineHeight, 0.sp)
     val ListItemBold: TextStyle
-        get() = slockTextStyle(FontWeight.Bold, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
+        get() = slockTextStyle(FontWeight.Bold, SlockTextSize.Content, SlockTextSize.ListItemLineHeight, 0.sp)
 }
