@@ -3894,7 +3894,7 @@ class KmpVisualScreenshotCaptureTest {
                     .put("task139ReuseTrace", true),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 3_000,
-            assertBitmap = ::assertLargestFeedbackYellowRegionHasSquareCorners
+            assertBitmap = ::assertFeedbackRowsKeepRaftContainerCorners
         )
     }
 
@@ -4337,21 +4337,37 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun assertLargestFeedbackYellowRegionHasSquareCorners(bitmap: Bitmap) {
+    /**
+     * task #139 regression guard, raft-ui edition. The submitted User row
+     * replaces the attachment row, and a retained native view used to keep the
+     * attachment's corner radius. Under raft-ui both feedback rows are cards
+     * with the container radius (10dp, same as web's feedback bubbles), so the
+     * guard now asserts every visible corner of both rows carries exactly that
+     * radius: a stale square corner (0dp) or a stale control/sticker radius
+     * (8dp/4dp) from the recycled attachment view fails it.
+     */
+    private fun assertFeedbackRowsKeepRaftContainerCorners(bitmap: Bitmap) {
         val width = bitmap.width
         val height = bitmap.height
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        // Measured on the 0.6.0 capture: the fill estimate lands at ~9.8dp and
+        // the outline inset at ~8.7dp for the 10dp container radius, while a
+        // stale 8dp control radius measures <= 8dp and a square corner ~0.
+        val expectedFillRadiusPx = 10f * density
+        val expectedOutlineRadiusPx = 10f * density
         val minY = height / 6
         val maxY = height * 4 / 5
         val yellow = BooleanArray(width * height)
-        fun isBrandYellow(color: Int): Boolean {
+        // raft primary-soft (#FFF0BD), the User feedback row fill.
+        fun isPrimarySoft(color: Int): Boolean {
             val red = android.graphics.Color.red(color)
             val green = android.graphics.Color.green(color)
             val blue = android.graphics.Color.blue(color)
-            return red >= 248 && green in 202..222 && blue in 48..82
+            return red >= 249 && green in 234..246 && blue in 181..197
         }
         for (y in minY until maxY) {
             for (x in 0 until width) {
-                yellow[y * width + x] = isBrandYellow(bitmap.getPixel(x, y))
+                yellow[y * width + x] = isPrimarySoft(bitmap.getPixel(x, y))
             }
         }
         val visited = BooleanArray(width * height)
@@ -4391,63 +4407,75 @@ class KmpVisualScreenshotCaptureTest {
                 }
             }
         }
-        val bounds = requireNotNull(bestBounds) { "No BrandYellow feedback region found" }
-        require(bestArea > 8_000) { "BrandYellow region too small for User row: area=$bestArea" }
-        fun isBorderBlack(color: Int): Boolean {
-            val red = android.graphics.Color.red(color)
-            val green = android.graphics.Color.green(color)
-            val blue = android.graphics.Color.blue(color)
-            return red <= 72 && green <= 72 && blue <= 72
-        }
-        fun borderBlackHitsNear(x: Int, y: Int): Int {
-            var hits = 0
-            for (dy in -4..4) {
-                for (dx in -4..4) {
-                    val px = (x + dx).coerceIn(0, width - 1)
-                    val py = (y + dy).coerceIn(0, height - 1)
-                    if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
+        val bounds = requireNotNull(bestBounds) { "No primary-soft User feedback row found" }
+        require(bestArea > 8_000) { "Primary-soft region too small for User row: area=$bestArea" }
+
+        // Corner radius estimate from the fill: a quarter-round corner of
+        // radius r leaves r^2 * (1 - pi/4) non-fill pixels in its corner
+        // square. The probe square stays inside the 12dp content padding.
+        val probe = (11f * density).toInt()
+        fun cornerRadiusPx(cornerX: Int, cornerY: Int, stepX: Int, stepY: Int): Double {
+            var outside = 0
+            for (dy in 0 until probe) {
+                for (dx in 0 until probe) {
+                    val px = (cornerX + dx * stepX).coerceIn(0, width - 1)
+                    val py = (cornerY + dy * stepY).coerceIn(0, height - 1)
+                    if (!isPrimarySoft(bitmap.getPixel(px, py))) outside += 1
                 }
             }
-            return hits
+            return kotlin.math.sqrt(outside / (1.0 - kotlin.math.PI / 4.0))
         }
-        val userCornerBorderHits =
+        val userCornerRadii =
             listOf(
-                bounds[0] to bounds[1],
-                bounds[2] to bounds[1],
-                bounds[0] to bounds[3],
-                bounds[2] to bounds[3]
-            ).map { (x, y) ->
-                // The yellow background itself still fills the rectangular
-                // layer bounds when a stale rounded border is retained. The
-                // regression is therefore visible in the black outline: a
-                // square row has border pixels at each geometric corner,
-                // while a rounded outline leaves this tight corner patch
-                // yellow/white and places its arc farther inward.
-                borderBlackHitsNear(x, y)
-            }
-        require(userCornerBorderHits.all { it >= 4 }) {
-            "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
-                "cornerBorderBlackHits=${userCornerBorderHits.joinToString()} area=$bestArea"
+                cornerRadiusPx(bounds[0], bounds[1], 1, 1),
+                cornerRadiusPx(bounds[2], bounds[1], -1, 1),
+                cornerRadiusPx(bounds[0], bounds[3], 1, -1),
+                cornerRadiusPx(bounds[2], bounds[3], -1, -1)
+            )
+        require(userCornerRadii.all { kotlin.math.abs(it - expectedFillRadiusPx) <= 0.15 * expectedFillRadiusPx }) {
+            "User feedback row lost the raft container radius: bounds=${bounds.joinToString()} " +
+                "cornerRadiiPx=${userCornerRadii.joinToString { "%.1f".format(it) }} " +
+                "expectedFillRadiusPx=$expectedFillRadiusPx area=$bestArea"
         }
 
         // Depending on retained-view assignment, the stale attachment radius
         // can land on either the inserted User row or the following Hands
-        // success row. Find the latter's top outline at the shared center x
-        // and require both top corners to be square as well.
+        // success row (white card, hairline outline). Find the latter's top
+        // outline at the User row's center x, then measure how far the
+        // straight top edge stops short of the card's left/right edges.
+        fun isOutline(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return maxOf(red, green, blue) <= 240
+        }
         val centerX = (bounds[0] + bounds[2]) / 2
         val handsTop =
             requireNotNull(
                 ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
-                    isBorderBlack(bitmap.getPixel(centerX, y))
+                    isOutline(bitmap.getPixel(centerX, y))
                 }
-            ) { "No Hands success row top border found below User row" }
-        val handsTopCornerHits =
-            listOf(bounds[0] to handsTop, bounds[2] to handsTop).map { (x, y) ->
-                borderBlackHitsNear(x, y)
+            ) { "No Hands success row top outline found below User row" }
+        val sideProbeY = (handsTop + 2 * expectedOutlineRadiusPx).toInt().coerceAtMost(height - 1)
+        val handsLeft =
+            requireNotNull((0 until centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
+                "No Hands success row left outline found at y=$sideProbeY"
             }
-        require(handsTopCornerHits.all { it >= 4 }) {
-            "Hands success row retained rounded corners: userBounds=${bounds.joinToString()} " +
-                "handsTop=$handsTop topCornerBorderBlackHits=${handsTopCornerHits.joinToString()}"
+        val handsRight =
+            requireNotNull((width - 1 downTo centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
+                "No Hands success row right outline found at y=$sideProbeY"
+            }
+        val topEdgeLeft = (centerX downTo handsLeft).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
+        val topEdgeRight = (centerX..handsRight).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
+        val handsCornerInsets = listOf(topEdgeLeft - handsLeft, handsRight - topEdgeRight)
+        require(
+            handsCornerInsets.all {
+                it >= 0.75 * expectedOutlineRadiusPx && it <= 1.2 * expectedOutlineRadiusPx
+            }
+        ) {
+            "Hands success row lost the raft container radius: userBounds=${bounds.joinToString()} " +
+                "handsTop=$handsTop handsLeft=$handsLeft handsRight=$handsRight " +
+                "topCornerInsetsPx=${handsCornerInsets.joinToString()} expectedOutlineRadiusPx=$expectedOutlineRadiusPx"
         }
     }
 
@@ -4819,8 +4847,21 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun openPendingMentionDrawer() {
-        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-        val viewAction = root?.findAccessibilityNodeInfosByText("View")?.firstOrNull()
+        // The accessibility snapshot can trail the first painted frame on a
+        // loaded CI emulator (the partial-batch fixture also composes the
+        // notice row above the banner), so poll the live tree instead of
+        // reading it exactly once.
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS
+        var viewAction: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (viewAction == null) {
+            viewAction =
+                uiAutomation.rootInActiveWindow
+                    ?.findAccessibilityNodeInfosByText("View")
+                    ?.firstOrNull()
+            if (viewAction != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
         requireNotNull(viewAction) { "Pending mention View action is not visible" }
         val clickableAction = generateSequence(viewAction) { it.parent }.firstOrNull { it.isClickable }
         requireNotNull(clickableAction) { "Pending mention View action has no clickable ancestor" }
@@ -6061,6 +6102,7 @@ class KmpVisualScreenshotCaptureTest {
     )
 
     companion object {
+        private const val PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS = 10_000L
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"
 
