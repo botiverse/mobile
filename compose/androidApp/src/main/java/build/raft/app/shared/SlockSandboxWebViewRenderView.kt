@@ -65,6 +65,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var allowScripts: Boolean = true
     private var allowNavigation: Boolean = false
     private var domStorageEnabled: Boolean = false
+    private var useWideViewPort: Boolean = false
+    /** task #188: true once a desktop-mode initial scale has been applied, so it can be cleared. */
+    private var desktopModeScaleApplied: Boolean = false
+    /** task #188: guards the one retry used when the scale prop arrives before layout. */
+    private var desktopModeScaleRetryScheduled: Boolean = false
     private var cacheEnabled: Boolean = false
     private var ephemeral: Boolean = true
     private var injectedJavaScript: String = ""
@@ -117,6 +122,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             PROP_DOM_STORAGE_ENABLED -> {
                 updateDomStorageEnabled(propValue.toBooleanValue(default = false))
+                true
+            }
+            // task #188: without this the desktop viewport is silently dropped on Android -- the prop
+            // reaches the render view and no branch consumes it, so `useWideViewPort` stays false and
+            // the injected `width=1280` is ignored (innerWidth stays at the device width). Caught on
+            // device: reload and meta rewriting both worked, yet innerWidth was still 480.
+            PROP_USE_WIDE_VIEW_PORT -> {
+                updateUseWideViewPort(propValue.toBooleanValue(default = false))
                 true
             }
             PROP_CACHE_ENABLED -> {
@@ -188,6 +201,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             PROP_DOM_STORAGE_ENABLED -> {
                 updateDomStorageEnabled(false)
+                true
+            }
+            PROP_USE_WIDE_VIEW_PORT -> {
+                updateUseWideViewPort(false)
                 true
             }
             PROP_CACHE_ENABLED -> {
@@ -321,6 +338,13 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         webView.settings.apply {
             javaScriptEnabled = allowScripts
             domStorageEnabled = this@SlockSandboxWebViewRenderView.domStorageEnabled
+            // task #188: without this Android ignores `width=` in the page's viewport meta, so a
+            // desktop-width viewport injection does nothing.
+            // task #188: qualified on both sides -- inside settings.apply { } a bare `useWideViewPort =`
+            // binds to the WebSettings property, so the shadowing here is deliberate and easy to
+            // misread. Keep both on one source of truth (the render view's field).
+            useWideViewPort = this@SlockSandboxWebViewRenderView.useWideViewPort
+            loadWithOverviewMode = this@SlockSandboxWebViewRenderView.useWideViewPort
             databaseEnabled = false
             allowFileAccess = false
             allowContentAccess = false
@@ -578,6 +602,69 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (domStorageEnabled == next) return
         domStorageEnabled = next
         webView.settings.domStorageEnabled = next
+    }
+
+    private fun updateUseWideViewPort(next: Boolean) {
+        if (destroyed) return
+        if (useWideViewPort == next) return
+        useWideViewPort = next
+        // task #188: gate this pair together -- useWideViewPort alone leaves the page rendered at the
+        // meta width without fitting it to the view, which reads as a zoomed-in crop.
+        webView.settings.useWideViewPort = next
+        webView.settings.loadWithOverviewMode = next
+        // task #188: set the scale BEFORE the reload, so the new document starts at the fitted scale.
+        // `loadWithOverviewMode` alone does not fit a page that declares its own width (measured:
+        // font height in desktop mode was identical to adaptive, i.e. no scaling at all).
+        applyDesktopModeScale(webView)
+        // Reload here, not from shared. The viewport is only applied when a document loads, and the
+        // shared side's reload command can arrive before this prop depending on how Kuikly flushes
+        // updates -- which would reload with the OLD setting and leave the page compact. Reloading
+        // right after the assignment makes "new setting" and "new document" one ordered step.
+        if (webView.url != null) webView.reload()
+    }
+
+    /**
+     * task #188, measured on device: once a page declares `width=1280` it is treated as a self-declared
+     * width and drawn 1:1, so `loadWithOverviewMode` alone does NOT fit it -- on a 720px-wide phone the
+     * user sees a crop of the layout. The font height in the failing case was byte-identical to the
+     * adaptive case (both 32px), which is what gave it away.
+     *
+     * `setInitialScale` is the lever that works regardless of what the page declares. The value has to
+     * be derived from the real view width, because the needed ratio depends on the device:
+     *   view px / (desktop css width * dpr)  ->  720 / (1280 * 1.5) = 37.5% on this phone.
+     */
+    private fun applyDesktopModeScale(view: WebView?) {
+        if (destroyed || view == null) return
+        if (!useWideViewPort) {
+            // Back to adaptive: clear any scale we set, otherwise the page stays zoomed out.
+            if (desktopModeScaleApplied) {
+                view.setInitialScale(0)
+                view.zoomOut()
+                desktopModeScaleApplied = false
+            }
+            return
+        }
+        val viewWidthPx = view.width
+        if (viewWidthPx <= 0) {
+            // The prop can arrive before the first layout pass, in which case width is 0 and the
+            // ratio is meaningless. Retry once measured instead of silently dropping the scale --
+            // but only once, so a view that never measures cannot spin forever.
+            if (!desktopModeScaleRetryScheduled) {
+                desktopModeScaleRetryScheduled = true
+                view.post {
+                    desktopModeScaleRetryScheduled = false
+                    applyDesktopModeScale(view)
+                }
+            }
+            return
+        }
+        val dpr = resources.displayMetrics.density
+        val needed = viewWidthPx / (DESKTOP_VIEWPORT_WIDTH * dpr)
+        if (needed <= 0f || needed >= 1f) return
+        val percent = (needed * 100).toInt().coerceIn(MIN_DESKTOP_SCALE_PERCENT, 100)
+        view.setInitialScale(percent)
+        desktopModeScaleApplied = true
+        Log.i(LOG_TAG, "desktop_mode_scale viewWidthPx=$viewWidthPx dpr=$dpr percent=$percent")
     }
 
     private fun updateCacheEnabled(next: Boolean) {
@@ -996,6 +1083,23 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
         private const val PROP_ALLOW_NAVIGATION = "allowNavigation"
         private const val PROP_DOM_STORAGE_ENABLED = "domStorageEnabled"
+        private const val PROP_USE_WIDE_VIEW_PORT = "useWideViewPort"
+
+        /**
+         * task #188: desktop viewport width in CSS px.
+         *
+         * Duplicated from `SlockFilePreviewDesktopViewportWidth` in `:shared` -- that constant is
+         * `internal` to another module and not visible here. If the shared width ever changes, this
+         * one must change with it: a mismatch means the zoom computed below no longer fits the
+         * desktop layout, which is exactly the crop this task exists to remove. There is no
+         * compile-time link, and a source-text assertion would be a banned source-grep test, so the
+         * coupling is recorded here and checked by a device run (font height in desktop mode must
+         * differ from adaptive).
+         */
+        private const val DESKTOP_VIEWPORT_WIDTH = 1280f
+
+        /** Lower bound so a very wide screen cannot produce an unreadable scale. */
+        private const val MIN_DESKTOP_SCALE_PERCENT = 10
         private const val PROP_CACHE_ENABLED = "cacheEnabled"
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"

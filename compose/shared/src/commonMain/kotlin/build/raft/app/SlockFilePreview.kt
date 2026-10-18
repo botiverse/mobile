@@ -568,6 +568,9 @@ internal object SlockImageEditGroupReconcile {
         else copy(rejects = rejects + reason)
 }
 private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
+
+/** task #188: toggles the HTML attachment's desktop viewport. */
+internal const val SlockFilePreviewDesktopModeActionId = "html-desktop-mode"
 private const val SlockFilePreviewSaveToFilesActionId = "save-to-files"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -1700,6 +1703,13 @@ internal class ComposeSlockFilePreviewPage : AuthenticatedProductPager(Authentic
 
 @Composable
 private fun SlockFilePreviewStandalonePageContent() {
+    // task #188: per-open view state, deliberately NOT persisted -- every preview starts adaptive,
+    // matching browser behaviour and avoiding "the text shrank" on first open.
+    //
+    // Plain `remember` is correct here: this composable backs a per-attachment @Page, so a different
+    // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
+    // within the page, but only for authority/expiry reasons on the SAME attachment.
+    var htmlDesktopMode by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -3657,6 +3667,20 @@ private fun SlockFilePreviewStandalonePageContent() {
             if (composerImageEditMode) {
                 emptyList()
             } else listOfNotNull(
+                // task #188: only HTML attachments get a desktop-mode toggle.
+                if (payload.kind == "html") {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewDesktopModeActionId,
+                        // A constant action label: `selected` already renders the checkmark, so
+                        // swapping the text to "Adaptive mode" while desktop mode was ON read like
+                        // "currently adaptive" (caught on device, Android 12).
+                        label = stringResource(MR.strings.file_preview_desktop_mode_off),
+                        icon = SlockLucideIconName.Monitor,
+                        selected = htmlDesktopMode
+                    )
+                } else {
+                    null
+                },
                 if (photosActionState != SlockFilePreviewPhotosActionState.Hidden) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewSaveToPhotosActionId,
@@ -3745,6 +3769,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewOpenWithActionId -> requestExternalOpen()
                 SlockFilePreviewSaveToFilesActionId -> requestExternalSave(exportPrivateDownload = true)
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
+                // task #188: toggle the HTML desktop viewport. Selection goes through this one
+                // dispatcher; SlockRaftUiMenuItem itself is data-only.
+                // The reload itself lives next to the WebView (SlockFilePreviewPayloadContent),
+                // which is a separate composable and reloads when this prop changes.
+                SlockFilePreviewDesktopModeActionId -> htmlDesktopMode = !htmlDesktopMode
             }
         }
     ) {
@@ -3767,6 +3796,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewPayloadContent(
                     payload = payload,
                     onOpenUrl = {},
+                    htmlDesktopMode = htmlDesktopMode,
                     onExternalBrowserOpen =
                         if (
                             payload.source == SlockFilePreviewSourceThreadAttachment &&
@@ -7187,6 +7217,53 @@ internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: St
         fileName.endsWith(".markdown", ignoreCase = true)
 }
 
+/** Desktop-mode render width in CSS pixels, matching a common desktop browser viewport. */
+internal const val SlockFilePreviewDesktopViewportWidth = 1280
+
+/**
+ * task #188: the script that makes an HTML attachment render as the desktop layout.
+ *
+ * Pinning the viewport WIDTH is what a browser's "Request desktop site" does, and it is the width
+ * that makes the page's own responsive breakpoints choose the wide layout.
+ *
+ * Two things make the naive version (find-or-create the meta at document-start) wrong, both from
+ * Argus's review:
+ *  1. at document-start the page's own `<meta name=viewport content="width=device-width">` has not
+ *     been parsed yet, so creating one gets overwritten a moment later;
+ *  2. pages may insert their viewport meta dynamically.
+ * So this rewrites EVERY existing viewport meta, re-runs on DOMContentLoaded, and observes later
+ * insertions.
+ */
+internal fun slockFilePreviewDesktopViewportScript(
+    width: Int = SlockFilePreviewDesktopViewportWidth
+): String {
+    // Width ONLY -- deliberately no `initial-scale`.
+    //
+    // With `initial-scale=1.0` a 1280-wide layout is drawn at 100%, so on a 720px-wide phone only
+    // about 480px of it is visible: desktop mode looked broken on exactly the default case, pages
+    // that ship their own viewport meta. Omitting initial-scale lets the WebView's overview mode fit
+    // the whole 1280 to the screen, which is what a browser's "Request desktop site" does, and keeps
+    // a/b/c visually consistent.
+    //
+    // `user-scalable=no` / `maximum-scale` are still never set: desktop mode changes layout, not
+    // the user's ability to zoom.
+    val content = "width=$width"
+    return "(function(){" +
+        "var c='$content';" +
+        "function apply(){" +
+        "var ms=document.querySelectorAll('meta[name=viewport]');" +
+        "if(ms.length===0){" +
+        "var m=document.createElement('meta');m.name='viewport';" +
+        "(document.head||document.documentElement).appendChild(m);ms=[m];}" +
+        "for(var i=0;i<ms.length;i++){if(ms[i].getAttribute('content')!==c)ms[i].setAttribute('content',c);}}" +
+        "apply();" +
+        "if(document.readyState==='loading'){" +
+        "document.addEventListener('DOMContentLoaded',apply);}" +
+        "if(window.MutationObserver){" +
+        "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});}" +
+        "})();"
+}
+
 internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     val normalizedName = fileName.substringBefore('?').substringBefore('#')
@@ -7514,6 +7591,8 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
 internal fun SlockFilePreviewPayloadContent(
     payload: SlockFilePreviewPayload,
     onOpenUrl: (String) -> Unit,
+    /** task #188: HTML attachments render as the desktop layout when true. */
+    htmlDesktopMode: Boolean = false,
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
@@ -7698,9 +7777,39 @@ internal fun SlockFilePreviewPayloadContent(
             ) {
                 val previewUrl = payload.externalUrl.orEmpty()
                 if (previewUrl.isNotBlank()) {
+                    // task #188: the desktop viewport is injected at DOCUMENT START, so flipping the
+                    // toggle cannot affect the document already on screen -- the WebView has to load
+                    // again. Holding the controller lets us reload instead of rebuilding.
+                    val htmlWideViewPortController = rememberSlockWebViewController()
+                    // task #188, caught on device: this toggle cannot reach the document already on
+                    // screen, because the viewport is injected at DOCUMENT START. The reload is NOT
+                    // issued from here. Android's render view reloads itself right after it applies
+                    // `useWideViewPort`, which guarantees the new setting and the new document are one
+                    // ordered step; a reload from shared can arrive before the prop and would reload
+                    // with the old setting (observed: reload happened, innerWidth stayed 480).
+                    //
+                    // `rememberSlockWebViewController()` is still held so the composable owns a stable
+                    // controller across recompositions, but the toggle no longer dispatches a command.
                     SlockSandboxWebView(
                         url = previewUrl,
                         allowScripts = true,
+                        // task #188: desktop mode pins a desktop-width viewport at document start, so
+                        // the page's own responsive breakpoints pick the wide layout -- the same thing
+                        // a browser's "Request desktop site" does. Off -> empty, i.e. the page's own meta.
+                        //
+                        // One shared mechanism, verified on all three platforms' injection paths:
+                        //   Android -- SlockSandboxWebViewRenderView applies injectedJavaScript
+                        //   iOS     -- WKUserScript at WKUserScriptInjectionTimeAtDocumentStart
+                        //   OHOS    -- ArkWeb rule, wrapped by scopedInjectedJavaScript() and run at
+                        //              document start behind a URL/top-frame fence
+                        // The script itself is self-invoking and does not depend on any platform
+                        // global, so the fence wrapper (which calls it in place) leaves it intact.
+                        injectedJavaScript =
+                            if (htmlDesktopMode) slockFilePreviewDesktopViewportScript() else "",
+                        // Android ignores `width=` in the viewport meta unless this is on, so the
+                        // injected desktop viewport needs it; other platforms have no equivalent flag.
+                        useWideViewPort = htmlDesktopMode,
+                        controller = htmlWideViewPortController,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
