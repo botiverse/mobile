@@ -17,7 +17,7 @@ Path conventions: mobile paths are relative to `compose/shared/src/commonMain/ko
 
 ## How to read the status column
 
-- **done**: same user-visible behaviour exists on mobile.
+- **done**: the same user-visible behaviour has a code path on mobile. Not device-verified: this audit read code only.
 - **partial**: some of it exists; the cell says what is missing.
 - **WebView**: the feature works, but only by embedding the web page (`SettingsStandaloneWebViewHost` surfaces). Usable, but it depends on the web page rendering well at phone width and it does not share native state.
 - **missing**: no mobile code path found; the evidence column says what was searched.
@@ -26,7 +26,7 @@ Path conventions: mobile paths are relative to `compose/shared/src/commonMain/ko
 
 Effort: **S** ≈ a day or two, **M** ≈ a week, **L** = multi-week or cross-team. Level (P0/P1/P2) follows the port-criteria doc, including the default-path and silent-failure modifiers.
 
-This is a pre-candidate audit snapshot: it ranks gaps but does not yet carry the per-candidate owner / state / evidence columns of the criteria doc §8; those get filled when a gap is claimed. It is also a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
+This is a pre-candidate audit snapshot: it ranks gaps but does not carry the per-candidate owner / state / evidence columns of the criteria doc §8. Those live in the port-candidate tracker: when a gap is claimed, it is added there with owner, state and evidence, and this table's status is updated at the same moment. It is also a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
 
 ---
 
