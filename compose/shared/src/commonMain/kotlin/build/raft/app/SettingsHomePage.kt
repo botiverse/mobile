@@ -1745,6 +1745,7 @@ internal fun appShellBottomTabsVisible(
         // behind them so returning does not recreate it after the root is already visible.
         "home" ->
             selectedHomeDestination == null ||
+                retainedHomeSecondaryDestination(selectedHomeDestination) != HomeDestinationSaved &&
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
         else -> true
     }
