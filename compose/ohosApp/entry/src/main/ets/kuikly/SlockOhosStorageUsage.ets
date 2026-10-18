@@ -208,6 +208,13 @@ async function clearSlockOhosDirectoryContents(
     try {
       const childStat = await fs.lstat(child);
       if (childStat.isDirectory() && !childStat.isSymbolicLink()) {
+        // Empty nested directories first (same pattern as
+        // SlockOhosAppDiagnostics.removeDirectoryRecursively) so a non-empty
+        // child never depends on rmdir removing contents.
+        if (!(await clearSlockOhosDirectoryContents(child, (_nested: string): boolean => true))) {
+          cleared = false;
+          continue;
+        }
         await fs.rmdir(child);
       } else {
         await fs.unlink(child);
