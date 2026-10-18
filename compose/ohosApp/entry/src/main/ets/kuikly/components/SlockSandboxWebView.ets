@@ -353,6 +353,26 @@ export class SlockSandboxWebView extends KuiklyRenderBaseView {
     this.notifyLoadFailure(`ssl_error_${errorCode}`);
   }
 
+  /**
+   * task #6: ArkWeb's render process exits independently of the host app. Without an explicit
+   * handler the surface stays as a dead blank page, which is the OHOS counterpart of Android's
+   * onRenderProcessGone and iOS' webViewWebContentProcessDidTerminate. Teardown is the same
+   * renderRevision path the other reconfiguration props use: bumping the revision makes the
+   * `renderKey` resolve to a fresh Web component, which re-attaches and reloads src. Render-side
+   * history is intentionally not restored.
+   */
+  onRenderExited(renderKey: string): void {
+    if (!this.isRenderKeyCurrent(renderKey)) {
+      return;
+    }
+    this.currentIsLoading = false;
+    this.currentProgress = 0;
+    this.lastSuccessfulUrl = '';
+    this.lastLoadFailureKey = '';
+    this.notifyNavigationState(true);
+    this.bumpRenderRevision();
+  }
+
   private updateSrc(nextSrc: string): void {
     const normalized = nextSrc.trim();
     if (this.src === normalized) {
@@ -680,6 +700,9 @@ export struct SlockSandboxWebViewComponent {
                 event.error.getErrorCode()
               );
             }
+          })
+          .onRenderExited((event) => {
+            this.renderView.onRenderExited(renderKey);
           })
           .onSslErrorEventReceive((event) => {
             event.handler.handleCancel(true);

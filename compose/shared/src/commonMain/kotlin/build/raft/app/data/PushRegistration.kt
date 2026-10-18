@@ -21,14 +21,14 @@ private const val INSTALLATION_ID_KEY = "installationId"
 private const val PENDING_REGISTRATION_KEY = "pendingRegistration"
 private const val LAST_REGISTERED_PAYLOAD_KEY = "lastRegisteredPayload"
 private const val LAST_BOUND_USER_ID_KEY = "lastBoundUserId"
-private const val PUSH_LOG_TAG = "SlockPushRegistration"
+internal const val PUSH_LOG_TAG = "SlockPushRegistration"
 
 private val pushRegistrationJson = Json {
     encodeDefaults = true
 }
 
 @Serializable
-internal data class IosPushRegistrationPayload(
+internal data class SlockPushRegistrationPayload(
     val installationId: String,
     val provider: String = "apns",
     val platform: String = "ios",
@@ -37,6 +37,48 @@ internal data class IosPushRegistrationPayload(
     val env: String,
     val appVersion: String
 )
+
+/**
+ * The provider half of an RFC 045 registration. APNs and FCM share one
+ * registration lifecycle (persistence, auth-gated upsert, dedupe, logout
+ * unbind); only the token shape and the allowed environments differ.
+ */
+internal enum class SlockPushProviderSpec(val provider: String, val platform: String) {
+    /** iOS: hex APNs device token, sandbox or production. */
+    Apns(provider = "apns", platform = "ios"),
+
+    /**
+     * Android: the app registers by Firebase Installation ID
+     * (`firebase_messaging_installation_id_enabled`), which is case-sensitive.
+     * FCM has no sandbox.
+     */
+    Fcm(provider = "fcm", platform = "android");
+
+    fun normalizeToken(raw: String): String =
+        when (this) {
+            Apns -> raw.trim().lowercase()
+            Fcm -> raw.trim()
+        }
+
+    fun accepts(payload: SlockPushRegistrationPayload): Boolean {
+        if (payload.provider != provider || payload.platform != platform) return false
+        if (payload.installationId.isBlank() || payload.topic.isBlank() || payload.appVersion.isBlank()) return false
+        val token = payload.deviceToken
+        if (token.isBlank()) return false
+        return when (this) {
+            Apns ->
+                token.length % 2 == 0 &&
+                    token.all { it in '0'..'9' || it in 'a'..'f' } &&
+                    payload.env in setOf("sandbox", "production")
+            Fcm ->
+                token.length <= FCM_MAX_TOKEN_LENGTH &&
+                    token.all { it.isLetterOrDigit() && it.code < 128 || it == '_' || it == '-' || it == ':' } &&
+                    payload.env == "production"
+        }
+    }
+}
+
+private const val FCM_MAX_TOKEN_LENGTH = 4096
 
 internal interface SlockPushRegistrationApi {
     suspend fun upsert(payloadJson: String): HomeNetworkResponse
@@ -151,8 +193,9 @@ private object PlatformSlockIosRemoteNotificationsController : SlockIosRemoteNot
     }
 }
 
-internal class SlockIosPushRegistrationCoordinator(
+internal class SlockPushRegistrationCoordinator(
     private val store: SlockKeyValueStore,
+    private val spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
     private val currentSession: suspend () -> StoredAuthSession?,
     private val authRuntimeReady: () -> Boolean = { true },
     private val apiProvider: () -> SlockPushRegistrationApi?,
@@ -195,14 +238,16 @@ internal class SlockIosPushRegistrationCoordinator(
             return false
         }
         val payload =
-            IosPushRegistrationPayload(
+            SlockPushRegistrationPayload(
                 installationId = installationId,
-                deviceToken = deviceToken.trim().lowercase(),
+                provider = spec.provider,
+                platform = spec.platform,
+                deviceToken = spec.normalizeToken(deviceToken),
                 topic = topic.trim(),
                 env = env.trim().lowercase(),
                 appVersion = appVersion.trim()
             )
-        if (!payload.isValid()) {
+        if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
             return false
         }
@@ -353,17 +398,6 @@ internal class SlockIosPushRegistrationCoordinator(
     }
 }
 
-private fun IosPushRegistrationPayload.isValid(): Boolean =
-    installationId.isNotBlank() &&
-        provider == "apns" &&
-        platform == "ios" &&
-        deviceToken.length % 2 == 0 &&
-        deviceToken.isNotBlank() &&
-        deviceToken.all { it in '0'..'9' || it in 'a'..'f' } &&
-        topic.isNotBlank() &&
-        env in setOf("sandbox", "production") &&
-        appVersion.isNotBlank()
-
 /**
  * Swift-facing owner for the APNs registration lifecycle.
  *
@@ -375,7 +409,7 @@ object SlockIosPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
 
     @Volatile
-    private var coordinator: SlockIosPushRegistrationCoordinator? = null
+    private var coordinator: SlockPushRegistrationCoordinator? = null
 
     fun install(candidateInstallationId: String): String {
         val runtime = coordinator ?: createCoordinator().also {
@@ -415,13 +449,13 @@ object SlockIosPushRegistrationBridge {
         }
     }
 
-    private fun createCoordinator(): SlockIosPushRegistrationCoordinator {
+    private fun createCoordinator(): SlockPushRegistrationCoordinator {
         val store =
             SlockSharedKeyValueStoreProvider.create(
                 namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
                 storageName = "push registration"
             ).store
-        return SlockIosPushRegistrationCoordinator(
+        return SlockPushRegistrationCoordinator(
             store = store,
             currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
             authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },

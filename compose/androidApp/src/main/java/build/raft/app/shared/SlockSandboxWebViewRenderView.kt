@@ -11,6 +11,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -420,6 +421,47 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
         webView.webViewClient =
             object : WebViewClient() {
+                /**
+                 * task #6: the platform kills the *whole app* when a renderer process is
+                 * reclaimed and no client claims the event, so we must return true and
+                 * recover instead of letting the default handler terminate the process.
+                 *
+                 * Recovery rebuilds the WebView and reloads the current document. The
+                 * back stack for this surface is intentionally not restored: it died with
+                 * the renderer, and pretending otherwise would resurrect stale history
+                 * entries. Teardown here is deliberately narrower than [onDestroy] — the
+                 * host view stays alive, so callbacks, listeners and the destroy flag are
+                 * left intact for the rebuilt instance.
+                 */
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: RenderProcessGoneDetail?
+                ): Boolean {
+                    if (destroyed) return true
+                    Log.w(
+                        LOG_TAG,
+                        "render_process_gone didCrash=${detail?.didCrash()} " +
+                            "priority=${detail?.rendererPriorityAtExit()} " +
+                            "loadedSrc=${loadedSrc.redactedUrlForLog()}"
+                    )
+                    val restoreDocument = loadedSrc.isNotBlank()
+                    removeHostMessageListener()
+                    pendingRuntimeJavaScript = ""
+                    // Detach and destroy the dead instance before rebuilding; a WebView whose
+                    // renderer is gone must not be reused or re-attached.
+                    runCatching {
+                        view?.let {
+                            it.webChromeClient = null
+                            it.webViewClient = WebViewClient()
+                            removeView(it)
+                            it.destroy()
+                        }
+                    }
+                    recreateWebViewAfterDestroy(restoreCurrentDocument = restoreDocument)
+                    notifyNavigationState(force = true)
+                    return true
+                }
+
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed) return
                     super.onPageStarted(view, url, favicon)

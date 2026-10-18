@@ -407,6 +407,93 @@ class ProcessActivityUnreadStoreTest {
         assertFalse(store.currentProjection(ServerId("server-1")).hasValue)
     }
 
+    @Test
+    fun reconcileAfterSuppressionFactKeepsSuppressedRowsOffBadge() = runBlocking {
+        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
+        val secondStarted = CompletableDeferred<Unit>()
+        val releaseSecond = CompletableDeferred<Unit>()
+        var fetches = 0
+        val store =
+            store(ownerFlow) { _, _ ->
+                fetches += 1
+                if (fetches == 2) {
+                    // Gate the refresh so the suppression fact is guaranteed to
+                    // land while this attempt is in flight.
+                    secondStarted.complete(Unit)
+                    releaseSecond.await()
+                }
+                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 14, totalCount = 14))
+            }
+
+        store.onForeground(ServerId("server-1"), epoch = 1L, reason = "foreground")
+        awaitFresh(store) { it.totalUnreadCount == 14 }
+
+        store.refresh(ServerId("server-1"), reason = "growth_check")
+        secondStarted.await()
+        store.submitFact(
+            ActivityUnreadSummaryFact(
+                accountId = "account-1",
+                serverId = "server-1",
+                totalUnreadCount = 11,
+                totalCount = 11,
+                authoritative = false,
+                source = "realtime_patch"
+            )
+        )
+        releaseSecond.complete(Unit)
+
+        // Fetch 2 snapshotted the pre-fact revision, so its result resolves as
+        // stale_fact and is discarded; the loop auto-queues a fact_reconcile
+        // attempt (fetch 3) which sees raw server aggregate (14) and deducts the
+        // suppressed delta (14 - 11 = 3) instead of bouncing the badge to 14.
+        val projection = awaitFresh(store) { it.totalUnreadCount == 11 }
+        assertEquals(3, fetches)
+        assertEquals(11, projection.totalUnreadCount)
+        assertEquals(11, projection.totalCount)
+    }
+
+    @Test
+    fun serverGrowthStillPassesThroughAfterSuppressionBaseline() = runBlocking {
+        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var fetches = 0
+        val store =
+            store(ownerFlow) { _, _ ->
+                fetches += 1
+                if (fetches == 1) {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 14, totalCount = 14))
+                } else {
+                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 15, totalCount = 15))
+                }
+            }
+
+        store.onForeground(ServerId("server-1"), epoch = 1L, reason = "foreground")
+        firstStarted.await()
+        releaseFirst.complete(Unit)
+        awaitFresh(store) { it.totalUnreadCount == 14 }
+
+        store.submitFact(
+            ActivityUnreadSummaryFact(
+                accountId = "account-1",
+                serverId = "server-1",
+                totalUnreadCount = 11,
+                totalCount = 11,
+                authoritative = false,
+                source = "realtime_patch"
+            )
+        )
+        store.refresh(ServerId("server-1"), reason = "growth_check")
+
+        // Suppressed delta stays 3 (14 - 11); genuine server growth passes through.
+        val projection = awaitFresh(store) { it.totalUnreadCount == 12 }
+        assertEquals(2, fetches)
+        assertEquals(12, projection.totalUnreadCount)
+        assertEquals(12, projection.totalCount)
+    }
+
     private fun store(
         ownerFlow: MutableStateFlow<ProcessActivityUnreadOwner?>,
         projectionCache: ProcessActivityUnreadProjectionCache? = null,

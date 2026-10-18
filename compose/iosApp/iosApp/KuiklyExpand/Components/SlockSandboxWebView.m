@@ -284,6 +284,25 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     [self notifyLoadSuccess:self.currentURL];
 }
 
+/**
+ * task #6: WKWebView's web content process is reclaimed independently of the app. Without
+ * this delegate the surface is left as a dead white board that never recovers, which is the
+ * iOS counterpart of Android's onRenderProcessGone. The rebuild path already tears down the
+ * old instance and re-issues loadCurrentSrc, so recovery is a single call.
+ *
+ * Web-content-side history is intentionally not restored: it died with the process, and
+ * reconstructing it would resurrect stale entries. The document itself is reloaded.
+ */
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView API_AVAILABLE(ios(9.0)) {
+    if (webView != self.webView) {
+        return;
+    }
+    self.lastSuccessfulURL = @"";
+    self.lastLoadFailureKey = @"";
+    [self rebuildWebView];
+    [self notifyNavigationStateForce:YES];
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != self.webView || [self isIntentionalCancellation:error]) {
         return;

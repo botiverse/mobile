@@ -918,12 +918,12 @@
     <string name="member_external_setup_start">Start Claude Code</string>
     <string name="member_external_setup_hermes">Configure Hermes gateway</string>
     <string name="member_external_setup_copy">Copy</string>
-    <string name="member_external_setup_generate">Generate bootstrap token</string>
+    <string name="member_external_setup_generate">Generate login token</string>
     <string name="member_external_setup_generating">Generating…</string>
-    <string name="member_external_setup_token_label">Bootstrap token</string>
+    <string name="member_external_setup_token_label">Login token</string>
     <string name="member_external_setup_token_once">Copy this token now. The server only returns the raw value once.</string>
     <string name="member_external_setup_token_unavailable">The server did not return a token. Try again.</string>
-    <string name="member_external_setup_token_failed">Could not generate a bootstrap token.</string>
+    <string name="member_external_setup_token_failed">Could not generate a login token.</string>
     <string name="member_action_copy_id">Copy ID</string>
     <string name="member_action_copy_info">Copy info</string>
     <string name="member_action_copy_diagnostic_info">Copy Diagnostic Info</string>

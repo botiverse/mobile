@@ -229,6 +229,13 @@ class AgentsApiTest {
         assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(client.agentScopes(agentId)).data.granted.size)
         val scopesUpdateBody = client.updateAgentScopes(agentId, listOf("server:read", "channel:read"))
         assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(scopesUpdateBody).data.granted.size)
+        val loginToken =
+            assertIs<DataResult.Content<AgentLoginTokenSummary>>(
+                client.issueAgentLoginToken(agentId)
+            ).data
+        assertEquals("credential-1", loginToken.credentialId)
+        assertEquals("sk_agent_secret", loginToken.apiKey)
+
         val bootstrapToken =
             assertIs<DataResult.Content<AgentBootstrapTokenSummary>>(
                 client.issueBootstrapToken(agentId, """{"ttlMs":60000}""")
@@ -254,6 +261,7 @@ class AgentsApiTest {
                 "GET agents/agent-1/skills",
                 "GET agents/agent-1/scopes",
                 """PUT agents/agent-1/scopes body={"scopes":["server:read","channel:read"]}""",
+                """POST agents/agent-1/credentials body={}""",
                 """POST agents/agent-1/bootstrap-tokens body={"ttlMs":60000}"""
             ),
             transport.calls
@@ -486,6 +494,7 @@ class AgentsApiTest {
         private val externalStatusErrorBody: String? = null,
         private val skillsBody: String = """{"global":[{"name":"openai-docs"}],"workspace":[{"name":"android-regression"}]}""",
         private val scopesBody: String = """{"agentId":"agent-1","granted":["messages:read","messages:send"],"revision":7,"updatedAt":"2026-05-22T00:00:00.000Z"}""",
+        private val loginBody: String = """{"credentialId":"credential-1","apiKey":"sk_agent_secret","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}""",
         private val bootstrapBody: String = """{"tokenId":"token-1","bootstrapToken":"sk_agent_secret","tokenPrefix":"sk_agent","ttlExpiresAt":"2026-05-22T01:00:00.000Z","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}"""
     ) : SlockAgentsApi {
         val calls = mutableListOf<String>()
@@ -586,6 +595,11 @@ class AgentsApiTest {
         override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse {
             calls += "PUT agents/${agentId.value}/scopes body={\"mode\":\"default\"}"
             return ok(scopesBody)
+        }
+
+        override suspend fun issueAgentCredential(agentId: MemberId, body: String): HomeNetworkResponse {
+            calls += "POST agents/${agentId.value}/credentials body=$body"
+            return ok(loginBody)
         }
 
         override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse {

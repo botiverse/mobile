@@ -11,7 +11,9 @@ class SlockFirebaseMessagingService : FirebaseMessagingService() {
     override fun onRegistered(installationId: String) {
         super.onRegistered(installationId)
         SlockAppLog.i(TAG, "fcm_registered installationIdPresent=${installationId.isNotBlank()}")
-        // Server registration is intentionally left for the native push contract follow-up.
+        if (installationId.isNotBlank()) {
+            AndroidPushRegistration.onFirebaseInstallationId(applicationContext, installationId)
+        }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

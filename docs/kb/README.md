@@ -32,6 +32,7 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Does the package contain the fix? Read the build's source, not the version string](release-provenance-containment.md) | release / provenance | 辣条 | 2026-10-18 | current |
 | [Judging a Web → mobile capability gap, and ranking it](web-capability-port-criteria.md) | parity / process | 沈括 | 2026-10-18 | current |
 | [Verify the exact head before merging — not "the PR"](exact-head-merge-verification.md) | release / verification | peng | 2026-10-18 | current |
+| [Building and launching the iOS app on a simulator](ios-simulator-build-and-launch.md) | build / ios | 辣条 | 2026-10-18 | current |
 
 ## Planned sections
 
