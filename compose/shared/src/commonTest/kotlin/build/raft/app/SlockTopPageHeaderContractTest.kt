@@ -11,9 +11,9 @@ class SlockTopPageHeaderContractTest {
     }
 
     @Test
-    fun canonicalFrameKeepsAllSurfacesAtSixtyTwoDpWithoutSafeArea() {
+    fun canonicalFrameKeepsAllSurfacesAtTheRaftFiftySixDpHeadWithoutSafeArea() {
         assertEquals(
-            SlockTopPageHeaderFrameMetrics(totalHeight = 62.dp, contentHeight = 60.dp),
+            SlockTopPageHeaderFrameMetrics(totalHeight = 56.dp, contentHeight = 54.5.dp),
             slockTopPageHeaderFrameMetrics(topSafeArea = 0.dp),
         )
     }
@@ -21,7 +21,7 @@ class SlockTopPageHeaderContractTest {
     @Test
     fun canonicalFrameAddsSafeAreaWithoutChangingHeaderGeometry() {
         assertEquals(
-            SlockTopPageHeaderFrameMetrics(totalHeight = 86.dp, contentHeight = 84.dp),
+            SlockTopPageHeaderFrameMetrics(totalHeight = 80.dp, contentHeight = 78.5.dp),
             slockTopPageHeaderFrameMetrics(topSafeArea = 24.dp),
         )
     }

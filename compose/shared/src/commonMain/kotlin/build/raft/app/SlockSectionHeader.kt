@@ -2,7 +2,10 @@ package build.raft.app
 
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.background
@@ -18,18 +21,19 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.material3.PullToRefreshState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.clip
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -44,10 +48,9 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 
 private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
-private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
+private val PullRefreshCarrierColor: Color get() = SlockColor.Panel
 internal val SlockCollapsibleSectionContentGap = 4.dp
 internal val SlockCollapsibleSectionCountTextStyle =
     SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
@@ -96,8 +99,10 @@ internal fun SlockTopPageHeader(
     title: String,
     subtitle: String? = null,
     iconName: SlockLucideIconName? = null,
-    iconBackground: Color = SlockColor.BrandYellow,
-    backgroundColor: Color = SlockColor.BrandYellow,
+    iconBackground: Color = SlockColor.Primary,
+    // raft-ui 0.6.0: a phone section head sits on the frame layer (Source Yellow in
+    // light, the dark frame in dark) — the yellow marks where you are.
+    backgroundColor: Color = SlockColor.Frame,
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
     topSafeAreaOverride: Dp? = null,
@@ -137,14 +142,15 @@ internal fun SlockTopPageHeader(
                         modifier =
                             Modifier
                                 .size(SlockSize.HeaderIcon)
-                                .background(iconBackground)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                                // raft `PanelHeaderIcon`: a Source Yellow sticker, sticker radius, ink edge.
+                                .background(iconBackground, RoundedCornerShape(SlockRadius.Sticker))
+                                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
                         contentAlignment = Alignment.Center
                     ) {
                         SlockLucideIcon(
                             iconName,
                             modifier = Modifier.size(18.dp),
-                            color = "#FF000000",
+                            color = slockArgbHex(SlockColor.StickerInk),
                             spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
                         )
                     }
@@ -168,7 +174,7 @@ internal fun SlockTopPageHeader(
                         Text(
                             text = it,
                             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                            color = SlockColor.ForegroundHint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -191,7 +197,7 @@ internal fun SlockTopPageHeader(
 @Composable
 internal fun SlockTopPageHeaderFrame(
     modifier: Modifier = Modifier,
-    backgroundColor: Color = SlockColor.SurfaceWhite,
+    backgroundColor: Color = SlockColor.Panel,
     topSafeArea: Dp = 0.dp,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     contentStartPadding: Dp = SlockTopPageHeaderContentStartPadding,
@@ -217,12 +223,13 @@ internal fun SlockTopPageHeaderFrame(
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
             content = content,
         )
+        // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule).
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
+                    .height(SlockStroke.Thin)
+                    .background(SlockColor.BorderSeam)
                     .align(Alignment.BottomCenter)
         )
     }
@@ -270,27 +277,40 @@ internal fun SlockTopPageHeaderAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.padding(end = HeaderActionShadowOffset, bottom = HeaderActionShadowOffset)) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = HeaderActionShadowOffset, y = HeaderActionShadowOffset)
-                .background(SlockColor.ShadowBlack)
+    SlockRaftPanelAction(
+        onClick = onClick,
+        modifier = modifier.size(SectionHeaderActionSize)
+    ) {
+        SlockLucideIcon(
+            name = icon,
+            modifier = Modifier.size(SectionHeaderActionIconSize),
+            color = slockArgbHex(SlockColor.ForegroundIcon)
         )
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .size(SectionHeaderActionSize)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-        ) {
-            SlockLucideIcon(
-                name = icon,
-                modifier = Modifier.size(SectionHeaderActionIconSize),
-                color = "#FF000000"
-            )
-        }
     }
+}
+
+/**
+ * raft-ui 0.6.0 `PanelAction`: a ghost control on the control radius — no fill, no
+ * edge, no shadow, no press offset; a press lays `--fill-pressed` under the glyph.
+ */
+@Composable
+internal fun SlockRaftPanelAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    Button(
+        onClick = onClick,
+        pressOffset = 0.dp,
+        onPressedChange = { pressed = it },
+        modifier =
+            modifier
+                .clip(shape)
+                .background(if (pressed) SlockColor.FillPressed else Color.Transparent, shape),
+        content = content
+    )
 }
 
 internal fun LazyListScope.slockRaftPullToRefreshItem(
@@ -357,7 +377,7 @@ internal fun SlockCenteredLoading(
 ) {
     val resolvedMessage = message ?: stringResource(MR.strings.common_loading)
     Box(
-        modifier = modifier.background(SlockColor.SurfaceWhite),
+        modifier = modifier.background(SlockColor.Panel),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -397,7 +417,8 @@ internal fun SlockCollapsibleSectionHeader(
     modifier: Modifier = Modifier,
     showCollapsedUnreadDot: Boolean = false,
     minHeight: Dp = 30.dp,
-    uppercaseLabel: Boolean = true,
+    // raft-ui section titles keep source case (`normal-case`); callers may still opt in.
+    uppercaseLabel: Boolean = false,
     countPrefix: String = "",
     sortContentDescription: String? = null,
     onSortClick: ((SlockPopoverAnchor) -> Unit)? = null,
@@ -504,40 +525,30 @@ internal fun SlockHeaderIconAction(
     label: String? = null,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.padding(end = HeaderActionShadowOffset, bottom = HeaderActionShadowOffset)) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = HeaderActionShadowOffset, y = HeaderActionShadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .heightIn(min = 38.dp)
-                .widthIn(min = if (label == null) 38.dp else 54.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Sm)
+    SlockRaftPanelAction(
+        onClick = onClick,
+        modifier = modifier
+            .heightIn(min = 38.dp)
+            .widthIn(min = if (label == null) 38.dp else 54.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = if (label == null) 0.dp else SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
-            ) {
-                SlockLucideIcon(
-                    name = icon,
-                    modifier = Modifier.size(18.dp),
-                    color = "#FF000000"
+            SlockLucideIcon(
+                name = icon,
+                modifier = Modifier.size(18.dp),
+                color = slockArgbHex(SlockColor.ForegroundIcon)
+            )
+            label?.let {
+                Text(
+                    text = it,
+                    style = SlockType.Button,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                label?.let {
-                    Text(
-                        text = it,
-                        style = SlockType.Button,
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
         }
     }
@@ -546,9 +557,10 @@ internal fun SlockHeaderIconAction(
 /** Count treatment shared by member-page headers. */
 @Composable
 internal fun SlockMemberCountBadge(count: Int) {
-    Box(Modifier.background(Color(0xFFE7E5E4)).border(1.dp, SlockColor.BorderBlack)
+    Box(Modifier.background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
+        .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Chip))
         .padding(horizontal = 6.dp, vertical = 2.dp), contentAlignment = Alignment.Center) {
         Text(count.toString(), style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp),
-            color = SlockColor.TextBlack)
+            color = SlockColor.TextMuted)
     }
 }
