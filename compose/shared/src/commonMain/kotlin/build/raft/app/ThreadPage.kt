@@ -7281,10 +7281,18 @@ private fun SharedThreadRouteContentContent(
 
     // Decided once per thread open (a Local Feature Overrides change applies to the next open):
     // flipping the layout under a live list would re-map every index.
+    // task #193: read once so the list can reason about when the direction is really settled. An
+    // explicit user choice bypasses the gate entirely (threadReverseLayoutEffective returns
+    // `userChoice ?: followedDefault()`), so such users must not be treated as "undecided" and must
+    // not take a gratuitous rebuild when the gate lands.
+    val threadReverseLayoutUserChoice =
+        remember(threadInstanceKey) {
+            chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync()
+        }
     val threadReverseLayoutEnabled =
         remember(threadInstanceKey, markdownLightGateInputs != null) {
             threadReverseLayoutEffective(
-                userChoice = chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync()
+                userChoice = threadReverseLayoutUserChoice
             ) {
             markdownLightGateInputs?.let { gateInputs ->
                 resolveThreadReverseLayoutEnabled(
@@ -10649,8 +10657,13 @@ private fun SharedThreadRouteContentContent(
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 // task #193: tells the list whether the direction above is a real decision or just
-                // the placeholder used before the gate resolves.
-                LocalThreadReverseLayoutDecided provides (markdownLightGateInputs != null),
+                // the placeholder used before the gate resolves. An explicit user choice is already
+                // a decision and does not wait for the gate.
+                LocalThreadReverseLayoutDecided provides
+                    threadReverseLayoutIsDecided(
+                        userChoice = threadReverseLayoutUserChoice,
+                        gateReady = markdownLightGateInputs != null
+                    ),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -22253,6 +22266,18 @@ internal fun threadReverseLayoutNeedsRebuild(
     previousDecided: Boolean,
     nextDecided: Boolean,
 ): Boolean = !previousDecided && nextDecided
+
+/**
+ * task #193: whether the reverse-layout direction is settled.
+ *
+ * Two independent ways to be settled:
+ *  - the user explicitly picked a layout ([userChoice] non-null) -- `threadReverseLayoutEffective`
+ *    returns that choice directly and never consults the gate, so waiting for the gate would force
+ *    a needless rebuild for exactly the users who already know what they want;
+ *  - the gate resolved ([gateReady]) -- reply-cache provenance arrived and the flag could be read.
+ */
+internal fun threadReverseLayoutIsDecided(userChoice: Boolean?, gateReady: Boolean): Boolean =
+    userChoice != null || gateReady
 
 internal fun threadInitialBottomAnchorTargetItemIndex(
     latestMessageItemIndex: Int,

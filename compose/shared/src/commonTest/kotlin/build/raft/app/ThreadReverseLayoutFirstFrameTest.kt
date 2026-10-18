@@ -80,4 +80,33 @@ class ThreadReverseLayoutFirstFrameTest {
             "the decided transition must both rebuild the state and deliver the decided direction"
         )
     }
+    @Test
+    fun anExplicitUserChoiceIsDecidedWithoutWaitingForTheGate() {
+        // threadReverseLayoutEffective returns `userChoice ?: followedDefault()`, so a user who
+        // explicitly picked a layout never consults the gate. Treating them as "undecided" until the
+        // gate lands would rebuild a list that was already correct.
+        assertTrue(threadReverseLayoutIsDecided(userChoice = true, gateReady = false))
+        assertTrue(threadReverseLayoutIsDecided(userChoice = false, gateReady = false))
+    }
+
+    @Test
+    fun withNoUserChoiceTheGateDecides() {
+        assertFalse(
+            threadReverseLayoutIsDecided(userChoice = null, gateReady = false),
+            "no user choice and no gate means the direction is still a placeholder"
+        )
+        assertTrue(threadReverseLayoutIsDecided(userChoice = null, gateReady = true))
+    }
+
+    @Test
+    fun aUserChoiceNeverTriggersTheRebuild() {
+        // The rebuild exists only to repair the pre-gate placeholder. A user choice is settled from
+        // the first composition, so the false -> true transition never happens for those users.
+        val alreadyDecided = threadReverseLayoutIsDecided(userChoice = true, gateReady = false)
+        assertFalse(
+            threadReverseLayoutNeedsRebuild(previousDecided = alreadyDecided, nextDecided = true),
+            "an explicitly chosen layout must not rebuild when the gate arrives"
+        )
+    }
+
 }
