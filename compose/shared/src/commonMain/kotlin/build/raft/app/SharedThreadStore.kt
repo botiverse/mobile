@@ -5836,6 +5836,18 @@ internal fun ServerFeatureFlagSnapshot.mobileThreadPageSize(): Int? =
         null
     }
 private const val SharedThreadFirstFrameDelayMillis = 16L
+
+/**
+ * Task #390: on a memory-miss entry the store waits at most this long for the entered-scope
+ * baseline load ([SharedThreadStore.start] step 4) to finish before asking the durable
+ * last-known reader for the first frame. When the load committed inside the window the disk
+ * read returns the just-written snapshot and the first frame is the content itself instead of
+ * a loading shell that is replaced a beat later. This is a wait bound only, not a requirement:
+ * a timeout (or a load that committed nothing) falls back to today's behaviour — loading shell
+ * or an older durable frame, then the refresh result. The load keeps running past the timeout;
+ * nothing it wrote is rolled back.
+ */
+private const val SharedThreadEnterBaselineAwaitMillis = 500L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 
@@ -6527,12 +6539,48 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        // Offline cache write entry (task #1124): every entry of a channel / DM refreshes that one
+        // channel's durable baseline in the background. Task #390 moves the launch ahead of the
+        // offline read below so that on a memory miss the load and the read overlap: the durable
+        // last-known read can see a snapshot the load committed while it ran, and the first frame
+        // is the entered content instead of a loading shell that the refresh replaces a beat later.
+        // Fire-and-forget on the store scope: it never touches the visible payload, and closing
+        // the screen cancels it.
+        if (producerContext != null) {
+            enteredScopeSnapshotJob?.cancel()
+            val replyParent = routeContextPayload.durableReplyParentOrNull()
+            enteredScopeSnapshotJob =
+                scope.launch {
+                    dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, producerContext, replyParent)
+                }
+        }
         // Offline cache read entry (task #1123): only when no in-memory candidate exists does the
         // durable last-known frame stand in for the loading shell. Memory candidates are newer by
         // construction (they were written by a network response in this process).
+        // Task #390: on that read path only, wait (bounded by SharedThreadEnterBaselineAwaitMillis)
+        // for the baseline load just launched to finish first. When it commits inside the window
+        // the disk read returns that snapshot and the entry fetches the channel exactly once;
+        // when it does not, the read proceeds as before. The await only joins — a timeout leaves
+        // the load running so nothing it wrote is rolled back.
         val durableLastKnown =
             if (cached == null && current == null && threadId != null) {
                 producerContext?.let { context ->
+                    enteredScopeSnapshotJob?.let { job ->
+                        try {
+                            val completed =
+                                withTimeoutOrNull(SharedThreadEnterBaselineAwaitMillis) { job.join() } != null
+                            diagnosticsLogger?.invoke(
+                                "thread_enter_baseline_await threadId=$threadId completed=$completed"
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Throwable) {
+                            diagnosticsLogger?.invoke(
+                                "thread_enter_baseline_await threadId=$threadId outcome=error " +
+                                    "reason=${failure.message ?: failure::class.simpleName.orEmpty()}"
+                            )
+                        }
+                    }
                     dataSource.durableLastKnownPayloadIfCurrent(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
@@ -6629,16 +6677,6 @@ internal class SharedThreadStore(
                     )
                 )
             }
-        }
-        // Offline cache write entry (task #1124): every entry of a channel / DM refreshes that one
-        // channel's durable baseline in the background, independent of what the first frame was
-        // (memory cache, durable frame, or loading shell). Fire-and-forget on the store scope: it
-        // never touches the visible payload, and closing the screen cancels it.
-        producerContext?.let { context ->
-            enteredScopeSnapshotJob?.cancel()
-            val replyParent = routeContextPayload.durableReplyParentOrNull()
-            enteredScopeSnapshotJob =
-                scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, context, replyParent) }
         }
         delay(SharedThreadFirstFrameDelayMillis)
         if (
