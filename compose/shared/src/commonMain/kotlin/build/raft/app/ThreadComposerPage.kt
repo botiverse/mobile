@@ -2918,10 +2918,15 @@ internal fun ThreadComposerContentLeaf(
                                         enabled = composerEnabled,
                                         size = 14.dp
                                     )
-                                    val labelColor = if (composerEnabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
+                                    // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
+                                    // foreground, foreground-disabled when the composer is off.
+                                    val labelColor = if (composerEnabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
                                     Text(
                                         text = stringResource(MR.strings.thread_composer_as_task),
-                                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
+                                        style =
+                                            SlockType.Caption
+                                                .withSlockFontWeight(FontWeight.SemiBold)
+                                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
                                         color = labelColor
                                     )
                                 }
@@ -3418,10 +3423,10 @@ private data class ComposerMemberSuggestionPanelEntry(
 private fun composerMemberSuggestionPanelEntries(
     title: String?,
     members: List<KuiklyComposerMemberItem>,
-    inThreadTitle: String = "IN THIS THREAD",
-    inThisChannelTitle: String = "IN THIS CHANNEL",
-    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
-    notInThisChannelTitle: String = "NOT IN THIS CHANNEL",
+    inThreadTitle: String = "In this thread",
+    inThisChannelTitle: String = "In this channel",
+    notInParentChannelTitle: String = "Not in parent channel",
+    notInThisChannelTitle: String = "Not in this channel",
     notInScopeTitle: String? = null
 ): ComposerMemberSuggestionPanelModel {
     val groups = members.composerMemberSuggestionGroups()
@@ -3472,10 +3477,12 @@ private fun composerMemberSuggestionPanelEntries(
 }
 
 private fun String?.notInMentionScopeHeader(
-    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
-    notInThisChannelTitle: String = "NOT IN THIS CHANNEL"
+    notInParentChannelTitle: String = "Not in parent channel",
+    notInThisChannelTitle: String = "Not in this channel"
 ): String =
-    when (this) {
+    // Scope titles are source-case resources now ("In parent channel"); match
+    // case-insensitively so legacy uppercase payload titles keep working.
+    when (this?.uppercase()) {
         "IN PARENT CHANNEL" -> notInParentChannelTitle
         "IN THIS CHANNEL" -> notInThisChannelTitle
         else -> notInThisChannelTitle
@@ -3539,14 +3546,16 @@ private fun ComposerSuggestionHeader(
         if (topDivider) {
             ComposerSuggestionDivider()
         }
+        // raft-ui menu `groupLabel`: text-caption bold on foreground-hint in
+        // source case, px-2.5 pt-2 pb-1.
         Text(
             text = text,
             style =
                 SlockType.Caption
                     .withSlockFontWeight(FontWeight.Bold)
-                    .copy(color = SlockColor.TextMutedGray, letterSpacing = 1.1.sp),
-            color = SlockColor.TextMutedGray,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                    .copy(color = SlockColor.ForegroundHint),
+            color = SlockColor.ForegroundHint,
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp)
         )
         if (bottomDivider) {
             ComposerSuggestionDivider()
@@ -4691,7 +4700,7 @@ private fun ComposerChannelSuggestionRow(
             }
             Text(
                 text = channel.name,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack, fontSize = 13.sp),
+                style = SlockType.Button.copy(color = SlockColor.TextBlack, fontSize = 14.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -4725,14 +4734,22 @@ private fun ComposerSuggestionInteractiveRow(
             selected -> selectedColor
             else -> Color.Transparent
         }
-    Column(modifier = Modifier.fillMaxWidth().background(background)) {
+    // raft-ui `ComposerSuggestionList` item: inset 6dp (p-1.5) inside the
+    // popover, rounded-control highlight, px-2.5.
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp)
+                .background(background, RoundedCornerShape(SlockRadius.Control))
+    ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
@@ -4806,7 +4823,8 @@ private fun ComposerIconButton(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
-    backgroundColor: Color = SlockColor.SurfaceWhite,
+    // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
+    backgroundColor: Color = Color.Transparent,
     disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
     disabledIconColor: String = "#4D000000",
