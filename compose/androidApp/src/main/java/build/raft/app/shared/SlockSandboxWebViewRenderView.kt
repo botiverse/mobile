@@ -336,9 +336,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             domStorageEnabled = this@SlockSandboxWebViewRenderView.domStorageEnabled
             // task #188: without this Android ignores `width=` in the page's viewport meta, so a
             // desktop-width viewport injection does nothing.
+            // task #188: qualified on both sides -- inside settings.apply { } a bare `useWideViewPort =`
+            // binds to the WebSettings property, so the shadowing here is deliberate and easy to
+            // misread. Keep both on one source of truth (the render view's field).
             useWideViewPort = this@SlockSandboxWebViewRenderView.useWideViewPort
-            webView.settings.useWideViewPort = useWideViewPort
-            webView.settings.loadWithOverviewMode = useWideViewPort
+            loadWithOverviewMode = this@SlockSandboxWebViewRenderView.useWideViewPort
             databaseEnabled = false
             allowFileAccess = false
             allowContentAccess = false
