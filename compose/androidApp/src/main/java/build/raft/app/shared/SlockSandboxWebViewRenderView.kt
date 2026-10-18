@@ -28,6 +28,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
+import build.raft.app.slockFilePreviewDesktopScalePercent
 import java.io.ByteArrayInputStream
 import java.net.URI
 import org.json.JSONObject
@@ -701,9 +702,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             return
         }
         val dpr = resources.displayMetrics.density
-        val needed = viewWidthPx / (DESKTOP_VIEWPORT_WIDTH * dpr)
-        if (needed <= 0f || needed >= 1f) return
-        val percent = (needed * 100).toInt().coerceIn(MIN_DESKTOP_SCALE_PERCENT, 100)
+        // task #514: the ratio lives in shared code so iOS and OHOS cannot drift from this one.
+        // `null` means "no fit to apply" (unmeasurable view, bad density, or the layout already
+        // fits), which is the same early-return this method used to do inline.
+        val percent = slockFilePreviewDesktopScalePercent(viewWidthPx, dpr) ?: return
         view.setInitialScale(percent)
         desktopModeScaleApplied = true
         Log.i(LOG_TAG, "desktop_mode_scale viewWidthPx=$viewWidthPx dpr=$dpr percent=$percent")
@@ -1127,21 +1129,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_DOM_STORAGE_ENABLED = "domStorageEnabled"
         private const val PROP_USE_WIDE_VIEW_PORT = "useWideViewPort"
 
-        /**
-         * task #188: desktop viewport width in CSS px.
-         *
-         * Duplicated from `SlockFilePreviewDesktopViewportWidth` in `:shared` -- that constant is
-         * `internal` to another module and not visible here. If the shared width ever changes, this
-         * one must change with it: a mismatch means the zoom computed below no longer fits the
-         * desktop layout, which is exactly the crop this task exists to remove. There is no
-         * compile-time link, and a source-text assertion would be a banned source-grep test, so the
-         * coupling is recorded here and checked by a device run (font height in desktop mode must
-         * differ from adaptive).
-         */
-        private const val DESKTOP_VIEWPORT_WIDTH = 1280f
-
-        /** Lower bound so a very wide screen cannot produce an unreadable scale. */
-        private const val MIN_DESKTOP_SCALE_PERCENT = 10
+        // task #514: the desktop viewport width and the scale floor used to be duplicated here as
+        // `DESKTOP_VIEWPORT_WIDTH` / `MIN_DESKTOP_SCALE_PERCENT`, with only a comment tying them to
+        // shared. They now resolve through `slockFilePreviewDesktopScalePercent`, so Android, iOS
+        // and OHOS share one formula and one set of edge cases instead of three copies.
         private const val PROP_CACHE_ENABLED = "cacheEnabled"
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"

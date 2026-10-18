@@ -1,8 +1,10 @@
 #import "SlockSandboxWebView.h"
+#import <shared/shared.h>
 #import "SlockSandboxWebViewNavigationCommit.h"
 
 #import <OpenKuiklyIOSRender/KRComponentDefine.h>
 #import <WebKit/WebKit.h>
+#import <math.h>
 
 static NSString *const SlockSandboxWebViewSrcProp = @"src";
 static NSString *const SlockSandboxWebViewAllowScriptsProp = @"allowScripts";
@@ -11,6 +13,9 @@ static NSString *const SlockSandboxWebViewDomStorageEnabledProp = @"domStorageEn
 static NSString *const SlockSandboxWebViewCacheEnabledProp = @"cacheEnabled";
 static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
 static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
+// task #514: desktop mode needs a fit scale, mirroring Android's `useWideViewPort`. The shared
+// side already dispatches this prop to every platform; before this it had no consumer here.
+static NSString *const SlockSandboxWebViewUseWideViewPortProp = @"useWideViewPort";
 static NSString *const SlockSandboxWebViewAllowedNavigationSchemesProp = @"allowedNavigationSchemes";
 static NSString *const SlockSandboxWebViewHostEventsEnabledProp = @"hostEventsEnabled";
 static NSString *const SlockSandboxWebViewHostMessageProp = @"hostMessage";
@@ -49,6 +54,7 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 @property (nonatomic, assign) BOOL cacheEnabled;
 @property (nonatomic, assign) BOOL ephemeral;
 @property (nonatomic, copy) NSString *injectedJavaScript;
+@property (nonatomic, assign) BOOL useWideViewPort;
 @property (nonatomic, copy) NSSet<NSString *> *allowedNavigationSchemes;
 @property (nonatomic, copy) NSString *currentURL;
 @property (nonatomic, copy) NSString *currentTitle;
@@ -119,6 +125,8 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
         self.hostMessageCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewInjectedJavaScriptProp]) {
         [self updateInjectedJavaScript:[self stringFromValue:propValue]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewUseWideViewPortProp]) {
+        [self updateUseWideViewPort:[self boolFromValue:propValue defaultValue:NO]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewAllowedNavigationSchemesProp]) {
         [self updateAllowedNavigationSchemes:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadCommitProp]) {
@@ -148,6 +156,9 @@ static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.webView.frame = self.bounds;
+    // task #514: the widen flag can arrive before the first layout pass, when the view
+    // width is still 0 and the fit ratio is meaningless. Re-apply once measured.
+    [self applyDesktopModeScale];
 }
 
 - (void)removeFromSuperview {
@@ -491,6 +502,55 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     }
     self.injectedJavaScript = nextInjectedJavaScript;
     [self rebuildWebView];
+}
+
+- (void)updateUseWideViewPort:(BOOL)useWideViewPort {
+    if (self.useWideViewPort == useWideViewPort) {
+        return;
+    }
+    self.useWideViewPort = useWideViewPort;
+    [self applyDesktopModeScale];
+}
+
+/**
+ * task #514: fit the desktop-width layout into the view, mirroring Android's `setInitialScale`.
+ *
+ * The ratio is NOT computed here. It comes from the shared function so iOS, Android and OHOS
+ * cannot drift into three slightly different formulas; a `nil` return means "no fit to apply"
+ * (unmeasurable view, bad density, or the layout already fits).
+ *
+ * WKWebView exposes CSS-pixel scaling as `pageZoom`, which scales the rendered page rather than
+ * the view. Unlike `useWideViewPort` on Android this does not need a reload: it applies to the
+ * document already on screen, so the toggle takes effect immediately.
+ */
+- (void)applyDesktopModeScale {
+    WKWebView *webView = self.webView;
+    if (!webView) {
+        return;
+    }
+    if (!self.useWideViewPort) {
+        // Back to adaptive: clear any zoom we set, otherwise the page stays shrunk.
+        if (webView.pageZoom != 1.0) {
+            webView.pageZoom = 1.0;
+        }
+        return;
+    }
+    const CGFloat viewportPx = CGRectGetWidth(self.bounds);
+    if (viewportPx <= 0) {
+        // The prop can arrive before the first layout pass; `layoutSubviews` retries.
+        return;
+    }
+    const CGFloat scale = webView.window.screen.scale > 0 ? webView.window.screen.scale : 1.0;
+    // Both bounds come from shared, so no literal here can drift from what the tests cover.
+    SharedInt *percent = [SharedSlockFilePreviewKt
+        slockFilePreviewDesktopScalePercentViewportPx:(int32_t)llround(viewportPx)
+                                                   dpr:(float)scale
+                                        desktopCssWidth:SharedSlockFilePreviewKt.SlockFilePreviewDesktopViewportWidth
+                                            minPercent:SharedSlockFilePreviewKt.SlockFilePreviewDesktopScaleMinPercent];
+    if (!percent) {
+        return;
+    }
+    webView.pageZoom = MAX((double)percent.intValue / 100.0, 0.01);
 }
 
 - (void)updateAllowedNavigationSchemes:(NSString *)allowedNavigationSchemes {
