@@ -16581,22 +16581,11 @@ private fun ThreadHeaderFocusModeMenu(
             SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
     // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it.
-    // The thread page reads its own params; the host passed threadLaunchPageData, which becomes
-    // `param`, so `instanceId` is present on both sides. Fall back to the payload-provided id so a
-    // re-nesting change cannot silently yield a key that matches nothing (which would read as a
-    // fresh zero origin and put the menu back at the page's top-left).
-    val pageOriginKey =
-        slockChildPageOriginKey(
-            THREAD_PAGE,
-            LocalActivity.current.pageData.params.let { params ->
-                if (params.optString("instanceId").isNotBlank()) {
-                    params
-                } else {
-                    com.tencent.kuikly.core.nvi.serialization.json.JSONObject()
-                        .apply { put("instanceId", payload.instanceId) }
-                }
-            }
-        )
+    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it. Verified by
+    // reading PagerData: the host's pageData becomes `rawPageData["param"]` and `pageData.params`
+    // reads that back, so `instanceId` is present on both sides. The trace logs both keys so any
+    // future divergence is a line comparison rather than a silent zero origin.
+    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
     val pageKey =
         LocalActivity.current.pageData.params
