@@ -61,6 +61,8 @@ internal interface SlockAgentsApi {
     suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
+    /** External-agent login credential mint; unlike bootstrap tokens this is the user-facing login surface. */
+    suspend fun issueAgentCredential(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
     suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
         error("agentRuntimeFormV2 is not implemented")
@@ -211,6 +213,14 @@ internal class SlockAgentsNetworkApi(
             method = "POST",
             bodyText = body
         )
+
+    override suspend fun issueAgentCredential(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/credentials",
+            method = "POST",
+            bodyText = body
+        )
 }
 
 internal class SlockAgentsApiClient(
@@ -358,6 +368,22 @@ internal class SlockAgentsApiClient(
             )
         }
 
+    suspend fun issueAgentLoginToken(agentId: MemberId, body: String = "{}"): DataResult<AgentLoginTokenSummary> =
+        transport.issueAgentCredential(agentId, body).mapAgentsBody(
+            "agent_login_token_contract_mismatch",
+            AgentLoginTokenResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            val credentialId = wire.credentialId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
+            val apiKey = wire.apiKey?.takeIf { it.isNotBlank() && it.startsWith("sk_agent_") }
+                ?: return@mapAgentsBody null
+            AgentLoginTokenSummary(
+                credentialId = credentialId,
+                apiKey = apiKey,
+                scopeCount = wire.scopes.size,
+            )
+        }
+
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): DataResult<AgentBootstrapTokenSummary> =
         transport.issueBootstrapToken(agentId, body).mapAgentsBody(
             "agent_bootstrap_token_contract_mismatch",
@@ -450,6 +476,13 @@ internal data class AgentActivityPage(val entryCount: Int)
 internal data class AgentWorkspaceFilePage(val fileCount: Int)
 internal data class AgentWorkspaceFileRead(val path: String, val content: String, val binary: Boolean, val size: Long?)
 internal data class AgentSkillsSummary(val globalCount: Int, val workspaceCount: Int)
+internal data class AgentLoginTokenSummary(
+    val credentialId: String,
+    /** Raw login token is returned once and must remain in UI-local state. */
+    val apiKey: String,
+    val scopeCount: Int
+)
+
 internal data class AgentBootstrapTokenSummary(
     val tokenId: String,
     val tokenPrefix: String,
@@ -886,6 +919,13 @@ private data class AgentScopesResponseDto(
     val agentId: String? = null,
     val granted: List<String>,
     val revision: Long? = null,
+)
+
+@Serializable
+private data class AgentLoginTokenResponseDto(
+    val credentialId: String? = null,
+    val apiKey: String? = null,
+    val scopes: List<String> = emptyList(),
 )
 
 @Serializable

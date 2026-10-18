@@ -9740,7 +9740,6 @@ private fun MembersExternalAgentSetupSection(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val tokenUnavailable = stringResource(MR.strings.member_external_setup_token_unavailable)
     val tokenFailed = stringResource(MR.strings.member_external_setup_token_failed)
     var token by remember(agentId) { mutableStateOf<String?>(null) }
     var tokenLoading by remember(agentId) { mutableStateOf(false) }
@@ -9777,10 +9776,9 @@ private fun MembersExternalAgentSetupSection(
                     tokenLoading = true
                     error = null
                     scope.launch {
-                        when (val result = agentsApiClient.issueBootstrapToken(agentId, build.raft.app.data.buildIssueAgentBootstrapTokenBody(build.raft.app.data.IssueAgentBootstrapTokenBody()))) {
+                        when (val result = agentsApiClient.issueAgentLoginToken(agentId)) {
                             is DataResult.Content -> {
-                                token = result.data.bootstrapToken
-                                if (token == null) error = tokenUnavailable
+                                token = result.data.apiKey
                             }
                             else -> error = tokenFailed
                         }
