@@ -19088,7 +19088,13 @@ private fun ThreadMessagesListContent(
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
     }
     // The only production owner allowed to mutate listState.
-    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
+    // task #193: keyed on rawListState as well, so a direction-driven rebuild cancels any command
+    // aimed at the previous list instead of replaying it against a state nobody renders.
+    LaunchedEffect(
+        threadInstanceKey,
+        rawListState,
+        viewportControllerState.pendingCommand?.id
+    ) {
         val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
         fun commandStillCurrent(): Boolean =
             currentViewportControllerState.value.acceptsRenderedTailCommand(
@@ -19664,6 +19670,9 @@ private fun ThreadMessagesListContent(
     }
     LaunchedEffect(
         threadInstanceKey,
+        // task #193: this effect mutates listState via the older-page anchor. Keyed on rawListState
+        // so a direction-driven rebuild cannot replay a pending anchor against the old list.
+        rawListState,
         renderPayload.olderMessagesStatus,
         renderPayload.messages.size,
         renderPayload.messages.firstOrNull()?.id
