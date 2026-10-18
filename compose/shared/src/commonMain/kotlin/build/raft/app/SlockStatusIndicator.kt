@@ -29,15 +29,24 @@ internal enum class SlockStatusIndicatorShape {
 }
 
 internal object SlockStatusIndicatorTokens {
-    val Shape: SlockStatusIndicatorShape = SlockStatusIndicatorShape.Circle
+    // raft-ui 0.6.0 status lights are square pixels (`rounded-[2px] border-[1.5px]
+    // border-sticker-ink`). The app theme is always a raft register, so the default
+    // shape/edge follow [SlockThemeState]; brutal-only previews pass their own.
+    val Shape: SlockStatusIndicatorShape
+        get() = if (SlockThemeState.theme.isAmbient) SlockStatusIndicatorShape.Square else SlockStatusIndicatorShape.Circle
     // #90 React parity: bump avatar overlay size 9dp → 11dp to match React
     // `StatusDot size="lg"` (`size-[11px]`). Inline / server-unread sizes
     // match React `size="md"` (10dp ≈ 10px) and stay unchanged.
     val AvatarSize: Dp = 11.dp
-    val InlineSize: Dp = 10.dp
-    val ServerUnreadSize: Dp = 10.dp
-    val BorderWidth: Dp = SlockStroke.Thin
-    val BorderColor: Color get() = SlockColor.BorderBlack
+    // raft `md` presence / attention pixel is 9px.
+    val InlineSize: Dp
+        get() = if (SlockThemeState.theme.isAmbient) 9.dp else 10.dp
+    val ServerUnreadSize: Dp
+        get() = if (SlockThemeState.theme.isAmbient) 9.dp else 10.dp
+    val BorderWidth: Dp
+        get() = if (SlockThemeState.theme.isAmbient) SlockStroke.Control else SlockStroke.Thin
+    val BorderColor: Color
+        get() = if (SlockThemeState.theme.isAmbient) SlockColor.StickerInk else SlockColor.BorderBlack
 }
 
 @Composable

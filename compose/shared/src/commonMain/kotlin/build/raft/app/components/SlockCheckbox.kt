@@ -5,7 +5,9 @@ import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockRadius
 import build.raft.app.SlockStroke
+import build.raft.app.slockArgbHex
 import build.raft.app.SlockThemeFamily
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -59,29 +61,42 @@ internal fun SlockCheckbox(
     } else {
         modifier
     }
-    // Elegant register: a softly-rounded control — real 4dp rounded corners + 1px #CACACE hairline
-    // (unchecked) and a #0A0A0A elegant-ink fill (checked) with the white Check icon, vs the brutal
-    // square black-border / black-fill below. Disabled fades via the shared disabledAlpha. The
-    // borderRadius-prop path does not round at runtime, so the rounded shape is applied straight to
-    // background/border, mirroring the elegant button/card/input. The brutal branch is unchanged.
+    // raft-ui 0.6.0 Checkbox (`checkbox-indicator` recipe): a 20dp sticker-radius (4dp)
+    // box with a 1.5dp `--line-strong` edge on the card layer; checked = `--foreground`
+    // fill + edge with a 14dp `--foreground-inverse` check; disabled = `--foreground-disabled`
+    // edge on `--fill-muted`, and disabled+checked fills with `--foreground-disabled` and a
+    // card-coloured check. Opaque colours, no alpha fades. Smaller legacy sizes grow to 20dp.
     val theme = LocalSlockTheme.current
     if (theme.isAmbient) {
-        val shape = RoundedCornerShape(4.dp)
-        val elegantCheckedFill = theme.ink.copy(alpha = disabledAlpha)
-        val elegantBorderColor = if (checked) elegantCheckedFill else theme.line.copy(alpha = disabledAlpha)
+        val boxSize = if (size < SlockRaftMetrics.CheckboxSize) SlockRaftMetrics.CheckboxSize else size
+        val shape = RoundedCornerShape(SlockRadius.Sticker)
+        val fill =
+            when {
+                checked && enabled -> SlockColor.TextBlack
+                checked -> SlockColor.ForegroundDisabled
+                enabled -> SlockColor.Card
+                else -> SlockColor.FillMuted
+            }
+        val edge =
+            when {
+                !enabled -> SlockColor.ForegroundDisabled
+                checked -> SlockColor.TextBlack
+                else -> SlockColor.BorderBlack
+            }
+        val checkInk = if (enabled) SlockColor.ForegroundInverse else SlockColor.Card
         Box(
             modifier = clickableModifier
-                .size(size)
-                .background(if (checked) elegantCheckedFill else theme.surface, shape)
-                .border(theme.lineWidth, elegantBorderColor, shape),
+                .size(boxSize)
+                .background(fill, shape)
+                .border(SlockStroke.Control, edge, shape),
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
                 SlockLucideIcon(
                     SlockLucideIconName.Check,
-                    modifier = Modifier.size((size.value * 0.7f).dp),
-                    color = "#FFFFFFFF",
-                    strokeWidth = 4f
+                    modifier = Modifier.size((boxSize.value * 0.7f).dp),
+                    color = slockArgbHex(checkInk),
+                    strokeWidth = 2f
                 )
             }
         }

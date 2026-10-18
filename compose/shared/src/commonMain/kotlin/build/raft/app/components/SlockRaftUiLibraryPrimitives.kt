@@ -7,6 +7,7 @@ import build.raft.app.SlockBrutalDropdownMenuSurface
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockRadius
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
@@ -34,6 +35,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.clip
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
@@ -56,6 +59,16 @@ internal enum class SlockRaftUiBannerStatus(val background: Color) {
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
     Success(SlockColor.AccentLime.copy(alpha = 0.20f))
 }
+
+/** raft-ui 0.6.0 Banner fills: the status `-soft` wash (raft `info` is cyan, not yellow). */
+internal val SlockRaftUiBannerStatus.raftFill: Color
+    get() =
+        when (this) {
+            SlockRaftUiBannerStatus.Info -> SlockColor.InfoSoft
+            SlockRaftUiBannerStatus.Warning -> SlockColor.WarningSoft
+            SlockRaftUiBannerStatus.Destructive -> SlockColor.DangerSoft
+            SlockRaftUiBannerStatus.Success -> SlockColor.SuccessSoft
+        }
 
 internal enum class SlockRaftUiBannerSize(val padding: Dp, val gap: Dp, val titleSize: Int, val bodySize: Int) {
     Small(8.dp, 8.dp, 12, 12),
@@ -132,6 +145,17 @@ internal fun SlockRaftUiLabel(
     small: Boolean = false,
     disabled: Boolean = false
 ) {
+    if (slockRaftActive()) {
+        SlockRaftFieldLabel(
+            label = text,
+            required = required,
+            optional = optional,
+            compact = small,
+            modifier = modifier,
+            disabled = disabled
+        )
+        return
+    }
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = text,
@@ -173,17 +197,27 @@ internal fun SlockRaftUiRadioRow(
     enabled: Boolean = true
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        val raft = slockRaftActive()
         SlockCheckMarker(
             checked = selected,
             shape = SlockCheckMarkerShape.Circle,
             tone = SlockCheckMarkerTone.YellowFill,
             disabled = !enabled,
-            size = 16.dp
+            // raft radio: `size-5`.
+            size = if (raft) SlockRaftMetrics.CheckboxSize else 16.dp
         )
         Text(
             text = label,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Medium),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+            style =
+                SlockType.Body
+                    .copy(fontSize = 14.sp, lineHeight = if (raft) 20.sp else 18.sp)
+                    .withSlockFontWeight(if (raft) FontWeight.SemiBold else FontWeight.Medium),
+            color =
+                when {
+                    enabled -> SlockColor.TextBlack
+                    raft -> SlockColor.ForegroundDisabled
+                    else -> SlockColor.TextBlack.copy(alpha = 0.45f)
+                },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -244,6 +278,18 @@ internal fun SlockRaftUiBanner(
     iconName: SlockLucideIconName? = null,
     action: (@Composable () -> Unit)? = null
 ) {
+    if (slockRaftActive()) {
+        SlockRaftBanner(
+            status = status,
+            title = title,
+            description = description,
+            modifier = modifier,
+            size = size,
+            iconName = iconName,
+            action = action
+        )
+        return
+    }
     Row(
         modifier =
             modifier
@@ -277,6 +323,64 @@ internal fun SlockRaftUiBanner(
             )
         }
         action?.invoke()
+    }
+}
+
+/**
+ * raft-ui 0.6.0 Banner: container radius 10dp, status `-soft` fill, 1dp inset
+ * `--line-muted` ring, ink type. `md`: 14/12dp padding, 10dp gap, callout 14/20, 20dp
+ * icon; `sm`: 12/8dp padding, 8dp gap, footnote 13/18, 16dp icon. Title is bold.
+ */
+@Composable
+private fun SlockRaftBanner(
+    status: SlockRaftUiBannerStatus,
+    title: String?,
+    description: String,
+    modifier: Modifier,
+    size: SlockRaftUiBannerSize,
+    iconName: SlockLucideIconName?,
+    action: (@Composable () -> Unit)?
+) {
+    val small = size == SlockRaftUiBannerSize.Small
+    val shape = RoundedCornerShape(SlockRadius.Container)
+    val fontSize = if (small) 13.sp else 14.sp
+    val lineHeight = if (small) 18.sp else 20.sp
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(status.raftFill, shape)
+                .border(SlockStroke.Thin, SlockColor.LineMuted, shape)
+                .padding(horizontal = if (small) 12.dp else 14.dp, vertical = if (small) 8.dp else 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (small) 8.dp else 10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        iconName?.let {
+            SlockLucideIcon(it, modifier = Modifier.size(if (small) 16.dp else 20.dp), color = SlockColor.TextBlackArgb)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            title?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = SlockType.Body.copy(fontSize = fontSize, lineHeight = lineHeight).withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = description,
+                style = SlockType.Body.copy(fontSize = fontSize, lineHeight = lineHeight),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            action?.let {
+                Box(modifier = Modifier.padding(top = 8.dp)) {
+                    it()
+                }
+            }
+        }
     }
 }
 
@@ -323,6 +427,45 @@ internal fun SlockRaftUiEmptyState(
     iconText: String = "∅",
     action: (@Composable () -> Unit)? = null
 ) {
+    if (slockRaftActive()) {
+        // raft-ui EmptyState: px-6 py-12, 8dp gap, hint-ink icon (36), headline 17/22 bold
+        // muted title, callout 14/20 hint description (max 300dp), actions 20dp below.
+        Column(
+            modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = iconText,
+                style = SlockType.PageTitle.copy(fontSize = 34.sp, lineHeight = 38.sp),
+                color = SlockColor.ForegroundHint,
+                maxLines = 1
+            )
+            Text(
+                text = title,
+                style = SlockType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextMuted,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = description,
+                modifier = Modifier.widthIn(max = 300.dp),
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = SlockColor.ForegroundHint,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            action?.let {
+                Box(modifier = Modifier.padding(top = 12.dp)) {
+                    it()
+                }
+            }
+        }
+        return
+    }
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -417,6 +560,27 @@ internal fun SlockRaftUiInlineCode(text: String, modifier: Modifier = Modifier) 
 
 @Composable
 internal fun SlockRaftUiKbd(text: String, modifier: Modifier = Modifier) {
+    if (slockRaftActive()) {
+        // raft-ui Kbd: mono 12/16 hint ink, 3dp radius, 4dp side padding, 1dp inset
+        // `--line-muted` ring, min 16dp wide.
+        val shape = RoundedCornerShape(3.dp)
+        Box(
+            modifier =
+                modifier
+                    .widthIn(min = 16.dp)
+                    .border(SlockStroke.Thin, SlockColor.LineMuted, shape)
+                    .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.ForegroundHint,
+                maxLines = 1
+            )
+        }
+        return
+    }
     Text(
         text = text,
         modifier = modifier.padding(horizontal = 2.dp, vertical = 1.dp),
@@ -484,13 +648,17 @@ internal fun SlockRaftUiInputGroup(
     trailingText: String? = null,
     invalid: Boolean = false
 ) {
+    if (slockRaftActive()) {
+        SlockRaftUiInputGroupRaft(value = value, modifier = modifier, leadingText = leadingText, trailingText = trailingText, invalid = invalid)
+        return
+    }
     val fieldHeight = 42.dp
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(fieldHeight)
-                .background(if (invalid) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite)
+                .background(if (invalid) SlockFieldErrorTint else SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, if (invalid) SlockColor.AccentRed else SlockColor.BorderBlack),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -508,6 +676,68 @@ internal fun SlockRaftUiInputGroup(
         trailingText?.let {
             SlockRaftUiInputGroupAddon(it, alignStart = false)
         }
+    }
+}
+
+/**
+ * raft-ui InputGroup with `container` text addons: 44dp, control radius, 1.5dp
+ * `--line-strong` edge (`--danger-strong` when invalid) on the card layer; addons are
+ * `--fill-muted` cells behind 1dp `--line-muted` dividers, mono 13/20 placeholder ink.
+ */
+@Composable
+private fun SlockRaftUiInputGroupRaft(
+    value: String,
+    modifier: Modifier,
+    leadingText: String?,
+    trailingText: String?,
+    invalid: Boolean
+) {
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(SlockRaftMetrics.FieldHeight)
+                .clip(shape)
+                .background(SlockColor.Card, shape)
+                .border(SlockStroke.Control, if (invalid) SlockColor.DangerStrong else SlockColor.LineField, shape),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        leadingText?.let {
+            SlockRaftUiInputGroupAddonCell(it)
+            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.LineMuted))
+        }
+        Text(
+            text = value,
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        trailingText?.let {
+            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.LineMuted))
+            SlockRaftUiInputGroupAddonCell(it)
+        }
+    }
+}
+
+@Composable
+private fun SlockRaftUiInputGroupAddonCell(text: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxHeight()
+                .background(SlockColor.FillMuted)
+                .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 20.sp),
+            color = SlockColor.ForegroundPlaceholder,
+            maxLines = 1
+        )
     }
 }
 
@@ -540,6 +770,52 @@ internal fun SlockRaftUiAvatar(
     size: Dp = 32.dp,
     badge: Boolean = false
 ) {
+    if (slockRaftActive()) {
+        // raft-ui Avatar: square sticker (4dp radius, 1.5dp sticker-ink edge; agents on
+        // `--inactive`, humans lavender); the presence badge is an 11dp square pixel that
+        // overhangs the corner by 4dp with a 2dp panel-coloured outline.
+        val shape = RoundedCornerShape(SlockRadius.Sticker)
+        val badgeSize = if (size >= 48.dp) 14.dp else 11.dp
+        Box(modifier = modifier.size(size + if (badge) 4.dp else 0.dp)) {
+            // The fallback art is the app avatar; the sticker frame (clip + ink edge, which
+            // Kuikly paints over the children) comes from this wrapper.
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .clip(shape)
+                        .background(if (type == SlockRaftUiAvatarType.Agent) SlockColor.Inactive else SlockColor.AccentLavender, shape)
+                        .border(SlockStroke.Control, SlockColor.StickerInk, shape),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockAvatar(
+                    avatarWireValue = null,
+                    label = label,
+                    avatarSize = size,
+                    borderWidth = 0.dp
+                )
+            }
+            if (badge) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(badgeSize + 4.dp)
+                            .align(Alignment.BottomEnd)
+                            .background(SlockColor.Panel, RoundedCornerShape(4.dp))
+                            .padding(2.dp)
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(badgeSize)
+                                .background(SlockColor.PresenceOnline, RoundedCornerShape(2.dp))
+                                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+        }
+        return
+    }
     Box(modifier = modifier.size(size + if (badge) 8.dp else 0.dp)) {
         SlockAvatar(
             avatarWireValue = null,
@@ -587,6 +863,25 @@ internal fun SlockRaftUiTabs(
     modifier: Modifier = Modifier,
     panelText: String
 ) {
+    if (slockRaftActive()) {
+        // raft-ui Tabs (`variant="default"`): a 2dp-gap row of 32dp control-radius tabs;
+        // the active tab is the yellow `--primary` sticker (ink edge, bold ink type). The
+        // panel has no chrome of its own.
+        Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                items.forEach { item ->
+                    SlockRaftSegmentedItem(
+                        label = item.label,
+                        selected = item.value == selectedValue,
+                        enabled = true,
+                        onClick = {}
+                    )
+                }
+            }
+            SlockRaftUiTextSans(panelText)
+        }
+        return
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             modifier =
@@ -688,6 +983,13 @@ internal fun SlockRaftUiPopupSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    if (slockRaftActive()) {
+        // raft popup: container radius, popover layer, seam ring, float shadow, 6dp inset.
+        Column(modifier = modifier.slockRaftOverlaySurface().padding(SlockRaftMetrics.PopupPadding)) {
+            content()
+        }
+        return
+    }
     Column(
         modifier =
             modifier
@@ -700,6 +1002,19 @@ internal fun SlockRaftUiPopupSurface(
 
 @Composable
 internal fun SlockRaftUiSurfaceLabel(text: String, modifier: Modifier = Modifier) {
+    if (slockRaftActive()) {
+        // raft menu group label: px-2.5 pt-2 pb-1, caption 12/16 bold hint ink, no rule.
+        Box(modifier = modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)) {
+            Text(
+                text = text,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        return
+    }
     Box(
         modifier =
             modifier
@@ -725,6 +1040,41 @@ internal fun SlockRaftUiMenuRow(
     highlighted: Boolean = false,
     disabled: Boolean = false
 ) {
+    if (slockRaftActive()) {
+        // raft menu item: min 36dp, control radius, px-2.5, callout 14/20 medium; the
+        // highlighted row is `--primary-soft`; shortcut text is mono 12/16 hint.
+        Row(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .height(SlockRaftMetrics.MenuRowHeight)
+                    .background(
+                        if (highlighted && !disabled) SlockColor.PrimarySoft else Color.Transparent,
+                        RoundedCornerShape(SlockRadius.Control)
+                    )
+                    .padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.Medium),
+                color = if (disabled) SlockColor.ForegroundDisabled else SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            trailing?.let {
+                Text(
+                    text = it,
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = if (disabled) SlockColor.ForegroundDisabled else SlockColor.ForegroundHint,
+                    maxLines = 1
+                )
+            }
+        }
+        return
+    }
     Row(
         modifier =
             modifier
@@ -765,22 +1115,30 @@ internal fun SlockRaftUiNotificationItem(
     read: Boolean = false,
     actionLabel: String? = null
 ) {
+    val raft = slockRaftActive()
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
                 .alpha(if (read) 0.70f else 1f)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .then(
+                    if (raft) {
+                        Modifier.slockRaftCardSurface()
+                    } else {
+                        Modifier.border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    }
+                )
                 .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top
     ) {
+        val tileShape = if (raft) RoundedCornerShape(SlockRadius.Sticker) else RectangleShape
         Box(
             modifier =
                 Modifier
                     .size(24.dp)
-                    .background(status.background)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .background(status.background, tileShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack, tileShape),
             contentAlignment = Alignment.Center
         ) {
             SlockLucideIcon(status.icon, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)

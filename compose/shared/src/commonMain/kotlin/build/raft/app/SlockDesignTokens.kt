@@ -64,6 +64,70 @@ internal object SlockColor {
     val Popover: Color get() = SlockThemeState.colors.layerPopover
     val TextMuted: Color get() = SlockThemeState.colors.foregroundMuted
 
+    // raft-ui 0.6.0 semantic roles the primitives draw with (foundation.css). Themed ones
+    // follow light/dark through [SlockThemeState]; the solid "sticker" fills are the same
+    // colour in both modes, so they read straight from the palette.
+    // Text and icon ink ladder.
+    val ForegroundStrong: Color get() = SlockThemeState.colors.foregroundStrong
+    val ForegroundHint: Color get() = SlockThemeState.colors.foregroundHint
+    val ForegroundIcon: Color get() = SlockThemeState.colors.foregroundIcon
+    val ForegroundPlaceholder: Color get() = SlockThemeState.colors.foregroundPlaceholder
+    val ForegroundDisabled: Color get() = SlockThemeState.colors.foregroundDisabled
+    val ForegroundInverse: Color get() = SlockThemeState.colors.foregroundInverse
+    // Opaque neutral fills: resting/disabled control fill and the 8% pressed wash.
+    val FillMuted: Color get() = SlockThemeState.colors.fillMuted
+    val FillStrong: Color get() = SlockThemeState.colors.fillStrong
+    val FillPressed: Color get() = SlockThemeState.colors.fillPressed
+    // `--line-muted` (card edges, menu separators) and `--line-field` (input ink).
+    val LineMuted: Color get() = SlockThemeState.colors.lineMuted
+    val LineField: Color get() = SlockThemeState.colors.lineField
+    // The yellow frame (`--layer-frame`) and the overlay backdrop.
+    val Frame: Color get() = SlockThemeState.colors.layerFrame
+    val Backdrop: Color get() = SlockThemeState.colors.layerBackdrop
+    // State washes (`-soft`) and readable state ink (`-strong`).
+    val PrimarySoft: Color get() = SlockThemeState.colors.primarySoft
+    val PrimaryStrong: Color get() = SlockThemeState.colors.primaryStrong
+    val AccentSoft: Color get() = SlockThemeState.colors.accentSoft
+    val AccentStrong: Color get() = SlockThemeState.colors.accentStrong
+    val InfoSoft: Color get() = SlockThemeState.colors.infoSoft
+    val InfoStrong: Color get() = SlockThemeState.colors.infoStrong
+    val SuccessSoft: Color get() = SlockThemeState.colors.successSoft
+    val SuccessStrong: Color get() = SlockThemeState.colors.successStrong
+    val WarningSoft: Color get() = SlockThemeState.colors.warningSoft
+    val WarningStrong: Color get() = SlockThemeState.colors.warningStrong
+    val DangerSoft: Color get() = SlockThemeState.colors.dangerSoft
+    val DangerStrong: Color get() = SlockThemeState.colors.dangerStrong
+    val InactiveSoft: Color get() = SlockThemeState.colors.inactiveSoft
+    // Sticker solids (`bg-primary`, `bg-accent`, ...): ink type on colour in both modes.
+    val Primary = RaftUiPalette.primary
+    val Accent = RaftUiPalette.accent
+    val Info = RaftUiPalette.info
+    val Success = RaftUiPalette.success
+    val Warning = RaftUiPalette.warning
+    val Danger = RaftUiPalette.danger
+    val Inactive = RaftUiPalette.inactive
+    val StickerInk = RaftUiPalette.stickerInk
+    val StickerPaper = RaftUiPalette.stickerPaper
+    // 12% ink laid over a pressed sticker (`press-overlay-sticker`).
+    val StickerPressed = RaftUiPalette.stickerPressed
+    // Die-cut edge around stickers: transparent in light, a 35% paper ring in dark.
+    val StickerEdge: Color get() = SlockThemeState.colors.stickerEdge
+    // Presence lights (`--presence-*`): fixed meanings, same in both modes.
+    val PresenceOnline = RaftUiPalette.presenceOnline
+    val PresenceBusy = RaftUiPalette.presenceBusy
+    val PresenceError = RaftUiPalette.presenceError
+    val PresenceOffline = RaftUiPalette.presenceOffline
+    val PresenceExternal = RaftUiPalette.presenceExternal
+    // Colour of the overlay float shadow (`--theme-shadow-float`): ink at 32% in light,
+    // black at 80% in dark. Only overlays (menus, popovers, dialogs) cast it.
+    val OverlayShadow: Color
+        get() =
+            if (SlockThemeState.isDark) {
+                RaftUiPalette.black.copy(alpha = 0.8f)
+            } else {
+                SlockThemeState.colors.ink.copy(alpha = 0.32f)
+            }
+
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"
     // Kuikly string-colour callsites; themed ones derive from their Color token.

@@ -11,6 +11,7 @@ import build.raft.app.components.SlockPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
+import build.raft.app.components.slockRaftActive
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
@@ -80,7 +81,9 @@ import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.clip
 import com.tencent.kuikly.compose.ui.draw.clipToBounds
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
@@ -7156,12 +7159,16 @@ internal fun SlockAvatar(
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
     }
+    // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
+    // never circles; brutal keeps square corners.
+    val frameModifier =
+        if (slockRaftActive()) modifier.clip(RoundedCornerShape(SlockRadius.Sticker)) else modifier
     when {
         pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
-            PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
+            PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
         }
         httpAvatarSource != null -> Box(
-            modifier = modifier
+            modifier = frameModifier
                 .size(width = avatarSize, height = avatarSize)
                 .background(SlockColor.AccentLavender)
                 .border(borderWidth, SlockColor.BorderBlack),
@@ -7183,7 +7190,7 @@ internal fun SlockAvatar(
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(modifier, avatarSize, borderWidth)
+            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
         }
     }
 }
