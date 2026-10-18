@@ -21,6 +21,7 @@ import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.locks.ReentrantLock
@@ -894,10 +895,12 @@ internal object SlockAndroidAvatarCacheProcess {
 
     @Volatile
     private var controller: SlockAndroidAvatarCacheController? = null
+    private val startupScheduled = AtomicBoolean(false)
 
     fun install(context: Context): SlockAndroidAvatarCacheController =
         synchronized(lock) {
             controller ?: SlockAndroidAvatarCacheController.create(context).also { created ->
+                startupScheduled.set(true)
                 controller = created
                 SlockAvatarMountedNativeProviderRegistry.install(created)
             }
@@ -905,14 +908,13 @@ internal object SlockAndroidAvatarCacheProcess {
 
     /** Starts durable-cache recovery without putting Files.walk/stat on the UI thread. */
     fun startAsync(context: Context) {
-        synchronized(lock) {
-            if (controller != null) return
-            startupExecutor.execute {
-                synchronized(lock) {
-                    if (controller == null) {
-                        controller = SlockAndroidAvatarCacheController.create(context)
-                        SlockAvatarMountedNativeProviderRegistry.install(controller!!)
-                    }
+        if (controller != null || !startupScheduled.compareAndSet(false, true)) return
+        startupExecutor.execute {
+            val created = SlockAndroidAvatarCacheController.create(context)
+            synchronized(lock) {
+                if (controller == null) {
+                    controller = created
+                    SlockAvatarMountedNativeProviderRegistry.install(created)
                 }
             }
         }
