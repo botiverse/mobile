@@ -68,6 +68,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var useWideViewPort: Boolean = false
     /** task #188: true once a desktop-mode initial scale has been applied, so it can be cleared. */
     private var desktopModeScaleApplied: Boolean = false
+    /** task #188: guards the one retry used when the scale prop arrives before layout. */
+    private var desktopModeScaleRetryScheduled: Boolean = false
     private var cacheEnabled: Boolean = false
     private var ephemeral: Boolean = true
     private var injectedJavaScript: String = ""
@@ -643,7 +645,19 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             return
         }
         val viewWidthPx = view.width
-        if (viewWidthPx <= 0) return
+        if (viewWidthPx <= 0) {
+            // The prop can arrive before the first layout pass, in which case width is 0 and the
+            // ratio is meaningless. Retry once measured instead of silently dropping the scale --
+            // but only once, so a view that never measures cannot spin forever.
+            if (!desktopModeScaleRetryScheduled) {
+                desktopModeScaleRetryScheduled = true
+                view.post {
+                    desktopModeScaleRetryScheduled = false
+                    applyDesktopModeScale(view)
+                }
+            }
+            return
+        }
         val dpr = resources.displayMetrics.density
         val needed = viewWidthPx / (DESKTOP_VIEWPORT_WIDTH * dpr)
         if (needed <= 0f || needed >= 1f) return
