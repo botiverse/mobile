@@ -7217,8 +7217,14 @@ internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: St
         fileName.endsWith(".markdown", ignoreCase = true)
 }
 
-/** Desktop-mode render width in CSS pixels, matching a common desktop browser viewport. */
-internal const val SlockFilePreviewDesktopViewportWidth = 1280
+/**
+ * Desktop-mode render width in CSS pixels, matching a common desktop browser viewport.
+ *
+ * `public` since task #514: the iOS and OHOS render views pass it through to
+ * [slockFilePreviewDesktopScalePercent] from native code, and a duplicated literal there would be
+ * exactly the drift this constant exists to prevent.
+ */
+const val SlockFilePreviewDesktopViewportWidth = 1280
 
 /**
  * task #188: the script that makes an HTML attachment render as the desktop layout.
