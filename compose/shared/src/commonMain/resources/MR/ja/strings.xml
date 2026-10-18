@@ -138,6 +138,10 @@
     <string name="settings_account_logout_confirm">このデバイスからログアウトしますか？アカウントとデータは保持され、いつでも再ログインできます。</string>
     <string name="settings_mobile_title">モバイル</string>
     <string name="settings_mobile_subtitle">自分のメッセージの配置</string>
+    <string name="settings_mobile_thread_reverse_layout">チャットを最新メッセージから開く</string>
+    <string name="settings_mobile_thread_reverse_layout_detail">チャットを最新メッセージから開き、下から上へ並べて表示します（先にスクロールする必要はありません）。次にチャットを開いたときから適用されます。変更するまではサーバーのデフォルトに従います。</string>
+    <string name="settings_mobile_http3">HTTP/3 を有効にする</string>
+    <string name="settings_mobile_http3_detail">新しいリクエストは HTTP/3 を試し、ネットワークが対応していない場合は HTTP/2 にフォールバックします。変更するまではサーバーのデフォルトに従います。</string>
     <string name="settings_computers_title">コンピューター</string>
     <string name="settings_computers_subtitle">接続されたマシンとワークスペース</string>
     <string name="settings_server_title">サーバー</string>
@@ -800,6 +804,13 @@
     <string name="member_status_posted_status_update">ステータス更新を投稿</string>
     <string name="member_status_product_review">プロダクトレビュー</string>
     <string name="member_action_remove_member">メンバーを削除</string>
+    <string name="member_machine_no_computer_assigned">コンピューターが割り当てられていません</string>
+    <string name="member_machine_run_computer_version">コンピューター v%1$s</string>
+    <string name="member_machine_run_daemon_version">デーモン v%1$s</string>
+    <string name="member_machine_run_computer_online">コンピューター オンライン</string>
+    <string name="member_machine_run_daemon_online">デーモン オンライン</string>
+    <string name="member_machine_run_computer_offline">コンピューター オフライン</string>
+    <string name="member_machine_run_daemon_offline">デーモン オフライン</string>
     <string name="member_report_issue_title">問題を報告</string>
     <string name="member_report_issue_agent_label">エージェント</string>
     <string name="member_report_issue_description_label">問題を説明してください</string>
@@ -1376,6 +1387,7 @@
     <string name="agent_create_placeholder_description">汎用エージェントの場合は空欄のまま、または役割を記述してください...</string>
     <string name="agent_create_error_description_length">説明は %1$d 文字以内にしてください。</string>
     <string name="agent_create_action_create">エージェントを作成</string>
+    <string name="agent_create_action_create_external">外部エージェントを作成</string>
     <string name="agent_create_action_creating">作成中...</string>
     <string name="agent_create_error_limit">エージェント数の上限に達しました（このサーバーで %1$d/%2$d）。アップグレードすると追加できます。</string>
     <string name="agent_create_error_limit_plan">エージェント数の上限に達しました（%3$s プランで %1$d/%2$d）。</string>
