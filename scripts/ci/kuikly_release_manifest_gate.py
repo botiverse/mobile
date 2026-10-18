@@ -662,7 +662,11 @@ def self_test() -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release", help="release id, e.g. 2.21.0-raft.0")
-    parser.add_argument("--registry-base", help="registry base URL (production)")
+    parser.add_argument(
+        "--registry-base",
+        default="https://maven.artifacts.botiverse.dev",
+        help="registry base URL (default: production maven.artifacts.botiverse.dev)",
+    )
     parser.add_argument("--offline-root", help="directory-based fake registry (testing)")
     parser.add_argument("--closure", help="JSON file: list of expected publication GAVs")
     parser.add_argument(
