@@ -120,6 +120,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateDomStorageEnabled(propValue.toBooleanValue(default = false))
                 true
             }
+            // task #188: without this the desktop viewport is silently dropped on Android -- the prop
+            // reaches the render view and no branch consumes it, so `useWideViewPort` stays false and
+            // the injected `width=1280` is ignored (innerWidth stays at the device width). Caught on
+            // device: reload and meta rewriting both worked, yet innerWidth was still 480.
+            PROP_USE_WIDE_VIEW_PORT -> {
+                updateUseWideViewPort(propValue.toBooleanValue(default = false))
+                true
+            }
             PROP_CACHE_ENABLED -> {
                 updateCacheEnabled(propValue.toBooleanValue(default = false))
                 true
@@ -598,6 +606,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         // meta width without fitting it to the view, which reads as a zoomed-in crop.
         webView.settings.useWideViewPort = next
         webView.settings.loadWithOverviewMode = next
+        // Reload here, not from shared. The viewport is only applied when a document loads, and the
+        // shared side's reload command can arrive before this prop depending on how Kuikly flushes
+        // updates -- which would reload with the OLD setting and leave the page compact. Reloading
+        // right after the assignment makes "new setting" and "new document" one ordered step.
+        if (webView.url != null) webView.reload()
     }
 
     private fun updateCacheEnabled(next: Boolean) {

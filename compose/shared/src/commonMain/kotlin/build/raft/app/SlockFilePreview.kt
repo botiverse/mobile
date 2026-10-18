@@ -7773,17 +7773,15 @@ internal fun SlockFilePreviewPayloadContent(
                     // toggle cannot affect the document already on screen -- the WebView has to load
                     // again. Holding the controller lets us reload instead of rebuilding.
                     val htmlWideViewPortController = rememberSlockWebViewController()
-                    // Reload on CHANGE only. This composable is also the initial entry, so a bare
-                    // LaunchedEffect(htmlDesktopMode) would fire on first composition and reload the
-                    // document the WebView is already loading. Tracking the previous value makes the
-                    // first pass a no-op.
-                    var htmlAppliedDesktopMode by remember { mutableStateOf(htmlDesktopMode) }
-                    LaunchedEffect(htmlDesktopMode) {
-                        if (htmlAppliedDesktopMode != htmlDesktopMode) {
-                            htmlAppliedDesktopMode = htmlDesktopMode
-                            htmlWideViewPortController.reload()
-                        }
-                    }
+                    // task #188, caught on device: this toggle cannot reach the document already on
+                    // screen, because the viewport is injected at DOCUMENT START. The reload is NOT
+                    // issued from here. Android's render view reloads itself right after it applies
+                    // `useWideViewPort`, which guarantees the new setting and the new document are one
+                    // ordered step; a reload from shared can arrive before the prop and would reload
+                    // with the old setting (observed: reload happened, innerWidth stayed 480).
+                    //
+                    // `rememberSlockWebViewController()` is still held so the composable owns a stable
+                    // controller across recompositions, but the toggle no longer dispatches a command.
                     SlockSandboxWebView(
                         url = previewUrl,
                         allowScripts = true,
