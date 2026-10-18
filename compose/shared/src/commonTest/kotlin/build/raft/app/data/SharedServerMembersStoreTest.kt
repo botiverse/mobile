@@ -2014,6 +2014,20 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun memberProfileSuppressesDeletedAgentFromStaleProfileCache() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(
+            member("agent-1", "Build Agent").copy(kind = MemberKind.Agent)
+        )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+
+        assertNotNull(store.memberProfile(ServerId("server-1"), "agent-1"))
+        assertTrue(store.markAgentDeleted(ServerId("server-1"), MemberId("agent-1")))
+        assertNull(store.memberProfile(ServerId("server-1"), "agent-1"))
+    }
+
+    @Test
     fun deleteAgentCallsRepositoryAndEvictsMemberThroughStore() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] =

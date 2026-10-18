@@ -19616,8 +19616,8 @@ private fun SharedHomeScreen(
             val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
                 remember(serverMembersState, snapshot.server.id) {
                     { memberId ->
-                        serverMembersState
-                            .memberProfile(snapshot.server.id, memberId)
+                        serverMembersStore
+                            ?.memberProfile(snapshot.server.id, memberId)
                             ?.toSlockHomePinnedMemberItem()
                     }
                 }
