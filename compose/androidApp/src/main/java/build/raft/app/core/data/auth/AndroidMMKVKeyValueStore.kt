@@ -204,8 +204,8 @@ fun androidMMKVApiEnvironmentKeyValueStore(context: Context): SlockKeyValueStore
 fun androidMMKVActivityUnreadKeyValueStore(context: Context): SlockKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE)
 
-fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
-    val appContext = context.applicationContext
+/** Shared-code namespaces that get app-scope MMKV storage on Android. */
+internal val androidAppScopeSharedKeyValueNamespaces: List<String> =
     listOf(
         SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
         SlockLocalPreferenceStore.KuiklyNamespace,
@@ -213,7 +213,11 @@ fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
         SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE,
         SLOCK_APP_LOGIN_MMKV_NAMESPACE,
         SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE
-    ).forEach { namespace ->
+    )
+
+fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
+    val appContext = context.applicationContext
+    androidAppScopeSharedKeyValueNamespaces.forEach { namespace ->
         SlockSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
             AndroidAppScopeKeyValueStores.get(appContext, namespace)
         }
