@@ -16581,7 +16581,22 @@ private fun ThreadHeaderFocusModeMenu(
             SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
     // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it.
-    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+    // The thread page reads its own params; the host passed threadLaunchPageData, which becomes
+    // `param`, so `instanceId` is present on both sides. Fall back to the payload-provided id so a
+    // re-nesting change cannot silently yield a key that matches nothing (which would read as a
+    // fresh zero origin and put the menu back at the page's top-left).
+    val pageOriginKey =
+        slockChildPageOriginKey(
+            THREAD_PAGE,
+            LocalActivity.current.pageData.params.let { params ->
+                if (params.optString("instanceId").isNotBlank()) {
+                    params
+                } else {
+                    com.tencent.kuikly.core.nvi.serialization.json.JSONObject()
+                        .apply { put("instanceId", payload.instanceId) }
+                }
+            }
+        )
     // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
     val pageKey =
         LocalActivity.current.pageData.params
@@ -16641,7 +16656,8 @@ private fun ThreadHeaderFocusModeMenu(
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
             slockTraceToPlatformLog(
                 "SlockShellOverlay",
-                "page_post requestId=$requestId pageKey=$pageKey windowAnchor=$windowAnchor items=${items.size}"
+                "page_post requestId=$requestId pageKey=$pageKey originKey=$pageOriginKey " +
+                    "pageOrigin=$pageOrigin windowAnchor=$windowAnchor items=${items.size}"
             )
             bus.post(
                 SLOCK_SHELL_OVERLAY_REQUEST_EVENT,

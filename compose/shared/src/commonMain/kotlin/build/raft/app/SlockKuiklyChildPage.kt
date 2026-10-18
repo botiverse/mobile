@@ -283,7 +283,15 @@ internal fun SlockKuiklyChildPage(
         factory = { SlockKuiklyChildPageView() },
         modifier =
             modifier.onGloballyPositioned { coordinates ->
-                childPageOriginState.updateOrigin(coordinates.positionInRoot())
+                val measured = coordinates.positionInRoot()
+                childPageOriginState.updateOrigin(measured)
+                // task #180: pairs with the page's `page_post originKey=` line, so a key mismatch is
+                // visible in one capture instead of costing another device round.
+                slockTraceToPlatformLog(
+                    "SlockShellOverlay",
+                    "host_measure originKey=$originKey origin=$measured windowOrigin=" +
+                        "${childPageOriginState.windowOrigin}"
+                )
             },
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
