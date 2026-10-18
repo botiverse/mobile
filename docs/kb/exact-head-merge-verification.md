@@ -65,17 +65,42 @@ stamp pr merge <N> --repo botiverse/mobile \
 Stamp refuses if the head moved after approval. That refusal is the guard
 working, not a problem to route around.
 
-### 5. After merge, check the tree, not the flag
+### 5. After merge, check what the squash commit introduced, not what the PR diff was
 
-`merged=true` tells you a merge commit exists. To check it is *the right* code:
+`merged=true` tells you a merge commit exists. To check it is *the right* code,
+do **not** diff `approved-sha..merge-commit` — a squash merge lands on the main
+line *at merge time*, so that range contains every other PR that landed in
+between. On a normal squash it will always show files your PR never touched.
+
+The correct invariant: **a squash merge's introduced change = its parent's tree
++ this PR's diff.** So compare the merge commit against its own parent:
 
 ```bash
 gh api repos/botiverse/mobile/pulls/<N> \
   --jq '{merged, merge_commit_sha}'
 git fetch origin
-git diff <verified-sha>..<merge-commit-sha> --stat
-# Should show only files the PR touched — nothing else.
+
+# The set of files this squash introduced — this is the PR's landed face.
+git diff <merge-commit>^ <merge-commit> --name-only
 ```
+
+Or compare patches at equal granularity:
+
+```bash
+# What the approved head changed relative to its base
+git diff <base-sha>..<approved-sha> > /tmp/pr.patch
+
+# What the squash merge introduced relative to its own parent
+git diff <merge-commit>^..<merge-commit> > /tmp/landed.patch
+
+# These should be equivalent. If main advanced between approval and merge,
+# rebase-align the approved head first so you are comparing like with like.
+```
+
+Tree-equality (`git diff <approved>..<merge>` shows nothing) only holds for a
+**non-squash** merge commit (two parents), and the correct comparison there is
+`merge^1..merge`, not `approved..merge`. Squash merges always produce a new
+single-parent commit — the tree after merge includes everyone else's work too.
 
 ## A real failure mode: closed/merged=false ≠ code absent
 
@@ -106,6 +131,6 @@ PR page's `merged=false` is just metadata lag.
 |---|---|
 | `git ls-remote` SHA ≠ approved SHA | Push after review; approval is stale |
 | `stamp pr merge --head` errors | Guard caught a moved head — correct |
-| `merged=true` but merge-commit tree differs | Merge commit touched more than the PR |
+| `merged=true` but `merge^..merge` touches extra files | Squash carried more than this PR's diff |
 | `merged=false` but `merge-base --is-ancestor` OK | Stamp queue path; code is already in |
 | Green CI badge on old SHA | CI ran on an earlier head, not the current tip |
