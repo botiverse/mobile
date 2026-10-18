@@ -15916,8 +15916,6 @@ internal fun ThreadPageHeader(
     /** task #180: null when this thread has no message column to follow. */
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
-    /** task #180: the menu is requested from the shell, so the page needs the bus. */
-    eventBus: build.raft.app.data.SlockEventBus? = null,
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
@@ -16060,7 +16058,6 @@ internal fun ThreadPageHeader(
                     val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
-                            eventBus = eventBus,
                             focused = focusModeActive,
                             onSelect = { toggleFocus?.invoke() },
                             followed = threadFollowed,
@@ -16523,7 +16520,6 @@ private fun String?.threadParticipantHandleKey(): String? =
  */
 @Composable
 private fun ThreadHeaderFocusModeMenu(
-    eventBus: build.raft.app.data.SlockEventBus?,
     focused: Boolean,
     onSelect: () -> Unit,
     followed: Boolean? = null,
@@ -16574,6 +16570,16 @@ private fun ThreadHeaderFocusModeMenu(
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
     // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
     // anchor here -- in window space -- and ask the shell to draw it.
+    // task #180: the EventBus must come from THIS page's own store registry, not from the host.
+    // The thread column is a separate Kuikly @Page, so a host-supplied instance does not cross the
+    // boundary -- the device trace showed `click_abort reason=eventBus_null` for exactly that reason.
+    // SlockSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
+    // actually post on (the same path the rest of ThreadPage already uses).
+    val localPager = LocalActivity.current.getPager() as Pager
+    val pageEventBus: build.raft.app.data.SlockEventBus =
+        remember(localPager.pagerId) {
+            SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+        }
     // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
     val pageKey =
         LocalActivity.current.pageData.params
@@ -16581,8 +16587,8 @@ private fun ThreadHeaderFocusModeMenu(
             .trim()
             .ifEmpty { "thread-panel" }
     var openRequestId by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(eventBus, pageKey) {
-        val bus = eventBus ?: return@DisposableEffect onDispose {}
+    DisposableEffect(pageEventBus, pageKey) {
+        val bus = pageEventBus
         val subscription =
             bus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
                 if (!slockShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
@@ -16610,11 +16616,7 @@ private fun ThreadHeaderFocusModeMenu(
             // produced ZERO trace lines, which could not distinguish "the click never reached this
             // handler" from "the lines went somewhere else". This line fires before any guard.
             slockTraceToPlatformLog("SlockShellOverlay", "click_enter")
-            val bus = eventBus
-            if (bus == null) {
-                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=eventBus_null")
-                return@SlockBrutalIconButton
-            }
+            val bus = pageEventBus
             val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
                 slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
