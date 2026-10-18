@@ -10,6 +10,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListItemInfo
 import com.tencent.kuikly.compose.foundation.lazy.LazyListLayoutInfo
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.ui.unit.IntSize
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.delay
 
 /** Whether this thread route lays its message list out bottom-up; see [ThreadListViewport]. */
@@ -37,6 +39,46 @@ internal fun resolveThreadReverseLayoutEnabled(
                 serverId = serverId,
             ),
     ).finalEffective
+
+/** Task #193: the direction a thread opens with before anything else has decided it. */
+internal const val THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT: Boolean = true
+
+/**
+ * Task #193 (option C): the last gate-resolved reverse-layout value per server, for the process
+ * lifetime (not persisted; after a restart the first open of a server falls back to
+ * [THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT] until its gate resolves once). A thread open reads it
+ * for its first frame and never changes direction afterwards; the gate result recorded here only
+ * applies from the next open.
+ */
+internal object ThreadReverseLayoutLastDecision {
+    private val lock = SynchronizedObject()
+    private val byServer = mutableMapOf<String, Boolean>()
+
+    fun get(serverId: String?): Boolean? {
+        if (serverId.isNullOrBlank()) return null
+        return synchronized(lock) { byServer[serverId] }
+    }
+
+    fun record(serverId: String, reverse: Boolean) {
+        if (serverId.isBlank()) return
+        synchronized(lock) { byServer[serverId] = reverse }
+    }
+
+    internal fun clearForTest() {
+        synchronized(lock) { byServer.clear() }
+    }
+}
+
+/**
+ * Task #193 (option C): the direction locked for one thread open. Order: the user's explicit
+ * Settings choice, the gate when it is already resolved at first composition, this server's last
+ * resolved value, then reverse.
+ */
+internal fun threadReverseLayoutFirstFrame(
+    userChoice: Boolean?,
+    gateResolved: Boolean?,
+    lastResolvedForServer: Boolean?,
+): Boolean = userChoice ?: gateResolved ?: lastResolvedForServer ?: THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT
 
 /**
  * The layout a thread opens with: the user's Settings choice when there is one, otherwise the
