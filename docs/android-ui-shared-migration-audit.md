@@ -78,11 +78,13 @@ icons.
 Non-Lucide drawable resources that still exist are intentionally outside the
 shared product icon set:
 
-- `ic_github.xml` is a third-party brand mark kept for the remaining native
-  account screen. `ic_google.xml` was the same, but nothing references it any
-  more since the provider marks moved to the shared MR asset rendered through
-  `providerIconAssetSource`, so it was deleted (it also still carried the
-  pre-fix, wrong palette).
+- `ic_github.xml` still sits in `compose/androidApp/src/main/res/drawable/`
+  but has no caller in the tree at all (no `R.drawable.ic_github`, no
+  `@drawable/ic_github`, no dynamic lookup). It is left untouched here because
+  deleting it is the owning PR's decision, not this audit's; treat it as
+  unreferenced, not as live. `ic_google.xml` was in the same state and has been
+  deleted: nothing referenced it once the provider marks moved to the shared MR
+  asset rendered through `providerIconAssetSource`.
 - launcher and splash assets are app branding, not route/action icons.
 - benchmark/local assets used by `ImageAdapterBenchmarks.kt` are not product UI.
 
