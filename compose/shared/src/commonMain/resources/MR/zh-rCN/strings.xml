@@ -1381,6 +1381,7 @@
     <string name="agent_create_placeholder_description">留空以创建通用 Agent，或描述其角色…</string>
     <string name="agent_create_error_description_length">描述最多可输入 %1$d 个字符。</string>
     <string name="agent_create_action_create">创建 Agent</string>
+    <string name="agent_create_action_create_external">创建外部 Agent</string>
     <string name="agent_create_action_creating">正在创建…</string>
     <string name="agent_create_error_limit">已达到 Agent 数量上限（此服务器为 %1$d/%2$d）。升级后可创建更多。</string>
     <string name="agent_create_error_limit_plan">已达到 Agent 数量上限（%3$s 套餐为 %1$d/%2$d）。</string>
