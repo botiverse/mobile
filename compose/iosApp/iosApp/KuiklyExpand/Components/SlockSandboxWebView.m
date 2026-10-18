@@ -535,12 +535,17 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
         }
         return;
     }
-    const CGFloat viewportPx = CGRectGetWidth(self.bounds);
-    if (viewportPx <= 0) {
+    // `bounds` is in POINTS, but the shared contract is `viewportPx / (desktopCssWidth * dpr)`,
+    // i.e. viewportPx must be PHYSICAL PIXELS. Android passes `view.width`, already in px. Passing
+    // points here made the ratio 3x too small and parked it on the 10% floor -- measured on a
+    // 402pt/dpr3 simulator: clientWidth 12800, visualViewport.scale 3.14, i.e. not fitted at all.
+    const CGFloat viewWidthPoints = CGRectGetWidth(self.bounds);
+    if (viewWidthPoints <= 0) {
         // The prop can arrive before the first layout pass; `layoutSubviews` retries.
         return;
     }
     const CGFloat scale = webView.window.screen.scale > 0 ? webView.window.screen.scale : 1.0;
+    const CGFloat viewportPx = viewWidthPoints * scale;
     // Both bounds come from shared, so no literal here can drift from what the tests cover.
     SharedInt *percent = [SharedSlockFilePreviewKt
         slockFilePreviewDesktopScalePercentViewportPx:(int32_t)llround(viewportPx)
