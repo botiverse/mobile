@@ -182,13 +182,21 @@ internal class RealtimeSocketGenerationFence(
     fun runIfCurrent(
         generation: RealtimeSocketGeneration,
         block: () -> Unit,
-    ): Boolean =
-        linearize {
-            if (!accepts(generation)) return@linearize false
-            beforeCurrentDelivery?.invoke()
-            block()
-            true
-        }
+    ): Boolean {
+        val accepted = linearize { accepts(generation) }
+        if (!accepted) return false
+        beforeCurrentDelivery?.invoke()
+        // Replacement is allowed to proceed while the pre-delivery hook runs. Re-check before
+        // entering user code so a callback that lost the race cannot publish after replacement.
+        if (!linearize { accepts(generation) }) return false
+        // The fence only owns the generation check. Listener callbacks can re-enter the
+        // realtime client and may perform blocking work (for example token refresh); keeping
+        // them under the fence would let lifecycle calls such as setReconnectAllowed deadlock
+        // behind a socket callback. The second check makes replacement during the hand-off win;
+        // once this point is passed, the callback is linearized for this generation.
+        block()
+        return true
+    }
 }
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
