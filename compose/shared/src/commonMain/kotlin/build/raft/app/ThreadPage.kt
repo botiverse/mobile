@@ -42,6 +42,7 @@ import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.slockRaftOverlaySurface
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
@@ -24477,7 +24478,7 @@ private fun ThreadMessageCardContent(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Panel)
                 .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -24587,7 +24588,8 @@ private fun ThreadMessageCardContent(
                                 ) {
                                     Text(
                                         text = localizedAuthorName,
-                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
+                                        // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -24606,7 +24608,7 @@ private fun ThreadMessageCardContent(
                                                 SlockType.Caption.copy(
                                                     fontFamily = SlockMonoFamily,
                                                     fontSize = 11.sp,
-                                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                                    color = SlockColor.ForegroundHint,
                                                 ),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -25000,24 +25002,13 @@ internal fun ThreadNewMessageMenuChrome(
     onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier =
-            modifier
-                .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
-                    .background(SlockColor.ShadowBlack)
-        )
+    // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
+    Box(modifier = modifier) {
         Column(
             modifier =
                 Modifier
                     .width(ThreadNewMessageMenuWidth)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .slockRaftOverlaySurface()
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
             ThreadMessageReactionRow(
@@ -25034,7 +25025,7 @@ internal fun ThreadNewMessageMenuChrome(
                     Modifier
                         .fillMaxWidth()
                         .height(SlockStroke.Thin)
-                        .background(SlockColor.BorderBlack)
+                        .background(SlockColor.LineMuted)
             )
             ThreadNewMessageMenuToolRow(
                 onCopy = onCopy,
@@ -25192,7 +25183,7 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
         // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
         SlockColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
     } else {
-        SlockColor.SurfaceWhite
+        SlockColor.Panel
     }
 }
 
@@ -27069,8 +27060,8 @@ private fun ThreadMessageAuthorBadge(label: String) {
         modifier =
             Modifier
                 .heightIn(min = 18.dp)
-                .background(SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+                // raft muted badge: fill-muted on the chip radius, no ink edge.
+                .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
                 .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -27079,8 +27070,8 @@ private fun ThreadMessageAuthorBadge(label: String) {
             style =
                 SlockType.Caption
                     .withSlockFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = SlockColor.TextBlack.copy(alpha = 0.6f)),
-            color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    .copy(fontSize = 10.sp, color = SlockColor.TextMuted),
+            color = SlockColor.TextMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -28891,9 +28882,9 @@ private fun ThreadMessageAuthorSubtitle(
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
-                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                color = SlockColor.ForegroundHint
             ),
-        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        color = SlockColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = anchoredModifier
@@ -28911,9 +28902,9 @@ private fun ThreadMessageTimestampLabel(
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
-                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                color = SlockColor.ForegroundHint
             ),
-        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        color = SlockColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
