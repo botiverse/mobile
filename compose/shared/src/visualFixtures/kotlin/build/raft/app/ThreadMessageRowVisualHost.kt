@@ -1124,7 +1124,16 @@ private fun threadMessageVisualAgentStatusResolver(
             THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO,
             THREAD_MESSAGE_VISUAL_FIXTURE_SAVED,
             THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD,
-            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD -> AgentStatus.Working
+            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD,
+            // Shared fixture data (fixtureData.json) has Cindy `working`; the
+            // React markdown specimens render her with that status badge.
+            THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> AgentStatus.Working
             THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> AgentStatus.Online
             else -> return EmptySlockAgentStatusResolver
         }
