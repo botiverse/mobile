@@ -216,15 +216,24 @@ private sealed interface CanonicalMessageV2AppendResult {
  * - The enter (and, for the viewed channel, the gap catch-up: [beginCatchUpBaseline]) makes a window
  *   continuous only for a member channel whose connection has already seen `rooms:joined`
  *   ([noteRoomsJoined], per epoch): before it, the page may predate the server's connect-time room join.
- * - Task #14a: a reply thread's `thread` scope follows exactly the same rules. A reply's `message:new` names
- *   the thread channel as its `channelId` and the parent in its `conversationContext`, so it maps to
- *   `(thread channel id, thread)`; only a window its reply-thread enter committed in this process is written,
- *   and only when the frame's parent (kind, channel, root) equals the parent the committed cursor stores (the
- *   server-confirmed one): any other parent is never written and makes the window discontinuous. No
- *   `rooms:joined`-style signal exists for thread rooms, so the conservative channel rules apply as they are:
- *   any reconnect makes the window display only until the thread is entered again, a leave of the thread's OR
- *   its parent channel's room does too, and a thread under a parent the user is known not to belong to never
- *   becomes continuous (its rooms are joined asynchronously on open, like a non-member channel's).
+ * - Task #14a: a reply thread's `thread` scope is mapped, checked and baselined like a channel, but its window
+ *   NEVER becomes continuous: every reply-thread enter commit ends `continuity=discontinuous
+ *   reason=thread_delivery_unconfirmed`, so realtime replies stay display only (as before #14a) while the
+ *   enter / paging writers still write thread pages. The reason is the server: nothing tells the client it
+ *   receives every reply after the enter snapshot. (a) The socket's connect-time join covers only
+ *   `listChannels` + `listDMChannels` (`LISTABLE_CHANNEL_TYPES = ["channel","private","joint"]`), never a
+ *   thread room, so no `rooms:joined` covers it. (b) `join:channel` is fire-and-forget without an ack: the
+ *   server joins the room only after an async `canUserAccessChannel`, so a reply between the enter page and
+ *   that join is never pushed. (c) Under a `private` / `dm` / `joint` parent a reply is emitted only to
+ *   `user:<followerId>` rooms, i.e. only to thread followers, which the client cannot confirm. A continuous
+ *   window would let a later reply advance the cursor over a missed one: a permanent hole. The routing is
+ *   kept so a future positive per-thread delivery signal (a server ack of `join:channel` for a public parent,
+ *   or confirmed follower status for user-room delivery) only has to lift that one gate in [onEnterCommitted]:
+ *   a reply's `message:new` names the thread channel as its `channelId` and the parent in its
+ *   `conversationContext`, so it maps to `(thread channel id, thread)`; it would be written only when the
+ *   frame's parent (kind, channel, root) equals the parent the committed cursor stores (any other parent
+ *   makes the window discontinuous), and a reconnect or a leave of the thread's OR its parent channel's room
+ *   would end continuity as for a channel.
  * - Task #14a partial facts ("store partial, fill in when data arrives", owner decision). The server's
  *   ordinary `message:new` omits `senderDescription` and `reactions`, and no other realtime delivery of that
  *   message is fuller (a reply's `thread:updated.latestReply` is the same payload, the own-send HTTP response
@@ -248,7 +257,8 @@ private sealed interface CanonicalMessageV2AppendResult {
  *      and not consumed here). A frame with `reactions` sets the roster; one without leaves it as stored —
  *      known stays known, unknown stays unknown. No delta is ever applied to an unknown roster.
  *   5. Continuity: a partial frame is a real message at a real seq, so it keeps the window continuous.
- *   6. Top-level and reply-thread scopes share this path.
+ *   6. Only top-level windows reach this path today (a reply-thread window is never continuous, above);
+ *      reply-thread scopes share it once their delivery gate lifts.
  *   7. Lines: `written … source=incremental[ scopeKind=thread] partial=SenderDescription,Reactions`.
  */
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
@@ -760,7 +770,8 @@ internal class CanonicalMessageV2ProductionCanary(
      * connection had not seen `rooms:joined` yet (same race for member rooms right after a reconnect), the room was
      * left meanwhile, another writer committed meanwhile, or the buffer overflowed. Task #14a: a reply thread's
      * window also stays discontinuous when its committed cursor does not name the baseline's parent channel, or
-     * the baseline was registered for the other scope family.
+     * the baseline was registered for the other scope family, and otherwise ALWAYS with
+     * [REPLY_THREAD_DELIVERY_UNCONFIRMED] until the server gives a positive per-thread delivery signal.
      */
     suspend fun onEnterCommitted(
         baseline: CanonicalMessageV2EnterBaseline,
@@ -795,6 +806,9 @@ internal class CanonicalMessageV2ProductionCanary(
                     baseline.roomLeaveCountAtRequest -> "room_left"
                 baseline.superseded -> "external_commit"
                 baseline.overflowed -> "buffer_overflow"
+                // Task #14a: no positive per-thread delivery signal exists (see the class doc), so a reply
+                // thread's window is never continuous: its realtime replies stay display only.
+                replyThread -> REPLY_THREAD_DELIVERY_UNCONFIRMED
                 else -> null
             }
             if (reason != null) state.discontinuous = true
@@ -1036,6 +1050,12 @@ internal class CanonicalMessageV2ProductionCanary(
 }
 
 private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
+
+/**
+ * Task #14a: why every reply-thread enter commit ends discontinuous: the server gives no positive signal that
+ * this client receives every reply of the thread after the enter snapshot (see [CanonicalMessageV2ProductionCanary]).
+ */
+private const val REPLY_THREAD_DELIVERY_UNCONFIRMED: String = "thread_delivery_unconfirmed"
 
 /** `kind=new msg=<id> seq=<seq>`: which frame a canary line is about (ids only, never content). */
 private fun CanonicalMessageFoldInput.frameLabel(): String =

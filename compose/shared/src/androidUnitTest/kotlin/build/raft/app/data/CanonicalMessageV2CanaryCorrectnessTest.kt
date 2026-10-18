@@ -67,7 +67,6 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     private val channelB = SyncScopeKey(partition, "channel-b", "channel")
     private val channelC = SyncScopeKey(partition, "channel-c", "channel")
     private val thread1 = SyncScopeKey(partition, "thread-1", "thread")
-    private val thread2 = SyncScopeKey(partition, "thread-2", "thread")
     private val thread1Parent = ThreadDurableReplyParent(parentChannelId = "channel-a", rootMessageId = "root-1")
 
     // ---- T1 every windowed channel ------------------------------------------------------------------
@@ -836,39 +835,51 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         assertEquals(false, over.hasLoadedOldest, "the window no longer reaches the beginning")
     }
 
-    // ---- task #14a: realtime replies of an entered reply thread ---------------------------------------
+    // ---- task #14a: realtime replies of an entered reply thread are display only -----------------------
+    //
+    // No positive per-thread delivery signal exists on the server (thread rooms are never joined at connect,
+    // `join:channel` has no ack, replies under private/dm/joint parents go only to `user:<followerId>` rooms),
+    // so a reply-thread enter commits its page but leaves the window `thread_delivery_unconfirmed`.
 
     @Test
-    fun t10ARealtimeReplyIsWrittenToTheEnteredThreadAndReadBackOffline() = withFreshDatabase { database ->
+    fun t10AnEnteredThreadKeepsItsPageButARealtimeReplyIsDisplayOnly() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
             rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
-            rig.server.thread(thread2, parentChannelId = "channel-a", rootMessageId = "root-2")
             rig.server.has(thread1, "r1" to 1L)
             rig.enterThread(thread1, thread1Parent)
             val loads = rig.server.pageLoads()
 
-            assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L)))
-            // Twin: the identical kind of reply in a thread never entered stays off disk.
-            assertTrue(rig.deliver(rig.replyNew(thread2, "s2", 2L, rootMessageId = "root-2")))
+            val r2 = rig.replyNew(thread1, "r2", 2L)
+            assertTrue(rig.deliver(r2))
+            assertEquals(r2, rig.projected.last(), "displayed")
 
-            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1))
-            assertEquals(emptySet(), rig.storedIds(thread2))
-            assertEquals(1, rig.store.incrementalWrites)
-            assertEquals(loads, rig.server.pageLoads(), "a realtime append never loads")
-            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
-                .readReplyThread(partition, "thread-1", thread1Parent)
-            assertEquals(listOf("r1", "r2"), offline?.envelopes?.map { it.fact.id }, "the durable read serves the reply")
-            assertEquals(2L, offline?.cursor?.latestSeq)
+            assertEquals(setOf("r1"), rig.storedIds(thread1), "the enter page is written, the realtime reply is not")
+            assertEquals(0, rig.store.incrementalWrites)
+            assertEquals(loads, rig.server.pageLoads(), "a realtime frame never loads")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
             assertTrue(
-                rig.logs.any { it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread" },
+                rig.logs.any {
+                    it.startsWith("canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread ") &&
+                        it.endsWith(" continuity=discontinuous reason=thread_delivery_unconfirmed")
+                },
                 rig.logs.toString(),
             )
+            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
+                .readReplyThread(partition, "thread-1", thread1Parent)
+            assertEquals(listOf("r1"), offline?.envelopes?.map { it.fact.id }, "the durable read serves the enter page")
+
+            // Control: the same kind of frame on an entered CHANNEL window is written.
+            rig.server.has(channelA, "a1" to 1L)
+            rig.enter(channelA)
+            assertTrue(rig.deliver(rig.messageNew(channelA, "a2", 2L)))
+            assertEquals(setOf("a1", "a2"), rig.storedIds(channelA))
+            assertEquals(1, rig.store.incrementalWrites)
         }
     }
 
     @Test
-    fun t10AReplyDuringTheThreadEnterFetchSurvivesTheEnterCommit() = withFreshDatabase { database ->
+    fun t10AReplyDuringTheThreadEnterFetchIsDisplayedButNotReplayed() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
             rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
@@ -882,27 +893,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             hold.release.complete(Unit)
             entering.await()
 
-            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1), "r2 was replayed after the thread's enter commit")
-            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(thread1))
+            assertEquals(setOf("r1"), rig.storedIds(thread1), "a buffered reply is never replayed into an unconfirmed thread")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
             assertTrue(rig.deliver(rig.replyNew(thread1, "r3", 3L)))
-            assertEquals(setOf("r1", "r2", "r3"), rig.storedIds(thread1), "no hole")
+            assertEquals(setOf("r1"), rig.storedIds(thread1))
+            assertEquals(0, rig.store.incrementalWrites)
         }
-    }
-
-    @Test
-    fun t10AReplyNamingAnotherRootThanTheStoredParentIsNotWritten() {
-        fun run(rootMessageId: String): Pair<Set<String>, CanonicalMessageV2ScopeContinuity> = withFreshDatabase { database ->
-            val rig = Rig(database)
-            bounded {
-                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
-                rig.server.has(thread1, "r1" to 1L)
-                rig.enterThread(thread1, thread1Parent)
-                assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L, rootMessageId = rootMessageId)), "displayed either way")
-                rig.storedIds(thread1) to rig.canary.continuityOf(thread1)
-            }
-        }
-        assertEquals(setOf("r1") to CanonicalMessageV2ScopeContinuity.Discontinuous, run("root-9"))
-        assertEquals(setOf("r1", "r2") to CanonicalMessageV2ScopeContinuity.Continuous, run("root-1"))
     }
 
     // ---- task #14a: partial facts ("store partial, fill in when data arrives") -------------------------
@@ -1066,9 +1062,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         }
     }
 
-    /** Thread scope: the production reply `message:new` is written partial into the entered thread. */
+    /**
+     * Thread scope: the production reply `message:new` is display only (`thread_delivery_unconfirmed`); the
+     * paired channel case is [t11TheProductionNewIsWrittenPartialAndTheWindowStaysContinuous].
+     */
     @Test
-    fun t11TheProductionReplyIsWrittenPartialIntoTheEnteredThreadAndReadBackOffline() = withFreshDatabase { database ->
+    fun t11TheProductionReplyIsDisplayOnlyInAnEnteredThread() = withFreshDatabase { database ->
         val rig = Rig(database)
         bounded {
             rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
@@ -1077,26 +1076,16 @@ class CanonicalMessageV2CanaryCorrectnessTest {
 
             assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L, omit = PRODUCTION_NEW_OMITS)))
 
-            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1))
-            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(thread1))
+            assertEquals(setOf("r1"), rig.storedIds(thread1))
+            assertEquals(emptyMap(), rig.store.restore(thread1).unknownFieldsByFactId)
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
+            assertTrue(rig.logs.none { "partial=" in it }, rig.logs.toString())
             assertTrue(
                 rig.logs.any {
-                    it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread " +
-                        "partial=SenderDescription,Reactions"
+                    it == "canonical_v2_canary skip=discontinuous server=server-1 scope=thread-1 scopeKind=thread kind=new msg=r2 seq=2"
                 },
                 rig.logs.toString(),
             )
-            val offline = assertNotNull(
-                CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
-                    .readReplyThread(partition, "thread-1", thread1Parent),
-            )
-            assertEquals(listOf("r1", "r2"), offline.envelopes.map { it.fact.id })
-            assertEquals(mapOf("r2" to BOTH_UNKNOWN), offline.unknownFieldsByFactId)
-
-            // Twin: the same reply without `mentions` is never written and the thread window turns discontinuous.
-            assertTrue(rig.deliver(rig.replyNew(thread1, "r3", 3L, omit = PRODUCTION_NEW_OMITS + "mentions")))
-            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1))
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
         }
     }
 

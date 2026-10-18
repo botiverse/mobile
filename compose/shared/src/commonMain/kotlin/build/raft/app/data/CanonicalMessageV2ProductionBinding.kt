@@ -431,9 +431,10 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * continuous — unless the user is not a member of the channel ([isKnownNonMember]: the server joins a
  * non-member's room asynchronously on open, so the page may miss messages that are never pushed either).
  * Any path that does not commit abandons the baseline. Task #14a: a reply-thread enter registers the same
- * baseline for its thread channel, naming the server-confirmed parent channel, so the thread's realtime replies
- * are buffered during the fetch and then written to its `thread` scope; it is known-non-member when the
- * directory says so for the thread OR its parent channel.
+ * baseline for its thread channel, naming the server-confirmed parent channel; it is known-non-member when the
+ * directory says so for the thread OR its parent channel. Its commit always leaves the thread window
+ * discontinuous (`thread_delivery_unconfirmed`: no per-thread delivery signal from the server), so the thread's
+ * realtime replies stay display only while this page is still written.
  */
 internal class CanonicalMessageV2EnteredScopeLoader(
     private val canary: CanonicalMessageV2ProductionCanary,
