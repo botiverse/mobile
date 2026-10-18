@@ -110,11 +110,15 @@ class SlockDesignTokensTest {
     }
 
     @Test
-    fun typographyMatchesReactComponentBaseline() {
-        assertEquals(14.sp, SlockType.Body.fontSize)
-        assertEquals(20.sp, SlockType.Body.lineHeight)
-        assertEquals(14.sp, SlockType.Input.fontSize)
-        assertEquals(20.sp, SlockType.Input.lineHeight)
+    fun contentTextSharesOneSize() {
+        // artin 2026-10-18 (1.14.1): body copy, the composer, message text and sidebar names share
+        // SlockTextSize.Content (16/22) instead of each hardcoding its own size.
+        assertEquals(16.sp, SlockTextSize.Content)
+        assertEquals(22.sp, SlockTextSize.ContentLineHeight)
+        for (style in listOf(SlockType.Body, SlockType.Input, SlockType.ListItem, SlockType.ListItemBold, slockMessageBodyTextStyle(null))) {
+            assertEquals(SlockTextSize.Content, style.fontSize)
+            assertEquals(SlockTextSize.ContentLineHeight, style.lineHeight)
+        }
     }
 
     @Test

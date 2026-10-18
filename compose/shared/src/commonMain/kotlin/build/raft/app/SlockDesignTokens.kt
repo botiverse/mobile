@@ -297,6 +297,15 @@ internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle {
     }
 }
 
+/**
+ * The one content text size (artin 2026-10-18, 1.14.1): message text, the composer, body copy and
+ * sidebar conversation names all read from here so they stay the same size.
+ */
+internal object SlockTextSize {
+    val Content = 16.sp
+    val ContentLineHeight = 22.sp
+}
+
 internal object SlockType {
     // Task #179: these are GETTERS, not vals. A `val` is evaluated once at object initialisation
     // and then keeps whatever face was active at first touch -- pressing a font option would write
@@ -307,7 +316,7 @@ internal object SlockType {
     val SectionLabel: TextStyle
         get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
     val Body: TextStyle
-        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+        get() = slockTextStyle(FontWeight.Normal, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
     val Caption: TextStyle
         get() = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
     val Button: TextStyle
@@ -317,5 +326,10 @@ internal object SlockType {
     val TabLabel: TextStyle
         get() = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
     val Input: TextStyle
-        get() = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
+        get() = slockTextStyle(FontWeight.Normal, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
+    /** Sidebar conversation names: content size, button weights. */
+    val ListItem: TextStyle
+        get() = slockTextStyle(FontWeight.Medium, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
+    val ListItemBold: TextStyle
+        get() = slockTextStyle(FontWeight.Bold, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
 }
