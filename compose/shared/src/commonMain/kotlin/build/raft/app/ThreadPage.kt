@@ -16580,6 +16580,8 @@ private fun ThreadHeaderFocusModeMenu(
         remember(localPager.pagerId) {
             SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
+    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it.
+    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
     val pageKey =
         LocalActivity.current.pageData.params
@@ -16623,11 +16625,17 @@ private fun ThreadHeaderFocusModeMenu(
                 return@SlockBrutalIconButton
             }
             // Already window space: the shell must not convert this again.
-            val windowAnchor = anchor.rootOffsetOrNull()
-            if (windowAnchor == null) {
+            val pageRootAnchor = anchor.rootOffsetOrNull()
+            if (pageRootAnchor == null) {
                 slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
                 return@SlockBrutalIconButton
             }
+            // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
+            // space, so add this page's measured window origin (1520 for the thread column, plus the
+            // rail when nested). Without it the menu landed at the page-local 384 -- the centre
+            // pane's top-left -- instead of 1904 under the button.
+            val pageOrigin = SlockChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
+            val windowAnchor = pageRootAnchor + pageOrigin
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.

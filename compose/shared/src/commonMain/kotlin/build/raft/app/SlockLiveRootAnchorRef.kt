@@ -228,6 +228,52 @@ internal class SlockPopoverAnchor private constructor(
     }
 }
 
+/**
+ * task #180: cross-page handoff of a child page's measured window origin.
+ *
+ * A CompositionLocal cannot cross a Kuikly `@Page` boundary, so the host publishes the origin it
+ * MEASURES here under a stable key and the page reads the same state. Device evidence drove this:
+ * with no origin, the thread column's `...` menu resolved a page-local 384 and drew at the top-left
+ * of the centre pane instead of at 1904 under the button.
+ *
+ * Child pages nest for real (AppShell tab page -> detail / thread column), so a page's window origin
+ * is its own position within its parent PLUS the parent's origin, kept as a live reference so an
+ * outer resize still propagates inward.
+ */
+internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
+    var origin: Offset by mutableStateOf(origin)
+        internal set
+
+    var parentOrigin: SlockChildPageOriginState? = null
+        internal set
+
+    /** Window-space origin: own position within the parent plus every ancestor. */
+    val windowOrigin: Offset
+        get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
+
+    internal fun updateOrigin(next: Offset) {
+        if (next != origin) origin = next
+    }
+
+    internal fun linkParentOrigin(next: SlockChildPageOriginState?) {
+        if (next !== this && parentOrigin !== next) parentOrigin = next
+    }
+}
+
+internal object SlockChildPageOriginRegistry {
+    private val states = mutableMapOf<String, SlockChildPageOriginState>()
+
+    internal fun stateFor(key: String): SlockChildPageOriginState {
+        val normalized = key.trim()
+        if (normalized.isEmpty()) return SlockChildPageOriginState()
+        return states.getOrPut(normalized) { SlockChildPageOriginState() }
+    }
+
+    internal fun forget(key: String) {
+        states.remove(key.trim())
+    }
+}
+
 internal typealias SlockLiveRootAnchorRef = SlockPopoverAnchor.LiveRef
 
 internal fun refreshSlockLiveRootAnchorCaptureOwner(
