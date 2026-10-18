@@ -910,12 +910,17 @@ internal object SlockAndroidAvatarCacheProcess {
     fun startAsync(context: Context) {
         if (controller != null || !startupScheduled.compareAndSet(false, true)) return
         startupExecutor.execute {
-            val created = SlockAndroidAvatarCacheController.create(context)
-            synchronized(lock) {
-                if (controller == null) {
-                    controller = created
-                    SlockAvatarMountedNativeProviderRegistry.install(created)
+            try {
+                val created = SlockAndroidAvatarCacheController.create(context)
+                synchronized(lock) {
+                    if (controller == null) {
+                        controller = created
+                        SlockAvatarMountedNativeProviderRegistry.install(created)
+                    }
                 }
+            } catch (error: Throwable) {
+                startupScheduled.set(false)
+                SlockAppLog.e("SlockAndroidAvatarCache", "startup recovery failed", error)
             }
         }
     }
