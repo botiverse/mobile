@@ -1710,9 +1710,6 @@ private fun SlockFilePreviewStandalonePageContent() {
     // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
     // within the page, but only for authority/expiry reasons on the SAME attachment.
     var htmlDesktopMode by remember { mutableStateOf(false) }
-    // task #188: set only by the menu action, so the reload effect fires on a user toggle and not on
-    // first composition (where the WebView is already loading the document at the right width).
-    var htmlWideViewPortReloadPending by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -3774,11 +3771,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
                 // task #188: toggle the HTML desktop viewport. Selection goes through this one
                 // dispatcher; SlockRaftUiMenuItem itself is data-only.
-                SlockFilePreviewDesktopModeActionId -> {
-                    // The injected viewport only takes effect on a fresh document, so request a reload.
-                    htmlWideViewPortReloadPending = true
-                    htmlDesktopMode = !htmlDesktopMode
-                }
+                // The reload itself lives next to the WebView (SlockFilePreviewPayloadContent),
+                // which is a separate composable and reloads when this prop changes.
+                SlockFilePreviewDesktopModeActionId -> htmlDesktopMode = !htmlDesktopMode
             }
         }
     ) {
@@ -7778,10 +7773,14 @@ internal fun SlockFilePreviewPayloadContent(
                     // toggle cannot affect the document already on screen -- the WebView has to load
                     // again. Holding the controller lets us reload instead of rebuilding.
                     val htmlWideViewPortController = rememberSlockWebViewController()
+                    // Reload on CHANGE only. This composable is also the initial entry, so a bare
+                    // LaunchedEffect(htmlDesktopMode) would fire on first composition and reload the
+                    // document the WebView is already loading. Tracking the previous value makes the
+                    // first pass a no-op.
+                    var htmlAppliedDesktopMode by remember { mutableStateOf(htmlDesktopMode) }
                     LaunchedEffect(htmlDesktopMode) {
-                        // Skip the initial composition: the WebView is loading that document already.
-                        if (htmlWideViewPortReloadPending) {
-                            htmlWideViewPortReloadPending = false
+                        if (htmlAppliedDesktopMode != htmlDesktopMode) {
+                            htmlAppliedDesktopMode = htmlDesktopMode
                             htmlWideViewPortController.reload()
                         }
                     }
