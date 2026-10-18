@@ -10,7 +10,7 @@ Every file-level claim below was read at these commits. Re-check against a newer
 
 | Repo | Commit |
 |---|---|
-| `botiverse/mobile` | `7540fd973026a05c799b7e81c37b0f01979f0d11` (the four later commits up to `853e2fbad` touch thread read-state, avatar recovery, CI and docs; none changes a row here) |
+| `botiverse/mobile` | `7540fd973026a05c799b7e81c37b0f01979f0d11` (later commits up to the PR base touch thread read-state, avatar recovery, CI, docs and the HTML file preview's desktop mode, which moves `SlockFilePreview.kt:7401` to about `:7478`; none changes a row's status) |
 | `botiverse/slock` (`staging`) | `eb1c0f2a4ad54f2cb81dd50168d5a8ae6dd669d2` |
 
 Path conventions: mobile paths are relative to `compose/shared/src/commonMain/kotlin/build/raft/app/` unless they start with `compose/`; web paths are relative to `packages/web/src/`; server paths to `packages/server/src/`.
@@ -26,7 +26,7 @@ Path conventions: mobile paths are relative to `compose/shared/src/commonMain/ko
 
 Effort: **S** ≈ a day or two, **M** ≈ a week, **L** = multi-week or cross-team. Level (P0/P1/P2) follows the port-criteria doc, including the default-path and silent-failure modifiers.
 
-This is a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
+This is a pre-candidate audit snapshot: it ranks gaps but does not yet carry the per-candidate owner / state / evidence columns of the criteria doc §8; those get filled when a gap is claimed. It is also a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
 
 ---
 
@@ -37,10 +37,10 @@ This is a code-reading audit. Nothing was run on a device, so every "done" means
 | # | Gap | Level | Why | Server | Effort |
 |---|---|---|---|---|---|
 | 1 | **Android and HarmonyOS push.** Android receives FCM messages but never sends its token to the server; HarmonyOS has no remote push at all. | P0 | Core loop: once the app is backgrounded and the socket drops, Android and HarmonyOS users get no notifications. Default path for most Android users. | **Needed.** `routes/push.ts` `parseProvider` accepts only `"apns"`; an FCM provider (and later Push Kit) plus a sender is required. | M–L (server) + S (Android client) + L (HarmonyOS) |
-| 2 | **Invite / join links, password reset and device-login approval open in the browser.** | P1 | Joining a server from an invite is the main growth path; account recovery and CLI pairing are also link-driven. Today these bounce out of the app (Android `MainActivity` `shouldOpenUnsupportedSlockWebLinkExternally`; iOS universal-link handling TBC). | Ready: `/auth/accept-invite`, `/auth/invite-info`, `/auth/reset-password`, `/auth/device/approve`. | M (invite) + S + S |
-| 3 | **Search filters fail silently.** Picking two or more senders sends repeated `senderId`; the server only reads a single string (`routes/messages.ts:757`) and drops the filter without error. Paging uses `offset`, not the server's `cursor`, so "load more" can duplicate or skip results. | P1 (silent failure) | Users can't tell the results are wrong. Web only allows one sender. | Ready if mobile limits to one sender and uses `cursor`; otherwise server needs array support. | S |
-| 4 | **Hosted agents.** No way to create, pick a model for, monitor, retry or stop a Raft-hosted agent. | P1 | The quickest way to get a first agent (no computer needed); new mobile-only users can't do it at all. | Ready: `/agents/:id/hosted-runtime*`, `/agent-runtime-providers/:kind`. | L |
-| 5 | **System notification center and joint-channel invites.** Usage-limit incidents, computer/disk alerts, feedback replies and joint-channel invites are invisible on mobile, and a joint invite cannot be accepted there. | P1 | A blocked agent (usage limit) or a pending invite gives no signal on the phone. | Ready: `/servers/:id/system-notifications-v2` (+ `/seen`, `/dismiss`), `/channels/joint-invites*`. | M + M |
+| 2 | **Invite / join links, password reset and device-login approval open in the browser.** | P1 | Joining a server from an invite is the main growth path; account recovery and CLI pairing are also link-driven. Today these bounce out of the app (Android `MainActivity` `shouldOpenUnsupportedSlockWebLinkExternally`; iOS universal-link handling TBC). | Present at slock staging `eb1c0f2a` (production TBC): `/auth/accept-invite`, `/auth/invite-info`, `/auth/reset-password`, `/auth/device/approve`. | M (invite) + S + S |
+| 3 | **Search filters fail silently.** Picking two or more senders sends repeated `senderId`; the server only reads a single string (`routes/messages.ts:757`) and drops the filter without error (with no query and no other filter, the search returns nothing at all). Mobile also ignores the server's `nextCursor` / `incomplete`: a recent-sort text search that stops early tells the client to continue by cursor (web does), but mobile keeps paging by `offset`, so "load more" can duplicate or skip results. | P1 (silent failure) | Users can't tell the results are wrong. Web only allows one sender. | Present at staging `eb1c0f2a` (production TBC) if mobile limits to one sender and honours `nextCursor`; otherwise server needs array support. | S |
+| 4 | **Hosted agents.** No way to create, pick a model for, monitor, retry or stop a Raft-hosted agent. | P1 | The quickest way to get a first agent (no computer needed); new mobile-only users can't do it at all. | Present at staging `eb1c0f2a` (production TBC): `/agents/:id/hosted-runtime*`, `/agent-runtime-providers/:kind`. | L |
+| 5 | **System notification center and joint-channel invites.** Usage-limit incidents, computer/disk alerts, feedback replies and joint-channel invites are invisible on mobile, and a joint invite cannot be accepted there. | P1 | A blocked agent (usage limit) or a pending invite gives no signal on the phone. | Present at staging `eb1c0f2a` (production TBC): `/servers/:id/system-notifications-v2` (+ `/seen`, `/dismiss`), `/channels/joint-invites*`. | M + M |
 
 ### Quick wins (S, no server work)
 
@@ -61,11 +61,13 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 
 ### Needs server work (for @Tenny)
 
+"Present at staging" elsewhere in this doc means the route exists at slock `eb1c0f2a`; production deployment was not checked. Per the criteria doc §3, confirm production before porting against it.
+
 | Gap | What the server needs |
 |---|---|
 | Android push | FCM provider in `routes/push.ts` + push outbox sender |
 | HarmonyOS push | Push Kit provider + sender |
-| Push preview mode (hide message text) | A `pushPreviewMode` field on notification settings. The mobile setting exists (`SettingsRepositoryDataSource.kt:1452`) behind `pushPreviewModeSupported`; no server field exists. |
+| Push preview mode (hide message text) | A `pushPreviewMode` field on notification settings. The mobile setting exists (`data/SettingsRepositoryDataSource.kt:1452`) behind `pushPreviewModeSupported`; no server field exists. |
 | Multi-sender search (optional) | Accept repeated `senderId`, or mobile drops multi-select to match web |
 | Activity sync cutover | A versioning rule for `contracts/activity-v1` so mobile can detect stale bindings |
 
@@ -104,7 +106,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Translation | `message/MessageItem.tsx` | done | `ThreadMessageTranslation.kt` | existing | – |
 | Convert to task, done / reopen | `message/MessageItem.tsx` | done | `ThreadPage.kt` | `POST /tasks/convert-message` | – |
 | Long-message collapse | `CollapsibleMessageContent.tsx` + per-channel setting | partial: device switch, ignores channel setting | `ThreadLongMessageCollapse.kt`, `ThreadPage.kt:7023` | `/channels/:id/message-display-settings` | S |
-| Threads: open, reply, follow, agent followers | `thread/ThreadPanel.tsx`, `ThreadAgentFollowers.tsx` | done | `ThreadPage.kt`, `ThreadAgentFollowers.kt` | `/channels/threads/*` | – |
+| Threads: open, reply, follow, agent followers | `message/ThreadPanel.tsx`, `thread/ThreadAgentFollowers.tsx` | done | `ThreadPage.kt`, `ThreadAgentFollowers.kt` | `/channels/threads/*` | – |
 | Thread inbox, done, jump-to-unread | `thread/ThreadsInbox.tsx`, `ThreadUnreadJumpPill.tsx` | done | `SharedInboxPanel.kt` | `/channels/inbox*` | – |
 | Unfollowed threads list | `store/inboxStore.ts:878` | partial | `data/SharedActivityStore.kt` (flag only) | `GET /channels/inbox/unfollowed` unused | S |
 | Saved messages | `saved/SavedPanel.tsx` | done | `HomeSavedPage.kt` | `/channels/saved*` | – |
@@ -129,7 +131,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 |---|---|---|---|---|---|
 | Activity / inbox list | `store/inboxStore.ts` | done | `data/InboxSavedSearchRepositoryDataSource.kt`, `SharedInboxPanel.kt` | `GET /channels/inbox` | – |
 | Filters all / unread / mentions | `thread/ThreadsInbox.tsx:84-91` | partial: no combined "unread + mentions" | `data/SlockRepositories.kt:639` `InboxFilter` | existing | S |
-| Per-item read / unread / done / follow; mark all read | `thread/InboxContextMenu.tsx` | done | `data/SharedActivityStore.kt`, `ReadReceiptRepositoryDataSource.kt:58` | existing | – |
+| Per-item read / unread / done / follow; mark all read | `thread/InboxContextMenu.tsx` | done | `data/SharedActivityStore.kt`, `data/ReadReceiptRepositoryDataSource.kt:58` | existing | – |
 | Pinned conversations first in Activity | `ThreadsInbox.tsx:644-663` | TBC | – | `sidebar-order` | S |
 | Unread badges (sidebar, server) | `store/serverStore.ts:711` | done | `data/ProcessActivityUnreadStore.kt`, `ServerUnreadSummaryDto.kt` | `/servers/unread-summary` | – |
 | Read state across devices | `store/readStateSync.ts` | done | `network/sync/ReadStateSyncDomain.kt`, `ReadStateV1Store.kt` | `read_state:updated` | – |
@@ -140,10 +142,10 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `SlockVisibleConversationRegistry.kt:67-131` | existing | – |
 | Notification tap routing, in-app banners | – | done | `AndroidUnreadNotificationPoster.kt`, `SlockForegroundBannerHost.kt` | existing | – |
 | Per-channel mute, server push mode | `SettingsPanel.tsx:1545` | done | `SettingsRepositoryDataSource.kt:279` | existing | – |
-| Push preview mode | – (mobile-only) | unavailable | `SettingsRepositoryDataSource.kt:1452` | **server needs `pushPreviewMode`** | M |
+| Push preview mode | – (mobile-only) | unavailable | `data/SettingsRepositoryDataSource.kt:1452` | **server needs `pushPreviewMode`** | M |
 | Launcher badge | `layout/mobileAppBadge.ts` | partial: iOS and HarmonyOS yes, Android no | iOS `HRBridgeModule.m:3698`, OHOS `KRBridgeModule.ets:1571` | `unread-summary` | S |
 | **System notification center** | `layout/NotificationCenter.tsx`, `useSystemNotifications.tsx` | missing | searched `system-notifications`, `usageLimit` | `/servers/:id/system-notifications-v2` | M |
-| Message search | `search/MessageSearchPage.tsx` | partial: offset paging, not `cursor` | `data/InboxSavedSearchRepositoryDataSource.kt:75-104` | `GET /messages/search` | S |
+| Message search | `search/MessageSearchPage.tsx` | partial: ignores `nextCursor` / `incomplete` (keeps paging by offset) | `data/InboxSavedSearchRepositoryDataSource.kt:75-104` | `GET /messages/search` | S |
 | **Search: multiple senders** | single sender only on web | **bug**: filter silently dropped | same file, line 99-103; server `routes/messages.ts:757` | see §1 | S |
 | Search: channel, date, @me, humans/agents, sort | `MessageSearchPage.tsx:1105-1147` | done | `SharedHomeSearchSavedStore.kt` | existing | – |
 | People / channel search, recent searches | `search/searchEntities.ts`, `searchHome.ts` | done | `data/SearchPersonalizationRepository.kt` | local | – |
@@ -217,7 +219,7 @@ Under `/s/:serverSlug/` (`components/layout/MainLayout.tsx`): `channel`, `dm`, `
 
 ### 3.2 Stale activity-v1 bindings
 
-`network/sync/activity/contract/v1/ActivitySync.kt` does not match the generated `packages/sync-core/contracts/activity-v1/generated/bindings/ActivitySync.kt` at the slock base commit. The mobile copy is missing `latestActivitySeq`, the paging fields (`nextCursor`, `hasMore`, `complete`, `totalCount`, `totalUnreadCount`) and the `ExternalProjection` kind, and still uses `expectedRowVersion` where the contract now has `throughActivitySeq`. Nothing calls it in production yet (web also keeps the activity gate off by default), so this is a cutover blocker, not a live bug.
+`network/sync/activity/contract/v1/ActivitySync.kt` does not match the generated `packages/sync-core/contracts/activity-v1/generated/bindings/ActivitySync.kt` at the slock base commit. The mobile copy is missing `latestActivitySeq`, the paging fields on `DifferenceIngress` (`nextCursor`, `hasMore`, `complete`, `totalCount`, `totalUnreadCount`; `ActivityWindow` already has them) and the `ExternalProjection` kind, and still uses `expectedRowVersion` where the contract now has `throughActivitySeq`. Nothing calls it in production yet (web also keeps the activity gate off by default), so this is a cutover blocker, not a live bug.
 
 ### 3.3 Dead code found
 
