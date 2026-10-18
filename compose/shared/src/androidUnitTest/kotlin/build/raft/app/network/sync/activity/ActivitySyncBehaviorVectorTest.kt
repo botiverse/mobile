@@ -118,11 +118,7 @@ class ActivitySyncBehaviorVectorTest {
                     events = listOf(
                         SyncDifferenceEvent(
                             seq = ingress.toSeq.value.toSyncSeq(),
-                            event = ActivityDomainEvent.Frame(
-                                rows = ingress.rows,
-                                tombstones = ingress.tombstones,
-                                activityVersion = ingress.activityVersion,
-                            ),
+                            event = ingress.toActivityFrame(),
                         ),
                     ),
                 ),
@@ -254,6 +250,8 @@ class ActivitySyncBehaviorVectorTest {
             "nextCursor" to (state.nextCursor?.let(::JsonPrimitive) ?: JsonNull),
             "hasMore" to JsonPrimitive(state.hasMore),
             "complete" to JsonPrimitive(state.complete),
+            "totalCount" to JsonPrimitive(state.totalCount.toLong()),
+            "totalUnreadCount" to JsonPrimitive(state.totalUnreadCount.toLong()),
         ),
     )
 

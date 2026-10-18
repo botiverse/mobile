@@ -14,6 +14,7 @@ import build.raft.app.network.sync.activity.contract.v1.ActivityWindow
 import build.raft.app.network.sync.activity.contract.v1.AffectedReadState
 import build.raft.app.network.sync.activity.contract.v1.ChannelActivityRow
 import build.raft.app.network.sync.activity.contract.v1.DmActivityRow
+import build.raft.app.network.sync.activity.contract.v1.DifferenceIngress
 import build.raft.app.network.sync.activity.contract.v1.FrameIngress
 import build.raft.app.network.sync.activity.contract.v1.ReadStateUpdatedIngress
 import build.raft.app.network.sync.activity.contract.v1.SnapshotIngress
@@ -38,6 +39,7 @@ sealed interface ActivityDomainEvent {
         val rows: List<ActivityRow>,
         val tombstones: List<ActivityRowTombstone> = emptyList(),
         val activityVersion: UInt64String? = null,
+        val window: ActivityFrameWindowFact = ActivityFrameWindowFact(),
     ) : ActivityDomainEvent
 
     data class ReadStateUpdated(
@@ -45,6 +47,21 @@ sealed interface ActivityDomainEvent {
         val activityVersion: UInt64String? = null,
     ) : ActivityDomainEvent
 }
+
+/**
+ * Window metadata a frame may carry (a difference is folded as a frame that
+ * carries all of it). A null field was not carried and leaves state untouched;
+ * `nextCursorPresent` distinguishes a carried null cursor from an absent one.
+ * Mirrors sync-core's acceptedActivityFrameWindowFact.
+ */
+data class ActivityFrameWindowFact(
+    val nextCursorPresent: Boolean = false,
+    val nextCursor: String? = null,
+    val hasMore: Boolean? = null,
+    val complete: Boolean? = null,
+    val totalCount: UInt? = null,
+    val totalUnreadCount: UInt? = null,
+)
 
 /** One Activity scope's canonical folded state. */
 data class ActivityDomainState(
@@ -54,6 +71,8 @@ data class ActivityDomainState(
     val nextCursor: String?,
     val hasMore: Boolean,
     val complete: Boolean,
+    val totalCount: UInt = 0u,
+    val totalUnreadCount: UInt = 0u,
 )
 
 fun initialActivityState(): ActivityDomainState =
@@ -158,11 +177,17 @@ fun foldActivityEvent(state: ActivityDomainState, event: Any?): ActivityDomainSt
     return when (domainEvent) {
         is ActivityDomainEvent.Frame -> {
             val withRows = applyRowsAndTombstones(state, domainEvent.rows, domainEvent.tombstones)
+            val window = domainEvent.window
             withRows.copy(
                 activityVersion = advanceActivityVersion(
                     withRows.activityVersion,
                     domainEvent.activityVersion,
                 ),
+                nextCursor = if (window.nextCursorPresent) window.nextCursor else withRows.nextCursor,
+                hasMore = window.hasMore ?: withRows.hasMore,
+                complete = window.complete ?: withRows.complete,
+                totalCount = window.totalCount ?: withRows.totalCount,
+                totalUnreadCount = window.totalUnreadCount ?: withRows.totalUnreadCount,
             )
         }
         is ActivityDomainEvent.ReadStateUpdated -> {
@@ -209,8 +234,26 @@ fun activityStateFromSnapshot(raw: Any?): ActivityDomainState {
         nextCursor = window.nextCursor,
         hasMore = window.hasMore,
         complete = window.complete,
+        totalCount = window.totalCount,
+        totalUnreadCount = window.totalUnreadCount,
     )
 }
+
+/** A difference folds as one frame carrying its rows and its full window metadata. */
+fun DifferenceIngress.toActivityFrame(): ActivityDomainEvent.Frame =
+    ActivityDomainEvent.Frame(
+        rows = rows,
+        tombstones = tombstones,
+        activityVersion = activityVersion,
+        window = ActivityFrameWindowFact(
+            nextCursorPresent = true,
+            nextCursor = nextCursor,
+            hasMore = hasMore,
+            complete = complete,
+            totalCount = totalCount,
+            totalUnreadCount = totalUnreadCount,
+        ),
+    )
 
 fun createActivityDomain(): SyncDomainConfig =
     SyncDomainConfig(
