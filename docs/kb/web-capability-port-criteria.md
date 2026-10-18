@@ -62,10 +62,10 @@ Evidence required per state:
 | source exact | commit SHA + the PR head that produced it |
 | CI terminal | the run ID that reached a terminal state (see trap below) |
 | device provenance | same APK/build as the exact, install-time hash readback, device + API, fixture hash |
-
-The "same build" part is a containment question, not a version-string question: a later build of the same version can lack the fix entirely if it was cut from a release branch that never received it. The procedure — resolve the build's source commit from the run, then `git merge-base --is-ancestor <fix-merge-sha> <run-head-sha>` — is in [release-provenance-containment.md](release-provenance-containment.md).
 | signed/merged | approval bound to that exact + merge SHA read back from the branch |
 | released | version/channel actually shipped |
+
+The "same build" part is a containment question, not a version-string question: a later build of the same version can lack the fix entirely if it was cut from a release branch that never received it. The procedure — resolve the build's source commit from the run, then `git merge-base --is-ancestor <fix-merge-sha> <run-head-sha>` — is in [release-provenance-containment.md](release-provenance-containment.md).
 
 ## 6. Traps that have actually cost us time
 
