@@ -26,7 +26,7 @@ Path conventions: mobile paths are relative to `compose/shared/src/commonMain/ko
 
 Effort: **S** ≈ a day or two, **M** ≈ a week, **L** = multi-week or cross-team. Level (P0/P1/P2) follows the port-criteria doc, including the default-path and silent-failure modifiers.
 
-This is a pre-candidate audit snapshot: it ranks gaps but does not carry the per-candidate owner / state / evidence columns of the criteria doc §8. Those live in the port-candidate tracker: when a gap is claimed, it is added there with owner, state and evidence, and this table's status is updated at the same moment. It is also a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
+This is a pre-candidate audit snapshot: it ranks gaps but does not carry the per-candidate owner / state / evidence fields of the criteria doc §5 and §8. Those live in the port-candidate tracker: when a gap is claimed, it is added there with owner, state and evidence. The tracker is authoritative for progress; this table records what the code did at the base commits and is refreshed only by the next audit. It is also a code-reading audit. Nothing was run on a device, so every "done" means "the code path exists", not "verified on hardware".
 
 ---
 
