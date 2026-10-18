@@ -16,7 +16,7 @@ class MessageBodyTypographyTest {
         assertEquals(14.sp, medium.fontSize)
         assertEquals(20.sp, medium.lineHeight)
         assertEquals(16.sp, large.fontSize)
-        assertEquals(22.sp, large.lineHeight)
+        assertEquals(24.sp, large.lineHeight)
     }
 
     @Test
