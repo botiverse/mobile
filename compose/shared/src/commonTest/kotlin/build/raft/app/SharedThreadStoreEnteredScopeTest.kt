@@ -10,6 +10,7 @@ import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
+import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -88,27 +89,34 @@ class SharedThreadStoreEnteredScopeTest {
         noOwnerScope.cancel()
     }
 
-    private class FakeLoader : ThreadEnteredScopeSnapshotLoader {
+    internal class FakeLoader(
+        private val effect: suspend (partition: DurablePartitionKey, channelId: SyncScopeId) -> Unit = { _, _ -> },
+    ) : ThreadEnteredScopeSnapshotLoader {
         val loads = mutableListOf<Pair<DurablePartitionKey, SyncScopeId>>()
         val stillCurrentAtCall = mutableListOf<Boolean>()
 
         override suspend fun loadOnEnter(partition: DurablePartitionKey, channelId: SyncScopeId, stillCurrent: () -> Boolean) {
             loads += partition to channelId
             stillCurrentAtCall += stillCurrent()
+            effect(partition, channelId)
         }
     }
 
-    private fun dataSource(
+    internal fun dataSource(
         api: SharedThreadStoreTest.FakeThreadApi = SharedThreadStoreTest.FakeThreadApi(),
         loader: ThreadEnteredScopeSnapshotLoader,
+        reader: ThreadDurableLastKnownReader? = null,
         identity: () -> ThreadReplyCacheIdentitySnapshot,
+        diagnosticsLogger: (String) -> Unit = {},
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
             sessionStore = InMemorySlockAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { identity() },
+            durableLastKnownReader = reader,
             enteredScopeSnapshotLoader = loader,
+            diagnosticsLogger = diagnosticsLogger,
         )
 
     private fun partition(identity: ThreadReplyCacheIdentitySnapshot): DurablePartitionKey =
