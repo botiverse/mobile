@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -332,88 +333,166 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun deliveryStatusIsFetchedAfterUpsertAndStoredForEnvironmentUserAndInstallation() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+    fun deliveryStatusFetchedAfterUpsertMakesTheEventServerRemotePushActive() = runBlocking {
+        val clock = TestClock()
         val api = RecordingPushRegistrationApi()
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true, "server-2" to false)
-        val coordinator = deliveryStatusCoordinator(store, currentSession = { storedSession("user-1") }, api = api)
+        // The writer sees the base URL with a trailing slash; the background reader passes it raw too.
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
         val installationId = coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-        assertTrue(coordinator.updateRegistration("cX9-AbC_dEfGhIjKlMnOpQ", "build.raft.app", "production", "1.3.0"))
+        assertTrue(coordinator.registerFcm())
 
-        assertEquals("GET delivery-status $installationId", api.calls.last())
-        assertEquals(
-            SlockPushDeliveryStatus(
-                environmentId = "https://api.example",
-                userId = "user-1",
-                installationId = installationId,
-                fcmActiveByServer = mapOf("server-1" to true, "server-2" to false)
-            ),
-            coordinator.storedDeliveryStatus()
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = " https://api.example/ ", now = clock.now))
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = "https://api.example", now = clock.now))
+        assertFalse(coordinator.isRemotePushActiveFor("server-2", now = clock.now), "fcmActive=false")
+        assertFalse(coordinator.isRemotePushActiveFor("server-3", now = clock.now), "not in the answer")
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
+        assertEquals(installationId, coordinator.currentInstallationId())
+    }
+
+    @Test
+    fun deliveryStatusOlderThanThirtyMinutesIsNotActive() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        val fetchedAt = clock.now
+
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = fetchedAt + PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS))
+        assertFalse(
+            coordinator.isRemotePushActiveFor("server-1", now = fetchedAt + PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS + 1)
         )
+
+        // A refresh renews it.
+        clock.now = fetchedAt + PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS + 1
+        assertTrue(coordinator.refreshDeliveryStatus(reason = "realtime_periodic"))
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
     }
 
     @Test
     fun failedOrMissingDeliveryStatusRouteKeepsThePreviousAnswer() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val clock = TestClock()
         val api = RecordingPushRegistrationApi()
-        val coordinator = deliveryStatusCoordinator(store, currentSession = { storedSession("user-1") }, api = api)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
         // An older server without the route: nothing stored, so the background path posts locally.
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        assertTrue(coordinator.registerFcm())
         assertEquals(null, coordinator.storedDeliveryStatus())
 
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        assertTrue(coordinator.refreshDeliveryStatus(reason = "test"))
+        clock.advanceBeyondRequestSpacing()
+        assertTrue(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
         val answer = coordinator.storedDeliveryStatus()
 
-        api.deliveryStatusResponse = HomeNetworkResponse(code = 404, bodyText = null)
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
-        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
-        api.deliveryStatusResponse = HomeNetworkResponse(code = 200, bodyText = """{"unexpected":true}""")
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
-        assertEquals(answer, coordinator.storedDeliveryStatus())
+        for (failure in listOf(
+            HomeNetworkResponse(code = 404, bodyText = null),
+            HomeNetworkResponse(code = 503, bodyText = null),
+            HomeNetworkResponse(code = 200, bodyText = """{"unexpected":true}""")
+        )) {
+            api.deliveryStatusResponse = failure
+            clock.advanceBeyondRequestSpacing()
+            assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+            assertEquals(answer, coordinator.storedDeliveryStatus())
+        }
     }
 
     @Test
-    fun logoutClearsTheDeliveryStatusAndAccountSwitchRefetches() = runBlocking {
+    fun registrationChangeClearsTheAnswerUntilTheNewRegistrationIsAnswered() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm(token = "fid-one"))
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+
+        // New FID whose upsert fails: the old answer no longer applies, and none is fetched meanwhile.
+        api.upsertResponse = HomeNetworkResponse(code = 503, bodyText = null)
+        assertFalse(coordinator.registerFcm(token = "fid-two"))
+        assertEquals(null, coordinator.storedDeliveryStatus())
+        clock.advanceBeyondRequestSpacing()
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+
+        // Once the new registration is upserted, a fresh answer applies again.
+        api.upsertResponse = HomeNetworkResponse(code = 204, bodyText = null)
+        assertTrue(coordinator.retryPendingRegistration(reason = "host_retry"))
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+    }
+
+    @Test
+    fun deliveryStatusRequestsAreSpacedUnlessNoAnswerExists() = runBlocking {
+        val clock = TestClock()
         val store = InMemorySlockKeyValueStore()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertEquals(1, api.deliveryStatusRequests)
+
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "session_saved", force = true), "an answer exists")
+        assertEquals(1, api.deliveryStatusRequests)
+        clock.advanceBeyondRequestSpacing()
+        assertTrue(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+        assertEquals(2, api.deliveryStatusRequests)
+
+        // Cold start of a new process over the same storage: startup reconcile, foreground and the realtime
+        // connect fire together and cost one request.
+        val restarted =
+            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        restarted.handleSessionSaved()
+        assertFalse(restarted.refreshDeliveryStatus(reason = "app_foreground"))
+        assertFalse(restarted.refreshDeliveryStatus(reason = "realtime_connected"))
+        assertEquals(3, api.deliveryStatusRequests)
+    }
+
+    @Test
+    fun logoutClearsTheDeliveryStatusAndTheNextAccountGetsItsOwnAnswer() = runBlocking {
+        val clock = TestClock()
         var session: StoredAuthSession? = storedSession("user-1")
         val api = RecordingPushRegistrationApi()
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        val coordinator = deliveryStatusCoordinator(store, currentSession = { session }, api = api)
+        val coordinator = deliveryStatusCoordinator(currentSession = { session }, api = api, clock = clock)
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        coordinator.handleSessionSaved()
-        assertEquals("user-1", coordinator.storedDeliveryStatus()?.userId, "login fetches")
-
-        // Same user again (token rotation, selection change): the stored answer still matches, no fetch.
-        val fetches = api.calls.count { it.startsWith("GET") }
-        coordinator.handleSessionSaved()
-        assertEquals(fetches, api.calls.count { it.startsWith("GET") })
+        assertTrue(coordinator.registerFcm())
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
 
         coordinator.unbindBeforeLogout()
         assertEquals(null, coordinator.storedDeliveryStatus(), "logout clears")
 
+        // The next login is not held back by the spacing: there is no answer for this user.
         session = storedSession("user-2")
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to false)
-        coordinator.handleSessionSaved()
+        assertTrue(coordinator.handleSessionSaved())
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-1", now = clock.now))
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
         assertEquals("user-2", coordinator.storedDeliveryStatus()?.userId)
-        assertEquals(mapOf("server-1" to false), coordinator.storedDeliveryStatus()?.fcmActiveByServer)
     }
 
     @Test
     fun deliveryStatusLandingAfterAnAccountSwitchIsNotStored() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val clock = TestClock()
         var session: StoredAuthSession? = storedSession("user-1")
         val api = RecordingPushRegistrationApi()
+        val coordinator = deliveryStatusCoordinator(currentSession = { session }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
         api.onDeliveryStatus = { session = storedSession("user-2") }
-        val coordinator = deliveryStatusCoordinator(store, currentSession = { session }, api = api)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        clock.advanceBeyondRequestSpacing()
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
         assertEquals(null, coordinator.storedDeliveryStatus())
     }
 
@@ -426,7 +505,7 @@ class PushRegistrationTest {
 
         assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
         assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
-        assertTrue(api.calls.none { it.startsWith("GET") }, "iOS (APNs) behaviour is unchanged")
+        assertEquals(0, api.deliveryStatusRequests, "iOS (APNs) behaviour is unchanged")
         assertEquals(null, coordinator.storedDeliveryStatus())
     }
 
@@ -487,6 +566,7 @@ class PushRegistrationTest {
         remoteNotificationsController: SlockIosRemoteNotificationsController =
             RecordingRemoteNotificationsController(),
         currentEnvironmentId: (() -> String?)? = null,
+        clockMillis: () -> Long = { 0L },
         scope: CoroutineScope = CoroutineScope(SupervisorJob())
     ): SlockPushRegistrationCoordinator =
         SlockPushRegistrationCoordinator(
@@ -496,14 +576,22 @@ class PushRegistrationTest {
             apiProvider = { api },
             scope = scope,
             remoteNotificationsController = remoteNotificationsController,
-            currentEnvironmentId = currentEnvironmentId
+            currentEnvironmentId = currentEnvironmentId,
+            clockMillis = clockMillis
         )
+
+    private class TestClock(var now: Long = 1_700_000_000_000L) {
+        fun advanceBeyondRequestSpacing() {
+            now += PUSH_DELIVERY_STATUS_MIN_REQUEST_INTERVAL_MILLIS
+        }
+    }
 
     /** Unconfined: a refresh launched by the coordinator has finished when the triggering call returns. */
     private fun deliveryStatusCoordinator(
-        store: SlockKeyValueStore,
+        store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
         currentSession: suspend () -> StoredAuthSession?,
         api: SlockPushRegistrationApi,
+        clock: TestClock,
         environmentId: () -> String? = { "https://api.example/" }
     ): SlockPushRegistrationCoordinator =
         coordinator(
@@ -512,7 +600,27 @@ class PushRegistrationTest {
             currentSession = currentSession,
             api = api,
             currentEnvironmentId = environmentId,
+            clockMillis = { clock.now },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        )
+
+    private suspend fun SlockPushRegistrationCoordinator.registerFcm(token: String = "cX9-AbC_dEfGhIjKlMnOpQ"): Boolean =
+        updateRegistration(token, "build.raft.app", "production", "1.3.0")
+
+    /** What the Android background path decides for a realtime event of [serverId]. */
+    private fun SlockPushRegistrationCoordinator.isRemotePushActiveFor(
+        serverId: String,
+        userId: String = "user-1",
+        environmentId: String = "https://api.example/",
+        now: Long
+    ): Boolean =
+        SlockRealtimeAppScopePolicy.isRemotePushActive(
+            serverId = ServerId(serverId),
+            environmentId = environmentId,
+            currentUserId = userId,
+            installationId = currentInstallationId(),
+            deliveryStatus = storedDeliveryStatus(),
+            nowMillis = now
         )
 
     private fun deliveryStatusBody(vararg servers: Pair<String, Boolean>): HomeNetworkResponse =
@@ -535,9 +643,11 @@ class PushRegistrationTest {
     private class RecordingPushRegistrationApi : SlockPushRegistrationApi {
         val calls = mutableListOf<String>()
 
+        var upsertResponse: HomeNetworkResponse = HomeNetworkResponse(code = 204, bodyText = null)
+
         override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
             calls += "POST $payloadJson"
-            return HomeNetworkResponse(code = 204, bodyText = null)
+            return upsertResponse
         }
 
         override suspend fun unbind(installationId: String): HomeNetworkResponse {
@@ -547,9 +657,11 @@ class PushRegistrationTest {
 
         var deliveryStatusResponse: HomeNetworkResponse = HomeNetworkResponse(code = 404, bodyText = null)
         var onDeliveryStatus: (() -> Unit)? = null
+        var deliveryStatusRequests = 0
 
         override suspend fun deliveryStatus(installationId: String): HomeNetworkResponse {
             calls += "GET delivery-status $installationId"
+            deliveryStatusRequests += 1
             onDeliveryStatus?.invoke()
             return deliveryStatusResponse
         }

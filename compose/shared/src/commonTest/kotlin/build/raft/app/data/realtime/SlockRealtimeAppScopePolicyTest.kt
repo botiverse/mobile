@@ -4,6 +4,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEnhancedNotifyEvent
 import build.raft.app.data.SlockEnhancedNotifyEventBus
+import build.raft.app.data.PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
 import build.raft.app.data.SlockPushDeliveryStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -134,6 +135,15 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
+    fun remotePushIsInactiveOnceTheAnswerIsOlderThanThirtyMinutes() {
+        val fetchedAt = 1_000_000L
+        val maxAge = PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
+        assertTrue(remotePushActive(nowMillis = fetchedAt + maxAge))
+        assertFalse(remotePushActive(nowMillis = fetchedAt + maxAge + 1), "expired: post locally")
+        assertFalse(remotePushActive(nowMillis = fetchedAt - 1), "clock moved backwards: unknown")
+    }
+
+    @Test
     fun remotePushIsInactiveWithoutAStoredAnswer() {
         // Never fetched, every fetch failed, a 404 from an older server, or cleared on logout.
         assertFalse(remotePushActive(status = null))
@@ -161,14 +171,16 @@ class SlockRealtimeAppScopePolicyTest {
         environmentId: String? = "https://api.example",
         currentUserId: String? = "user-a",
         installationId: String? = "installation-1",
-        status: SlockPushDeliveryStatus? = deliveryStatus()
+        status: SlockPushDeliveryStatus? = deliveryStatus(),
+        nowMillis: Long = 1_000_000L + 60_000L
     ): Boolean =
         SlockRealtimeAppScopePolicy.isRemotePushActive(
             serverId = serverId,
             environmentId = environmentId,
             currentUserId = currentUserId,
             installationId = installationId,
-            deliveryStatus = status
+            deliveryStatus = status,
+            nowMillis = nowMillis
         )
 
     private fun deliveryStatus(server2: Boolean = false): SlockPushDeliveryStatus =
@@ -176,7 +188,8 @@ class SlockRealtimeAppScopePolicyTest {
             environmentId = "https://api.example",
             userId = "user-a",
             installationId = "installation-1",
-            fcmActiveByServer = mapOf("server-1" to true, "server-2" to server2)
+            fcmActiveByServer = mapOf("server-1" to true, "server-2" to server2),
+            fetchedAtMillis = 1_000_000L
         )
 
     @Test

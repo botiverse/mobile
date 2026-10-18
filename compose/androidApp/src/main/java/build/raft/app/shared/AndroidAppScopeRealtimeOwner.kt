@@ -78,7 +78,7 @@ internal object AndroidAppScopeRealtimeOwner {
                     onAppShown(context, source = "process_activity_started")
                 }
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
-                runCatching { SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground") }
+                SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
                 onAppHidden(source = "process_activity_stopped")
             }

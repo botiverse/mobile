@@ -14,6 +14,7 @@ import build.raft.app.core.data.realtime.SocketIoSocketTransport
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedSlockAuthTransport
@@ -44,6 +45,9 @@ import com.tencent.mmkv.MMKV
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,8 +64,37 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     // Task #168: frames also carry the epoch of the socket that is current when they are fanned out, so the
     // canary does not depend on the signal reaching it first. 0 = this socket posted no signal.
     @Volatile private var currentPresenceTransportEpoch = 0L
+
+    // The delivery-status answer expires (PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS), so a socket that keeps
+    // receiving in the background must keep it fresh: once per connect, then periodically while it is up.
+    // Declared before the connected subscription, whose listener uses them.
+    private val pushDeliveryStatusRefreshLock = Any()
+    private var pushDeliveryStatusRefreshJob: Job? = null
+
     private val connectedSubscription =
-        client.observeConnected { context -> postPresenceTransportConnected(context) }
+        client.observeConnected { context ->
+            postPresenceTransportConnected(context)
+            startPushDeliveryStatusRefresh()
+        }
+
+    private fun startPushDeliveryStatusRefresh() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob =
+                scope.launch {
+                    SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_connected")
+                    while (isActive) {
+                        delay(PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS)
+                        val state = client.state
+                        if (state != RealtimeConnectionState.Connected && state != RealtimeConnectionState.RoomsJoined) {
+                            break
+                        }
+                        SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_periodic")
+                    }
+                }
+        }
+    }
+
     private val roomsJoinedSubscription =
         client.observeRoomsJoined { context -> postRealtimeRoomsJoined(context) }
 
@@ -129,6 +162,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     }
 
     override fun disconnect() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob = null
+        }
         repository.disconnect()
     }
 
@@ -369,7 +406,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
                     currentUserId = sessionStore.readSession()?.user?.id,
                     installationId = SlockAndroidPushRegistrationBridge.installationIdOrNull(),
-                    deliveryStatus = SlockAndroidPushRegistrationBridge.storedDeliveryStatusOrNull()
+                    deliveryStatus = SlockAndroidPushRegistrationBridge.storedDeliveryStatusOrNull(),
+                    nowMillis = System.currentTimeMillis()
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation

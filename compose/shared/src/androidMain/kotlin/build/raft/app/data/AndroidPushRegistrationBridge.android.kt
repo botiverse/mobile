@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -55,11 +56,24 @@ object SlockAndroidPushRegistrationBridge {
         }
     }
 
-    /** Re-asks the server whether push delivers to this installation (app foreground). */
+    /**
+     * Re-asks the server whether push delivers to this installation (app foreground, realtime connect and
+     * its periodic tick). The coordinator spaces the requests; this never throws into the caller.
+     */
     fun refreshDeliveryStatus(reason: String) {
         val runtime = coordinator ?: return
         scope.launch {
-            runtime.refreshDeliveryStatus(reason = reason)
+            try {
+                runtime.refreshDeliveryStatus(reason = reason)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                slockLogWarn(
+                    PUSH_LOG_TAG,
+                    "delivery_status_result result=error trigger=$reason " +
+                        "errorType=${error::class.simpleName ?: "unknown"} provider=fcm"
+                )
+            }
         }
     }
 

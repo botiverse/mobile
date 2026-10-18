@@ -87,10 +87,20 @@ internal enum class SlockPushProviderSpec(val provider: String, val platform: St
 
 private const val FCM_MAX_TOKEN_LENGTH = 4096
 
+/** A delivery-status answer older than this is unknown: the background path posts locally again. */
+const val PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS: Long = 30L * 60L * 1000L
+
+/** How often a live app-scope realtime connection re-asks for the delivery status. */
+const val PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS: Long = 15L * 60L * 1000L
+
+/** Minimum spacing between delivery-status requests, unless no answer exists for the current binding. */
+internal const val PUSH_DELIVERY_STATUS_MIN_REQUEST_INTERVAL_MILLIS: Long = 5L * 60L * 1000L
+
 /**
  * The server's last answer to "does server push deliver to this installation", per server the user
- * belongs to, for the (environment, user, installation) that asked. The server folds in its delivery
- * switches, the FCM provider config and whether this installation holds an active FCM registration.
+ * belongs to, for the (environment, user, installation) that asked, received at [fetchedAtMillis]. The
+ * server folds in its delivery switches, the FCM provider config and whether this installation holds
+ * an active FCM registration.
  */
 @Serializable
 data class SlockPushDeliveryStatus(
@@ -98,6 +108,7 @@ data class SlockPushDeliveryStatus(
     val userId: String,
     val installationId: String,
     val fcmActiveByServer: Map<String, Boolean>,
+    val fetchedAtMillis: Long,
 )
 
 @Serializable
@@ -110,7 +121,11 @@ private data class PushDeliveryStatusResponseBody(
     val servers: Map<String, PushDeliveryStatusServerBody>? = null,
 )
 
-internal fun normalizedPushEnvironmentId(raw: String?): String? =
+/**
+ * The environment key of a delivery-status answer: the API base URL without surrounding blanks or a
+ * trailing slash. Both the writer and the background reader go through this.
+ */
+fun normalizedPushEnvironmentId(raw: String?): String? =
     raw?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
 
 internal interface SlockPushRegistrationApi {
@@ -249,6 +264,7 @@ internal class SlockPushRegistrationCoordinator(
      * talks to; the stored answer is bound to it. iOS passes null and never asks.
      */
     private val currentEnvironmentId: (() -> String?)? = null,
+    private val clockMillis: () -> Long = ::defaultNowMillis,
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : SlockPushRegistrationLifecycleSink {
@@ -261,6 +277,13 @@ internal class SlockPushRegistrationCoordinator(
     private var registrationSuspended = false
 
     private var remoteNotificationsEnabled: Boolean? = null
+
+    // Delivery-status request spacing, guarded by [mutex]. In memory: a new process asks once.
+    private var lastDeliveryStatusRequestAtMillis: Long? = null
+
+    // Set under [mutex]; cleared without it so a cancelled request cannot leave it stuck.
+    @Volatile
+    private var deliveryStatusRequestInFlight = false
 
     fun installationId(candidateInstallationId: String): String {
         val existing = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
@@ -298,7 +321,12 @@ internal class SlockPushRegistrationCoordinator(
             warningLogger("registration_rejected reason=invalid_atomic_identity")
             return false
         }
-        store.putString(PENDING_REGISTRATION_KEY, pushRegistrationJson.encodeToString(payload))
+        val payloadJson = pushRegistrationJson.encodeToString(payload)
+        store.putString(PENDING_REGISTRATION_KEY, payloadJson)
+        if (payloadJson != store.getString(LAST_REGISTERED_PAYLOAD_KEY)) {
+            // The answer described the previous registration; none applies until the new one is upserted.
+            clearDeliveryStatus(reason = "registration_changed")
+        }
         return flushPending(reason = "token_update")
     }
 
@@ -334,10 +362,10 @@ internal class SlockPushRegistrationCoordinator(
             setRemoteNotificationsEnabledLocked(true, reason = "authenticated_session")
             flushPendingLocked(session = session, reason = "session_saved")
         }
-        // Login, account switch, or a cold start with no answer for this user yet. Token rotations and
-        // selection changes keep a matching answer: it already covers every server of the user.
-        if (currentEnvironmentId != null && storedDeliveryStatusFor(session.user.id) == null) {
-            scope.launch { refreshDeliveryStatus(reason = "session_saved") }
+        // Login and account switch have no answer for this user yet and skip the throttle; a token rotation
+        // or selection change with a matching answer is throttled like any other refresh.
+        if (currentEnvironmentId != null) {
+            scope.launch { refreshDeliveryStatus(reason = "session_saved", force = true) }
         }
         return registered
     }
@@ -359,19 +387,38 @@ internal class SlockPushRegistrationCoordinator(
     fun currentInstallationId(): String? =
         store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
 
-    private fun storedDeliveryStatusFor(userId: String): SlockPushDeliveryStatus? =
+    private fun storedDeliveryStatusFor(userId: String, environmentId: String?): SlockPushDeliveryStatus? =
         storedDeliveryStatus()?.takeIf { status ->
             status.userId == userId &&
                 status.installationId == currentInstallationId() &&
-                status.environmentId == normalizedPushEnvironmentId(currentEnvironmentId?.invoke())
+                status.environmentId == environmentId
         }
+
+    /** The last upsert bound this installation to [userId] and no different payload is waiting. */
+    private fun registrationSettledFor(userId: String): Boolean {
+        val registered = store.getString(LAST_REGISTERED_PAYLOAD_KEY)?.takeIf { it.isNotBlank() } ?: return false
+        val pending = store.getString(PENDING_REGISTRATION_KEY)?.takeIf { it.isNotBlank() }
+        return store.getString(LAST_BOUND_USER_ID_KEY) == userId && (pending == null || pending == registered)
+    }
+
+    private fun clearDeliveryStatus(reason: String) {
+        if (store.getString(DELIVERY_STATUS_KEY) == null) return
+        store.putString(DELIVERY_STATUS_KEY, null)
+        infoLogger("delivery_status_cleared reason=$reason")
+    }
 
     /**
      * Asks the server whether push delivers to this installation, per server, and stores the answer for
-     * the (environment, user, installation) that asked. A failed request (including 404 from a server
-     * without the route) or a malformed body keeps the previous answer; logout and auth loss clear it.
+     * the (environment, user, installation) that asked. Asks only once the registration for the signed-in
+     * user is in place. A failed request (including 404 from a server without the route) or a malformed
+     * body keeps the previous answer, which expires after [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS]; logout,
+     * auth loss and a registration change clear it.
+     *
+     * Requests are spaced by [PUSH_DELIVERY_STATUS_MIN_REQUEST_INTERVAL_MILLIS] and never overlap. [force]
+     * (upsert, login, account switch) skips the spacing only while no answer exists for the current
+     * binding, so the triggers that fire together on login or cold start cost one request.
      */
-    suspend fun refreshDeliveryStatus(reason: String): Boolean {
+    suspend fun refreshDeliveryStatus(reason: String, force: Boolean = false): Boolean {
         val environmentProvider = currentEnvironmentId ?: return false
         if (registrationSuspended || unbindInProgress) {
             infoLogger("delivery_status_deferred reason=logout_suspended trigger=$reason")
@@ -394,6 +441,38 @@ internal class SlockPushRegistrationCoordinator(
             infoLogger("delivery_status_deferred reason=shared_runtime_unavailable trigger=$reason")
             return false
         }
+        val admitted = mutex.withLock {
+            if (!registrationSettledFor(userId)) {
+                infoLogger("delivery_status_deferred reason=registration_not_settled trigger=$reason")
+                return@withLock false
+            }
+            if (deliveryStatusRequestInFlight) return@withLock false
+            val now = clockMillis()
+            val last = lastDeliveryStatusRequestAtMillis
+            val bypass = force && storedDeliveryStatusFor(userId, environmentId) == null
+            if (!bypass && last != null && now - last in 0 until PUSH_DELIVERY_STATUS_MIN_REQUEST_INTERVAL_MILLIS) {
+                return@withLock false
+            }
+            lastDeliveryStatusRequestAtMillis = now
+            deliveryStatusRequestInFlight = true
+            true
+        }
+        if (!admitted) return false
+        try {
+            return requestDeliveryStatus(api, reason, environmentProvider, environmentId, userId, installationId)
+        } finally {
+            deliveryStatusRequestInFlight = false
+        }
+    }
+
+    private suspend fun requestDeliveryStatus(
+        api: SlockPushRegistrationApi,
+        reason: String,
+        environmentProvider: () -> String?,
+        environmentId: String,
+        userId: String,
+        installationId: String
+    ): Boolean {
         val response = api.deliveryStatus(installationId)
         val body = response.bodyText
         if (!response.isSuccessful || body == null) {
@@ -421,15 +500,17 @@ internal class SlockPushRegistrationCoordinator(
                     servers.mapNotNull { (serverId, server) ->
                         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
                         server.fcmActive?.let { id to it }
-                    }.toMap()
+                    }.toMap(),
+                fetchedAtMillis = clockMillis()
             )
         return mutex.withLock {
-            // Store only for the binding that asked: a logout, account switch or environment change while
-            // the request was in flight drops the answer.
+            // Store only for the binding that asked: a logout, account switch, environment change or
+            // registration change while the request was in flight drops the answer.
             val current = currentSession()?.user?.id
             if (
                 registrationSuspended ||
                 current != userId ||
+                !registrationSettledFor(userId) ||
                 currentInstallationId() != installationId ||
                 normalizedPushEnvironmentId(environmentProvider()) != environmentId
             ) {
@@ -522,6 +603,8 @@ internal class SlockPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
                 return false
             }
+            // New token, topic or user: the stored answer described the previous registration.
+            clearDeliveryStatus(reason = "registration_changed")
             val response = api.upsert(pendingPayload)
             if (!response.isSuccessful) {
                 warningLogger("registration_result result=failure code=${response.code} trigger=$reason")
@@ -531,7 +614,7 @@ internal class SlockPushRegistrationCoordinator(
             store.putString(LAST_BOUND_USER_ID_KEY, session.user.id)
             infoLogger("registration_result result=success trigger=$reason")
             if (currentEnvironmentId != null) {
-                scope.launch { refreshDeliveryStatus(reason = "registration_upsert") }
+                scope.launch { refreshDeliveryStatus(reason = "registration_upsert", force = true) }
             }
             true
         }
