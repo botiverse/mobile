@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -260,9 +264,35 @@ internal fun SlockKuiklyChildPage(
                 }
                 .toString()
         }
+    // task #180: publish this page's measured window origin for overlays that must place in WINDOW
+    // space (a page-local 384 drew the thread menu at the centre pane's top-left instead of 1904).
+    // Measured on the HOST-provided modifier -- that one belongs to the parent composition, so
+    // positionInRoot() is the page's real position in its parent. Do NOT measure a node created
+    // inside this page: that reports the page against itself, always (0,0).
+    val originKey = slockChildPageOriginKey(pageName, pageData)
+    val childPageOriginState = remember(originKey) { SlockChildPageOriginRegistry.stateFor(originKey) }
+    SideEffect {
+        // A child page's own root view cannot report the window, so the parent's key is not
+        // reachable here; the enclosing tab page carries its own origin and is linked by ITS host.
+        childPageOriginState.linkParentOrigin(null)
+    }
+    DisposableEffect(originKey) {
+        onDispose { SlockChildPageOriginRegistry.forget(originKey) }
+    }
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
         factory = { SlockKuiklyChildPageView() },
-        modifier = modifier,
+        modifier =
+            modifier.onGloballyPositioned { coordinates ->
+                val measured = coordinates.positionInRoot()
+                childPageOriginState.updateOrigin(measured)
+                // task #180: pairs with the page's `page_post originKey=` line, so a key mismatch is
+                // visible in one capture instead of costing another device round.
+                slockTraceToPlatformLog(
+                    "SlockShellOverlay",
+                    "host_measure originKey=$originKey origin=$measured windowOrigin=" +
+                        "${childPageOriginState.windowOrigin}"
+                )
+            },
         viewInit = {
             applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
             updateActive(active)
@@ -280,6 +310,19 @@ internal fun SlockKuiklyChildPage(
             }
         }
     )
+}
+
+/**
+ * Stable key linking a child page's host measurement to the state read inside that page.
+ *
+ * Both sides must compute the SAME key from the same pageData: the host passes the thread launch
+ * payload into SlockKuiklyChildPage and the page reads its own params, which is that payload. The
+ * "default" fallback keeps them equal when instanceId is absent -- a mismatch would be invisible
+ * because the origin would simply read as a fresh zero state.
+ */
+internal fun slockChildPageOriginKey(pageName: String, pageData: JSONObject): String {
+    val instance = pageData.optString("instanceId").trim().ifBlank { "default" }
+    return "$pageName|$instance"
 }
 
 internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =

@@ -1,5 +1,13 @@
 package build.raft.app
 
+import build.raft.app.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
+import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
+import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
+import build.raft.app.data.slockShouldApplyShellOverlayResult
+import build.raft.app.data.SlockShellOverlayRequest
+import build.raft.app.data.SlockShellOverlayItem
+import build.raft.app.data.cancelSlockShellOverlayJson
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.sideThreadFocusActive
@@ -16518,7 +16526,6 @@ private fun ThreadHeaderFocusModeMenu(
     onToggleFollow: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
 ) {
-    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
         buildList {
@@ -16559,10 +16566,104 @@ private fun ThreadHeaderFocusModeMenu(
                 )
             }
         }
+    // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
+    // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
+    // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
+    // anchor here -- in window space -- and ask the shell to draw it.
+    // task #180: the EventBus must come from THIS page's own store registry, not from the host.
+    // The thread column is a separate Kuikly @Page, so a host-supplied instance does not cross the
+    // boundary -- the device trace showed `click_abort reason=eventBus_null` for exactly that reason.
+    // SlockSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
+    // actually post on (the same path the rest of ThreadPage already uses).
+    val localPager = LocalActivity.current.getPager() as Pager
+    val pageEventBus: build.raft.app.data.SlockEventBus =
+        remember(localPager.pagerId) {
+            SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+        }
+    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it.
+    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it. Verified by
+    // reading PagerData: the host's pageData becomes `rawPageData["param"]` and `pageData.params`
+    // reads that back, so `instanceId` is present on both sides. The trace logs both keys so any
+    // future divergence is a line comparison rather than a silent zero origin.
+    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+    // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
+    val pageKey =
+        LocalActivity.current.pageData.params
+            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .trim()
+            .ifEmpty { "thread-panel" }
+    var openRequestId by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(pageEventBus, pageKey) {
+        val bus = pageEventBus
+        val subscription =
+            bus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                if (!slockShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
+                openRequestId = null
+                val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
+                when (selectedId) {
+                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
+                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    else -> Unit // dismissed
+                }
+            }
+        onDispose {
+            // Leaving the page retires the menu; the shell drops a cancel for anything it is not
+            // currently showing, so this cannot close another page's menu.
+            openRequestId?.let { requestId ->
+                bus.post(SLOCK_SHELL_OVERLAY_REQUEST_EVENT, cancelSlockShellOverlayJson(requestId))
+            }
+            subscription.close()
+        }
+    }
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
         onClick = {
-            anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { menuAnchor = it }
+            // task #180 diagnostics (Argus): unconditional entry log. The previous device run
+            // produced ZERO trace lines, which could not distinguish "the click never reached this
+            // handler" from "the lines went somewhere else". This line fires before any guard.
+            slockTraceToPlatformLog("SlockShellOverlay", "click_enter")
+            val bus = pageEventBus
+            val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
+            if (anchor == null) {
+                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
+                return@SlockBrutalIconButton
+            }
+            // Already window space: the shell must not convert this again.
+            val pageRootAnchor = anchor.rootOffsetOrNull()
+            if (pageRootAnchor == null) {
+                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
+                return@SlockBrutalIconButton
+            }
+            // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
+            // space, so add this page's measured window origin (1520 for the thread column, plus the
+            // rail when nested). Without it the menu landed at the page-local 384 -- the centre
+            // pane's top-left -- instead of 1904 under the button.
+            val pageOrigin = SlockChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
+            val windowAnchor = pageRootAnchor + pageOrigin
+            val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
+            openRequestId = requestId
+            // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
+            slockTraceToPlatformLog(
+                "SlockShellOverlay",
+                "page_post requestId=$requestId pageKey=$pageKey originKey=$pageOriginKey " +
+                    "pageOrigin=$pageOrigin windowAnchor=$windowAnchor items=${items.size}"
+            )
+            bus.post(
+                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
+                SlockShellOverlayRequest(
+                    requestId = requestId,
+                    pageKey = pageKey,
+                    anchor = windowAnchor,
+                    items =
+                        items.map {
+                            SlockShellOverlayItem(
+                                id = it.id,
+                                label = it.label,
+                                enabled = it.enabled
+                            )
+                        }
+                ).toJson()
+            )
         },
         enabled = true,
         size = 28.dp,
@@ -16571,20 +16672,6 @@ private fun ThreadHeaderFocusModeMenu(
         modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
     )
-    menuAnchor?.let { anchor ->
-        SlockBrutalDropdownMenu(
-            anchor = anchor,
-            items = items,
-            onSelect = { id ->
-                menuAnchor = null
-                when (id) {
-                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
-                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
-                }
-            },
-            onDismiss = { menuAnchor = null }
-        )
-    }
 }
 
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"

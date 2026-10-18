@@ -50,6 +50,26 @@ internal class SlockPopoverAnchor private constructor(
 ) {
     fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
 
+    /**
+     * The window-space offset this anchor resolves to.
+     *
+     * task #180: a child page sends this to the shell so the shell can draw the menu without
+     * re-deriving the position (re-deriving is what produced four rounds of wrong placements).
+     */
+    internal fun rootOffsetOrNull(): Offset? = rootOffset.takeIf { it.isSlockUsableAnchor() }
+
+    companion object {
+        /**
+         * task #180: an anchor built directly from a WINDOW-space offset.
+         *
+         * Used by the shell overlay host, which receives an already-resolved anchor from a child
+         * page through `SlockShellOverlayContract` and must not re-derive it (the page owns the
+         * conversion; re-deriving is what produced four rounds of wrong positions).
+         */
+        internal fun forRootOffset(rootOffset: Offset): SlockPopoverAnchor =
+            SlockPopoverAnchor(ownerIdentity = "shell-overlay", rootOffset = rootOffset)
+    }
+
     @Composable
     internal fun renderInOverlay(
         contentSize: Size,
@@ -205,6 +225,52 @@ internal class SlockPopoverAnchor private constructor(
             val rootOffset = current.localToRoot(localPoint.resolve(current.size))
             return SlockPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
         }
+    }
+}
+
+/**
+ * task #180: cross-page handoff of a child page's measured window origin.
+ *
+ * A CompositionLocal cannot cross a Kuikly `@Page` boundary, so the host publishes the origin it
+ * MEASURES here under a stable key and the page reads the same state. Device evidence drove this:
+ * with no origin, the thread column's `...` menu resolved a page-local 384 and drew at the top-left
+ * of the centre pane instead of at 1904 under the button.
+ *
+ * Child pages nest for real (AppShell tab page -> detail / thread column), so a page's window origin
+ * is its own position within its parent PLUS the parent's origin, kept as a live reference so an
+ * outer resize still propagates inward.
+ */
+internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
+    var origin: Offset by mutableStateOf(origin)
+        internal set
+
+    var parentOrigin: SlockChildPageOriginState? = null
+        internal set
+
+    /** Window-space origin: own position within the parent plus every ancestor. */
+    val windowOrigin: Offset
+        get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
+
+    internal fun updateOrigin(next: Offset) {
+        if (next != origin) origin = next
+    }
+
+    internal fun linkParentOrigin(next: SlockChildPageOriginState?) {
+        if (next !== this && parentOrigin !== next) parentOrigin = next
+    }
+}
+
+internal object SlockChildPageOriginRegistry {
+    private val states = mutableMapOf<String, SlockChildPageOriginState>()
+
+    internal fun stateFor(key: String): SlockChildPageOriginState {
+        val normalized = key.trim()
+        if (normalized.isEmpty()) return SlockChildPageOriginState()
+        return states.getOrPut(normalized) { SlockChildPageOriginState() }
+    }
+
+    internal fun forget(key: String) {
+        states.remove(key.trim())
     }
 }
 
