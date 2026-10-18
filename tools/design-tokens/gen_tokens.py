@@ -4,7 +4,7 @@
 Sources (pinned in manifest.json, vendored under source/):
   - tailwindcss theme.css         @theme palette (gray, zinc, ...)
   - raft-ui styles.css            @theme aliases (--color-brutal-yellow, ...)
-  - raft-ui foundation.css        unlayered theme variables (brutal / elegant / elegant dark)
+  - raft-ui foundation.css        unlayered theme variables (raft light / raft dark)
   - raft web index.css            product @theme overrides (brand hexes) and :root.dark
 
 Cascade, matching how the Web build resolves these files:
@@ -13,7 +13,7 @@ Cascade, matching how the Web build resolves these files:
      the last declaration of a name wins.
   2. foundation.css and web `:root.dark` are unlayered, so they beat any
      @theme declaration of the same name. Inside them, the more specific
-     theme selector wins (default < [data-theme] < [data-theme].dark).
+     theme selector wins (:where(:root) < .light / .dark < web :root.dark).
 
 Colour maths follows CSS Color 4: oklch -> OKLab -> LMS -> XYZ-D65 -> linear
 sRGB (unclamped); color-mix(in srgb-linear) interpolates premultiplied in
@@ -50,7 +50,8 @@ OUTPUT = (
     / "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt"
 )
 
-THEMES = ("brutal", "elegantLight", "elegantDark")
+THEMES = ("raftLight", "raftDark")
+BASE_THEME = THEMES[0]
 
 
 class TokenError(Exception):
@@ -109,15 +110,18 @@ def declarations(body: str) -> list[tuple[str, str]]:
     return [(m.group(1), " ".join(m.group(2).split())) for m in DECL_RE.finditer("".join(flat))]
 
 
-# Selector -> the set of themes it applies to, and its rank inside the unlayered tier.
+# Selector -> {theme: rank inside the unlayered tier}. raft-ui 0.6.0 has one
+# "raft" family: the root element carries `.light` or `.dark` (System resolves
+# to one of them), so `.light` / `.dark` match at class specificity and beat
+# the zero-specificity `:where(:root)` defaults. Equal ranks resolve by source
+# order (the later declaration wins), as in CSS.
 FOUNDATION_SCOPES = {
-    ':where(:root)': (set(THEMES), 0),
-    ':where(:root), [data-theme="brutal"]': (set(THEMES), 0),
-    '[data-theme="elegant"]': ({"elegantLight", "elegantDark"}, 1),
-    '[data-theme="elegant"].light': ({"elegantLight"}, 2),
-    '[data-theme="elegant"].dark': ({"elegantDark"}, 2),
+    ':where(:root)': {"raftLight": 0, "raftDark": 0},
+    ':where(:root), .light': {"raftLight": 1, "raftDark": 0},
+    '.dark': {"raftDark": 1},
+    ':where(:root), .light, .dark': {"raftLight": 1, "raftDark": 1},
 }
-WEB_UNLAYERED_SCOPES = {":root.dark": ({"elegantDark"}, 2)}
+WEB_UNLAYERED_SCOPES = {":root.dark": {"raftDark": 2}}
 
 
 def _norm_selector(prelude: str) -> str:
@@ -143,9 +147,8 @@ def collect(sources: dict[str, str]) -> dict[str, dict[str, str]]:
                 continue  # @media mirrors, @layer, @utility...: not token sources
             if sel not in scopes:
                 continue
-            themes, r = scopes[sel]
             for name, value in declarations(body):
-                for t in themes:
+                for t, r in scopes[sel].items():
                     if rank.get((t, name), -1) <= r:
                         per_theme[t][name] = value
                         rank[(t, name)] = r
@@ -161,7 +164,7 @@ def themed_names(sources: dict[str, str]) -> set[str]:
     for css, scopes in ((sources["raftUiFoundation"], FOUNDATION_SCOPES), (sources["web"], WEB_UNLAYERED_SCOPES)):
         for prelude, body in top_level_blocks(strip_comments(css)):
             sel = _norm_selector(prelude)
-            if sel in scopes and scopes[sel][1] > 0:
+            if sel in scopes and max(scopes[sel].values()) > 0 and len(scopes[sel]) < len(THEMES):
                 names.update(n for n, _ in declarations(body))
     return names
 
@@ -437,7 +440,7 @@ def argb(rgba) -> str:
 
 def render(tokens, themed) -> str:
     manifest = json.loads(MANIFEST.read_text())
-    shared = sorted(n for n in tokens["brutal"] if n not in themed and all(n in tokens[t] for t in THEMES))
+    shared = sorted(n for n in tokens[BASE_THEME] if n not in themed and all(n in tokens[t] for t in THEMES))
     for n in shared:
         if len({tokens[t][n] for t in THEMES}) != 1:
             raise TokenError(f"{n} is declared theme-agnostic but differs across themes")
@@ -465,12 +468,12 @@ def render(tokens, themed) -> str:
     ]
     for n in shared:
         lines.append(f"    /** `{n}` */")
-        lines.append(f"    val {kotlin_name(n)} = Color({argb(tokens['brutal'][n])})")
+        lines.append(f"    val {kotlin_name(n)} = Color({argb(tokens[BASE_THEME][n])})")
     lines += [
         "}",
         "",
         "/**",
-        " * Colours that change with the Web theme (`data-theme` and light/dark).",
+        " * Colours that change with the Web theme (raft light / raft dark).",
         " * One object per theme; an abstract class (not a constructor) so the token",
         " * count is not bounded by the JVM's 255-slot parameter limit.",
         " */",
@@ -579,27 +582,29 @@ def self_test() -> None:
         raise AssertionError("cycle accepted")
     except TokenError:
         pass
-    # Cascade: unlayered foundation beats @theme; elegant overrides default; dark overrides elegant.
+    # Cascade: unlayered foundation beats @theme; .light/.dark beat :where(:root); web :root.dark beats .dark.
     srcs = {
         "tailwind": "@theme { --color-gray-1: #111; --t: #010101; }",
         "raftUiStyles": "@theme { --color-brand: var(--brand-400); }",
         "raftUiFoundation": (
             ":where(:root) { --brand-400: #222; }\n"
-            ':where(:root),\n[data-theme="brutal"] { --fg: #000; --t: #020202; }\n'
-            '[data-theme="elegant"] { --fg: #333; }\n'
-            '[data-theme="elegant"].dark { --fg: #eee; }\n'
-            "@media (prefers-color-scheme: dark) { [data-theme=\"elegant\"]:not(.light) { --fg: #f00; } }"
+            ":where(:root),\n.light { --fg: #000; --t: #020202; --seam: #444; }\n"
+            ".dark { --fg: #eee; --seam: #555; }\n"
+            "@media (prefers-color-scheme: dark) { :root:not(.light):not(.dark) { --fg: #f00; } }\n"
+            ":where(:root), .light, .dark { --line-field: var(--fg); }"
         ),
-        "web": "@theme { --color-brand: #FFD440; }\n:root.dark { --code: #0a0c10; }\n@layer base { :root { --fg: #f00; } }",
+        "web": "@theme { --color-brand: #FFD440; }\n:root.dark { --code: #0a0c10; --seam: #666; }\n@layer base { :root { --fg: #f00; } }",
     }
     toks, themed = resolve_all(srcs)
-    assert toks["brutal"]["--fg"] == (0, 0, 0, 255)
-    assert toks["elegantLight"]["--fg"] == (0x33, 0x33, 0x33, 255)
-    assert toks["elegantDark"]["--fg"] == (0xEE, 0xEE, 0xEE, 255)
-    assert toks["brutal"]["--t"] == (2, 2, 2, 255), "unlayered must beat @theme"
-    assert toks["brutal"]["--color-brand"] == (255, 212, 64, 255), "web @theme must win over raft-ui @theme"
-    assert "--code" not in toks["brutal"] and toks["elegantDark"]["--code"] == (10, 12, 16, 255)
-    assert themed == {"--fg", "--code"}, themed
+    assert toks["raftLight"]["--fg"] == (0, 0, 0, 255)
+    assert toks["raftDark"]["--fg"] == (0xEE, 0xEE, 0xEE, 255), "@media mirror must be ignored; .dark wins"
+    assert toks["raftLight"]["--t"] == (2, 2, 2, 255), "unlayered must beat @theme"
+    assert toks["raftDark"]["--t"] == (2, 2, 2, 255), "dark inherits the :where(:root) default"
+    assert toks["raftLight"]["--color-brand"] == (255, 212, 64, 255), "web @theme must win over raft-ui @theme"
+    assert toks["raftDark"]["--seam"] == (0x66, 0x66, 0x66, 255), "web :root.dark beats foundation .dark"
+    assert toks["raftDark"]["--line-field"] == (0xEE, 0xEE, 0xEE, 255), "var() resolves per theme"
+    assert "--code" not in toks["raftLight"] and toks["raftDark"]["--code"] == (10, 12, 16, 255)
+    assert {"--fg", "--code", "--seam", "--line-field"} <= themed, themed
     assert kotlin_name("--color-brutal-yellow-400") == "brutalYellow400"
     assert kotlin_name("--foreground-muted") == "foregroundMuted"
     assert over((0, 0, 0, 128), (255, 255, 255)) == (127, 127, 127)

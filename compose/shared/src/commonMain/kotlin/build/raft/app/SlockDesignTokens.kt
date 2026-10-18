@@ -41,20 +41,25 @@ internal object SlockColor {
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
-    // Web brutal `--foreground` (body text, #141110 — a warm near-black, not pure black).
-    val TextBlack = RaftUiThemeColors.Brutal.foreground
+    // Web raft light `--foreground` (body text, #141111, a warm near-black).
+    val TextBlack = RaftUiThemeColors.RaftLight.foreground
     // Tailwind neutral-500.
     val TextMutedGray = RaftUiPalette.neutral500
-    // Web brutal `--line` (#141110).
-    val BorderBlack = RaftUiThemeColors.Brutal.line
-    val ShadowBlack = RaftUiPalette.brutalBlack
+    // Web raft light `--line-strong` (control ink, #141111).
+    val BorderBlack = RaftUiThemeColors.RaftLight.lineStrong
+    // Web raft light `--line-hairline` (ink at 15%): quiet separators.
+    val BorderHairline = RaftUiThemeColors.RaftLight.lineHairline
+    // Web raft light `--line-seam` (ink at 45%): structural seams between panels.
+    val BorderSeam = RaftUiThemeColors.RaftLight.lineSeam
+    // Sticker ink (`--theme-shadow-sticker` colour); the only hard shadow left in raft.
+    val ShadowBlack = RaftUiThemeColors.RaftLight.ink
 
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"
     // Must equal TextBlack; Kuikly string-colour callsites.
-    const val TextBlackArgb = "#FF141110"
+    const val TextBlackArgb = "#FF141111"
     const val TextMutedGrayArgb = "#FF737373"
-    const val BorderBlackArgb = "#FF141110"
+    const val BorderBlackArgb = "#FF141111"
     const val ShadowBlackArgb = "#FF141111"
     const val AccentOrangeArgb = "#FFF8A16F"
     const val AccentRedArgb = "#FFF97264"
@@ -69,33 +74,48 @@ internal object SlockSpacing {
     val Xl = 32.dp
 }
 
+// raft-ui 0.6.0 has three line weights: hairline (1dp at 15% ink), seam (1dp at 45%
+// ink) and control ink (1.5dp). Default/Strong map onto control ink so existing
+// brutal 2dp/3dp borders come out at the raft weight.
 internal object SlockStroke {
     val Thin = 1.dp
-    val Default = 2.dp
-    val Strong = 3.dp
+    val Control = 1.5.dp
+    val Default = Control
+    val Strong = 2.dp
 }
 
+// raft-ui 0.6.0 radii (styles.css --radius-*).
 internal object SlockRadius {
     val None = 0.dp
     val Xs = 2.dp
     val Sm = 4.dp
+    val Sticker = 4.dp
+    val Chip = 6.dp
+    val Control = 8.dp
+    val Container = 10.dp
+    val Dialog = 16.dp
 }
 
 internal object SlockSize {
     val MinTouchTarget = 48.dp
     val IconButton = 44.dp
     val HeaderIcon = 36.dp
-    val PageHeaderHeight = 62.dp
+    // raft panel heads are 56px (48px under 600px window height).
+    val PageHeaderHeight = 56.dp
     val PageHeaderContentHeight = PageHeaderHeight - SlockStroke.Default
     val PageHeaderCompactHeight = 48.dp
     val BottomBarHeight = 53.dp
 }
 
+// raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0); only
+// stickers keep a hard 4px offset and only overlays float. The brutal offsets are
+// therefore zero; [Sticker] is the one remaining hard offset.
 internal object SlockShadow {
-    val Brutal = 4.dp
-    val BrutalSmall = 2.dp
-    val BrutalLarge = 6.dp
-    val BrutalActive = 1.dp
+    val Brutal = 0.dp
+    val BrutalSmall = 0.dp
+    val BrutalLarge = 0.dp
+    val BrutalActive = 0.dp
+    val Sticker = 4.dp
 }
 
 // Kuikly serializes FontFamily as comma-joined font names WITHOUT weight info.

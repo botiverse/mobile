@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.isAmbient
 import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockThemeFamily
 import build.raft.app.slockThemedCorners
@@ -65,7 +66,7 @@ internal fun SlockBrutalCard(
     // because the borderRadius-prop slockThemedCorners does not round at runtime and the
     // offset-box cannot blur (verified via #1894 captures; owner-accepted shadow profile).
     val theme = LocalSlockTheme.current
-    if (theme.family == SlockThemeFamily.Elegant) {
+    if (theme.isAmbient) {
         val shape = RoundedCornerShape(theme.cornerRadius)
         Column(
             modifier = modifier

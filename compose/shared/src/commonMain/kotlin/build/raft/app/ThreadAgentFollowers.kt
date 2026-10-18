@@ -152,7 +152,7 @@ private fun FollowerNoticeView(
     onUndo: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val theme = LocalSlockTheme.current
-    val brutal = theme.family == SlockThemeFamily.Brutal
+    val brutal = !theme.isAmbient
     val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
     val label = stringResource(when (notice.kind) {
         ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
@@ -265,16 +265,16 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
     ) {
         Box(Modifier.onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }) {
         val shape = RoundedCornerShape(theme.cornerRadius)
-        if (theme.family == SlockThemeFamily.Brutal) {
+        if (!theme.isAmbient) {
             Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(theme.shadow.color))
         }
         Column(Modifier.width(width)
-            .then(if (theme.family == SlockThemeFamily.Elegant) Modifier.shadow(4.dp, shape, clip = false,
+            .then(if (theme.isAmbient) Modifier.shadow(4.dp, shape, clip = false,
                 ambientColor = theme.shadow.color, spotColor = theme.shadow.color) else Modifier)
             .background(theme.surface, shape)
             .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
             Box(Modifier.fillMaxWidth()
-                .background(if (theme.family == SlockThemeFamily.Brutal) SlockColor.SurfaceCream else theme.surface)
+                .background(if (!theme.isAmbient) SlockColor.SurfaceCream else theme.surface)
                 .padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(stringResource(MR.strings.thread_followers_title),
                     style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
