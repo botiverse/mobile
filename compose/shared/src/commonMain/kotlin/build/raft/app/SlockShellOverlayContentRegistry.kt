@@ -2,6 +2,8 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.ui.geometry.Size
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * Process-local bridge for shell overlays whose visual content cannot be reduced to the
@@ -22,15 +24,16 @@ internal data class SlockShellOverlayContentEntry(
 )
 
 internal object SlockShellOverlayContentRegistry {
+    private val lock = SynchronizedObject()
     private val entries = mutableMapOf<String, SlockShellOverlayContentEntry>()
 
     fun register(entry: SlockShellOverlayContentEntry) {
-        entries[entry.requestId] = entry
+        synchronized(lock) { entries[entry.requestId] = entry }
     }
 
-    fun take(requestId: String): SlockShellOverlayContentEntry? = entries.remove(requestId)
+    fun take(requestId: String): SlockShellOverlayContentEntry? = synchronized(lock) { entries.remove(requestId) }
 
     fun remove(requestId: String) {
-        entries.remove(requestId)
+        synchronized(lock) { entries.remove(requestId) }
     }
 }

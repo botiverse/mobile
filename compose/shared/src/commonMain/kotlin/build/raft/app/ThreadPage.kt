@@ -28246,6 +28246,39 @@ private fun ThreadMessageActionMenu(
         width = menuWidth + shadowOffsetPx,
         height = menuHeight
     )
+    // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
+    // its 400dp child surface. Everywhere else (single-pane phones, full-width pages) keep the
+    // original in-page Modal path unchanged; only the clipping case goes through the shell host.
+    val clippingChildPage =
+        LocalActivity.current.pageData.params
+            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .isNotBlank()
+    if (!clippingChildPage) {
+        SlockModalAnchoredPopover(
+            anchor = anchor,
+            contentSize = contentSize,
+            onDismiss = onDismiss,
+            viewportGap = anchorGapPx,
+            horizontalOffset = -horizontalNudgePx,
+            verticalOffset = anchorGapPx,
+            horizontalAutoFlip = true,
+            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+        ) {
+            LaunchedEffect(message.id, anchor) {
+                diagnosticsLogger(
+                    "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
+                )
+            }
+            ThreadMessageMenuChrome(
+                actions = actions,
+                showReactionActions = showReactionActions,
+                reactionAtlasImage = reactionAtlasImage,
+                onReact = onReact,
+                modifier = Modifier
+            )
+        }
+        return
+    }
     // A thread message is often rendered in a 400dp child page. A Modal created here therefore
     // receives that page's native surface and clips the right side of the menu. Register the full
     // composable with the app-shell host instead; the shell owns a window-sized surface while the
