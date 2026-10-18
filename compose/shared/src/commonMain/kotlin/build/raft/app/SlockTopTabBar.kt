@@ -5,6 +5,9 @@ import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.markdown.traceMarkdownSection
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -140,43 +143,65 @@ internal fun SlockTopTabBar(
     // are a known jank source (`operation=scene_enter` perf log line); this
     // marker measures the actual LazyRow + Row composition + tab click path.
     traceMarkdownSection(SlockTabBarTraceNames.TOP_TAB_RENDER, items.size) {
+    // raft-ui `ConversationPanelTabs` + `Tabs` (default variant): a panel strip
+    // (px-4 py-2, seam below) of 32dp tabs hugging their label; the active tab
+    // is the yellow sticker (ink edge, bold ink label), the rest ghost on
+    // foreground-muted.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockTopTabBarDefaults.Height)
-            .background(SlockColor.SurfaceWhite)
+            .height(SlockTopTabBarDefaults.Height + SlockSpacing.Md + SlockStroke.Thin)
+            .background(SlockColor.Panel)
     ) {
-        LazyRow(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        LazyRow(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             items(items.size, key = { "$itemKeyPrefix-${items[it].key}" }) { index ->
                 val item = items[index]
                 val selected = item.key == selectedKey
+                val shape = RoundedCornerShape(SlockRadius.Control)
                 Row(
                     modifier = Modifier
-                        .widthIn(min = item.width)
-                        .fillMaxHeight()
-                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                        .height(SlockTopTabBarDefaults.Height)
+                        .then(
+                            if (selected) {
+                                Modifier
+                                    .background(SlockColor.Primary, shape)
+                                    .border(SlockStroke.Control, SlockColor.StickerInk, shape)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clickable { onSelectedKeyChange(item.key) }
-                        .padding(horizontal = SlockSpacing.Sm + SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
                 ) {
-                    SlockLucideIcon(item.iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+                    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
+                    SlockLucideIcon(
+                        item.iconName,
+                        modifier = Modifier.size(16.dp),
+                        color = slockArgbHex(contentColor),
+                        strokeWidth = 2f
+                    )
                     Text(
                         text = item.label,
-                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style =
+                            SlockType.Button
+                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
+                        color = contentColor,
                         maxLines = 1
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .height(SlockTopTabBarDefaults.Height - SlockStroke.Default)
-                        .width(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
-                )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
     }
     }
 }
