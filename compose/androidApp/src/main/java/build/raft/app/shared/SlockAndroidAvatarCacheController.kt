@@ -887,6 +887,14 @@ internal fun recoverSlockAndroidAvatarTransportStaging(stagingRoot: File): Boole
     !stagingRoot.exists() ||
         (stagingRoot.deleteRecursively() && !stagingRoot.exists())
 
+internal class SlockAndroidAvatarStartupGate {
+    private val scheduled = AtomicBoolean(false)
+
+    fun trySchedule(): Boolean = scheduled.compareAndSet(false, true)
+
+    fun reset(): Unit = scheduled.set(false)
+}
+
 internal object SlockAndroidAvatarCacheProcess {
     private val lock = Any()
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -895,12 +903,12 @@ internal object SlockAndroidAvatarCacheProcess {
 
     @Volatile
     private var controller: SlockAndroidAvatarCacheController? = null
-    private val startupScheduled = AtomicBoolean(false)
+    private val startupGate = SlockAndroidAvatarStartupGate()
 
     fun install(context: Context): SlockAndroidAvatarCacheController =
         synchronized(lock) {
             controller ?: SlockAndroidAvatarCacheController.create(context).also { created ->
-                startupScheduled.set(true)
+                startupGate.trySchedule()
                 controller = created
                 SlockAvatarMountedNativeProviderRegistry.install(created)
             }
@@ -908,7 +916,7 @@ internal object SlockAndroidAvatarCacheProcess {
 
     /** Starts durable-cache recovery without putting Files.walk/stat on the UI thread. */
     fun startAsync(context: Context) {
-        if (controller != null || !startupScheduled.compareAndSet(false, true)) return
+        if (controller != null || !startupGate.trySchedule()) return
         startupExecutor.execute {
             try {
                 val created = SlockAndroidAvatarCacheController.create(context)
@@ -919,7 +927,7 @@ internal object SlockAndroidAvatarCacheProcess {
                     }
                 }
             } catch (error: Throwable) {
-                startupScheduled.set(false)
+                startupGate.reset()
                 SlockAppLog.e("SlockAndroidAvatarCache", "startup recovery failed", error)
             }
         }
