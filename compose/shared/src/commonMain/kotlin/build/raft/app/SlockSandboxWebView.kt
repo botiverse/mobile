@@ -15,6 +15,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
     private var appliedAllowScripts: Boolean? = null
     private var appliedAllowNavigation: Boolean? = null
     private var appliedDomStorageEnabled: Boolean? = null
+    private var appliedUseWideViewPort: Boolean? = null
     private var appliedCacheEnabled: Boolean? = null
     private var appliedEphemeral: Boolean? = null
     private var appliedInjectedJavaScript: String? = null
@@ -328,6 +329,8 @@ internal fun SlockSandboxWebView(
     allowScripts: Boolean = true,
     allowNavigation: Boolean = false,
     domStorageEnabled: Boolean = false,
+    /** task #188: let the WebView honour `width=` in the page's viewport meta (Android needs it). */
+    useWideViewPort: Boolean = false,
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
@@ -423,6 +426,8 @@ internal fun SlockSandboxWebView(
     allowScripts: Boolean = true,
     allowNavigation: Boolean = false,
     domStorageEnabled: Boolean = false,
+    /** task #188: let the WebView honour `width=` in the page's viewport meta (Android needs it). */
+    useWideViewPort: Boolean = false,
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
@@ -438,6 +443,7 @@ internal fun SlockSandboxWebView(
         allowScripts = allowScripts,
         allowNavigation = allowNavigation,
         domStorageEnabled = domStorageEnabled,
+        useWideViewPort = useWideViewPort,
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
