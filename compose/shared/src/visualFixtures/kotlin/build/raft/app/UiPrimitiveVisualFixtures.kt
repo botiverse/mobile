@@ -156,7 +156,7 @@ internal fun UiCardVisualContent() {
     // 4dp shadow gutter (visible core = outer - 4dp), the elegant card reserves none (core =
     // outer). React's box-shadow doesn't occupy layout, so the visible card core must be the
     // same across registers — a theme-aware outer width keeps the visible core at 310dp both.
-    val cardWidth = if (theme.family == SlockThemeFamily.Elegant) 310.dp else 314.dp
+    val cardWidth = if (theme.isAmbient) 310.dp else 314.dp
     // Fixed 342x190 backdrop with only start/top padding (no end/bottom) so the outer
     // width isn't constrained to 310 — brutal outer 314 (core 314-4=310) and elegant outer
     // 310 (core 310) both fit and the visible card core equals 310dp from x=16 to x=326.
@@ -200,7 +200,7 @@ internal fun UiCardVisualContent() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
-                        if (theme.family == SlockThemeFamily.Brutal) {
+                        if (!theme.isAmbient) {
                             Modifier.padding(end = 2.dp, bottom = 2.dp)
                         } else {
                             Modifier

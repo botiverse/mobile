@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.isAmbient
 import build.raft.app.slockDisplayUppercase
 import build.raft.app.Button as SlockAnchorButton
 import build.raft.app.SlockColor
@@ -647,7 +648,7 @@ private fun SlockBrutalInputFieldFrame(
         } else {
             Modifier
         }
-    if (theme.family == SlockThemeFamily.Elegant) {
+    if (theme.isAmbient) {
         val shape = RoundedCornerShape(theme.cornerRadius)
         val elegantBorderColor = if (borderColor == SlockColor.BorderBlack) theme.line else borderColor
         Box(
@@ -741,7 +742,7 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalSlockTheme.current
-    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    val resolvedTextStyle = if (theme.isAmbient) textStyle.copy(color = theme.ink) else textStyle
     SlockBrutalInputFieldFrame(
         modifier = modifier,
         focusPolicy = focusPolicy,
@@ -857,7 +858,7 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalSlockTheme.current
-    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    val resolvedTextStyle = if (theme.isAmbient) textStyle.copy(color = theme.ink) else textStyle
     SlockBrutalInputFieldFrame(
         modifier = modifier,
         focusPolicy = focusPolicy,
@@ -1274,7 +1275,7 @@ internal fun SlockBrutalActionButton(
     val theme = LocalSlockTheme.current
     val borderColor = if (enabled) theme.line else disabledBorderColor
     val surfaceBackground = if (enabled) backgroundColor else disabledBackgroundColor
-    if (theme.family == SlockThemeFamily.Elegant) {
+    if (theme.isAmbient) {
         // Ambient register: no offset-box, no reserved offset padding. Rounding is
         // enforced by Modifier.shadow(clip = true) so it holds even if Kuikly ignores the
         // background/border Shape. Shadow is TUNED to React's subtle 0 1px 8px rgba(0,0,0,

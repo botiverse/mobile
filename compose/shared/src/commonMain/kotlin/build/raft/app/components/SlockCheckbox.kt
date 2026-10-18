@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.isAmbient
 import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
@@ -64,7 +65,7 @@ internal fun SlockCheckbox(
     // borderRadius-prop path does not round at runtime, so the rounded shape is applied straight to
     // background/border, mirroring the elegant button/card/input. The brutal branch is unchanged.
     val theme = LocalSlockTheme.current
-    if (theme.family == SlockThemeFamily.Elegant) {
+    if (theme.isAmbient) {
         val shape = RoundedCornerShape(4.dp)
         val elegantCheckedFill = theme.ink.copy(alpha = disabledAlpha)
         val elegantBorderColor = if (checked) elegantCheckedFill else theme.line.copy(alpha = disabledAlpha)
