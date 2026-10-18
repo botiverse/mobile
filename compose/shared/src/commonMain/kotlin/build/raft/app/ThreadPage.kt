@@ -16109,7 +16109,8 @@ internal fun ThreadPageHeader(
                 headerSubtitle?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
+                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
                         color = SlockColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -24509,9 +24510,17 @@ private fun ThreadMessageCardContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
-                    .background(threadMessageFocusHighlightColor(focusAlpha))
-                    .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
+                    // raft-ui `MessageItem` root: the row wash spans the whole
+                    // row and the content sits at px-2 py-2 inside it.
+                    .background(
+                        // raft-ui MessageItem: a checked multi-select row washes info-soft.
+                        if (shareSelectionActive && selectedForShare) {
+                            SlockColor.InfoSoft
+                        } else {
+                            threadMessageFocusHighlightColor(focusAlpha)
+                        }
+                    )
+                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -24581,11 +24590,12 @@ private fun ThreadMessageCardContent(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
+                                    // raft-ui `MessageItemHeader`: gap-1.5.
                                     horizontalArrangement =
                                         if (alignOwnMessageRight) {
-                                            Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                                            Arrangement.spacedBy(6.dp, Alignment.End)
                                         } else {
-                                            Arrangement.spacedBy(SlockSpacing.Sm)
+                                            Arrangement.spacedBy(6.dp)
                                         }
                                 ) {
                                     Text(
@@ -24601,15 +24611,14 @@ private fun ThreadMessageCardContent(
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
                                     // task #392 (port of Web PR #7545): agent
-                                    // model name, 11sp mono at 40% opacity,
-                                    // after the name, before badge/subtitle.
+                                    // model name after the name, before
+                                    // badge/subtitle; raft-ui MessageItemMeta.
                                     authorModelLabel?.let { modelLabel ->
                                         Text(
                                             text = modelLabel,
                                             style =
                                                 SlockType.Caption.copy(
-                                                    fontFamily = SlockMonoFamily,
-                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
                                                     color = SlockColor.ForegroundHint,
                                                 ),
                                             maxLines = 1,
@@ -28868,11 +28877,13 @@ private fun ThreadMessageAuthorSubtitle(
         } else {
             clickableModifier
         }
+    // raft-ui `MessageItemMeta`: text-caption (12/16, medium) on
+    // foreground-hint in the sans family; only the time is mono.
     Text(
         text = description,
         style =
             SlockType.Caption.copy(
-                fontFamily = SlockMonoFamily,
+                fontWeight = FontWeight.Medium,
                 color = SlockColor.ForegroundHint
             ),
         color = SlockColor.ForegroundHint,

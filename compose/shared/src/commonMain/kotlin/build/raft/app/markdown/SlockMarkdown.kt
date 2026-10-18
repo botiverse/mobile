@@ -5,6 +5,7 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockMessagePermalinkTarget
+import build.raft.app.SlockRadius
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
 import build.raft.app.ReplyCacheProvenance
@@ -2982,17 +2983,21 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     val verticalPadding =
         if (isInlineCode) SlockRichTextInlineCodeVerticalPaddingDp
         else SlockRichTextInlineBoxVerticalPaddingDp
+    // raft-ui reference chips (channel / thread / task) are soft fills on the
+    // sticker radius with no ink edge; only the self-mention / active sticker
+    // keeps its ink outline.
+    val inkEdge = !isInlineCode && chipFill == background
     return InlineBoxSpanStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
-        borderColor = if (isInlineCode) Color.Transparent else SlockColor.BorderBlack,
-        borderWidth = if (isInlineCode) 0.dp else SlockRichTextInlineBoxBorderWidthDp.dp,
+        borderColor = if (inkEdge) SlockColor.BorderBlack else Color.Transparent,
+        borderWidth = if (inkEdge) SlockRichTextInlineBoxBorderWidthDp.dp else 0.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
         paddingTop = verticalPadding.dp,
         paddingBottom = verticalPadding.dp,
         marginStart = if (isInlineCode) 0.dp else 2.dp,
         marginEnd = if (isInlineCode) 0.dp else 2.dp,
-        cornerRadius = 0.dp
+        cornerRadius = if (isInlineCode) 0.dp else SlockRadius.Sticker
     )
 }
 
