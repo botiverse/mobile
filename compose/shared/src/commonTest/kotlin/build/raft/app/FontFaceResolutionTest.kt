@@ -118,4 +118,23 @@ class FontFaceResolutionTest {
         )
         assertEquals(SlockType.Body.fontFamily, slockFontFamilyForWeight(FontWeight.Normal))
     }
+
+    // The Android host styles native EditTexts from slockInputFontFaceName(); it used to be a fixed
+    // Space Grotesk face, so the composer ignored Settings > Appearance.
+    @Test
+    fun nativeInputFaceFollowsTheSelectedFont() {
+        select(FontPreference.HankenGrotesk)
+        assertEquals("HankenGrotesk-Regular", slockInputFontFaceName())
+        select(FontPreference.GeistInter)
+        assertEquals("Geist-Regular", slockInputFontFaceName())
+        select(FontPreference.SpaceGrotesk)
+        assertEquals("SpaceGrotesk-Regular", slockInputFontFaceName())
+        select(FontPreference.System)
+        assertEquals(null, slockInputFontFaceName())
+    }
+
+    @Test
+    fun defaultNativeInputFaceIsNotSpaceGrotesk() {
+        assertEquals("HankenGrotesk-Regular", slockInputFontFaceName())
+    }
 }
