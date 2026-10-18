@@ -43,6 +43,20 @@ internal object KmmResourceLocaleRuntime {
 }
 
 /**
+ * task #190: platform hook invoked every time the app shell (re)applies the
+ * active locale. Android/iOS resolve strings against the process-local
+ * [StringDesc.localeType] directly and need no extra signal. OHOS forwards
+ * the locale tag to the ets host so `resourceManager` lookups can run
+ * through an override configuration; without it the host always resolves
+ * against the system locale.
+ *
+ * Implementations must tolerate being called before the host side is ready
+ * and must be cheap on repeat calls with an unchanged locale (the shell
+ * re-runs the seed on every foreground tick).
+ */
+internal expect fun applyAppLocaleOverride(locale: AppLocale)
+
+/**
  * #85 follow-up: seed the KmmResource `StringDesc.localeType` global
  * from the persisted `AppLocale` as early as possible in the app
  * lifecycle. The right place is the @Page entry
@@ -74,7 +88,9 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
             KmmResourceLocaleRuntime.seedIfEmpty(locale)
         }
     val runtimeLocale by KmmResourceLocaleRuntime.locale.collectAsState()
-    StringDesc.localeType = (runtimeLocale ?: persisted).stringDescLocaleType
+    val activeLocale = runtimeLocale ?: persisted
+    StringDesc.localeType = activeLocale.stringDescLocaleType
+    applyAppLocaleOverride(activeLocale)
 }
 
 /**
