@@ -38,6 +38,48 @@ internal data class IosPushRegistrationPayload(
     val appVersion: String
 )
 
+/**
+ * The provider half of an RFC 045 registration. APNs and FCM share one
+ * registration lifecycle (persistence, auth-gated upsert, dedupe, logout
+ * unbind); only the token shape and the allowed environments differ.
+ */
+internal enum class SlockPushProviderSpec(val provider: String, val platform: String) {
+    /** iOS: hex APNs device token, sandbox or production. */
+    Apns(provider = "apns", platform = "ios"),
+
+    /**
+     * Android: the app registers by Firebase Installation ID
+     * (`firebase_messaging_installation_id_enabled`), which is case-sensitive.
+     * FCM has no sandbox.
+     */
+    Fcm(provider = "fcm", platform = "android");
+
+    fun normalizeToken(raw: String): String =
+        when (this) {
+            Apns -> raw.trim().lowercase()
+            Fcm -> raw.trim()
+        }
+
+    fun accepts(payload: IosPushRegistrationPayload): Boolean {
+        if (payload.provider != provider || payload.platform != platform) return false
+        if (payload.installationId.isBlank() || payload.topic.isBlank() || payload.appVersion.isBlank()) return false
+        val token = payload.deviceToken
+        if (token.isBlank()) return false
+        return when (this) {
+            Apns ->
+                token.length % 2 == 0 &&
+                    token.all { it in '0'..'9' || it in 'a'..'f' } &&
+                    payload.env in setOf("sandbox", "production")
+            Fcm ->
+                token.length <= FCM_MAX_TOKEN_LENGTH &&
+                    token.all { it.isLetterOrDigit() && it.code < 128 || it == '_' || it == '-' || it == ':' } &&
+                    payload.env == "production"
+        }
+    }
+}
+
+private const val FCM_MAX_TOKEN_LENGTH = 4096
+
 internal interface SlockPushRegistrationApi {
     suspend fun upsert(payloadJson: String): HomeNetworkResponse
     suspend fun unbind(installationId: String): HomeNetworkResponse
@@ -153,6 +195,7 @@ private object PlatformSlockIosRemoteNotificationsController : SlockIosRemoteNot
 
 internal class SlockIosPushRegistrationCoordinator(
     private val store: SlockKeyValueStore,
+    private val spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
     private val currentSession: suspend () -> StoredAuthSession?,
     private val authRuntimeReady: () -> Boolean = { true },
     private val apiProvider: () -> SlockPushRegistrationApi?,
@@ -197,12 +240,14 @@ internal class SlockIosPushRegistrationCoordinator(
         val payload =
             IosPushRegistrationPayload(
                 installationId = installationId,
-                deviceToken = deviceToken.trim().lowercase(),
+                provider = spec.provider,
+                platform = spec.platform,
+                deviceToken = spec.normalizeToken(deviceToken),
                 topic = topic.trim(),
                 env = env.trim().lowercase(),
                 appVersion = appVersion.trim()
             )
-        if (!payload.isValid()) {
+        if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
             return false
         }
@@ -353,17 +398,6 @@ internal class SlockIosPushRegistrationCoordinator(
     }
 }
 
-private fun IosPushRegistrationPayload.isValid(): Boolean =
-    installationId.isNotBlank() &&
-        provider == "apns" &&
-        platform == "ios" &&
-        deviceToken.length % 2 == 0 &&
-        deviceToken.isNotBlank() &&
-        deviceToken.all { it in '0'..'9' || it in 'a'..'f' } &&
-        topic.isNotBlank() &&
-        env in setOf("sandbox", "production") &&
-        appVersion.isNotBlank()
-
 /**
  * Swift-facing owner for the APNs registration lifecycle.
  *
@@ -431,6 +465,78 @@ object SlockIosPushRegistrationBridge {
             scope = scope,
             infoLogger = { message -> slockLogInfo(PUSH_LOG_TAG, message) },
             warningLogger = { message -> slockLogWarn(PUSH_LOG_TAG, message) }
+        )
+    }
+}
+
+private object NoopRemoteNotificationsController : SlockIosRemoteNotificationsController {
+    override suspend fun setEnabled(enabled: Boolean) = Unit
+}
+
+/**
+ * Android-facing owner for the FCM registration lifecycle, the same shared
+ * coordinator as iOS with the FCM provider spec.
+ *
+ * The host calls [install] at process start and [updateRegistration] with the
+ * Firebase Installation ID from `FirebaseMessagingService.onRegistered`. Logout
+ * unbind and account switches go through [SlockPushRegistrationLifecycle].
+ * Android has no OS-level remote-notification switch to toggle, so that hook
+ * is a no-op; the server-side unbind is what stops delivery.
+ */
+object SlockAndroidPushRegistrationBridge {
+    private val scope = CoroutineScope(SupervisorJob())
+
+    @Volatile
+    private var coordinator: SlockIosPushRegistrationCoordinator? = null
+
+    fun install(candidateInstallationId: String): String {
+        val runtime = coordinator ?: createCoordinator().also {
+            coordinator = it
+            SlockPushRegistrationLifecycle.install(it)
+        }
+        val installationId = runtime.installationId(candidateInstallationId)
+        runtime.onSessionSaved()
+        return installationId
+    }
+
+    fun updateRegistration(
+        firebaseInstallationId: String,
+        applicationId: String,
+        appVersion: String
+    ) {
+        val runtime = coordinator
+        if (runtime == null) {
+            slockLogWarn(PUSH_LOG_TAG, "registration_rejected reason=bridge_not_installed provider=fcm")
+            return
+        }
+        scope.launch {
+            runtime.updateRegistration(
+                deviceToken = firebaseInstallationId,
+                topic = applicationId,
+                env = "production",
+                appVersion = appVersion
+            )
+        }
+    }
+
+    private fun createCoordinator(): SlockIosPushRegistrationCoordinator {
+        val store =
+            SlockSharedKeyValueStoreProvider.create(
+                namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
+                storageName = "push registration"
+            ).store
+        return SlockIosPushRegistrationCoordinator(
+            store = store,
+            spec = SlockPushProviderSpec.Fcm,
+            currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },
+            apiProvider = {
+                SlockSharedStoreRegistry.currentOrNull()?.networkClient?.let(::SlockPushRegistrationNetworkApi)
+            },
+            scope = scope,
+            remoteNotificationsController = NoopRemoteNotificationsController,
+            infoLogger = { message -> slockLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
+            warningLogger = { message -> slockLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
         )
     }
 }

@@ -302,6 +302,62 @@ class IosPushRegistrationTest {
     }
 
     @Test
+    fun fcmRegistrationSendsTheFirebaseInstallationIdUnchanged() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = SlockPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertTrue(
+            coordinator.updateRegistration(
+                deviceToken = " cX9-AbC_dEfGhIjKlMnOpQ ",
+                topic = "build.raft.app",
+                env = "production",
+                appVersion = "1.3.0"
+            )
+        )
+        assertEquals(
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
+            api.calls.single(),
+            "an FID is case-sensitive: it is trimmed but never lowercased"
+        )
+    }
+
+    @Test
+    fun fcmRegistrationRejectsSandboxAndMalformedIds() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = SlockPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(
+            coordinator.updateRegistration("cX9AbCdEfGhIjKlMnOpQrS", "build.raft.app", "sandbox", "1.3.0"),
+            "FCM has no sandbox"
+        )
+        assertFalse(coordinator.updateRegistration("has space", "build.raft.app", "production", "1.3.0"))
+        assertFalse(coordinator.updateRegistration("", "build.raft.app", "production", "1.3.0"))
+        assertTrue(api.calls.isEmpty())
+    }
+
+    @Test
+    fun apnsSpecStillRejectsAnFcmShapedToken() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator = coordinator(currentSession = { storedSession(userId = "user-1") }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(coordinator.updateRegistration("cX9-AbC:dEf", "build.raft.app", "production", "1.3.0"))
+        assertTrue(api.calls.isEmpty())
+    }
+
+    @Test
     fun networkApiUsesTheRfc045RegistrationRoutes() = runBlocking {
         val network = RecordingNetworkClient()
         val api = SlockPushRegistrationNetworkApi(network)
@@ -320,6 +376,7 @@ class IosPushRegistrationTest {
 
     private fun coordinator(
         store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
+        spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
         currentSession: suspend () -> StoredAuthSession? = { null },
         api: SlockPushRegistrationApi = RecordingPushRegistrationApi(),
         remoteNotificationsController: SlockIosRemoteNotificationsController =
@@ -327,6 +384,7 @@ class IosPushRegistrationTest {
     ): SlockIosPushRegistrationCoordinator =
         SlockIosPushRegistrationCoordinator(
             store = store,
+            spec = spec,
             currentSession = currentSession,
             apiProvider = { api },
             scope = CoroutineScope(SupervisorJob()),
