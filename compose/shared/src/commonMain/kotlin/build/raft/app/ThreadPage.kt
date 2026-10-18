@@ -4582,6 +4582,32 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
+    /**
+     * Opens the profile for an agent we already hold the id for (task #4). `openMember` needs a
+     * row from the member list; a just-created agent may not be in the visible slice yet, so the
+     * route data is built from the id directly.
+     */
+    fun openMemberProfile(memberId: MemberId, kind: MemberKind) {
+        val identity = MemberDetailIdentity(memberId = memberId, kind = kind)
+        val pageData = route.toMemberDetailPageData(identity) ?: return
+        memberScope.launch {
+            if (authorityGateway.capture(routeOwner) == null) {
+                return@launch
+            }
+            pager.openSlockPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                onMissingScope = {
+                    bridge.toast(unableToOpenProfileLabel)
+                    bridge.logWarn(
+                        "thread_member_profile_skip reason=missing_shell_scope memberId=${memberId.value} " +
+                            "instanceId=${route.instanceId}"
+                    )
+                }
+            )
+        }
+    }
+
     fun requestRemoveMember(member: KuiklyThreadMemberItem) {
         if (authorityRejected || !channelMembersSlice.canRemoveMembers || !member.canRemove) return
         val confirmation =
@@ -4737,6 +4763,14 @@ private fun ThreadMembersPageScreen() {
                 formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
                 onDismiss = { createAgentName = null; refreshMembers() },
                 onJoined = { createAgentName = null; addDialogVisible = false; refreshMembers() },
+                // task #4 (Hands 1c6885d8): a freshly created external agent is useless until
+                // it is configured, so land the user on its profile instead of dropping them
+                // back into the member list. Managed agents keep the existing behaviour.
+                onCreated = { memberId ->
+                    if (createAgentMode == MembersCreateAgentMode.External) {
+                        openMemberProfile(memberId, MemberKind.Agent)
+                    }
+                },
             )
         }
         removalGate.pending?.let { confirmation ->

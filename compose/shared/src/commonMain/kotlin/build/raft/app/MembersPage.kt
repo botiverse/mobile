@@ -13,6 +13,8 @@ import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SegmentedControl
+import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockFormField
@@ -9757,6 +9759,12 @@ private fun MembersExternalAgentSetupSection(
     val startCommand =
         "RAFT_PROFILE=$profile claude --append-system-prompt 'You are connected to Raft, a shared workspace for humans and agents. Treat Raft as your primary collaboration surface.' --dangerously-load-development-channels plugin:raft-channel@raft"
     val hermesCommand = "hermes gateway setup"
+    // task #4 (Hands 1c6885d8): each external runtime is a separate harness with its own
+    // setup commands, so they are tabs rather than one flat list. Claude Code and Hermes
+    // share the CLI install and the login step, then diverge on how the runtime is started.
+    var selectedHarness by remember(agentId) {
+        mutableStateOf(MembersExternalHarness.ClaudeCode)
+    }
     Column(
         modifier = modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.AccentCyan.copy(alpha = 0.12f)).padding(12.dp),
@@ -9764,10 +9772,8 @@ private fun MembersExternalAgentSetupSection(
     ) {
         SlockSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
         Text(stringResource(MR.strings.member_external_setup_description), style = SlockType.Caption, color = SlockColor.TextBlack)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
+        // task #4: the bootstrap token gates every later step, so it comes first. The
+        // generate action must be reachable without scrolling past the copy commands.
         if (canManage && agentsApiClient != null) {
             SlockBrutalActionButton(
                 label = stringResource(if (tokenLoading) MR.strings.member_external_setup_generating else MR.strings.member_external_setup_generate),
@@ -9792,7 +9798,33 @@ private fun MembersExternalAgentSetupSection(
             }
             error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
         }
+        SegmentedControl(
+            selectedValue = selectedHarness.value,
+            options = MembersExternalHarness.entries.map { harness ->
+                SegmentedControlOption(
+                    value = harness.value,
+                    label = stringResource(harness.labelRes)
+                )
+            },
+            onValueSelected = { value ->
+                MembersExternalHarness.entries.firstOrNull { it.value == value }?.let { selectedHarness = it }
+            }
+        )
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
+        when (selectedHarness) {
+            MembersExternalHarness.ClaudeCode ->
+                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
+            MembersExternalHarness.Hermes ->
+                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
+        }
     }
+}
+
+/** External runtimes offered in the setup section, one tab each (task #4). */
+internal enum class MembersExternalHarness(val value: String, val labelRes: StringResource) {
+    ClaudeCode("claude-code", MR.strings.member_external_setup_harness_claude),
+    Hermes("hermes", MR.strings.member_external_setup_harness_hermes)
 }
 
 @Composable

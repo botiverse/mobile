@@ -915,6 +915,8 @@
     <string name="member_external_setup_login">登录该 Agent</string>
     <string name="member_external_setup_start">启动 Claude Code</string>
     <string name="member_external_setup_hermes">配置 Hermes 网关</string>
+    <string name="member_external_setup_harness_claude">Claude Code</string>
+    <string name="member_external_setup_harness_hermes">Hermes</string>
     <string name="member_external_setup_copy">复制</string>
     <string name="member_external_setup_generate">生成登录 Token</string>
     <string name="member_external_setup_generating">生成中…</string>

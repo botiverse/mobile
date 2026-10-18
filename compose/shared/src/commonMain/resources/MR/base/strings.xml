@@ -917,6 +917,8 @@
     <string name="member_external_setup_login">Sign in this agent</string>
     <string name="member_external_setup_start">Start Claude Code</string>
     <string name="member_external_setup_hermes">Configure Hermes gateway</string>
+    <string name="member_external_setup_harness_claude">Claude Code</string>
+    <string name="member_external_setup_harness_hermes">Hermes</string>
     <string name="member_external_setup_copy">Copy</string>
     <string name="member_external_setup_generate">Generate login token</string>
     <string name="member_external_setup_generating">Generating…</string>
