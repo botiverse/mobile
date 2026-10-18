@@ -304,7 +304,7 @@ private fun SlockRaftDropdownMenuSurface(
 private fun SlockRaftMenuSeparator() {
     Box(
         modifier = Modifier
-            .padding(vertical = 6.dp)
+            .padding(vertical = SlockRaftMetrics.MenuSeparatorInset)
             .fillMaxWidth()
             .height(SlockStroke.Thin)
             .background(SlockColor.LineMuted)

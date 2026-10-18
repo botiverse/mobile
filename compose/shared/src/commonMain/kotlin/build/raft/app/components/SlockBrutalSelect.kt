@@ -67,13 +67,17 @@ internal fun slockSelectMenuWidth(
         fallbackWidth
     }
 
+/**
+ * raft-ui select popup height: the rows (at least one, so an empty list still shows its
+ * row) plus the popup's `p-1.5` inset on both edges, capped at [maxMenuHeight]. The seam
+ * ring is drawn over the content and adds no height.
+ */
 internal fun slockBrutalSelectListHeight(
     optionCount: Int,
     rowHeight: Dp,
     maxMenuHeight: Dp
 ): Dp =
-    ((optionCount.coerceAtLeast(0) * rowHeight.value) + SlockStroke.Default.value)
-        .dp
+    ((optionCount.coerceAtLeast(1) * rowHeight.value).dp + SlockRaftMetrics.PopupPadding * 2)
         .coerceAtMost(maxMenuHeight)
 
 @Composable
@@ -231,9 +235,7 @@ private fun SlockRaftSelectField(
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     val rowHeight = SlockRaftMetrics.MenuRowHeight
     val popupInset = SlockRaftMetrics.PopupPadding
-    val listHeight =
-        ((options.size.coerceAtLeast(1) * rowHeight.value).dp + popupInset * 2)
-            .coerceAtMost(maxMenuHeight)
+    val listHeight = slockBrutalSelectListHeight(options.size, rowHeight, maxMenuHeight)
     val sideOffset = 4.dp
     Column(modifier = modifier.fillMaxWidth()) {
         SlockRaftSelectTrigger(

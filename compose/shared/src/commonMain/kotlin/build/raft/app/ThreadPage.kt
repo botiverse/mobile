@@ -43,6 +43,7 @@ import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.components.slockRaftOverlaySurface
+import build.raft.app.components.SlockRaftMetrics
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
@@ -27918,20 +27919,24 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
+    // raft-ui menu (SlockBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
+    // both edges, a hairline separator with a 6dp inset either side between groups and
+    // under the reaction header; the seam ring is drawn over the content and the float
+    // shadow takes no layout space.
     val effectiveRowCount = actionGroups.size.coerceAtLeast(1)
     val groupDividerCount =
         actionGroups.zipWithNext().count { (previous, next) -> previous != next }
+    val separatorHeight = SlockStroke.Thin.value + SlockRaftMetrics.MenuSeparatorInset.value * 2
     val reactionHeaderHeight =
         if (showReactionActions) {
-            ThreadMessageMenuReactionRowHeight.value + SlockStroke.Default.value
+            ThreadMessageMenuReactionRowHeight.value + separatorHeight
         } else {
             0f
         }
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
-        groupDividerCount * SlockStroke.Thin.value +
+        groupDividerCount * separatorHeight +
         reactionHeaderHeight +
-        SlockStroke.Default.value * 2 +
-        ThreadMessageMenuShadowOffset.value
+        SlockRaftMetrics.PopupPadding.value * 2
 }
 
 internal fun shouldShowThreadFollowAction(
@@ -28224,9 +28229,8 @@ private fun ThreadMessageActionMenu(
         }
     val anchorGapPx = with(density) { ThreadMessageMenuAnchorGap.toPx() }
     val horizontalNudgePx = with(density) { ThreadMessageMenuHorizontalNudge.toPx() }
-    val shadowOffsetPx = with(density) { ThreadMessageMenuShadowOffset.toPx() }
     val contentSize = Size(
-        width = menuWidth + shadowOffsetPx,
+        width = menuWidth,
         height = menuHeight
     )
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to

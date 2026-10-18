@@ -22,8 +22,9 @@ class SlockBrutalSelectLayoutTest {
             220.dp,
             slockBrutalSelectListHeight(optionCount = 30, rowHeight = 36.dp, maxMenuHeight = 220.dp)
         )
+        // 3 rows of 36dp + the 6dp popup inset top and bottom.
         assertEquals(
-            110.dp,
+            120.dp,
             slockBrutalSelectListHeight(optionCount = 3, rowHeight = 36.dp, maxMenuHeight = 220.dp)
         )
     }
