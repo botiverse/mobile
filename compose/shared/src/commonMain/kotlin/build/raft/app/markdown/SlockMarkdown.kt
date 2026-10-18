@@ -2555,7 +2555,7 @@ private object SlockMarkdownDimens : MarkdownDimens {
 // web MarkdownContent pre: bg-[#07111f] (artin: 对齐, task #67 thread).
 private val SlockMarkdownCodeBlockBackground = Color(0xFF07111F)
 private val SlockMarkdownMinimumInlineLineHeight = 22.sp
-private val SlockMarkdownDividerColor = SlockColor.BorderBlack.copy(alpha = 0.22f)
+private val SlockMarkdownDividerColor: Color get() = SlockColor.BorderBlack.copy(alpha = 0.22f)
 private val SlockMarkdownDividerThickness = 2.dp
 private val SlockMarkdownDividerVerticalPadding = SlockSpacing.Sm
 

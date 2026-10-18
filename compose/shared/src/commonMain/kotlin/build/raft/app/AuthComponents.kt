@@ -95,7 +95,7 @@ private val AuthInputTextStyle =
         color = SlockColor.TextBlack
     ).withSlockFontWeight(FontWeight.Normal)
 
-private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+private val AuthInputPlaceholderColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val AuthTopBarHeight = 62.dp
 private val AuthTopBarBrandWidth = 81.dp
 private val AuthTopBarBrandHeight = 20.dp

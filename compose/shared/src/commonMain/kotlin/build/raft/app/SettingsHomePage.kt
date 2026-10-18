@@ -723,10 +723,10 @@ private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
 private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
-private val SearchPopoverBorderColor = SlockColor.BorderBlack
-private val SearchPopoverShadowColor = SlockColor.ShadowBlack
-private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
-private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
+private val SearchPopoverBorderColor: Color get() = SlockColor.BorderBlack
+private val SearchPopoverShadowColor: Color get() = SlockColor.ShadowBlack
+private val SearchLightRowBorderColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.3f)
+private val SearchMutedTextColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.62f)
 
 private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")

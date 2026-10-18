@@ -37,7 +37,7 @@ internal object SlockStatusIndicatorTokens {
     val InlineSize: Dp = 10.dp
     val ServerUnreadSize: Dp = 10.dp
     val BorderWidth: Dp = SlockStroke.Thin
-    val BorderColor: Color = SlockColor.BorderBlack
+    val BorderColor: Color get() = SlockColor.BorderBlack
 }
 
 @Composable

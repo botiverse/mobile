@@ -23684,8 +23684,8 @@ private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
 private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
 private const val ThreadShareCaptureGeometryTolerancePx = 2f
-private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
+private val ThreadSystemMessageTimeColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
+private val ThreadSystemMessageBodyColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
 private fun ThreadSystemMessageRow(
