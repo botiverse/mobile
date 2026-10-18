@@ -2,7 +2,7 @@
 
 Owner: 辣条 · Verified at: 2026-10-18 · Status: current
 
-How to get `build.raft.app` running on an iOS simulator from a Linux-free workstation, and the three traps that make a clean-looking failure look like a code problem.
+How to get `build.raft.app` running on an iOS simulator from a macOS workstation, and the three traps that make a clean-looking failure look like a code problem.
 
 **Evidence level.** Everything below was measured on one machine: macOS arm64, Xcode 26.1, an iOS 26.1 simulator, on a host under heavy load (~36) from other concurrent builds. It was **not** reproduced on CI. Treat the OOM section as "observed here, likely applies on CI, unverified there".
 
@@ -17,8 +17,10 @@ How to get `build.raft.app` running on an iOS simulator from a Linux-free workst
 1. **Generate the framework before touching CocoaPods.**
 
    ```bash
-   cd compose && ./gradlew :shared:generateDummyFramework --no-daemon
+   cd compose && ./gradlew :shared:generateDummyFramework
    ```
+
+   `--no-daemon` is optional; the measured run reused the daemon (~1m).
 
    Skipping this makes `pod install` fail inside `shared.podspec` with `framework doesn't exist` — the message points at the podspec, not at the missing step, which is why it reads like a broken spec.
 
@@ -28,7 +30,7 @@ How to get `build.raft.app` running on an iOS simulator from a Linux-free workst
    cd compose/iosApp && pod install
    ```
 
-   The run that produced this note resolved `Kuikly 2.28.0-raft.13` and 9 pods.
+   The run that produced this note resolved the renderer at `2.28.0-raft.13-2.1.21` (release-set name `2.28.0-raft.13`) and 9 pods.
 
 3. **Build for the simulator without signing.**
 
