@@ -51,7 +51,7 @@ private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
 internal val SlockCollapsibleSectionContentGap = 4.dp
 internal val SlockCollapsibleSectionCountTextStyle =
     SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
-internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+internal val SlockCollapsibleSectionCountColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
 internal val SlockMainTabHeaderStartPadding = 8.dp
 // Task #179: getter so the header follows the Settings font option.
 internal val SlockMainTabHeaderTitleStyle: TextStyle

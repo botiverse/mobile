@@ -2,6 +2,10 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.designtokens.RaftUiThemeColors
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -163,21 +167,80 @@ val raftDarkTheme: SlockTheme =
         veil = RaftUiThemeColors.RaftDark.layerBackdrop,
     )
 
-/**
- * The current register. Defaults to [raftLightTheme]: the Web has shipped only the
- * raft look since slock #10148, and mobile follows it (task #7).
- */
-val LocalSlockTheme = staticCompositionLocalOf { raftLightTheme }
+/** The user's appearance choice. [System] follows the OS light/dark setting. */
+enum class SlockAppearance {
+    Light,
+    Dark,
+    System,
+}
 
 /**
- * Provides [theme] to the composition subtree. Wrap the app root (or a preview
- * fixture) with this; once the key signal is defined, the root chooses
- * [brutalTheme] vs [elegantTheme] and the whole tree follows.
+ * Process-scoped, OBSERVABLE current theme, the colour counterpart of
+ * [SlockFontFaceState]. [SlockColor]'s themed tokens and [LocalSlockTheme] resolve
+ * through it, so flipping [appearance] (or the OS setting under
+ * [SlockAppearance.System]) repaints everything composed from those tokens without
+ * threading a theme through ~thousands of callsites.
+ *
+ * Defaults to [SlockAppearance.Light] until every surface reads themed tokens; dark
+ * is reserved (artin, task #7) and only selectable once screens are migrated.
+ */
+internal object SlockThemeState {
+    var appearance: SlockAppearance by mutableStateOf(SlockAppearance.Light)
+        private set
+    var systemDark: Boolean by mutableStateOf(false)
+        private set
+
+    val isDark: Boolean
+        get() =
+            when (appearance) {
+                SlockAppearance.Light -> false
+                SlockAppearance.Dark -> true
+                SlockAppearance.System -> systemDark
+            }
+
+    val colors: RaftUiThemeColors
+        get() = if (isDark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
+
+    val theme: SlockTheme
+        get() = if (isDark) raftDarkTheme else raftLightTheme
+
+    /** @return true when the resolved theme changed. */
+    fun apply(next: SlockAppearance): Boolean {
+        val wasDark = isDark
+        appearance = next
+        return wasDark != isDark
+    }
+
+    /** Hosts report the OS light/dark setting here; @return true when the resolved theme changed. */
+    fun onSystemDarkChanged(dark: Boolean): Boolean {
+        val wasDark = isDark
+        systemDark = dark
+        return wasDark != isDark
+    }
+}
+
+/** Explicit subtree override (fixtures, previews); null = follow [SlockThemeState]. */
+internal val LocalSlockThemeOverride = staticCompositionLocalOf<SlockTheme?> { null }
+
+/**
+ * The current register: a [SlockThemeProvider] override if one encloses the caller,
+ * otherwise [SlockThemeState.theme]. Callers keep reading `LocalSlockTheme.current`.
+ */
+object LocalSlockTheme {
+    val current: SlockTheme
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalSlockThemeOverride.current ?: SlockThemeState.theme
+}
+
+/**
+ * Pins [theme] for the composition subtree (visual fixtures, previews). App screens
+ * don't need it: they follow [SlockThemeState].
  */
 @Composable
 fun SlockThemeProvider(
     theme: SlockTheme = raftLightTheme,
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(LocalSlockTheme provides theme, content = content)
+    CompositionLocalProvider(LocalSlockThemeOverride provides theme, content = content)
 }

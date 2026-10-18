@@ -16,6 +16,7 @@ import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
 // Colours that exist on Web come from the generated tokens (tools/design-tokens), so a Web
 // palette change shows up as a regenerated diff instead of silent drift. The remaining
@@ -41,28 +42,43 @@ internal object SlockColor {
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
-    // Web raft light `--foreground` (body text, #141111, a warm near-black).
-    val TextBlack = RaftUiThemeColors.RaftLight.foreground
+    // Themed tokens below read [SlockThemeState], so they follow light/dark at runtime.
+    // Web raft `--foreground` (body text; light #141111, a warm near-black).
+    val TextBlack: Color get() = SlockThemeState.colors.foreground
     // Tailwind neutral-500.
     val TextMutedGray = RaftUiPalette.neutral500
-    // Web raft light `--line-strong` (control ink, #141111).
-    val BorderBlack = RaftUiThemeColors.RaftLight.lineStrong
-    // Web raft light `--line-hairline` (ink at 15%): quiet separators.
-    val BorderHairline = RaftUiThemeColors.RaftLight.lineHairline
-    // Web raft light `--line-seam` (ink at 45%): structural seams between panels.
-    val BorderSeam = RaftUiThemeColors.RaftLight.lineSeam
+    // Web raft `--line-strong` (control ink).
+    val BorderBlack: Color get() = SlockThemeState.colors.lineStrong
+    // Web raft `--line-hairline` (ink at 15%): quiet separators.
+    val BorderHairline: Color get() = SlockThemeState.colors.lineHairline
+    // Web raft `--line-seam` (ink at 45%): structural seams between panels.
+    val BorderSeam: Color get() = SlockThemeState.colors.lineSeam
     // Sticker ink (`--theme-shadow-sticker` colour); the only hard shadow left in raft.
-    val ShadowBlack = RaftUiThemeColors.RaftLight.ink
+    val ShadowBlack: Color get() = SlockThemeState.colors.ink
+    // Web raft surfaces and secondary ink, for primitives migrating off the fixed
+    // SurfaceWhite / TextMutedGray literals.
+    val Canvas: Color get() = SlockThemeState.colors.layerCanvas
+    val Card: Color get() = SlockThemeState.colors.layerCard
+    val Panel: Color get() = SlockThemeState.colors.layerPanel
+    val Inset: Color get() = SlockThemeState.colors.layerInset
+    val Popover: Color get() = SlockThemeState.colors.layerPopover
+    val TextMuted: Color get() = SlockThemeState.colors.foregroundMuted
 
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"
-    // Must equal TextBlack; Kuikly string-colour callsites.
-    const val TextBlackArgb = "#FF141111"
+    // Kuikly string-colour callsites; themed ones derive from their Color token.
+    val TextBlackArgb: String get() = slockArgbHex(TextBlack)
     const val TextMutedGrayArgb = "#FF737373"
-    const val BorderBlackArgb = "#FF141111"
-    const val ShadowBlackArgb = "#FF141111"
+    val BorderBlackArgb: String get() = slockArgbHex(BorderBlack)
+    val ShadowBlackArgb: String get() = slockArgbHex(ShadowBlack)
     const val AccentOrangeArgb = "#FFF8A16F"
     const val AccentRedArgb = "#FFF97264"
+}
+
+/** `#AARRGGBB` for Kuikly APIs that take a colour string. */
+internal fun slockArgbHex(color: Color): String {
+    fun channel(value: Float): String = (value * 255f).roundToInt().coerceIn(0, 255).toString(16).padStart(2, '0').uppercase()
+    return "#" + channel(color.alpha) + channel(color.red) + channel(color.green) + channel(color.blue)
 }
 
 internal object SlockSpacing {
