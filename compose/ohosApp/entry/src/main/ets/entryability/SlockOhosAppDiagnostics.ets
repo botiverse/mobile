@@ -46,6 +46,18 @@ export function filterOhosHandsFeedbackEnvironmentLines(lines: Array<string>): A
   });
 }
 
+/**
+ * Diagnostics directories counted by Settings -> Storage. The log and upload directories are
+ * cleared by SlockOhosAppDiagnostics.clearLocalFiles; the crash directory is read-only here.
+ */
+export function ohosDiagnosticsStorageDirectories(filesDir: string): Array<string> {
+  return [
+    `${filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`,
+    `${filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`,
+    `${filesDir}/${CRASH_DIR_NAME}`,
+  ];
+}
+
 export function isOhosDiagnosticsLogFileName(name: string): boolean {
   return name.startsWith(DIAGNOSTIC_LOG_FILE_NAME);
 }

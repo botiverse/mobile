@@ -100,6 +100,11 @@ import {
   SLOCK_OHOS_MOBILE_OAUTH_SCHEME,
 } from '../main/ets/kuikly/SlockOhosMobileOAuth';
 import { SlockOhosMobileOAuthIngress } from '../main/ets/kuikly/SlockOhosMobileOAuthIngress';
+import {
+  formatSlockOhosStorageSizeLabel,
+  slockOhosStorageRoots,
+  SLOCK_OHOS_DATABASE_FILE_NAME,
+} from '../main/ets/kuikly/SlockOhosStorageUsage';
 
 interface FakeHandsFeedbackAttachmentInput {
   fileRef: string;
@@ -1140,6 +1145,31 @@ export default function localUnitTest() {
       expect(backend.openedTargets.length).assertEqual(0);
       expect(backend.closedKinds.length).assertEqual(0);
     });
+    it('storageSizeLabelMirrorsAndroidFormatter', 0, () => {
+      expect(formatSlockOhosStorageSizeLabel(0)).assertEqual('0 B');
+      expect(formatSlockOhosStorageSizeLabel(-1)).assertEqual('0 B');
+      expect(formatSlockOhosStorageSizeLabel(1023)).assertEqual('1023 B');
+      expect(formatSlockOhosStorageSizeLabel(1024)).assertEqual('1.0 KB');
+      expect(formatSlockOhosStorageSizeLabel(656 * 1024)).assertEqual('656.0 KB');
+      expect(formatSlockOhosStorageSizeLabel(1536 * 1024)).assertEqual('1.5 MB');
+      expect(formatSlockOhosStorageSizeLabel(3 * 1024 * 1024 * 1024)).assertEqual('3.0 GB');
+      expect(formatSlockOhosStorageSizeLabel(2048 * 1024 * 1024 * 1024)).assertEqual('2048.0 GB');
+    });
+
+    it('storageRootsUseWriterDirectoryNamesAndDatabaseName', 0, () => {
+      const roots = slockOhosStorageRoots('/data/storage/el2/base/haps/entry/files/', '/data/storage/el2/base/haps/entry/cache');
+      expect(SLOCK_OHOS_DATABASE_FILE_NAME).assertEqual('slock_cache_v4.db');
+      expect(roots.databaseDirectories.length).assertEqual(2);
+      expect(roots.databaseDirectories[0]).assertEqual('/data/storage/el2/base/haps/entry/files');
+      expect(roots.databaseDirectories[1]).assertEqual('/data/storage/el2/base/hap/entry/files');
+      expect(roots.attachmentCacheDirectory).assertEqual('/data/storage/el2/base/haps/entry/cache/slock-attachments');
+      expect(roots.privateAttachmentDirectory)
+        .assertEqual('/data/storage/el2/base/haps/entry/files/slock-attachment-downloads');
+      expect(roots.pickedThreadAttachmentDirectory)
+        .assertEqual('/data/storage/el2/base/haps/entry/cache/slock-picked-thread-attachments');
+      expect(roots.diagnosticsDirectories.length).assertEqual(3);
+    });
+
     it('attachmentCacheDirectoryReusesExistingDirectoryWithoutCreating', 0, () => {
       const backend = new FakeAttachmentCacheDirectoryBackend();
       backend.directoryExists = true;
