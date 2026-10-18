@@ -8,6 +8,7 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -18,6 +19,10 @@ internal fun SlockSwitchButton(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    if (slockRaftActive()) {
+        SlockRaftSwitch(checked = checked, enabled = enabled, modifier = modifier)
+        return
+    }
     Box(
         modifier =
             modifier
@@ -44,6 +49,61 @@ internal fun SlockSwitchButton(
                     .size(16.dp)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        )
+    }
+}
+
+/**
+ * raft-ui 0.6.0 Switch: a 50x30 pill with a 1.5dp `--line-strong` edge on `--fill-muted`
+ * and 2.5dp inset; checked = the yellow `--primary` sticker with a sticker-ink edge.
+ * The 22dp (+1.5dp ring) round thumb is the card layer ringed in `--line-strong` (checked: sticker paper
+ * ringed in sticker ink). Disabled greys both to `--fill-muted` / `--foreground-disabled`.
+ */
+@Composable
+private fun SlockRaftSwitch(
+    checked: Boolean,
+    enabled: Boolean,
+    modifier: Modifier
+) {
+    val trackShape = RoundedCornerShape(15.dp)
+    val thumbShape = RoundedCornerShape(12.5.dp)
+    val trackFill = if (checked && enabled) SlockColor.Primary else SlockColor.FillMuted
+    val trackEdge =
+        when {
+            !enabled -> SlockColor.ForegroundDisabled
+            checked -> SlockColor.StickerInk
+            else -> SlockColor.BorderBlack
+        }
+    val thumbFill =
+        when {
+            !enabled -> SlockColor.FillMuted
+            checked -> SlockColor.StickerPaper
+            else -> SlockColor.Card
+        }
+    val thumbEdge =
+        when {
+            !enabled -> SlockColor.ForegroundDisabled
+            checked -> SlockColor.StickerInk
+            else -> SlockColor.BorderBlack
+        }
+    Box(
+        modifier =
+            modifier
+                .size(width = 50.dp, height = 30.dp)
+                .background(trackFill, trackShape)
+                .border(SlockStroke.Control, trackEdge, trackShape)
+                // Web: 1.5dp edge + 2.5dp inset around a 22dp thumb whose 1.5dp ring is an
+                // outer box-shadow. Kuikly paints borders inside the box, so the thumb is drawn
+                // 25dp (22 + ring) in a 2.5dp inset to land on the same pixels.
+                .padding(2.5.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(25.dp)
+                    .background(thumbFill, thumbShape)
+                    .border(SlockStroke.Control, thumbEdge, thumbShape)
         )
     }
 }

@@ -21,12 +21,19 @@ internal fun SlockSectionEyebrow(
     fontSize: TextUnit = 12.sp,
     lineHeight: TextUnit = 18.sp
 ) {
+    // raft-ui section title (`rf-section`): 13/18 bold hint ink in the source case, no
+    // tracking; hierarchy by size and colour, never ALL CAPS. Explicit caller metrics stay.
+    val raft = slockRaftActive()
     Text(
-        text = label.slockDisplayUppercase(),
+        text = if (raft) label else label.slockDisplayUppercase(),
         style = SlockType.SectionLabel
-            .copy(fontSize = fontSize, lineHeight = lineHeight)
+            .copy(
+                fontSize = if (raft && fontSize == 12.sp) 13.sp else fontSize,
+                lineHeight = lineHeight,
+                letterSpacing = if (raft) 0.sp else SlockType.SectionLabel.letterSpacing
+            )
             .withSlockFontWeight(FontWeight.Bold),
-        color = color,
+        color = if (raft && color == SlockColor.TextMutedGray) SlockColor.ForegroundHint else color,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier

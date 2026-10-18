@@ -1356,6 +1356,9 @@ internal fun Button(
     pressOffset: Dp = SlockPressTokens.ButtonOffset,
     clickIdentity: Any? = null,
     anchorOwnerIdentity: Any? = null,
+    // Observes the press (raft-ui lays a pressed wash over the control instead of
+    // offsetting it); only reported while [pressFeedback] is on.
+    onPressedChange: ((Boolean) -> Unit)? = null,
     content: (@Composable () -> Unit) = {}
 ) {
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
@@ -1377,7 +1380,10 @@ internal fun Button(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     onClick2 = onClick2,
-                    onPressedChange = { pressed = it },
+                    onPressedChange = {
+                        pressed = it
+                        onPressedChange?.invoke(it)
+                    },
                     rootAnchor = rootAnchor
                 )
         )

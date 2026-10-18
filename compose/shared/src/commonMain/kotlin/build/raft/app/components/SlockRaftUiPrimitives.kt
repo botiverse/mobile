@@ -7,7 +7,9 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockRadius
 import build.raft.app.SlockStroke
+import build.raft.app.slockArgbHex
 import build.raft.app.SlockType
 import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
@@ -28,6 +30,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -62,6 +65,27 @@ internal enum class SlockBrutalTone(val color: Color) {
 
 private val SlockSelectedSurfaceCyan = Color(0xFFDFF7FD)
 
+/**
+ * raft-ui 0.6.0 solid Badge fill for a brutal tone: `default` sticker paper, `primary`
+ * yellow, `accent` pink, `information` cyan, `success` lime, `warning` orange, `danger`
+ * red, `muted` stone (`--inactive`). Lavender has no raft variant and keeps its hue.
+ */
+internal val SlockBrutalTone.raftFill: Color
+    get() =
+        when (this) {
+            SlockBrutalTone.White -> SlockColor.StickerPaper
+            SlockBrutalTone.Black -> SlockColor.TextBlack
+            SlockBrutalTone.Yellow -> SlockColor.Primary
+            SlockBrutalTone.Pink -> SlockColor.Accent
+            SlockBrutalTone.Cyan -> SlockColor.Info
+            SlockBrutalTone.Lavender -> SlockColor.AccentLavender
+            SlockBrutalTone.Orange -> SlockColor.Warning
+            SlockBrutalTone.Lime -> SlockColor.Success
+            SlockBrutalTone.Red -> SlockColor.Danger
+            SlockBrutalTone.Stone -> SlockColor.Inactive
+            SlockBrutalTone.Warning -> SlockColor.Warning
+        }
+
 @Composable
 internal fun SlockBrutalBadge(
     label: String,
@@ -95,6 +119,8 @@ internal fun SlockBrutalBadgeButton(
         onClick = onClick,
         enabled = enabled,
         pressFeedback = enabled,
+        // raft stickers do not shift when pressed; brutal keeps its 2dp press offset.
+        pressOffset = if (slockRaftActive()) 0.dp else 2.dp,
         modifier = modifier
     ) {
         SlockBrutalBadgeChrome(
@@ -115,6 +141,16 @@ private fun SlockBrutalBadgeChrome(
     leadingIcon: SlockLucideIconName? = null,
     contentColor: Color? = null
 ) {
+    if (slockRaftActive()) {
+        SlockRaftBadgeChrome(
+            label = label,
+            modifier = modifier,
+            fill = tone.raftFill,
+            ink = contentColor ?: if (tone == SlockBrutalTone.Black) SlockColor.ForegroundInverse else SlockColor.StickerInk,
+            leadingIcon = leadingIcon
+        )
+        return
+    }
     val foreground = contentColor ?: if (tone == SlockBrutalTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     Row(
         modifier =
@@ -151,6 +187,57 @@ private fun SlockBrutalBadgeChrome(
     }
 }
 
+/**
+ * raft-ui 0.6.0 solid Badge: 20dp tall (min 20dp wide, centred), sticker radius 4dp,
+ * 6dp side padding, 1.5dp sticker-ink edge, 12sp bold ink type in the source case
+ * (`normal-case tracking-normal`: badges never shout), 13dp icons.
+ */
+@Composable
+internal fun SlockRaftBadgeChrome(
+    label: String,
+    modifier: Modifier = Modifier,
+    fill: Color = SlockColor.StickerPaper,
+    ink: Color = SlockColor.StickerInk,
+    leadingIcon: SlockLucideIconName? = null
+) {
+    val shape = RoundedCornerShape(SlockRadius.Sticker)
+    Box(
+        modifier =
+            modifier
+                .height(20.dp)
+                .widthIn(min = 20.dp)
+                .background(fill, shape)
+                .border(SlockStroke.Control, SlockColor.StickerInk, shape)
+                .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            leadingIcon?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(13.dp), color = slockArgbHex(ink))
+            }
+            Text(
+                text = label,
+                style =
+                    SlockType.Caption
+                        .copy(
+                            fontSize = 12.sp,
+                            // Native font metrics (see the brutal chrome): a forced line box
+                            // clips descenders on iOS.
+                            lineHeight = TextUnit.Unspecified,
+                            letterSpacing = 0.sp
+                        )
+                        .withSlockFontWeight(FontWeight.Bold),
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 @Composable
 internal fun SlockSectionHeader(
     label: String,
@@ -169,15 +256,21 @@ internal fun SlockSectionHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val raft = slockRaftActive()
             iconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(16.dp), color = SlockColor.TextMutedGrayArgb)
+                SlockLucideIcon(
+                    it,
+                    modifier = Modifier.size(16.dp),
+                    color = if (raft) slockArgbHex(SlockColor.ForegroundHint) else SlockColor.TextMutedGrayArgb
+                )
             }
             SlockSectionEyebrow(label = label, modifier = Modifier)
             count?.takeIf { it >= 0 }?.let {
+                // raft section count: Space Mono 12/16, hint ink.
                 Text(
                     text = it.toString(),
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = if (raft) 16.sp else 14.sp),
+                    color = if (raft) SlockColor.ForegroundHint else SlockColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1
                 )
             }
@@ -196,6 +289,27 @@ internal fun SlockSurfaceListItem(
     verticalPadding: Dp = 12.dp,
     content: @Composable () -> Unit
 ) {
+    if (slockRaftActive()) {
+        // raft-ui ListRow on its own Card: container radius, card layer (selected =
+        // `--info-soft`), 1dp hairline, no ink line and no lift.
+        Box(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .slockRaftCardSurface(fill = if (selected) SlockColor.InfoSoft else SlockColor.Card)
+                    .let { base ->
+                        if (onClick != null) {
+                            base.clickable(enabled = true, role = Role.Button, onClick = onClick)
+                        } else {
+                            base
+                        }
+                    }
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+        ) {
+            content()
+        }
+        return
+    }
     val borderColor = if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.30f)
     val backgroundColor = if (selected) SlockSelectedSurfaceCyan else SlockColor.SurfaceWhite
     val shadowOffset = if (selected) 2.dp else 0.dp
@@ -279,7 +393,7 @@ internal fun SlockAvatarListRow(
                     Text(
                         text = it,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                        color = if (slockRaftActive()) SlockColor.ForegroundHint else SlockColor.TextBlack.copy(alpha = 0.5f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
