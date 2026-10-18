@@ -35,6 +35,9 @@ on:
     paths:
       - ".github/workflows/ios-simulator-app.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: ios-simulator-app-${{ github.ref }}
   cancel-in-progress: false

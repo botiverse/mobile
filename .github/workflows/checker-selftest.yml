@@ -13,6 +13,9 @@ on:
       - ".github/workflows/checker-selftest.yml"
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   selftest:
     name: Fixture assertions (GREEN + RED mutations)
