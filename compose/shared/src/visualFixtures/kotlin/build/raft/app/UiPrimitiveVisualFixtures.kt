@@ -34,6 +34,7 @@ import build.raft.app.components.SlockStatusDot
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
@@ -477,13 +478,15 @@ internal fun UiSlugInputVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        // 14dp spacing on purpose: the control's 2dp shadow gutter takes layout
-        // space (unlike CSS box-shadow), so 14dp puts the visible boxes 16dp
-        // apart like react's gap-4 (same precedent as UiButtonVisualContent) -
-        // row2 lands at y76 and its shadow stays inside the 342x122 crop.
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // raft-ui InputGroup has no shadow gutter, so react's gap-4 is 16dp.
+        // React renders the second row read-only at opacity-60 (not disabled).
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SlockSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
-            SlockSlugInput(value = "partner-workspace", onValueChange = {}, enabled = false, modifier = Modifier.width(310.dp))
+            SlockSlugInput(
+                value = "partner-workspace",
+                onValueChange = {},
+                modifier = Modifier.width(310.dp).alpha(0.6f)
+            )
         }
     }
 }

@@ -389,6 +389,47 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_FLOWCHART = "md_mermaid_flowchart"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_SEQUENCE = "md_mermaid_sequence"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_INVALID = "md_mermaid_invalid"
+/**
+ * Outer padding of the message-row visual host. The React markdown specimens
+ * render the MessageItem flush at (0,0) of a 390/260px column (`p-0`), so the
+ * Android host must not inset those rows; the remaining cases sit inside a
+ * `p-4` page on both providers.
+ */
+internal fun threadMessageVisualHostPadding(visualFixture: String): Dp =
+    when (visualFixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> 0.dp
+        else -> SlockSpacing.Md
+    }
+
+/**
+ * Agent avatars from the shared visual fixture data
+ * (packages/visual-testing/shared/fixtureData.json): every fixture agent wears
+ * the `pixel:robot` avatar, which the React rows resolve from the member
+ * profile. Fixture humans carry no avatar there, so they keep the fallback.
+ */
+private val ThreadVisualFixtureAgentAvatars: Map<String, String> =
+    listOf(
+        "agent-cindy",
+        "agent-product-ux",
+        "agent-android-dev-4",
+        "agent-builder",
+        "agent-kmp-expert",
+        "agent-cc-wow"
+    ).associateWith { "pixel:robot" }
+
+internal val ThreadVisualMemberAvatarResolver =
+    SlockMemberAvatarResolver(
+        currentAvatar = { memberId -> ThreadVisualFixtureAgentAvatars[memberId] },
+        avatarFlow = { memberId -> kotlinx.coroutines.flow.flowOf(ThreadVisualFixtureAgentAvatars[memberId]) }
+    )
+
 internal fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
