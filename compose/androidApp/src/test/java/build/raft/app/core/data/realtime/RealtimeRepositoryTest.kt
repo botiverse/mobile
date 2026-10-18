@@ -42,6 +42,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import java.util.Collections
+import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -191,7 +192,7 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun reconnectCannotPublishBetweenOldListenerCheckAndDelivery() {
+    fun reconnectDoesNotWaitForBlockingOldListenerAfterGenerationCheck() {
         val oldListenerPassedCurrentCheck = CountDownLatch(1)
         val releaseOldListener = CountDownLatch(1)
         val fence =
@@ -211,12 +212,12 @@ class RealtimeRepositoryTest {
         val executor = Executors.newFixedThreadPool(2)
         try {
             val oldDelivery =
-                executor.submit {
+                executor.submit(Callable {
                     fence.runIfCurrent(oldGeneration) {
                         downstreamDeliveries += 1
                         eventOrder += "old-write"
                     }
-                }
+                })
             assertTrue(oldListenerPassedCurrentCheck.await(5, TimeUnit.SECONDS))
             val successorConnect =
                 executor.submit {
@@ -227,18 +228,18 @@ class RealtimeRepositoryTest {
                 }
 
             assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
-            assertFalse(
-                "successor return must wait for the old delivery that already owns the linearization point",
-                successorReturned.await(100, TimeUnit.MILLISECONDS),
+            assertTrue(
+                "successor replacement must not wait for a socket callback after the generation check",
+                successorReturned.await(2, TimeUnit.SECONDS),
             )
             releaseOldListener.countDown()
-            oldDelivery.get(5, TimeUnit.SECONDS)
+            assertFalse(oldDelivery.get(5, TimeUnit.SECONDS))
             successorConnect.get(5, TimeUnit.SECONDS)
 
-            assertEquals(listOf("old-write", "successor-return"), eventOrder.toList())
-            assertEquals(1, downstreamDeliveries)
+            assertEquals(listOf("successor-return"), eventOrder.toList())
+            assertEquals(0, downstreamDeliveries)
             assertFalse(fence.runIfCurrent(oldGeneration) { downstreamDeliveries += 1 })
-            assertEquals(1, downstreamDeliveries)
+            assertEquals(0, downstreamDeliveries)
         } finally {
             releaseOldListener.countDown()
             executor.shutdownNow()
