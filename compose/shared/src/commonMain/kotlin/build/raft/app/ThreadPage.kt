@@ -7306,7 +7306,19 @@ private fun SharedThreadRouteContentContent(
                     accountId = gateInputs.accountId,
                     serverId = gateInputs.serverId
                 )
-            } ?: false
+            // task #193: before the gate resolves, assume REVERSE, not forward.
+            //
+            // The bug was that a reply-cache hit (#3083) renders content on the first frame, before
+            // reply-cache provenance has supplied the gate inputs, so this branch produced `false`
+            // and the list was built forward and locked there. Reverse is what the gate reports for
+            // essentially every real thread (1.14.0: 63/63 entries `enabled=true`), so an undecided
+            // gate defaulting to reverse builds the first frame in the direction it will almost
+            // certainly keep -- and no rebuild is needed at all.
+            //
+            // This is a DEFAULT, not a decision: an explicit user choice short-circuits above
+            // (threadReverseLayoutEffective returns `userChoice ?: ...`) and never reaches here, and
+            // a gate that resolves to forward still moves the list to forward (see the rebuild key).
+            } ?: THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT
             }
         }
 
@@ -18212,73 +18224,30 @@ private fun ThreadMessagesListContent(
         }
     // task #193: the direction must not be frozen before the gate has decided it.
     //
-    // The gate (threadReverseLayoutEnabled) already recomputes when its inputs arrive -- it is keyed
-    // on `markdownLightGateInputs != null`. What used to go wrong is that this list captured the
-    // direction ONCE, keyed only on threadInstanceKey. With #3083 a cache hit completes inside
-    // composition, so the list was built while the gate was still undecided, locked to forward, and
-    // never looked at the gate again: latest item off-bottom, big empty band, floating pill.
+    // With #3083 a reply-cache hit renders content on the FIRST frame, while reply-cache provenance
+    // (which supplies the gate inputs) is still null. The list used to capture `forward` in that
+    // window and key `remember` on the thread instance alone, so it never saw the real answer:
+    // latest item off the bottom, a large empty band, back-to-bottom pill mid-screen.
     //
-    // Two things have to move together, otherwise the fix looks applied but is not:
-    //   1. `reverseLayout` must be re-derived when the gate decides;
-    //   2. `rawListState` must be REBUILT on the same key -- `rememberLazyListState` has no key and
-    //      its `initialFirstVisibleItemIndex` is fixed at the first composition, so flipping only
-    //      the flag would leave the scroll position computed from the forward orientation.
+    // Three things move together here:
+    //   1. the pre-gate fallback is REVERSE (THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT), so the common
+    //      case builds the first frame in the direction it keeps and needs no rebuild at all;
+    //   2. a gate that resolves to FORWARD still moves the list once;
+    //   3. when the direction moves, the LazyListState must be REBUILT -- `rememberLazyListState` has
+    //      no key and its `initialFirstVisibleItemIndex` is fixed at first composition, so flipping
+    //      only the flag would leave the scroll position computed for the old orientation.
     //
-    // Rebuilding before any user scroll is what makes this safe: re-mapping indices under a list the
-    // user has already moved in would be wrong, so we refuse to rebuild once that is no longer true
-    // (see directionLockPolicy) and keep the previous direction instead.
+    // The key is the direction VALUE. That is stable by construction (it cannot oscillate the way an
+    // edge predicate did), so "at most one rebuild per direction change" holds without bookkeeping.
     val reverseLayoutRequested = LocalThreadReverseLayout.current
-    // task #193: while the gate is undecided this is a placeholder, not a decision, so it must not
-    // be remembered against the thread instance alone.
     val reverseLayoutDecided = LocalThreadReverseLayoutDecided.current
     val reverseLayout = threadReverseLayoutForList(
         requested = reverseLayoutRequested,
         decided = reverseLayoutDecided
     )
-    // Rebuild the scroll state whenever the direction settles. The key includes the direction VALUE
-    // as well as "decided": LocalThreadReverseLayout is a staticCompositionLocalOf, so a change to it
-    // alone would not recompose this reader -- keying on the value is what makes the flip reach us.
-    // Outside that transition both halves of the key are stable, so the state (and the user's scroll
-    // position) is preserved exactly as before.
-    // The first composition of a thread instance is the starting point, not a transition: nothing
-    // has been "previous" yet. After that, the remembered value tracks what we last built with, so
-    // `threadReverseLayoutNeedsRebuild` sees a real false -> true edge exactly once.
-    var previousDirectionDecided by remember(threadInstanceKey) {
-        mutableStateOf(reverseLayoutDecided)
-    }
-    // Driven by the same predicate the tests exercise, so the tested rule and the production
-    // decision cannot drift apart (review point from @LiBai: a helper only tests call is dead code
-    // dressed up as coverage).
-    val rebuildListForDirection =
-        threadReverseLayoutNeedsRebuild(
-            previousDecided = previousDirectionDecided,
-            nextDecided = reverseLayoutDecided
-        )
-    SideEffect {
-        if (previousDirectionDecided != reverseLayoutDecided) {
-            previousDirectionDecided = reverseLayoutDecided
-        }
-    }
-    // task #193: the remember key must be a STABLE value, not the edge predicate.
-    //
-    // `rebuildListForDirection` is a one-shot pulse: it goes true for the composition where the gate
-    // lands, then the SideEffect above advances `previousDirectionDecided` and the next composition
-    // computes it as false again. Using that pulse as a key bounced the LazyListState to a new
-    // instance and then straight back to the original key on the following frame -- two rebuilds
-    // where one was intended, re-firing every effect keyed on the state and undoing the "rebuild
-    // exactly once" guarantee.
-    //
-    // So: the decided value is the key (it moves once, false -> true, and stays), and the edge
-    // predicate only gates whether that move is allowed to matter. Once decided, later changes are
-    // ignored on purpose -- re-mapping indices under a list the user may have scrolled is worse than
-    // keeping a slightly stale direction.
-    val listDirectionKey =
-        if (rebuildListForDirection || reverseLayoutDecided) {
-            reverseLayoutDecided to reverseLayoutRequested
-        } else {
-            // Undecided: no rebuild yet, and the placeholder direction is not part of the identity.
-            false to reverseLayoutRequested
-        }
+    // Keying on the value (not on `LocalThreadReverseLayout` itself) is what carries the change to
+    // this reader: the local is a staticCompositionLocalOf, so a change to it alone would not.
+    val listDirectionKey = reverseLayoutRequested
     val rawListState =
         key(threadInstanceKey, listDirectionKey) {
             rememberLazyListState(
@@ -22307,20 +22276,21 @@ internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
  * must re-evaluate (rebuild) once the gate reports a decision; when it is true the answer is final
  * for this thread instance.
  */
+/**
+ * task #193: what the list direction is before the gate has resolved.
+ *
+ * Reverse, because that is what the gate reports for essentially every real thread (1.14.0 measured
+ * 63/63 entries `enabled=true`), so the first frame is built in the direction it will keep and no
+ * rebuild is needed. Forward was the old value and is what produced the blank band on cache-hit
+ * entries. This is a default only: an explicit user choice short-circuits before it, and a gate that
+ * resolves to forward still moves the list once.
+ */
+internal const val THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT: Boolean = true
+
 internal fun threadReverseLayoutForList(
     requested: Boolean,
     decided: Boolean,
 ): Boolean = requested
-
-/**
- * Whether a list built with [previousDecided] must be rebuilt because the gate has now decided.
- * Only a false -> true transition matters: once decided, later changes would re-map indices under a
- * list the user may already have scrolled, which is worse than keeping a slightly stale direction.
- */
-internal fun threadReverseLayoutNeedsRebuild(
-    previousDecided: Boolean,
-    nextDecided: Boolean,
-): Boolean = !previousDecided && nextDecided
 
 /**
  * task #193: whether the reverse-layout direction is settled.
