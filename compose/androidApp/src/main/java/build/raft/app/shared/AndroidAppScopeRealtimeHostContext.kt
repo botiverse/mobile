@@ -14,10 +14,12 @@ import build.raft.app.core.data.realtime.SocketIoSocketTransport
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
+import build.raft.app.data.SlockAndroidPushRegistrationBridge
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockLocalPreferenceStore
 import build.raft.app.data.buildSystemUnreadNotificationRequestFromPush
@@ -41,7 +43,11 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -58,8 +64,37 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     // Task #168: frames also carry the epoch of the socket that is current when they are fanned out, so the
     // canary does not depend on the signal reaching it first. 0 = this socket posted no signal.
     @Volatile private var currentPresenceTransportEpoch = 0L
+
+    // The delivery-status answer expires (PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS), so a socket that keeps
+    // receiving in the background must keep it fresh: once per connect, then periodically while it is up.
+    // Declared before the connected subscription, whose listener uses them.
+    private val pushDeliveryStatusRefreshLock = Any()
+    private var pushDeliveryStatusRefreshJob: Job? = null
+
     private val connectedSubscription =
-        client.observeConnected { context -> postPresenceTransportConnected(context) }
+        client.observeConnected { context ->
+            postPresenceTransportConnected(context)
+            startPushDeliveryStatusRefresh()
+        }
+
+    private fun startPushDeliveryStatusRefresh() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob =
+                scope.launch {
+                    SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_connected")
+                    while (isActive) {
+                        delay(PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS)
+                        val state = client.state
+                        if (state != RealtimeConnectionState.Connected && state != RealtimeConnectionState.RoomsJoined) {
+                            break
+                        }
+                        SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_periodic")
+                    }
+                }
+        }
+    }
+
     private val roomsJoinedSubscription =
         client.observeRoomsJoined { context -> postRealtimeRoomsJoined(context) }
 
@@ -127,6 +162,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     }
 
     override fun disconnect() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob = null
+        }
         repository.disconnect()
     }
 
@@ -273,12 +312,14 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         fun shouldPostBackgroundUnreadNotification(
             hasAttachedConsumers: Boolean,
             preferenceEnabled: Boolean,
-            isAppInForeground: Boolean
+            isAppInForeground: Boolean,
+            remotePushActive: Boolean = false
         ): Boolean =
             SlockRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
                 hasAttachedConsumers = hasAttachedConsumers,
                 preferenceEnabled = preferenceEnabled,
-                isAppInForeground = isAppInForeground
+                isAppInForeground = isAppInForeground,
+                remotePushActive = remotePushActive
             )
 
         fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
@@ -316,14 +357,17 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         ) {
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
+            // notification:push reaches every server's events over this one socket: decide by the
+            // event's server, not the socket's selected [serverId].
+            val remotePushActive = isRemotePushActive(appContext, sessionStore, event)
             SlockAppLog.w(
                 LOG_TAG,
-                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
+                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground eventServerId=${event.serverId.value} remote_push_active=$remotePushActive"
             )
-            if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
+            if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)) {
                 SlockAppLog.w(
                     LOG_TAG,
-                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.messageId.value}"
+                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)} serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
@@ -348,16 +392,46 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         }
 
 
+        /**
+         * FCM delivers this server's tray notifications (the server's stored delivery-status answer for
+         * this environment, user and installation says fcmActive for the event's server), so posting here
+         * would show a duplicate. Any unknown input, or a read failure, keeps the local post.
+         */
+        private suspend fun isRemotePushActive(
+            appContext: Context,
+            sessionStore: SlockAuthSessionStore,
+            event: NotificationPushReceived
+        ): Boolean =
+            try {
+                SlockRealtimeAppScopePolicy.isRemotePushActive(
+                    serverId = event.serverId,
+                    environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
+                    currentUserId = sessionStore.readSession()?.user?.id,
+                    installationId = SlockAndroidPushRegistrationBridge.installationIdOrNull(),
+                    deliveryStatus = SlockAndroidPushRegistrationBridge.storedDeliveryStatusOrNull(),
+                    nowMillis = System.currentTimeMillis()
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                SlockAppLog.w(
+                    LOG_TAG,
+                    "background_unread_notification_remote_push_check_failed errorType=${error::class.simpleName ?: "unknown"}"
+                )
+                false
+            }
 
         private fun backgroundUnreadNotificationSkipReason(
             hasAttachedConsumers: Boolean,
             preferenceEnabled: Boolean,
-            isAppInForeground: Boolean
+            isAppInForeground: Boolean,
+            remotePushActive: Boolean
         ): String =
             SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
                 hasAttachedConsumers = hasAttachedConsumers,
                 preferenceEnabled = preferenceEnabled,
-                isAppInForeground = isAppInForeground
+                isAppInForeground = isAppInForeground,
+                remotePushActive = remotePushActive
             )
 
         private fun useCurlSocketIo(serverId: String): Boolean {

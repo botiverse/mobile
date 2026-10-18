@@ -1,5 +1,8 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.data.PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
+import build.raft.app.data.SlockPushDeliveryStatus
+import build.raft.app.data.normalizedPushEnvironmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -182,25 +185,58 @@ class SlockRealtimeAppScopeState {
 }
 
 object SlockRealtimeAppScopePolicy {
+    const val SkipReasonRemotePushActive = "remote_push_active"
+
     fun isSessionEndDisconnectReason(reason: String): Boolean =
         reason in GeneratedRealtimeContract.DisconnectReason.SessionEnd
+
+    /**
+     * Server push already delivers [serverId]'s tray notifications to this device, so the background
+     * realtime path must not post a second copy. True only when the stored delivery-status answer belongs
+     * to the current environment, signed-in user and installation, is at most
+     * [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS] old at [nowMillis], lists [serverId] (the event's server, not
+     * the selected one), and says `fcmActive`. No answer, an old answer, a missing server or any mismatch
+     * reads false (post locally): a possible duplicate beats a missed notification.
+     */
+    fun isRemotePushActive(
+        serverId: ServerId,
+        environmentId: String?,
+        currentUserId: String?,
+        installationId: String?,
+        deliveryStatus: SlockPushDeliveryStatus?,
+        nowMillis: Long
+    ): Boolean {
+        val status = deliveryStatus ?: return false
+        val server = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return false
+        val environment = normalizedPushEnvironmentId(environmentId) ?: return false
+        val userId = currentUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val installation = installationId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (normalizedPushEnvironmentId(status.environmentId) != environment) return false
+        if (status.userId.trim() != userId || status.installationId.trim() != installation) return false
+        // A clock that moved backwards makes the age negative: that is unknown too.
+        if (nowMillis - status.fetchedAtMillis !in 0..PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS) return false
+        return status.fcmActiveByServer[server] == true
+    }
 
     fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,
         preferenceEnabled: Boolean,
-        isAppInForeground: Boolean
+        isAppInForeground: Boolean,
+        remotePushActive: Boolean = false
     ): Boolean =
-        !hasAttachedConsumers && preferenceEnabled && !isAppInForeground
+        !hasAttachedConsumers && preferenceEnabled && !isAppInForeground && !remotePushActive
 
     fun backgroundUnreadNotificationSkipReason(
         hasAttachedConsumers: Boolean,
         preferenceEnabled: Boolean,
-        isAppInForeground: Boolean
+        isAppInForeground: Boolean,
+        remotePushActive: Boolean = false
     ): String =
         when {
             hasAttachedConsumers -> "foreground_consumer"
             isAppInForeground -> "app_foreground"
             !preferenceEnabled -> "preference_disabled"
+            remotePushActive -> SkipReasonRemotePushActive
             else -> "unknown"
         }
 
