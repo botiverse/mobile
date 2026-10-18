@@ -5418,6 +5418,59 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun sidebarSectionWritesPreserveInterleavedSystemSectionOrder() = runBlocking {
+        // Hands a8fcdfaa: a web-authored sectionOrder interleaves system and
+        // custom ids; mobile writes must round-trip the system ids in place.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val mobile = SettingsServerSidebarCustomSection(id = "sec-mobile", name = "Mobile", sortMode = "manual")
+        val doomed = SettingsServerSidebarCustomSection(id = "sec-doomed", name = "Doomed", sortMode = "manual")
+        val interleaved = listOf("system:pinned", "sec-mobile", "system:dms", "sec-doomed", "system:joint", "system:channels")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(mobile, doomed),
+                sectionOrder = interleaved,
+                sectionsVersion = 2
+            )
+        var current = initial
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(current) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                current =
+                    current.copy(
+                        customSections = request.customSections.orEmpty(),
+                        sectionOrder = request.sectionOrder.orEmpty(),
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = current.sectionsVersion + 1
+                    )
+                DataResult.Content(current)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.DeleteSidebarSection("sec-doomed"))
+        store.accept(SharedHomeIntent.CreateSidebarSection(name = "New", emoji = null))
+
+        assertEquals(2, updateCalls.size)
+        assertEquals(
+            listOf("system:pinned", "sec-mobile", "system:dms", "system:joint", "system:channels"),
+            updateCalls[0].sectionOrder
+        )
+        val created = updateCalls[1].customSections.orEmpty().last()
+        assertEquals(
+            listOf("system:pinned", "sec-mobile", "system:dms", "system:joint", "system:channels", created.id),
+            updateCalls[1].sectionOrder
+        )
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(updateCalls[1].sectionOrder, after?.sectionOrder)
+        scope.cancel()
+    }
+
+    @Test
     fun deleteSidebarSectionDropsOrderAndPlacements() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Doomed", sortMode = "manual")

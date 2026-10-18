@@ -26,6 +26,94 @@ class SlockHomeSidebarSectionsTest {
     private fun placement(kind: String, id: String, sectionId: String, position: Int) =
         SettingsServerSidebarSectionPlacement(kind = kind, id = id, sectionId = sectionId, position = position)
 
+    private fun sectionKeys(sections: List<SlockHomeSidebarSection>): List<String> =
+        sections.map {
+            when (it) {
+                SlockHomeSidebarSection.Pinned -> "system:pinned"
+                SlockHomeSidebarSection.JointChannels -> "system:joint"
+                SlockHomeSidebarSection.Channels -> "system:channels"
+                SlockHomeSidebarSection.DirectMessages -> "system:dms"
+                is SlockHomeSidebarSection.Custom -> it.rows.section.id
+            }
+        }
+
+    private fun rowsFor(vararg sections: SettingsServerSidebarCustomSection): List<SlockHomeCustomSectionRows> =
+        sections.map { SlockHomeCustomSectionRows(section = it, items = listOf(channel("c-${it.id}", it.name))) }
+
+    @Test
+    fun sidebarSectionsInterleaveSystemAndCustomSectionsInWebSectionOrder() {
+        // Hands a8fcdfaa: web order puts the custom "Mobile" section between
+        // pinned and the system channel blocks; mobile used to render every
+        // custom section after DMs.
+        val mobile = section("sec-mobile", "Mobile")
+        val other = section("sec-other", "Other")
+        val order =
+            homeSidebarSectionOrder(
+                sectionOrder = listOf("system:pinned", "sec-mobile", "system:dms", "system:joint", "sec-other", "system:channels"),
+                customSections = listOf(other, mobile),
+                customSectionRows = rowsFor(other, mobile),
+                hasPinned = true,
+                hasJointChannels = true
+            )
+        assertEquals(
+            listOf("system:pinned", "sec-mobile", "system:dms", "system:joint", "sec-other", "system:channels"),
+            sectionKeys(order)
+        )
+    }
+
+    @Test
+    fun sidebarSectionsFallBackLikeWebForEmptyOrPartialOrder() {
+        val a = section("sec-a", "A")
+        val b = section("sec-b", "B")
+        // Empty order: system sections in canonical order, then custom sections
+        // in declaration order (web normalizeSidebarSectionOrder appends both).
+        assertEquals(
+            listOf("system:pinned", "system:joint", "system:channels", "system:dms", "sec-a", "sec-b"),
+            sectionKeys(
+                homeSidebarSectionOrder(
+                    sectionOrder = emptyList(),
+                    customSections = listOf(a, b),
+                    customSectionRows = rowsFor(a, b),
+                    hasPinned = true,
+                    hasJointChannels = true
+                )
+            )
+        )
+        // Partial order with unknown / duplicate ids: listed ids first (deduped,
+        // unknowns dropped), then missing system ids, then missing custom ids.
+        assertEquals(
+            listOf("sec-b", "system:dms", "system:pinned", "system:joint", "system:channels", "sec-a"),
+            sectionKeys(
+                homeSidebarSectionOrder(
+                    sectionOrder = listOf("sec-b", "bogus", "system:dms", "sec-b"),
+                    customSections = listOf(a, b),
+                    customSectionRows = rowsFor(a, b),
+                    hasPinned = true,
+                    hasJointChannels = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun sidebarSectionsHideEmptyPinnedJointAndCustomSectionsButKeepChannelsAndDms() {
+        val a = section("sec-a", "A")
+        val empty = section("sec-empty", "Empty")
+        assertEquals(
+            listOf("sec-a", "system:channels", "system:dms"),
+            sectionKeys(
+                homeSidebarSectionOrder(
+                    sectionOrder = listOf("sec-empty", "system:pinned", "sec-a", "system:joint", "system:channels", "system:dms"),
+                    customSections = listOf(a, empty),
+                    // sidebarCustomSectionRows omits empty sections.
+                    customSectionRows = rowsFor(a),
+                    hasPinned = false,
+                    hasJointChannels = false
+                )
+            )
+        )
+    }
+
     @Test
     fun customSectionRowsFollowSectionOrderAndHideEmptySections() {
         val sections = listOf(section("sec-b", "B"), section("sec-a", "A"), section("sec-empty", "Empty"))
