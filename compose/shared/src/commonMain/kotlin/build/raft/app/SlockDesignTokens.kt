@@ -160,10 +160,13 @@ private val SpaceGroteskFamilies = setOf(
  */
 private fun slockEncodedFamilies(): Set<FontFamily> {
     val preference = SlockFontFaceState.preference
-    if (preference == FontPreference.SpaceGrotesk) return SpaceGroteskFamilies
     if (preference.sansFamily == null) return emptySet()
-    return listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
-        .mapTo(mutableSetOf()) { fontFamilyFor("sans", preference, it) }
+    val resolved =
+        listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
+            .mapTo(mutableSetOf()) { fontFamilyFor("sans", preference, it) }
+    // The type tokens resolve through fontFamilyFor() for every option, Space Grotesk included, so
+    // that set must be recognised; the legacy Space constants stay recognised for older callers.
+    return if (preference == FontPreference.SpaceGrotesk) resolved + SpaceGroteskFamilies else resolved
 }
 
 private fun isSlockEncodedFamily(fontFamily: FontFamily?): Boolean =
@@ -218,7 +221,9 @@ private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
         SpaceGroteskSemiBold -> FontWeight.SemiBold
         SpaceGroteskMedium -> FontWeight.Medium
         SpaceGroteskRegular -> FontWeight.Normal
-        else -> null
+        else ->
+            listOf(FontWeight.Bold, FontWeight.SemiBold, FontWeight.Medium, FontWeight.Normal, FontWeight.Light)
+                .firstOrNull { weight -> fontFamilyFor("sans", SlockFontFaceState.preference, weight) == this }
     }
 
 private fun renderedSpaceGroteskWeight(fontFamily: FontFamily, requestedWeight: FontWeight): FontWeight =
