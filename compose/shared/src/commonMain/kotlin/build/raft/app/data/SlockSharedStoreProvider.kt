@@ -2143,6 +2143,8 @@ internal class SlockSharedStoreProvider private constructor(
                     database,
                     now = ::defaultNowMillis,
                     logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_retention"),
+                    // Lines already start with `canonical_v2_partial_completed`.
+                    factLogger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Store"),
                 )
             val canonicalMessageV2GenerationEngine =
                 CanonicalMessageV2GenerationEngine(

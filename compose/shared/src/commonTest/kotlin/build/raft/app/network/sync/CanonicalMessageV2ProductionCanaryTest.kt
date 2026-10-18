@@ -475,28 +475,52 @@ class CanonicalMessageV2ProductionCanaryTest {
     /**
      * botiverse/slock `broadcastAndDeliver` → `emitPersistedMessageToFrontend` (thread under a public channel):
      * the inserted row (storage-only keys projected out) + senderName / senderMembershipStatus / attachments /
-     * mentions + conversationContext. No `senderDescription`, no `reactions` key. Such a frame is display
-     * only: an absent aggregate is never read as empty (an agent's description cannot be invented), so the
-     * window — which cannot hold the reply — turns discontinuous and the log names exactly what was absent.
+     * mentions + conversationContext. No `senderDescription`, no `reactions` key. Task #14a: both are in the
+     * allowed-unknown set, so the reply is written as a PARTIAL fact naming them (never as "empty") and the
+     * window stays continuous.
      */
     @Test
-    fun aRealThreadReplyWithoutSenderDescriptionAndReactionsIsNeverWrittenAndSaysWhy() = runBlocking {
+    fun aRealThreadReplyWithoutSenderDescriptionAndReactionsIsWrittenAsAPartialFact() = runBlocking {
         val fixture = Fixture(enabled = true)
         fixture.enterThread(1L)
 
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(wireReply(extraKeys = "")))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(wireReply(extraKeys = "")))
+        assertEquals(listOf("e1", "reply-2"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(
+            mapOf("reply-2" to setOf(MessageAggregateField.SenderDescription, MessageAggregateField.Reactions)),
+            fixture.store.lastIncremental?.unknownFieldsByFactId,
+        )
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(threadScope))
+        assertTrue(
+            fixture.logs.any {
+                it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread " +
+                    "partial=SenderDescription,Reactions"
+            },
+            fixture.logs.toString(),
+        )
+        assertTrue(fixture.logs.none { "discontinuous" in it }, fixture.logs.toString())
+    }
+
+    /** Twin: the same wire also without `mentions` (not in the allowed set) is never written and says why. */
+    @Test
+    fun theSameThreadReplyWireAlsoMissingMentionsIsNeverWrittenAndSaysWhy() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enterThread(1L)
+
+        val noMentions = wireReply(extraKeys = "", mentionsKey = "")
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(noMentions))
         assertEquals(0, fixture.store.incrementalCalls)
         assertEquals(listOf("e1"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
         assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
         assertTrue(
             fixture.logs.any {
                 it == "canonical_v2_canary discontinuous server=server-1 scope=thread-1 scopeKind=thread " +
-                    "reason=not_full_v2 kind=new msg=reply-2 seq=2 missing=SenderDescription,Reactions"
+                    "reason=not_full_v2 kind=new msg=reply-2 seq=2 missing=SenderDescription,Mentions,Reactions"
             },
             fixture.logs.toString(),
         )
         // The same frame through the owner's second entry: display only, and the line names it.
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(wireReply(extraKeys = "")))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(noMentions))
         assertTrue(
             fixture.logs.any {
                 it == "canonical_v2_canary skip=discontinuous server=server-1 scope=thread-1 scopeKind=thread " +
@@ -515,8 +539,9 @@ class CanonicalMessageV2ProductionCanaryTest {
         val full = wireReply(extraKeys = """"senderDescription":null,"reactions":[],""")
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(full))
         assertEquals(listOf("e1", "reply-2"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(emptyMap(), fixture.store.lastIncremental?.unknownFieldsByFactId, "a full fact has no marker")
         assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(threadScope))
-        assertTrue(fixture.logs.none { "discontinuous" in it }, fixture.logs.toString())
+        assertTrue(fixture.logs.none { "discontinuous" in it || "partial=" in it }, fixture.logs.toString())
     }
 
     /** A frame missing only one aggregate names only that one (the detail is per field, not a fixed label). */
@@ -539,10 +564,21 @@ class CanonicalMessageV2ProductionCanaryTest {
             blankName.copy(row = blankName.row.copy(senderName = "Alice"))
                 .toCanonicalMessageV2Conversion(partition, replyCount = 0),
         )
+        // Task #14a, realtime only: a missing allowed aggregate converts as unknown; an invalid scalar never does.
+        val partial = assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(
+            onlyReactions.toCanonicalMessageV2Conversion(partition, replyCount = 0, allowPartial = true),
+        )
+        assertEquals(setOf(MessageAggregateField.Reactions), partial.unknownFields)
+        assertEquals(emptyList(), partial.envelope.fact.reactions)
+        assertEquals(
+            CanonicalMessageV2EnvelopeConversion.NotFull("invalid=senderName"),
+            onlyReactions.copy(row = onlyReactions.row.copy(senderName = ""))
+                .toCanonicalMessageV2Conversion(partition, replyCount = 0, allowPartial = true),
+        )
     }
 
     /** The server's thread-reply `message:new` payload (public parent), decoded by the production decoder. */
-    private fun wireReply(extraKeys: String): CanonicalMessageFoldInput {
+    private fun wireReply(extraKeys: String, mentionsKey: String = "\"mentions\":[],"): CanonicalMessageFoldInput {
         val raw = Json.parseToJsonElement(
             """
             {"id":"reply-2","seq":2,"channelId":"thread-1","senderType":"user","senderId":"user-1",
@@ -551,7 +587,7 @@ class CanonicalMessageV2ProductionCanaryTest {
              "systemSubtype":null,"taskStatus":null,"taskNumber":null,"taskAssigneeType":null,
              "taskAssigneeId":null,"taskClaimedAt":null,"taskCompletedAt":null,
              "createdAt":"2026-10-18T06:30:54.100Z","updatedAt":"2026-10-18T06:30:54.100Z",
-             "senderName":"alice","senderMembershipStatus":"active","attachments":[],"mentions":[],
+             "senderName":"alice","senderMembershipStatus":"active","attachments":[],$mentionsKey
              $extraKeys
              "conversationContext":{"channelType":"thread","parentMessageId":"root-1",
                "parentChannelId":"channel-1","parentChannelType":"channel"}}
@@ -682,6 +718,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     private class FakeStore : CanonicalMessageV2Store {
         var snapshotCalls = 0
         var incrementalCalls = 0
+        var lastIncremental: CanonicalMessageV2IncrementalFrame? = null
 
         /** Every read the canary could make on a frame's display path. */
         var reads = 0
@@ -695,6 +732,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
         override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult {
             incrementalCalls += 1
+            lastIncremental = frame
             val previous = restored[frame.scope]?.envelopes.orEmpty().associateBy { it.fact.id }
             restored[frame.scope] = RestoredCanonicalMessageV2Scope(
                 envelopes = (previous + frame.envelopes.associateBy { it.fact.id }).values.toList(),

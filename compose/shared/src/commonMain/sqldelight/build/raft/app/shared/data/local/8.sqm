@@ -1,0 +1,4 @@
+-- Schema v9: a canonical V2 fact written from a realtime frame that omitted only allowed display
+-- aggregates (task #14a: senderDescription / reactions) names them here. NULL = every aggregate is known,
+-- which is true of every existing row (no partial fact could be written before this version).
+ALTER TABLE messageEntity ADD COLUMN unknownFields TEXT;

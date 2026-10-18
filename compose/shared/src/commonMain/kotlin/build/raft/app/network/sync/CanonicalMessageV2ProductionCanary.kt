@@ -225,12 +225,31 @@ private sealed interface CanonicalMessageV2AppendResult {
  *   any reconnect makes the window display only until the thread is entered again, a leave of the thread's OR
  *   its parent channel's room does too, and a thread under a parent the user is known not to belong to never
  *   becomes continuous (its rooms are joined asynchronously on open, like a non-member channel's).
- * - A frame without every required aggregate key ([CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES]) is
- *   display only and turns the window discontinuous (`reason=not_full_v2 … missing=…`); absent never reads
- *   as empty. No other realtime delivery of that message is fuller: a reply's `thread:updated.latestReply`
- *   is the same payload (plus display fields) and is never a write candidate, and the own-send HTTP
- *   response is the same object. So nothing is waited for: only the next enter page (REST, fully
- *   enriched) brings the fact, and until then the window must say it is incomplete.
+ * - Task #14a partial facts ("store partial, fill in when data arrives", owner decision). The server's
+ *   ordinary `message:new` omits `senderDescription` and `reactions`, and no other realtime delivery of that
+ *   message is fuller (a reply's `thread:updated.latestReply` is the same payload, the own-send HTTP response
+ *   the same object). Rules:
+ *   1. Allowed-unknown set: exactly [CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES]. A frame missing
+ *      only those is written as a PARTIAL fact; a frame missing any other required aggregate
+ *      ([CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES]) or carrying an invalid scalar stays display only
+ *      and turns the window discontinuous (`reason=not_full_v2 … missing=…`), as before.
+ *   2. Unknown ≠ empty: the fact's bytes hold neutral placeholders (no description, no reactions) and the
+ *      store keeps an explicit marker of the unknown aggregates (`messageEntity.unknownFields`, surfaced as
+ *      [RestoredCanonicalMessageV2Scope.unknownFieldsByFactId]). A durable read renders the placeholders
+ *      (description absent, no reaction chips); nothing reads them as authoritative: the durable projection
+ *      never derives a reaction's `selected` (always false, for full facts too), a reaction toggle sends an
+ *      explicit set to the server and shows the server's answer, and no reader writes a fact back.
+ *   3. Completion: every write merges with the stored fact of the same id, and a known value always beats an
+ *      unknown one ([SqlDelightCanonicalMessageV2Store]). A full source (enter / adjacent / catch-up page, a
+ *      full `message:updated`) completes the partial fact and clears the marker
+ *      (`canonical_v2_partial_completed`); a partial frame never erases a stored known value.
+ *   4. Reactions: the server announces a reaction change only as a `message:updated` carrying the message's
+ *      whole roster (no delta event reaches the durable store; `reaction_viewer:updated` is receiver-private
+ *      and not consumed here). A frame with `reactions` sets the roster; one without leaves it as stored —
+ *      known stays known, unknown stays unknown. No delta is ever applied to an unknown roster.
+ *   5. Continuity: a partial frame is a real message at a real seq, so it keeps the window continuous.
+ *   6. Top-level and reply-thread scopes share this path.
+ *   7. Lines: `written … source=incremental[ scopeKind=thread] partial=SenderDescription,Reactions`.
  */
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
 
@@ -468,10 +487,13 @@ internal class CanonicalMessageV2ProductionCanary(
             )
             return CanonicalMessageV2AppendResult.BelowWindow
         }
-        val envelope = when (val conversion = foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0)) {
-            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion.envelope
+        val converted = when (
+            val conversion = foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0, allowPartial = true)
+        ) {
+            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion
             is CanonicalMessageV2EnvelopeConversion.NotFull -> return CanonicalMessageV2AppendResult.NotFullV2(conversion.detail)
         }
+        val envelope = converted.envelope
         val advanced = cursor.advancedBy(envelope.fact.seq)
         val result = commitIncremental(
             // A `New` only ever adds: a stored fact may already be newer (edited, reacted).
@@ -481,6 +503,7 @@ internal class CanonicalMessageV2ProductionCanary(
                 advanced,
                 insertOnly = true,
                 preserveUpdatedAt = true,
+                unknownFieldsByFactId = converted.unknownFieldsByFactId(),
             ),
         ) ?: return CanonicalMessageV2AppendResult.Failed("write_failed")
         return when (result) {
@@ -488,7 +511,7 @@ internal class CanonicalMessageV2ProductionCanary(
                 stateMutex.withLock { state.cursor = generationEngine.currentCursor(scope) ?: advanced }
                 logger(
                     "canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=incremental" +
-                        scope.kindLabel(),
+                        scope.kindLabel() + converted.partialLabel(),
                 )
                 CanonicalMessageV2AppendResult.Committed
             }
@@ -502,9 +525,10 @@ internal class CanonicalMessageV2ProductionCanary(
      * Task #168: one `message:updated` on a continuous window, inside the scope writer. Explicit fields only:
      * - below the window's oldest edge → ignored (the window never claimed it);
      * - names a reply thread (`threadId`), so its reply count is unknown → discontinuous;
-     * - partial (not a full V2 node) → discontinuous;
+     * - partial beyond the allowed-unknown aggregates (task #14a) → discontinuous;
      * - its fact is not in the window although its seq is inside the window's range → discontinuous;
-     * - otherwise the stored fact is replaced (never insert-only), cursor and retention rank unchanged.
+     * - otherwise the stored fact is replaced (never insert-only), cursor and retention rank unchanged; an
+     *   aggregate the frame does not know keeps its stored value (task #14a).
      */
     private suspend fun applyUpdatedInsideWriter(
         scope: SyncScopeKey,
@@ -525,10 +549,10 @@ internal class CanonicalMessageV2ProductionCanary(
             markDiscontinuous(scope, state, "updated_thread")
             return CanonicalMessageV2CanaryOutcome.NotSelected
         }
-        val envelope = when (
-            val conversion = delivery.foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0)
+        val converted = when (
+            val conversion = delivery.foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0, allowPartial = true)
         ) {
-            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion.envelope
+            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion
             is CanonicalMessageV2EnvelopeConversion.NotFull -> {
                 markDiscontinuous(
                     scope,
@@ -551,7 +575,14 @@ internal class CanonicalMessageV2ProductionCanary(
             return CanonicalMessageV2CanaryOutcome.NotSelected
         }
         val result = commitIncremental(
-            CanonicalMessageV2IncrementalFrame(scope, listOf(envelope), cursor, insertOnly = false, preserveUpdatedAt = true),
+            CanonicalMessageV2IncrementalFrame(
+                scope,
+                listOf(converted.envelope),
+                cursor,
+                insertOnly = false,
+                preserveUpdatedAt = true,
+                unknownFieldsByFactId = converted.unknownFieldsByFactId(),
+            ),
         )
         return when (result) {
             null -> {
@@ -565,7 +596,7 @@ internal class CanonicalMessageV2ProductionCanary(
                 }
                 logger(
                     "canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=updated" +
-                        scope.kindLabel(),
+                        scope.kindLabel() + converted.partialLabel(),
                 )
                 CanonicalMessageV2CanaryOutcome.Committed
             }
@@ -1070,17 +1101,33 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
  * says WHY a window turned discontinuous. Built only on the failure path.
  */
 internal sealed interface CanonicalMessageV2EnvelopeConversion {
-    data class Converted(val envelope: CanonicalMessageEnvelopeV2) : CanonicalMessageV2EnvelopeConversion
+    /**
+     * [unknownFields] (task #14a, only with `allowPartial`): the allowed aggregates the frame did not carry;
+     * the envelope holds neutral placeholders for them. Empty = a full fact.
+     */
+    data class Converted(
+        val envelope: CanonicalMessageEnvelopeV2,
+        val unknownFields: Set<MessageAggregateField> = emptySet(),
+    ) : CanonicalMessageV2EnvelopeConversion
 
     data class NotFull(val detail: String) : CanonicalMessageV2EnvelopeConversion
 }
+
+private fun CanonicalMessageV2EnvelopeConversion.Converted.unknownFieldsByFactId(): Map<String, Set<MessageAggregateField>> =
+    if (unknownFields.isEmpty()) emptyMap() else mapOf(envelope.fact.id to unknownFields)
+
+/** ` partial=SenderDescription,Reactions` for a partial fact, nothing for a full one. */
+private fun CanonicalMessageV2EnvelopeConversion.Converted.partialLabel(): String =
+    if (unknownFields.isEmpty()) ""
+    else " partial=" + CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in unknownFields }.joinToString(",") { it.name }
 
 /**
  * The optional aggregates a realtime frame must carry (explicit wire keys) before it can become a full-V2
  * fact. An absent key means "the producer did not say", never "empty": e.g. the ordinary send pipeline's
  * `message:new` omits `senderDescription` and `reactions` (botiverse/slock `broadcastAndDeliver` builds its
  * payload from the inserted row + senderName / senderMembershipStatus / attachments / mentions only), and
- * an agent's description cannot be invented here. Such a frame is display only.
+ * an agent's description cannot be invented here. Such a frame is display only, unless every missing key is
+ * in [CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES] (task #14a: then it is a partial fact).
  */
 internal val CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES: List<MessageAggregateField> = listOf(
     MessageAggregateField.SenderName,
@@ -1092,10 +1139,26 @@ internal val CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES: List<MessageAggrega
     MessageAggregateField.ActionMetadata,
 )
 
+/**
+ * Task #14a: the only aggregates a realtime frame may omit and still be written, as a partial fact (the
+ * server's ordinary `message:new` carries neither key). One named set: widening it is a product decision.
+ */
+internal val CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES: List<MessageAggregateField> = listOf(
+    MessageAggregateField.SenderDescription,
+    MessageAggregateField.Reactions,
+)
+
+/**
+ * [allowPartial] (task #14a, realtime only): a frame whose only missing aggregates are in
+ * [CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES] converts with those as
+ * [CanonicalMessageV2EnvelopeConversion.Converted.unknownFields] (placeholders: no description, no reactions).
+ * Pages never pass it: a REST node must be full.
+ */
 internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
     partition: DurablePartitionKey,
     replyCount: Int,
     producerContextOverride: CanonicalConversationContextWire? = null,
+    allowPartial: Boolean = false,
 ): CanonicalMessageV2EnvelopeConversion {
     fun notFull(detail: String) = CanonicalMessageV2EnvelopeConversion.NotFull(detail)
     if (replyCount < 0) return notFull("invalid=replyCount")
@@ -1104,22 +1167,35 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
     } else {
         CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES
     }
-    if (!presentAggregates.containsAll(required)) {
-        val missing = required.filterNot(presentAggregates::contains).joinToString(",") { it.name }
+    val missing = required.filterNot(presentAggregates::contains)
+    val unknown = if (allowPartial && CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.containsAll(missing)) {
+        missing.toSet()
+    } else {
+        emptySet()
+    }
+    if (missing.size > unknown.size) {
         val invalid = row.invalidCanonicalV2Scalars()
-        return notFull("missing=$missing" + if (invalid.isEmpty()) "" else " invalid=${invalid.joinToString(",")}")
+        return notFull(
+            "missing=${missing.joinToString(",") { it.name }}" +
+                if (invalid.isEmpty()) "" else " invalid=${invalid.joinToString(",")}",
+        )
     }
     row.invalidCanonicalV2Scalars().takeIf { it.isNotEmpty() }?.let { return notFull("invalid=${it.joinToString(",")}") }
     val context = producerContextOverride ?: row.conversationContext ?: return notFull("invalid=conversationContext")
-    val normalizedReactions = normalizeLegacyReactionRoster(
-        context = ReactionNormalizationContext(
-            serverId = partition.serverId,
-            messageId = row.id,
-            parentScopeKey = ReactionParentScopeKey(partition.serverId, row.channelId, context.channelType),
-            authority = ReactionIngressAuthority.SharedRoom,
-        ),
-        reactions = row.reactions.map { it.toLegacyReactionRosterDto() },
-    ) as? ReactionNormalizationOutcome.Normalized ?: return notFull("invalid=reactions")
+    val normalizedReactions = if (MessageAggregateField.Reactions in unknown) {
+        emptyList()
+    } else {
+        val normalized = normalizeLegacyReactionRoster(
+            context = ReactionNormalizationContext(
+                serverId = partition.serverId,
+                messageId = row.id,
+                parentScopeKey = ReactionParentScopeKey(partition.serverId, row.channelId, context.channelType),
+                authority = ReactionIngressAuthority.SharedRoom,
+            ),
+            reactions = row.reactions.map { it.toLegacyReactionRosterDto() },
+        ) as? ReactionNormalizationOutcome.Normalized ?: return notFull("invalid=reactions")
+        normalized.value.sharedFact
+    }
     val actionMetadata = row.actionMetadata.toCanonicalActionMetadataV2OrNull()
         ?: if (row.actionMetadata != null) return notFull("invalid=actionMetadata") else null
     val fact = CanonicalMessageNodeV2(
@@ -1132,7 +1208,7 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
         createdAt = row.createdAt,
         randomId = row.randomId,
         senderName = row.senderName,
-        senderDescription = row.senderDescription,
+        senderDescription = if (MessageAggregateField.SenderDescription in unknown) null else row.senderDescription,
         senderMembershipStatus = row.senderMembershipStatus,
         mentions = row.mentions.map { CanonicalMentionV2(it.id, it.name, it.type) },
         attachments = row.attachments.map {
@@ -1146,7 +1222,7 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
                 thumbnailUrl = it.thumbnailUrl,
             )
         },
-        reactions = normalizedReactions.value.sharedFact,
+        reactions = normalizedReactions,
         actionMetadata = actionMetadata,
         replyCount = replyCount,
     )
@@ -1161,7 +1237,8 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
             ),
         )
     ) {
-        is CanonicalMessageV2NormalizationResult.Normalized -> CanonicalMessageV2EnvelopeConversion.Converted(normalized.envelope)
+        is CanonicalMessageV2NormalizationResult.Normalized ->
+            CanonicalMessageV2EnvelopeConversion.Converted(normalized.envelope, unknown)
         is CanonicalMessageV2NormalizationResult.Rejected -> notFull("invalid=normalize:${normalized.diagnostic}")
     }
 }

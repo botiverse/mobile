@@ -247,7 +247,7 @@ private data class DriverOutboxRow(
 )
 
 /**
- * Runs the exact v1->v8 N=1..25 and v2->v8 N=1..19 rollback/retry matrices against a real file-backed
+ * Runs the exact v1->v9 N=1..26 and v2->v9 N=1..20 rollback/retry matrices against a real file-backed
  * driver's automatic open path.
  * The caller supplies AndroidSqliteDriver or NativeSqliteDriver construction.
  */
@@ -256,7 +256,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
 ) {
-    for (failAt in 1..25) {
+    for (failAt in 1..26) {
         val name = "slock-durable-$platformName-$failAt-${Random.nextLong().toString().replace('-', 'n')}.db"
         cleanupDatabase(name)
         try {
@@ -288,7 +288,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(8L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
+                assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
                 assertMigratedFixtureIntact(driver, "$platformName fail-at-$failAt retry")
                 assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                 assertEquals(expectedOutbox, driver.outboxRow())
@@ -296,7 +296,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(8L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
+                assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
                 assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                 assertEquals(
                     11L,
@@ -314,10 +314,10 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
         }
     }
 
-    assertFileBackedV2ToV8RollbackRetry(platformName, openDriver, cleanupDatabase)
+    assertFileBackedV2ToV9RollbackRetry(platformName, openDriver, cleanupDatabase)
 }
 
-private fun assertFileBackedV2ToV8RollbackRetry(
+private fun assertFileBackedV2ToV9RollbackRetry(
     platformName: String,
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
@@ -335,15 +335,15 @@ private fun assertFileBackedV2ToV8RollbackRetry(
             expectedOutbox = driver.outboxRow()
         }
 
-        for (failAt in 1..19) {
-            val failure = assertFails("$platformName v2->v8 fail-at-$failAt must abort driver open") {
+        for (failAt in 1..20) {
+            val failure = assertFails("$platformName v2->v9 fail-at-$failAt must abort driver open") {
                 openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt), name).useDriver { driver ->
                     driver.scalarLong("SELECT 1")
                 }
             }
             assertTrue(
                 failure.hasCause<InjectedMigrationFailure>(),
-                "$platformName v2->v8 must expose fail-at-$failAt, got $failure",
+                "$platformName v2->v9 must expose fail-at-$failAt, got $failure",
             )
 
             openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
@@ -353,7 +353,7 @@ private fun assertFileBackedV2ToV8RollbackRetry(
                 assertEquals(expectedOutbox, driver.outboxRow())
             }
 
-            if (failAt < 19) {
+            if (failAt < 20) {
                 cleanupDatabase(name)
                 openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
                     seedV2MigrationRows(driver)
@@ -362,7 +362,7 @@ private fun assertFileBackedV2ToV8RollbackRetry(
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(8L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
+            assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
             assertMigratedFixtureIntact(driver, "$platformName v2 retry")
             assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
             assertEquals(expectedOutbox, driver.outboxRow())
@@ -370,7 +370,7 @@ private fun assertFileBackedV2ToV8RollbackRetry(
         }
 
         openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-            assertEquals(8L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
+            assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
             assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
             assertEquals(
                 Long.MAX_VALUE,
@@ -445,6 +445,7 @@ private fun assertMigratedFixtureIntact(
             "seq",
             "createdAt",
             "canonicalFactJson",
+            "unknownFields",
         ),
         driver.tableColumns("messageEntity"),
         "$label: partitioned message schema missing",
