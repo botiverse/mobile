@@ -4986,7 +4986,9 @@ internal fun ThreadMembersPageContent(
                             title = member.displayName,
                             subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
                             avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
-                            statusColor = null, sourceBadgeLabel = member.provider, clickEnabled = false,
+                            statusColor = member.lastSeenAt?.let { seen ->
+                                if (isExternalAgentSeenOnline(seen, defaultNowMillis())) SlockColor.AccentLime else SlockColor.AccentCyan
+                            }, sourceBadgeLabel = member.provider, clickEnabled = false,
                         )
                     }
                 }

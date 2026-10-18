@@ -413,7 +413,9 @@ data class ChannelExternalMemberProfile(
     val handles: List<String> = emptyList(),
     val actorKind: String? = null,
     val avatarUrl: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase()
+    val avatarLabel: String = displayName.take(1).uppercase(),
+    /** External-agent credential last use; Web considers this online for 120s. */
+    val lastSeenAt: String? = null
 )
 
 @Serializable
