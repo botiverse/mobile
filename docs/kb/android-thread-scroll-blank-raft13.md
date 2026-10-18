@@ -27,5 +27,10 @@ KuiklyUI #205 defers the reverse-layout re-anchor until the scroll **settles**: 
 
   The build matters, and this is easy to misread. **The same toggle on a build that already contains the fix no longer separates anything**: measured on `1.14.1` build 3 (`2.28.0-raft.13`), flinging with the toggle off still produced 626/754 rows of blank versus 767/647 with it on — the same magnitude, in both scroll directions. The reading was taken with the user setting forced off (`settings_standalone thread_reverse_layout_user_choice enabled=false`, then `thread_reverse_layout enabled=false gateReady=true`), so the layout really was forward.
 
-  What that pair of measurements means together: the fix removed the share of the blank that the reverse path was responsible for. What remains on a fixed build is independent of layout direction, i.e. **frame production on the Kuikly thread cannot keep up with a hard fling**, not re-anchoring. So this article explains *the part the `raft.13` fix addressed* — it is not an explanation of every fast-scroll blank.
+  The two readings are compatible with one explanation — the fix removed the reverse-path share and the residual is something else — but they are **not the same evidence**, and neither should be read as proving the other:
+
+  - the unfixed-build toggle shows the reverse path **was** the dominant cost there;
+  - the fixed-build toggle shows the remaining blank is **independent of layout direction**.
+
+  "The toggle stopped separating anything on a fixed build" is an observation that other explanations can also fit — for instance residual blank large enough to swamp an existing difference. **The fix being effective is established by the paired A/B in this article (same device, same fixture, ~700 px before versus single-frame ≤360 px after), not derived from the toggle losing its discriminating power.**
 - **Evidence grading**: the original strict criterion (a stronger synthetic fling) could not be re-run because the input-injection rig degraded mid-testing; the result was recorded as PASS at downgraded evidence level, with the un-run stricter test listed explicitly rather than silently upgraded.
