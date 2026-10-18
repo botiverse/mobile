@@ -9,6 +9,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * The #2991 transport-epoch rules on the task #168 step 3 canary: a window comes only from an enter
@@ -19,6 +21,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     private val partition =
         DurablePartitionKey("server-1", "principal-1", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private val scope = SyncScopeKey(partition, "channel-1", "channel")
+    private val threadScope = SyncScopeKey(partition, "thread-1", "thread")
 
     @Test
     fun flagOffDoesZeroV2Work() = runBlocking {
@@ -97,7 +100,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun aThreadReplyIsNeverWrittenByTheRealtimePath() = runBlocking {
+    fun aThreadReplyIsNeverWrittenIntoAChannelWindow() = runBlocking {
         val fixture = Fixture(enabled = true)
         fixture.enter(1L)
         val threadInput = fixture.input("reply-1", 2L).copy(
@@ -308,15 +311,174 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(1, fixture.store.incrementalCalls)
     }
 
+
+    // ---- task #14a: reply threads follow the channel rules on their own `thread` scope ----------------
+
+    @Test
+    fun aReplyIsWrittenToItsEnteredThreadWindow() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enterThread(1L)
+
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("r2", 2L)))
+        assertEquals(1, fixture.store.incrementalCalls)
+        val stored = fixture.store.restore(threadScope)
+        assertEquals(listOf("e1", "r2"), stored.envelopes.map { it.fact.id })
+        val context = assertIs<CanonicalConversationContextV2.Thread>(stored.envelopes.last().context)
+        assertEquals("thread-1", context.replyScope.scopeId)
+        assertEquals(TopLevelScopeRefV2.Channel("server-1", "channel-1"), context.parentTopLevelScope)
+        assertEquals("root-1", context.rootMessageRef.messageId)
+        assertEquals(2L, stored.cursor?.latestSeq)
+        assertEquals(Triple("channel", "channel-1", "root-1"), stored.cursor?.let { Triple(it.parentScopeKind, it.parentScopeId, it.rootMessageId) })
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(threadScope))
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(scope), "the parent channel is untouched")
+        assertTrue(
+            fixture.logs.any { it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread" },
+            fixture.logs.toString(),
+        )
+    }
+
+    @Test
+    fun aReplyOfAThreadNeverEnteredInThisProcessIsDisplayOnly() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enterThread(1L)
+        val readsBefore = fixture.store.reads
+
+        // thread-2 was never entered: no write, no store lookup.
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("s2", 2L, threadId = "thread-2")))
+        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(readsBefore, fixture.store.reads)
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(threadScope.copy(scopeId = "thread-2")))
+        // Twin: the identical reply in the entered thread is written.
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("s2", 2L)))
+        assertEquals(1, fixture.store.incrementalCalls)
+
+        // A new process over the same store: the thread window is only restored, so display only until entered.
+        val afterRestart = Fixture(enabled = true, store = fixture.store)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.reply("s3", 3L)))
+        assertEquals(1, fixture.store.incrementalCalls)
+        afterRestart.enterThread(3L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, afterRestart.accept(afterRestart.reply("s4", 4L)))
+        assertEquals(2, fixture.store.incrementalCalls)
+    }
+
+    @Test
+    fun aReplyNamingAnotherParentThanTheStoredOneIsNeverWritten() = runBlocking {
+        fun run(parentKind: String, parentId: String, root: String): Pair<CanonicalMessageV2CanaryOutcome, Fixture> = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.enterThread(1L)
+            fixture.accept(fixture.reply("r2", 2L, parentKind = parentKind, parentId = parentId, root = root)) to fixture
+        }
+        for ((kind, parentId, root) in listOf(
+            Triple("channel", "channel-1", "root-2"),
+            Triple("channel", "channel-2", "root-1"),
+            Triple("private", "channel-1", "root-1"),
+        )) {
+            val (outcome, fixture) = run(kind, parentId, root)
+            assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, outcome, "$kind/$parentId/$root")
+            assertEquals(0, fixture.store.incrementalCalls)
+            assertEquals(listOf("e1"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
+            assertTrue(fixture.logs.any { it.startsWith("canonical_v2_canary skip=parent_mismatch server=server-1 scope=thread-1 scopeKind=thread") }, fixture.logs.toString())
+        }
+        // Twin: identical frame naming the stored parent.
+        val (outcome, fixture) = run("channel", "channel-1", "root-1")
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, outcome)
+        assertEquals(1, fixture.store.incrementalCalls)
+    }
+
+    @Test
+    fun aReconnectMakesTheThreadWindowDisplayOnlyUntilItIsEnteredAgain() = runBlocking {
+        fun run(reconnect: Boolean): Fixture = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.connect(1L)
+            fixture.enterThread(1L)
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("r2", 2L)))
+            fixture.connect(if (reconnect) 2L else 1L)
+            fixture.accept(fixture.reply("r4", 4L))
+            fixture
+        }
+        val reconnected = run(reconnect = true)
+        assertEquals(1, reconnected.store.incrementalCalls, "r4 must not be appended after r2 (r3 may be lost)")
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, reconnected.canary.continuityOf(threadScope))
+        assertEquals(1, reconnected.store.snapshotCalls, "no background re-snapshot")
+        // Re-entered under epoch 2: the new baseline.
+        reconnected.enterThread(4L)
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, reconnected.accept(reconnected.reply("r5", 5L)))
+        assertEquals(2, reconnected.store.incrementalCalls)
+
+        // Twin: the same signal for the same epoch is not a reconnect.
+        val same = run(reconnect = false)
+        assertEquals(2, same.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, same.canary.continuityOf(threadScope))
+    }
+
+    @Test
+    fun leavingTheThreadOrItsParentRoomMakesTheThreadWindowDisplayOnly() = runBlocking {
+        fun run(leftRoom: String): Int = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.enterThread(1L)
+            fixture.canary.noteRoomLeft("server-1", leftRoom)
+            fixture.accept(fixture.reply("r2", 2L))
+            fixture.store.incrementalCalls
+        }
+        assertEquals(0, run("thread-1"))
+        assertEquals(0, run("channel-1"), "replies may come through the parent channel's room")
+        // Twin: an unrelated room.
+        assertEquals(1, run("channel-9"))
+    }
+
+    @Test
+    fun aThreadUnderANonMemberParentStaysDisplayOnly() = runBlocking {
+        fun run(nonMember: Boolean): Fixture = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.enterThread(1L, nonMember = nonMember)
+            fixture.accept(fixture.reply("r2", 2L))
+            fixture
+        }
+        val nonMember = run(nonMember = true)
+        assertEquals(0, nonMember.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, nonMember.canary.continuityOf(threadScope))
+        assertEquals(1, run(nonMember = false).store.incrementalCalls)
+    }
+
+    @Test
+    fun aReplyDuringTheThreadEnterFetchIsReplayedAfterTheSnapshotCommits() = runBlocking {
+        fun run(root: String): Fixture = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.enterThread(1L, beforeCommit = {
+                assertEquals(
+                    CanonicalMessageV2CanaryOutcome.Pending,
+                    fixture.accept(fixture.reply("r2", 2L, root = root)),
+                    "buffered for the thread's enter, displayed now",
+                )
+                assertEquals(0, fixture.store.incrementalCalls)
+            })
+            fixture
+        }
+        val replayed = run(root = "root-1")
+        assertEquals(listOf("e1", "r2"), replayed.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(1, replayed.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, replayed.canary.continuityOf(threadScope))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, replayed.accept(replayed.reply("r3", 3L)))
+
+        // Twin: the identical buffered frame naming another root is never replayed into the thread.
+        val foreign = run(root = "root-2")
+        assertEquals(listOf("e1"), foreign.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(0, foreign.store.incrementalCalls)
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, foreign.canary.continuityOf(threadScope))
+    }
+
     private inner class Fixture(var enabled: Boolean = true, val store: FakeStore = FakeStore()) {
         private val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
+        val logs = mutableListOf<String>()
         val canary = CanonicalMessageV2ProductionCanary(
             isEnabledForServer = { this.enabled },
             generationEngine = engine,
+            logger = { logs += it },
         )
 
         suspend fun resetPartition() = engine.clearPartition(partition)
@@ -348,6 +510,56 @@ class CanonicalMessageV2ProductionCanaryTest {
                 assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applySnapshot(frame))
                 canary.onEnterCommitted(baseline, frame)
             }
+        }
+
+        /**
+         * Task #14a: the user opens reply thread [threadId] (root `root-1` in `channel-1`): its enter page (one
+         * reply at [seq]) commits as the thread scope's baseline under the server-confirmed parent.
+         */
+        suspend fun enterThread(
+            seq: Long,
+            threadId: String = "thread-1",
+            nonMember: Boolean = false,
+            beforeCommit: suspend () -> Unit = {},
+        ) {
+            if (!connected) connect(1L)
+            val target = SyncScopeKey(partition, threadId, "thread")
+            val envelope = requireNotNull(reply("e$seq", seq, threadId).toCanonicalMessageV2Envelope(partition, replyCount = 0))
+            val frame = CanonicalMessageV2SnapshotFrame(
+                target,
+                listOf(envelope),
+                cursor(seq).copy(parentScopeKind = "channel", parentScopeId = "channel-1", rootMessageId = "root-1"),
+            )
+            val baseline = requireNotNull(
+                canary.beginEnterBaseline(partition, threadId, nonMember = nonMember, replyParentScopeId = "channel-1"),
+            )
+            beforeCommit()
+            engine.withScopeWriter(target) {
+                assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applySnapshot(frame))
+                canary.onEnterCommitted(baseline, frame)
+            }
+        }
+
+        /** A reply's `message:new`: it lives in its thread channel and names its parent in the context. */
+        fun reply(
+            id: String,
+            seq: Long,
+            threadId: String = "thread-1",
+            parentKind: String = "channel",
+            parentId: String = "channel-1",
+            root: String = "root-1",
+        ): CanonicalMessageFoldInput {
+            val base = input(id, seq, channelId = threadId)
+            return base.copy(
+                row = base.row.copy(
+                    conversationContext = CanonicalConversationContextWire(
+                        channelType = "thread",
+                        parentChannelId = parentId,
+                        parentChannelType = parentKind,
+                        parentMessageId = root,
+                    ),
+                ),
+            )
         }
 
         fun input(

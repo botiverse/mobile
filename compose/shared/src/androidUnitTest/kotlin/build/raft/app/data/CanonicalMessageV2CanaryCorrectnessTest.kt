@@ -11,6 +11,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CommitResult
+import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
@@ -28,6 +29,7 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.SyncScopeKey
+import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +62,9 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     private val channelA = SyncScopeKey(partition, "channel-a", "channel")
     private val channelB = SyncScopeKey(partition, "channel-b", "channel")
     private val channelC = SyncScopeKey(partition, "channel-c", "channel")
+    private val thread1 = SyncScopeKey(partition, "thread-1", "thread")
+    private val thread2 = SyncScopeKey(partition, "thread-2", "thread")
+    private val thread1Parent = ThreadDurableReplyParent(parentChannelId = "channel-a", rootMessageId = "root-1")
 
     // ---- T1 every windowed channel ------------------------------------------------------------------
 
@@ -817,6 +822,75 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         assertEquals(false, over.hasLoadedOldest, "the window no longer reaches the beginning")
     }
 
+    // ---- task #14a: realtime replies of an entered reply thread ---------------------------------------
+
+    @Test
+    fun t10ARealtimeReplyIsWrittenToTheEnteredThreadAndReadBackOffline() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.thread(thread2, parentChannelId = "channel-a", rootMessageId = "root-2")
+            rig.server.has(thread1, "r1" to 1L)
+            rig.enterThread(thread1, thread1Parent)
+            val loads = rig.server.pageLoads()
+
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L)))
+            // Twin: the identical kind of reply in a thread never entered stays off disk.
+            assertTrue(rig.deliver(rig.replyNew(thread2, "s2", 2L, rootMessageId = "root-2")))
+
+            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1))
+            assertEquals(emptySet(), rig.storedIds(thread2))
+            assertEquals(1, rig.store.incrementalWrites)
+            assertEquals(loads, rig.server.pageLoads(), "a realtime append never loads")
+            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
+                .readReplyThread(partition, "thread-1", thread1Parent)
+            assertEquals(listOf("r1", "r2"), offline?.envelopes?.map { it.fact.id }, "the durable read serves the reply")
+            assertEquals(2L, offline?.cursor?.latestSeq)
+            assertTrue(
+                rig.logs.any { it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread" },
+                rig.logs.toString(),
+            )
+        }
+    }
+
+    @Test
+    fun t10AReplyDuringTheThreadEnterFetchSurvivesTheEnterCommit() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            val hold = rig.server.holdNextPage()
+            val entering = async { rig.enterThread(thread1, thread1Parent) }
+            hold.read.await()
+            val r2 = rig.replyNew(thread1, "r2", 2L)
+            assertTrue(rig.deliver(r2))
+            assertEquals(r2, rig.projected.last(), "displayed while the page loads")
+            hold.release.complete(Unit)
+            entering.await()
+
+            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1), "r2 was replayed after the thread's enter commit")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(thread1))
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r3", 3L)))
+            assertEquals(setOf("r1", "r2", "r3"), rig.storedIds(thread1), "no hole")
+        }
+    }
+
+    @Test
+    fun t10AReplyNamingAnotherRootThanTheStoredParentIsNotWritten() {
+        fun run(rootMessageId: String): Pair<Set<String>, CanonicalMessageV2ScopeContinuity> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.enterThread(thread1, thread1Parent)
+                assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L, rootMessageId = rootMessageId)), "displayed either way")
+                rig.storedIds(thread1) to rig.canary.continuityOf(thread1)
+            }
+        }
+        assertEquals(setOf("r1") to CanonicalMessageV2ScopeContinuity.Discontinuous, run("root-9"))
+        assertEquals(setOf("r1", "r2") to CanonicalMessageV2ScopeContinuity.Continuous, run("root-1"))
+    }
+
     // ---- rig ------------------------------------------------------------------------------------------
 
     /** Every hold-based test is bounded: a regression that blocks on a held page fails instead of hanging. */
@@ -852,6 +926,13 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         fun remove(scope: SyncScopeKey, id: String) = synchronized(nodes) { nodes[scope.scopeId]?.remove(id) }
 
         fun holdNextPage(failing: Boolean = false): PageHold = PageHold(failing).also { nextHold = it }
+
+        /** Task #14a: `channels/{thread}` answers a reply thread under this parent. */
+        private val threads = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+        fun thread(scope: SyncScopeKey, parentChannelId: String, rootMessageId: String) {
+            threads[scope.scopeId] = parentChannelId to rootMessageId
+        }
 
         fun pageLoads(): Int = paths.count { it.startsWith("messages/channel/") }
 
@@ -889,6 +970,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             }
             if (path.endsWith("/threads")) return HomeNetworkResponse(200, "{}")
             val channelId = path.removePrefix("channels/")
+            threads[channelId]?.let { (parentChannelId, rootMessageId) ->
+                return HomeNetworkResponse(
+                    200,
+                    """{"id":"$channelId","type":"thread","parentChannelId":"$parentChannelId","parentMessageId":"$rootMessageId"}""",
+                )
+            }
             return HomeNetworkResponse(200, """{"id":"$channelId","type":"channel"}""")
         }
 
@@ -954,6 +1041,12 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             loader.loadOnEnter(partition, scope.scopeId) { true }
         }
 
+        /** Task #14a: the user opens reply thread [scope]: the real reply-thread enter loader against [server]. */
+        suspend fun enterThread(scope: SyncScopeKey, parent: ThreadDurableReplyParent) {
+            if (!connected) connect(1L)
+            loader.loadReplyThreadOnEnter(partition, scope.scopeId, parent) { true }
+        }
+
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
@@ -1013,6 +1106,28 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             return messageNew
         }
 
+        /**
+         * Task #14a: a reply's real `message:new` wire JSON: `channelId` is the thread channel, the context names
+         * the thread's parent channel and root message.
+         */
+        fun replyNew(
+            scope: SyncScopeKey,
+            id: String,
+            seq: Long,
+            parentChannelId: String = "channel-a",
+            rootMessageId: String = "root-1",
+        ): MessageNew {
+            val context = """{ "channelType": "thread", "parentChannelId": "$parentChannelId", """ +
+                """"parentChannelType": "channel", "parentMessageId": "$rootMessageId" }"""
+            val event = mapper.map(
+                RealtimeSocketEvents.MessageNew,
+                wire(scope, id, seq, "body-$id", threadId = null, partial = false, conversationContext = context),
+            )
+            val messageNew = assertIs<MessageNew>(event)
+            requireNotNull(messageNew.decodedCanonical) { "the wire frame must decode canonically" }
+            return messageNew
+        }
+
         /** Real `message:updated` wire JSON; [partial] drops `reactions` (a content-only update). */
         fun messageUpdated(
             scope: SyncScopeKey,
@@ -1028,7 +1143,15 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             return updated
         }
 
-        private fun wire(scope: SyncScopeKey, id: String, seq: Long, content: String, threadId: String?, partial: Boolean): String {
+        private fun wire(
+            scope: SyncScopeKey,
+            id: String,
+            seq: Long,
+            content: String,
+            threadId: String?,
+            partial: Boolean,
+            conversationContext: String = """{ "channelType": "channel" }""",
+        ): String {
             val thread = threadId?.let { "\"$it\"" } ?: "null"
             val reactions = if (partial) "" else "\"reactions\": [],"
             return """
@@ -1041,7 +1164,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                   "createdAt": "2026-07-17T00:00:00.000Z", "updatedAt": "2026-07-17T00:00:00.000Z",
                   "senderName": "Alice", "senderDescription": null, "senderMembershipStatus": null,
                   "mentions": [], "attachments": [], $reactions
-                  "conversationContext": { "channelType": "channel" }
+                  "conversationContext": $conversationContext
                 }
             """.trimIndent()
         }

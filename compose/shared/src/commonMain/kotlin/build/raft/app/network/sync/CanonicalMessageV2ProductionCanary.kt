@@ -102,6 +102,11 @@ class CanonicalMessageV2EnterBaseline internal constructor(
     internal val roomsJoinedAtRequest: Boolean,
     /** `enter` or `catch_up` (diagnostics only). */
     internal val source: String = "enter",
+    /**
+     * Task #14a: the parent channel of a reply-thread enter (`null` for a top-level channel). Its room leaves
+     * count against the thread window too, and the committed cursor must name it.
+     */
+    internal val replyParentScopeId: SyncScopeId? = null,
 ) {
     internal val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
     internal var overflowed = false
@@ -123,8 +128,13 @@ private class CanonicalMessageV2CanaryScopeState(
     var cursor: PersistedCursor?,
     /** The connection the baseline is known to be continuous with (the enter request's epoch). */
     val committedTransportEpoch: Long?,
-    /** [CanonicalMessageV2ProductionCanary.noteRoomLeft] count of this room when the baseline was requested. */
+    /**
+     * [CanonicalMessageV2ProductionCanary.noteRoomLeft] count of this room (plus, for a reply thread, its
+     * parent channel's room) when the baseline was requested.
+     */
     val roomLeaveCountAtBaseline: Long,
+    /** Task #14a: the parent channel of a `thread` scope (its room leaves count too); `null` for top-level. */
+    val replyParentScopeId: SyncScopeId? = null,
 ) {
     /**
      * Task #168: the window may miss frames from here on (epoch change, room leave, external commit, failed
@@ -206,6 +216,15 @@ private sealed interface CanonicalMessageV2AppendResult {
  * - The enter (and, for the viewed channel, the gap catch-up: [beginCatchUpBaseline]) makes a window
  *   continuous only for a member channel whose connection has already seen `rooms:joined`
  *   ([noteRoomsJoined], per epoch): before it, the page may predate the server's connect-time room join.
+ * - Task #14a: a reply thread's `thread` scope follows exactly the same rules. A reply's `message:new` names
+ *   the thread channel as its `channelId` and the parent in its `conversationContext`, so it maps to
+ *   `(thread channel id, thread)`; only a window its reply-thread enter committed in this process is written,
+ *   and only when the frame's parent (kind, channel, root) equals the parent the committed cursor stores (the
+ *   server-confirmed one): any other parent is never written and makes the window discontinuous. No
+ *   `rooms:joined`-style signal exists for thread rooms, so the conservative channel rules apply as they are:
+ *   any reconnect makes the window display only until the thread is entered again, a leave of the thread's OR
+ *   its parent channel's room does too, and a thread under a parent the user is known not to belong to never
+ *   becomes continuous (its rooms are joined asynchronously on open, like a non-member channel's).
  */
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
 
@@ -273,13 +292,14 @@ internal class CanonicalMessageV2ProductionCanary(
     private fun routeLocked(partition: DurablePartitionKey, delivery: CanonicalMessageV2Delivery): CanonicalMessageV2Route {
         val input = delivery.foldInput
         val explicit = input.v2ScopeOrNull(partition)
-        if (explicit == null && input.row.conversationContext != null) {
-            // A reply (thread scopes are written by their own enter / paging paths) or an unsupported kind.
+        val context = input.row.conversationContext
+        if (explicit == null && context != null && context.channelType != REPLY_THREAD_SCOPE_KIND) {
+            // An unsupported kind (or a top-level context naming a parent).
             return CanonicalMessageV2Route.None
         }
         val scope = explicit ?: run {
-            // No producer context: the frame names only its channel id. It can never be written, but a
-            // window of that channel id must not silently miss it.
+            // No producer context (or a reply context without its parent): the frame names only its channel
+            // id. It can never be written, but a window of that channel id must not silently miss it.
             stateByScope.keys.singleOrNull { it.partition == partition && it.scopeId == input.row.channelId }
         }
         if (!isEnabledForServer(partition.serverId)) {
@@ -331,6 +351,14 @@ internal class CanonicalMessageV2ProductionCanary(
             is CanonicalMessageV2Plan.Write -> plan.state to plan.cursor
         }
         val input = delivery.foldInput
+        replyParentMismatchOrNull(scope, cursor, input)?.let { mismatch ->
+            logger(
+                "canonical_v2_canary skip=parent_mismatch server=${scope.serverId} scope=${scope.scopeId}" +
+                    "${scope.kindLabel()} $mismatch",
+            )
+            markDiscontinuous(scope, state, "parent_mismatch")
+            return CanonicalMessageV2CanaryOutcome.NotSelected
+        }
         return when (input.kind) {
             CanonicalMessageFoldKind.New -> {
                 when (val result = appendNewInsideWriter(scope, state, cursor, input)) {
@@ -383,7 +411,10 @@ internal class CanonicalMessageV2ProductionCanary(
             )
             return CanonicalMessageV2Plan.DisplayOnly
         }
-        if (!state.discontinuous && roomLeaveCount(scope.serverId, scope.scopeId) != state.roomLeaveCountAtBaseline) {
+        if (
+            !state.discontinuous &&
+            roomLeaveCount(scope.serverId, scope.scopeId, state.replyParentScopeId) != state.roomLeaveCountAtBaseline
+        ) {
             markDiscontinuousLocked(scope, state, "room_left")
         }
         if (!state.discontinuous) {
@@ -444,7 +475,10 @@ internal class CanonicalMessageV2ProductionCanary(
         return when (result) {
             CanonicalMessageV2CommitResult.Committed -> {
                 stateMutex.withLock { state.cursor = generationEngine.currentCursor(scope) ?: advanced }
-                logger("canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=incremental")
+                logger(
+                    "canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=incremental" +
+                        scope.kindLabel(),
+                )
                 CanonicalMessageV2AppendResult.Committed
             }
             is CanonicalMessageV2CommitResult.BaselineRequired -> CanonicalMessageV2AppendResult.BaselineRequired
@@ -510,7 +544,10 @@ internal class CanonicalMessageV2ProductionCanary(
                     state.cursor = generationEngine.currentCursor(scope) ?: cursor
                     state.recordCommitted(delivery)
                 }
-                logger("canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=updated")
+                logger(
+                    "canonical_v2_canary written server=${scope.serverId} scope=${scope.scopeId} source=updated" +
+                        scope.kindLabel(),
+                )
                 CanonicalMessageV2CanaryOutcome.Committed
             }
             is CanonicalMessageV2CommitResult.BaselineRequired -> {
@@ -584,18 +621,26 @@ internal class CanonicalMessageV2ProductionCanary(
     private fun roomLeaveCount(serverId: String, roomId: String): Long =
         synchronized(roomLeaveLock) { roomLeaveCountByRoom[serverId to roomId] ?: 0L }
 
+    /** Task #14a: a reply thread's window also depends on its parent channel's room (replies may come through it). */
+    private fun roomLeaveCount(serverId: String, roomId: String, replyParentScopeId: SyncScopeId?): Long =
+        roomLeaveCount(serverId, roomId) + (replyParentScopeId?.let { roomLeaveCount(serverId, it) } ?: 0L)
+
     /**
      * Task #168 hole A: an enter snapshot of [scopeId] is about to be requested. MUST be called before the
      * fetch. Records the request epoch; from now until [onEnterCommitted] / [abandonEnterBaseline], frames of
      * that channel are displayed and buffered instead of written. `null` = one is already in flight (the
      * caller then commits as a plain external commit).
+     *
+     * Task #14a: a reply-thread enter passes the thread channel as [scopeId] and its server-named parent
+     * channel as [replyParentScopeId] (`null` for a top-level channel).
      */
     suspend fun beginEnterBaseline(
         partition: DurablePartitionKey,
         scopeId: SyncScopeId,
         nonMember: Boolean,
+        replyParentScopeId: SyncScopeId? = null,
     ): CanonicalMessageV2EnterBaseline? = stateMutex.withLock {
-        registerBaselineLocked(partition, scopeId, nonMember, source = "enter")
+        registerBaselineLocked(partition, scopeId, nonMember, source = "enter", replyParentScopeId = replyParentScopeId)
     }
 
     /**
@@ -632,6 +677,7 @@ internal class CanonicalMessageV2ProductionCanary(
         scopeId: SyncScopeId,
         nonMember: Boolean,
         source: String,
+        replyParentScopeId: SyncScopeId? = null,
     ): CanonicalMessageV2EnterBaseline? {
         val key = partition to scopeId
         if (enterBaselineByChannel[key]?.closed == false) return null
@@ -640,14 +686,16 @@ internal class CanonicalMessageV2ProductionCanary(
             partition = partition,
             scopeId = scopeId,
             epochAtRequest = epoch,
-            roomLeaveCountAtRequest = roomLeaveCount(partition.serverId, scopeId),
+            roomLeaveCountAtRequest = roomLeaveCount(partition.serverId, scopeId, replyParentScopeId),
             nonMemberAtRequest = nonMember,
             roomsJoinedAtRequest = roomsJoinedLocked(partition, epoch),
             source = source,
+            replyParentScopeId = replyParentScopeId,
         )
         enterBaselineByChannel[key] = baseline
+        val kindLabel = replyParentScopeId?.let { " scopeKind=$REPLY_THREAD_SCOPE_KIND parent=$it" }.orEmpty()
         logger(
-            "canonical_v2_canary $source=registered server=${partition.serverId} scope=$scopeId " +
+            "canonical_v2_canary $source=registered server=${partition.serverId} scope=$scopeId$kindLabel " +
                 "epochAtRequest=$epoch nonMember=$nonMember roomsJoined=${baseline.roomsJoinedAtRequest}",
         )
         return baseline
@@ -660,7 +708,9 @@ internal class CanonicalMessageV2ProductionCanary(
      * by #3007's rules. It stays discontinuous instead when the user is not a member of the channel (the
      * server joins its room asynchronously on open, so the page may miss messages never pushed), the request's
      * connection had not seen `rooms:joined` yet (same race for member rooms right after a reconnect), the room was
-     * left meanwhile, another writer committed meanwhile, or the buffer overflowed.
+     * left meanwhile, another writer committed meanwhile, or the buffer overflowed. Task #14a: a reply thread's
+     * window also stays discontinuous when its committed cursor does not name the baseline's parent channel, or
+     * the baseline was registered for the other scope family.
      */
     suspend fun onEnterCommitted(
         baseline: CanonicalMessageV2EnterBaseline,
@@ -678,16 +728,21 @@ internal class CanonicalMessageV2ProductionCanary(
                 stateByScope.remove(scope)
                 return@withContext
             }
+            val replyThread = scope.scopeKind == REPLY_THREAD_SCOPE_KIND
             val state = CanonicalMessageV2CanaryScopeState(
                 cursor = cursor,
                 committedTransportEpoch = baseline.epochAtRequest,
                 roomLeaveCountAtBaseline = baseline.roomLeaveCountAtRequest,
+                replyParentScopeId = baseline.replyParentScopeId,
             )
             stateByScope[scope] = state
             val reason = when {
+                replyThread != (baseline.replyParentScopeId != null) -> "scope_family_mismatch"
+                replyThread && cursor.parentScopeId != baseline.replyParentScopeId -> "parent_mismatch"
                 baseline.nonMemberAtRequest || nonMemberAtCommit -> "non_member"
                 !baseline.roomsJoinedAtRequest -> "rooms_not_joined"
-                roomLeaveCount(scope.serverId, scope.scopeId) != baseline.roomLeaveCountAtRequest -> "room_left"
+                roomLeaveCount(scope.serverId, scope.scopeId, baseline.replyParentScopeId) !=
+                    baseline.roomLeaveCountAtRequest -> "room_left"
                 baseline.superseded -> "external_commit"
                 baseline.overflowed -> "buffer_overflow"
                 else -> null
@@ -696,7 +751,7 @@ internal class CanonicalMessageV2ProductionCanary(
             Triple(state, baseline.buffered.toList(), reason)
         }
         logger(
-            "canonical_v2_canary ${baseline.source}=committed server=${scope.serverId} scope=${scope.scopeId} " +
+            "canonical_v2_canary ${baseline.source}=committed server=${scope.serverId} scope=${scope.scopeId}${scope.kindLabel()} " +
                 "epoch=${baseline.epochAtRequest} buffered=${buffered.size} " +
                 (reason?.let { "continuity=discontinuous reason=$it" } ?: "continuity=continuous"),
         )
@@ -771,6 +826,13 @@ internal class CanonicalMessageV2ProductionCanary(
             if (stateMutex.withLock { state.isAlreadyCommitted(delivery) }) continue
             val seq = input.row.seq
             val cursor = stateMutex.withLock { state.cursor } ?: return discontinuous("no_window")
+            replyParentMismatchOrNull(scope, cursor, input)?.let { mismatch ->
+                logger(
+                    "canonical_v2_canary skip=parent_mismatch server=${scope.serverId} scope=${scope.scopeId}" +
+                        "${scope.kindLabel()} $mismatch replay=true",
+                )
+                return discontinuous("parent_mismatch")
+            }
             if (snapshotLatestSeq != null && seq <= snapshotLatestSeq) {
                 if (input.row.id in snapshotFactIds) {
                     // The snapshot already holds it: never written twice.
@@ -814,7 +876,7 @@ internal class CanonicalMessageV2ProductionCanary(
      * The canary did not produce that window and nothing proves its continuity with the realtime stream, so
      * the scope is marked discontinuous (#3008): display only until the next enter commit. Nothing is
      * rescheduled (task #168: no background snapshot). An enter in flight for the channel cannot become
-     * continuous either. No-op for a scope without a state (thread scopes, never-opened channels).
+     * continuous either. No-op for a scope without a state (never-opened channels / threads).
      *
      * Locks: only the canary's leaf state mutex. Nothing of the realtime grant / authority registry is touched.
      */
@@ -874,7 +936,10 @@ internal class CanonicalMessageV2ProductionCanary(
     ) {
         if (stateByScope[scope] !== state || state.discontinuous) return
         state.discontinuous = true
-        logger("canonical_v2_canary discontinuous server=${scope.serverId} scope=${scope.scopeId} reason=$reason")
+        logger(
+            "canonical_v2_canary discontinuous server=${scope.serverId} scope=${scope.scopeId}${scope.kindLabel()} " +
+                "reason=$reason",
+        )
     }
 
     /**
@@ -914,9 +979,45 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 }
 
+private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
+
+/** ` scopeKind=thread` for a reply-thread scope, nothing for a top-level one (log lines keep their shape). */
+private fun SyncScopeKey.kindLabel(): String =
+    if (scopeKind == REPLY_THREAD_SCOPE_KIND) " scopeKind=$REPLY_THREAD_SCOPE_KIND" else ""
+
+/**
+ * Task #14a: for a `thread` scope, why [input] may not be written under [cursor] (`null` = it may): the
+ * frame's parent kind / channel / root must equal the parent the committed cursor stores — the one the
+ * server confirmed when the thread was entered. A realtime frame never re-parents a stored thread.
+ */
+private fun replyParentMismatchOrNull(
+    scope: SyncScopeKey,
+    cursor: PersistedCursor,
+    input: CanonicalMessageFoldInput,
+): String? {
+    if (scope.scopeKind != REPLY_THREAD_SCOPE_KIND) return null
+    val context = input.row.conversationContext
+    val frame = Triple(context?.parentChannelType, context?.parentChannelId, context?.parentMessageId)
+    val stored = Triple(cursor.parentScopeKind, cursor.parentScopeId, cursor.rootMessageId)
+    if (stored.first != null && stored.second != null && stored.third != null && frame == stored) return null
+    return "frameParent=${frame.first}/${frame.second}/${frame.third} " +
+        "storedParent=${stored.first}/${stored.second}/${stored.third}"
+}
+
 private fun CanonicalMessageFoldInput.v2ScopeOrNull(partition: DurablePartitionKey): SyncScopeKey? {
     val context = row.conversationContext ?: return null
     val kind = context.channelType
+    if (kind == REPLY_THREAD_SCOPE_KIND) {
+        // Task #14a: a reply lives in its thread channel (`channelId`); its parent is checked against the
+        // stored window's, never taken from here.
+        val parentKind = context.parentChannelType
+        if (
+            context.parentChannelId.isNullOrBlank() ||
+            parentKind == null || parentKind !in setOf("channel", "private", "dm", "joint") ||
+            context.parentMessageId.isNullOrBlank()
+        ) return null
+        return SyncScopeKey(partition = partition, scopeId = row.channelId, scopeKind = REPLY_THREAD_SCOPE_KIND)
+    }
     if (kind !in setOf("channel", "private", "dm", "joint")) return null
     if (
         context.parentChannelId != null ||

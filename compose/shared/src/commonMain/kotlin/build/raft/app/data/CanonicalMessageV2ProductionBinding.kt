@@ -72,7 +72,7 @@ internal fun interface CanonicalMessageV2OwnerGateway {
 /**
  * The realtime half of the durable canary (task #168 step 3): hands every frame to the canary with the
  * connection that delivered it. Never touches the network — a window is only ever created by the enter
- * snapshot, and a realtime frame never requests one.
+ * snapshot (a channel's, or since task #14a a reply thread's), and a realtime frame never requests one.
  */
 internal class ProviderBackedCanonicalMessageV2OwnerGateway(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -430,8 +430,10 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * writer, [CanonicalMessageV2ProductionCanary.onEnterCommitted] replays them and makes the window
  * continuous — unless the user is not a member of the channel ([isKnownNonMember]: the server joins a
  * non-member's room asynchronously on open, so the page may miss messages that are never pushed either).
- * Any path that does not commit abandons the baseline. A reply-thread enter keeps #3008's
- * [CanonicalMessageV2ProductionCanary.onExternalCommit].
+ * Any path that does not commit abandons the baseline. Task #14a: a reply-thread enter registers the same
+ * baseline for its thread channel, naming the server-confirmed parent channel, so the thread's realtime replies
+ * are buffered during the fetch and then written to its `thread` scope; it is known-non-member when the
+ * directory says so for the thread OR its parent channel.
  */
 internal class CanonicalMessageV2EnteredScopeLoader(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -452,7 +454,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
         stillCurrent: () -> Boolean,
-    ) = loadAndCommit(partition, channelId, replyThread = false, stillCurrent) {
+    ) = loadAndCommit(partition, channelId, replyParentScopeId = null, stillCurrent) {
         fetcher.fetch(partition, channelId, expectedScopeKind = null)
     }
 
@@ -467,7 +469,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         threadChannelId: SyncScopeId,
         replyParent: ThreadDurableReplyParent,
         stillCurrent: () -> Boolean,
-    ) = loadAndCommit(partition, threadChannelId, replyThread = true, stillCurrent) {
+    ) = loadAndCommit(partition, threadChannelId, replyParentScopeId = replyParent.parentChannelId, stillCurrent) {
         if (replyParent.parentChannelId == threadChannelId) {
             CanonicalMessageV2SnapshotLoadResult.Unavailable("canonical_v2_thread_parent_mismatch")
         } else {
@@ -478,11 +480,13 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     private suspend fun loadAndCommit(
         partition: DurablePartitionKey,
         scopeId: SyncScopeId,
-        replyThread: Boolean,
+        /** The route's parent channel of a reply thread; `null` for a top-level channel. */
+        replyParentScopeId: SyncScopeId?,
         stillCurrent: () -> Boolean,
         fetch: suspend () -> CanonicalMessageV2SnapshotLoadResult,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        val replyThread = replyParentScopeId != null
         if (scopeId.isBlank() || scopeId != scopeId.trim()) return
         if (!isEnabledForServer(partition.serverId)) return
         fun log(outcome: String) = log(partition, scopeId, replyThread, outcome)
@@ -492,13 +496,11 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             log("in_flight")
             return
         }
-        // Registered before the fetch (hole A); a reply thread is not a realtime canary scope.
+        // Registered before the fetch (hole A), for a reply thread too (task #14a).
+        fun nonMember() = isKnownNonMember(partition.serverId, scopeId) ||
+            (replyParentScopeId != null && isKnownNonMember(partition.serverId, replyParentScopeId))
         val baseline: CanonicalMessageV2EnterBaseline? =
-            if (replyThread) {
-                null
-            } else {
-                canary.beginEnterBaseline(partition, scopeId, nonMember = isKnownNonMember(partition.serverId, scopeId))
-            }
+            canary.beginEnterBaseline(partition, scopeId, nonMember = nonMember(), replyParentScopeId = replyParentScopeId)
         try {
             val expectedGeneration = generationEngine.partitionGeneration(partition)
             val frame = when (val fetched = fetch()) {
@@ -530,12 +532,10 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     val result = generationEngine.applySnapshot(frame, expectedGeneration)
                     log(result.wireOutcome(frame.envelopes.size))
                     if (result == CanonicalMessageV2CommitResult.Committed) {
-                        if (baseline != null && frame.scope.scopeKind in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS) {
-                            canary.onEnterCommitted(
-                                baseline,
-                                frame,
-                                nonMemberAtCommit = isKnownNonMember(partition.serverId, scopeId),
-                            )
+                        val expectedKinds =
+                            if (replyThread) CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS else CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
+                        if (baseline != null && frame.scope.scopeKind in expectedKinds) {
+                            canary.onEnterCommitted(baseline, frame, nonMemberAtCommit = nonMember())
                         } else {
                             canary.onExternalCommit(frame.scope)
                         }
