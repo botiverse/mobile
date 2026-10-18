@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-17 11:35:44 UTC
-Latest run: 0a9cefbb-20261017111106
-Latest commit: 0a9cefbb-20261017111106
-Commit subject: ci(ios): use concrete simulator UDID destination to avoid double Kotlin/Native compile (#3058)
+Generated: 2026-10-18 06:36:43 UTC
+Latest run: 2c1bc667-20261018063524
+Latest commit: 2c1bc667-20261018063524
+Commit subject: feat(ios): wire iPad multi-scene host for document-shell server switch (task #473) (#3085)
 Providers: react vs android
 Summary: total 99, same 0, pass 0, basic-pass 1, different 90, missing 8
-AI analysis: ready 17 / total 99, pending 82
+AI analysis: ready 5 / total 99, pending 94
 Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -115,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 2c1bc667-20261018063524: react vs android, total 99, pass 0, basic-pass 1, different 90, matrix runs/2c1bc667-20261018063524/component-matrix.json, page runs/2c1bc667-20261018063524/
 - 0a9cefbb-20261017111106: react vs android, total 99, pass 0, basic-pass 1, different 90, matrix runs/0a9cefbb-20261017111106/component-matrix.json, page runs/0a9cefbb-20261017111106/
 - d78af8ed-20260911220901: react vs android, total 99, pass 0, basic-pass 0, different 91, matrix runs/d78af8ed-20260911220901/component-matrix.json, page runs/d78af8ed-20260911220901/
 - 18dff553-20260910220915: react vs android, total 99, pass 0, basic-pass 0, different 91, matrix runs/18dff553-20260910220915/component-matrix.json, page runs/18dff553-20260910220915/
