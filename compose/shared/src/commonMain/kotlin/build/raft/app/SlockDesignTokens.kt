@@ -421,8 +421,10 @@ internal object SlockType {
     // re-resolves against SlockFontFaceState.preference on every read, so a change reaches them all.
     val PageTitle: TextStyle
         get() = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
+    // raft-ui group/section labels are source case at `tracking-normal`; the 1.2sp
+    // tracking only ever served the retired ALL-CAPS brutal labels.
     val SectionLabel: TextStyle
-        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
+        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 0.sp)
     val Body: TextStyle
         get() = slockTextStyle(FontWeight.Normal, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
     val Caption: TextStyle
