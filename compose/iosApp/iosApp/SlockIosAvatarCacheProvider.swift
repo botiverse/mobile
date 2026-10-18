@@ -1355,10 +1355,14 @@ final class SlockIosAvatarDurableStore: NSObject, SlockAvatarMountedNativeProvid
 final class SlockIosAvatarCacheHost: NSObject {
     static let shared = SlockIosAvatarCacheHost()
     let store: SlockIosAvatarDurableStore
+    /// Durable avatar store root. Settings → Storage measures it in the image-cache row; the
+    /// bytes are cleared only through the shared avatar runtime (`store.clearAll`), never by path.
+    let rootPath: String
 
     override private init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let root = support.appendingPathComponent("Raft/AvatarDurableV1", isDirectory: true)
+        rootPath = root.path
         store = SlockIosAvatarDurableStore(rootURL: root)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
