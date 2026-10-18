@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T06:36:43.927Z",
+  "generatedAt": "2026-10-18T06:59:43.234Z",
   "runId": "2c1bc667-20261018063524",
   "cases": [
     {
@@ -27,7 +27,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.405Z",
+        "generatedAt": "2026-10-18T06:59:38.582Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -113,7 +113,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.405Z",
+            "generatedAt": "2026-10-18T06:59:38.582Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -159,17 +159,29 @@
         "currentHeight": 450
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.416Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:39:37.197Z",
+        "severity": "low",
+        "summary": [
+          "The Android panel has a faint cream-colored vertical strip along the inner right edge that is absent from React.",
+          "The top-right badge text differs by design: \"REACT\" on the baseline and \"ANDROID\" on the current image.",
+          "All six button states are present with visually matching colors, typography, bounds, shadows, and spacing; no clipping is apparent."
+        ],
+        "likelyCauses": [
+          "The Android panel may expose a scrollbar, background inset, or decorative edge outside the intended component bounds.",
+          "The badge label is populated from the platform identifier."
+        ],
+        "suggestedOwner": "Android UI/container implementation",
+        "suggestedFixes": [
+          "Remove or clip the pale right-edge strip and match the React panel background through the full component bounds.",
+          "Keep the badge platform-specific while preserving its existing dimensions, alignment, and typography."
+        ],
+        "intentional": [
+          "The REACT and ANDROID badge labels are expected platform identifiers."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -245,17 +257,29 @@
             "currentHeight": 450
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.416Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:39:37.197Z",
+            "severity": "low",
+            "summary": [
+              "The Android panel has a faint cream-colored vertical strip along the inner right edge that is absent from React.",
+              "The top-right badge text differs by design: \"REACT\" on the baseline and \"ANDROID\" on the current image.",
+              "All six button states are present with visually matching colors, typography, bounds, shadows, and spacing; no clipping is apparent."
+            ],
+            "likelyCauses": [
+              "The Android panel may expose a scrollbar, background inset, or decorative edge outside the intended component bounds.",
+              "The badge label is populated from the platform identifier."
+            ],
+            "suggestedOwner": "Android UI/container implementation",
+            "suggestedFixes": [
+              "Remove or clip the pale right-edge strip and match the React panel background through the full component bounds.",
+              "Keep the badge platform-specific while preserving its existing dimensions, alignment, and typography."
+            ],
+            "intentional": [
+              "The REACT and ANDROID badge labels are expected platform identifiers."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -290,7 +314,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.416Z",
+        "generatedAt": "2026-10-18T06:59:38.601Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -376,7 +400,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.416Z",
+            "generatedAt": "2026-10-18T06:59:38.601Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -423,7 +447,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.423Z",
+        "generatedAt": "2026-10-18T06:59:38.612Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -509,7 +533,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.423Z",
+            "generatedAt": "2026-10-18T06:59:38.612Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -553,7 +577,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.445Z",
+        "generatedAt": "2026-10-18T06:59:38.661Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -639,7 +663,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.445Z",
+            "generatedAt": "2026-10-18T06:59:38.661Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -686,7 +710,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.450Z",
+        "generatedAt": "2026-10-18T06:59:38.655Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -772,7 +796,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.450Z",
+            "generatedAt": "2026-10-18T06:59:38.655Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -816,7 +840,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.478Z",
+        "generatedAt": "2026-10-18T06:59:38.715Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -902,7 +926,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.478Z",
+            "generatedAt": "2026-10-18T06:59:38.715Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -945,17 +969,35 @@
         "currentHeight": 888
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.473Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:40:02.624Z",
+        "severity": "high",
+        "summary": [
+          "Android uses large rounded corners on all three inputs, while React uses square or near-square corners.",
+          "Android typography is visibly bolder and smaller for labels, field text, helper text, and error text than React.",
+          "Android has tighter vertical spacing, placing the Email, Description, and Server Name controls progressively higher than React.",
+          "Android normal-field borders are darker, while the invalid Server Name field is a thin red rounded outline; React uses a thick salmon rectangular error/focus ring.",
+          "React's red \"Name is required\" message is clipped by the bottom of the 296px bounds; Android shows it fully. Android also uses a warm cream background instead of React's white background."
+        ],
+        "likelyCauses": [
+          "Android and React are using different text-size and font-weight tokens.",
+          "Input radius, border, and error/focus state styles are implemented from different platform themes.",
+          "Android spacing and input-height tokens are shorter, compressing the vertical layout.",
+          "React validation content overflows the fixed component bounds.",
+          "The Android root container applies a different surface color."
+        ],
+        "suggestedOwner": "Android UI/design-system form-field maintainer, with shared token alignment",
+        "suggestedFixes": [
+          "Match Android input corner radius, border width, border color, and error/focus treatment to the React baseline.",
+          "Match the shared font family, size, weight, and color across labels, values, helper text, and validation text.",
+          "Align vertical padding and gaps to reproduce the React control positions.",
+          "Ensure the validation message remains inside the 342×296 component bounds and remove bottom clipping in React.",
+          "Match the component surface color or document the cream Android background as an intentional design change."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1031,17 +1073,35 @@
             "currentHeight": 888
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.473Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:40:02.624Z",
+            "severity": "high",
+            "summary": [
+              "Android uses large rounded corners on all three inputs, while React uses square or near-square corners.",
+              "Android typography is visibly bolder and smaller for labels, field text, helper text, and error text than React.",
+              "Android has tighter vertical spacing, placing the Email, Description, and Server Name controls progressively higher than React.",
+              "Android normal-field borders are darker, while the invalid Server Name field is a thin red rounded outline; React uses a thick salmon rectangular error/focus ring.",
+              "React's red \"Name is required\" message is clipped by the bottom of the 296px bounds; Android shows it fully. Android also uses a warm cream background instead of React's white background."
+            ],
+            "likelyCauses": [
+              "Android and React are using different text-size and font-weight tokens.",
+              "Input radius, border, and error/focus state styles are implemented from different platform themes.",
+              "Android spacing and input-height tokens are shorter, compressing the vertical layout.",
+              "React validation content overflows the fixed component bounds.",
+              "The Android root container applies a different surface color."
+            ],
+            "suggestedOwner": "Android UI/design-system form-field maintainer, with shared token alignment",
+            "suggestedFixes": [
+              "Match Android input corner radius, border width, border color, and error/focus treatment to the React baseline.",
+              "Match the shared font family, size, weight, and color across labels, values, helper text, and validation text.",
+              "Align vertical padding and gaps to reproduce the React control positions.",
+              "Ensure the validation message remains inside the 342×296 component bounds and remove bottom clipping in React.",
+              "Match the component surface color or document the cream Android background as an intentional design change."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1079,7 +1139,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.493Z",
+        "generatedAt": "2026-10-18T06:59:38.759Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1165,7 +1225,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.493Z",
+            "generatedAt": "2026-10-18T06:59:38.759Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1209,7 +1269,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.510Z",
+        "generatedAt": "2026-10-18T06:59:38.759Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1295,7 +1355,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.510Z",
+            "generatedAt": "2026-10-18T06:59:38.759Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1342,7 +1402,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.505Z",
+        "generatedAt": "2026-10-18T06:59:38.779Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1428,7 +1488,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.505Z",
+            "generatedAt": "2026-10-18T06:59:38.779Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1472,7 +1532,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.514Z",
+        "generatedAt": "2026-10-18T06:59:38.789Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1558,7 +1618,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.514Z",
+            "generatedAt": "2026-10-18T06:59:38.789Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1604,17 +1664,34 @@
         "currentHeight": 336
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.524Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:40:25.522Z",
+        "severity": "medium",
+        "summary": [
+          "Android row labels are substantially lighter than the React labels and approximately 15–20% narrower at a similar text height.",
+          "The Android circle-yellow marker is visibly smaller than the React circle, including its checkmark.",
+          "The entire Android circle-yellow row is shifted upward by roughly 8–10 displayed pixels relative to React.",
+          "The Android unchecked square sits higher relative to its label; the React square extends farther below the text."
+        ],
+        "likelyCauses": [
+          "Android is resolving a different font family or text style rather than the shared typography token.",
+          "Android may use a regular or medium font weight while React uses bold.",
+          "Android row line-height, vertical constraints, or bottom spacing differ from React.",
+          "The Android circle uses a smaller density-specific drawable or icon-container size."
+        ],
+        "suggestedOwner": "Android design-system/component owner with cross-platform typography and icon review",
+        "suggestedFixes": [
+          "Match the React font family, nominal size, letter spacing, and bold/700 weight in the Android label style.",
+          "Use a shared marker size token and enlarge the Android circle marker to match the React outer bounds, stroke, and checkmark inset.",
+          "Apply consistent center alignment between every marker and its label, especially the unchecked square.",
+          "Adjust Android row height or vertical inset so the circle-yellow row starts at the same y-position as React."
+        ],
+        "intentional": [
+          "The REACT and ANDROID badge text differs because the panels identify their respective platforms."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1690,17 +1767,34 @@
             "currentHeight": 336
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.524Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:40:25.522Z",
+            "severity": "medium",
+            "summary": [
+              "Android row labels are substantially lighter than the React labels and approximately 15–20% narrower at a similar text height.",
+              "The Android circle-yellow marker is visibly smaller than the React circle, including its checkmark.",
+              "The entire Android circle-yellow row is shifted upward by roughly 8–10 displayed pixels relative to React.",
+              "The Android unchecked square sits higher relative to its label; the React square extends farther below the text."
+            ],
+            "likelyCauses": [
+              "Android is resolving a different font family or text style rather than the shared typography token.",
+              "Android may use a regular or medium font weight while React uses bold.",
+              "Android row line-height, vertical constraints, or bottom spacing differ from React.",
+              "The Android circle uses a smaller density-specific drawable or icon-container size."
+            ],
+            "suggestedOwner": "Android design-system/component owner with cross-platform typography and icon review",
+            "suggestedFixes": [
+              "Match the React font family, nominal size, letter spacing, and bold/700 weight in the Android label style.",
+              "Use a shared marker size token and enlarge the Android circle marker to match the React outer bounds, stroke, and checkmark inset.",
+              "Apply consistent center alignment between every marker and its label, especially the unchecked square.",
+              "Adjust Android row height or vertical inset so the circle-yellow row starts at the same y-position as React."
+            ],
+            "intentional": [
+              "The REACT and ANDROID badge text differs because the panels identify their respective platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1735,7 +1829,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.530Z",
+        "generatedAt": "2026-10-18T06:59:38.811Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1821,7 +1915,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.530Z",
+            "generatedAt": "2026-10-18T06:59:38.811Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2017,7 +2111,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.551Z",
+        "generatedAt": "2026-10-18T06:59:38.852Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2103,7 +2197,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.551Z",
+            "generatedAt": "2026-10-18T06:59:38.852Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2307,7 +2401,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.561Z",
+        "generatedAt": "2026-10-18T06:59:38.873Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2393,7 +2487,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.561Z",
+            "generatedAt": "2026-10-18T06:59:38.873Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2437,7 +2531,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.569Z",
+        "generatedAt": "2026-10-18T06:59:38.893Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2523,7 +2617,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.569Z",
+            "generatedAt": "2026-10-18T06:59:38.893Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2567,7 +2661,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.574Z",
+        "generatedAt": "2026-10-18T06:59:38.904Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2653,7 +2747,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.574Z",
+            "generatedAt": "2026-10-18T06:59:38.904Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2697,7 +2791,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.590Z",
+        "generatedAt": "2026-10-18T06:59:38.925Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2783,7 +2877,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.590Z",
+            "generatedAt": "2026-10-18T06:59:38.925Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2827,7 +2921,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.626Z",
+        "generatedAt": "2026-10-18T06:59:38.982Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2913,7 +3007,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.626Z",
+            "generatedAt": "2026-10-18T06:59:38.982Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2957,7 +3051,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.615Z",
+        "generatedAt": "2026-10-18T06:59:38.972Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3043,7 +3137,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.615Z",
+            "generatedAt": "2026-10-18T06:59:38.972Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3087,7 +3181,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.606Z",
+        "generatedAt": "2026-10-18T06:59:38.991Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3173,7 +3267,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.606Z",
+            "generatedAt": "2026-10-18T06:59:38.991Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3381,7 +3475,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.645Z",
+        "generatedAt": "2026-10-18T06:59:39.048Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3467,7 +3561,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.645Z",
+            "generatedAt": "2026-10-18T06:59:39.048Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3511,7 +3605,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.772Z",
+        "generatedAt": "2026-10-18T06:59:39.288Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3597,7 +3691,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.772Z",
+            "generatedAt": "2026-10-18T06:59:39.288Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3645,17 +3739,33 @@
         "currentHeight": 159
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.649Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:41:15.241Z",
+        "severity": "medium",
+        "summary": [
+          "Android uses a brighter, more saturated yellow for the selected tab background than React's muted mustard fill.",
+          "Android renders inactive labels and icons in near-black, while React de-emphasizes both in medium gray; inactive Android tabs therefore do not visually recede.",
+          "Android tab labels use a heavier bold weight, while React labels use a regular weight."
+        ],
+        "likelyCauses": [
+          "Android is using a platform-specific or hard-coded selected-container color instead of the shared semantic color token.",
+          "Android is applying the active foreground color to inactive icons and labels.",
+          "The Android label style has a different font-weight token from the React navigation style."
+        ],
+        "suggestedOwner": "Mobile navigation and design-system owner",
+        "suggestedFixes": [
+          "Align Android's selected-background token with the approved React color, unless a separate mobile palette is formally specified.",
+          "Apply the muted secondary foreground color to inactive labels and icons while retaining the dark foreground for the selected tab.",
+          "Set Android tab labels to the approved regular font weight while preserving the intentional uppercase styling.",
+          "Re-run the component-bounds comparison after updating color and typography tokens."
+        ],
+        "intentional": [
+          "Android's uppercase tab labels are deliberate platform styling and should not be changed to React's title case.",
+          "The smoke fixture's active tab may differ from React's route-derived active tab; that state difference is not a visual defect."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -3731,17 +3841,33 @@
             "currentHeight": 159
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.649Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:41:15.241Z",
+            "severity": "medium",
+            "summary": [
+              "Android uses a brighter, more saturated yellow for the selected tab background than React's muted mustard fill.",
+              "Android renders inactive labels and icons in near-black, while React de-emphasizes both in medium gray; inactive Android tabs therefore do not visually recede.",
+              "Android tab labels use a heavier bold weight, while React labels use a regular weight."
+            ],
+            "likelyCauses": [
+              "Android is using a platform-specific or hard-coded selected-container color instead of the shared semantic color token.",
+              "Android is applying the active foreground color to inactive icons and labels.",
+              "The Android label style has a different font-weight token from the React navigation style."
+            ],
+            "suggestedOwner": "Mobile navigation and design-system owner",
+            "suggestedFixes": [
+              "Align Android's selected-background token with the approved React color, unless a separate mobile palette is formally specified.",
+              "Apply the muted secondary foreground color to inactive labels and icons while retaining the dark foreground for the selected tab.",
+              "Set Android tab labels to the approved regular font weight while preserving the intentional uppercase styling.",
+              "Re-run the component-bounds comparison after updating color and typography tokens."
+            ],
+            "intentional": [
+              "Android's uppercase tab labels are deliberate platform styling and should not be changed to React's title case.",
+              "The smoke fixture's active tab may differ from React's route-derived active tab; that state difference is not a visual defect."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -3780,7 +3906,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.681Z",
+        "generatedAt": "2026-10-18T06:59:39.059Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3866,7 +3992,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.681Z",
+            "generatedAt": "2026-10-18T06:59:39.059Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3916,7 +4042,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.681Z",
+        "generatedAt": "2026-10-18T06:59:39.094Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4002,7 +4128,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.681Z",
+            "generatedAt": "2026-10-18T06:59:39.094Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4052,7 +4178,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.711Z",
+        "generatedAt": "2026-10-18T06:59:39.160Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4138,7 +4264,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.711Z",
+            "generatedAt": "2026-10-18T06:59:39.160Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4188,7 +4314,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.714Z",
+        "generatedAt": "2026-10-18T06:59:39.114Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4274,7 +4400,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.714Z",
+            "generatedAt": "2026-10-18T06:59:39.114Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4325,7 +4451,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.745Z",
+        "generatedAt": "2026-10-18T06:59:39.212Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4411,7 +4537,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.745Z",
+            "generatedAt": "2026-10-18T06:59:39.212Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4461,7 +4587,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.777Z",
+        "generatedAt": "2026-10-18T06:59:39.233Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4547,7 +4673,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.777Z",
+            "generatedAt": "2026-10-18T06:59:39.233Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4596,17 +4722,33 @@
         "currentHeight": 810
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.766Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:41:44.949Z",
+        "severity": "high",
+        "summary": [
+          "React shows a full-width pale-pink warning panel with a thick black border; Android omits it and shows a small yellow image thumbnail instead.",
+          "The Android thumbnail contains a pink circle and has a black circular X overlapping its upper-right corner; these elements are absent from React.",
+          "The upload status wraps to two lines on React and one line on Android, making React's main bordered card taller with more vertical space.",
+          "Android includes image, camera, and paperclip actions, while React includes only image and paperclip. Both show an unchecked As Task box and a pink send button.",
+          "Android is 342×270 versus React's 342×210, and Android uses a manual crop with an x=24 offset rather than element bounds."
+        ],
+        "likelyCauses": [
+          "The screenshots are exercising different states: upload-limit error versus uploaded-thumbnail preview.",
+          "Android renders an additional camera action and a thumbnail-remove control.",
+          "Differences in text metrics, width constraints, padding, or card sizing are changing line wrapping and component height.",
+          "The Android capture bounds are configured separately from React's element-bounds crop."
+        ],
+        "suggestedOwner": "Composer UI team with Android and visual-test infrastructure",
+        "suggestedFixes": [
+          "Use the same fixture and composer state on both platforms, consistently rendering either the warning or the thumbnail/remove preview.",
+          "Align the action-button set, order, and bounds across platforms.",
+          "Match card constraints, padding, typography, and minimum height so the status text wraps and the action row align identically.",
+          "Capture Android using element bounds at the same target size, or explicitly account for the intentional 342×270 component height before comparison."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -4682,17 +4824,33 @@
             "currentHeight": 810
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.766Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:41:44.949Z",
+            "severity": "high",
+            "summary": [
+              "React shows a full-width pale-pink warning panel with a thick black border; Android omits it and shows a small yellow image thumbnail instead.",
+              "The Android thumbnail contains a pink circle and has a black circular X overlapping its upper-right corner; these elements are absent from React.",
+              "The upload status wraps to two lines on React and one line on Android, making React's main bordered card taller with more vertical space.",
+              "Android includes image, camera, and paperclip actions, while React includes only image and paperclip. Both show an unchecked As Task box and a pink send button.",
+              "Android is 342×270 versus React's 342×210, and Android uses a manual crop with an x=24 offset rather than element bounds."
+            ],
+            "likelyCauses": [
+              "The screenshots are exercising different states: upload-limit error versus uploaded-thumbnail preview.",
+              "Android renders an additional camera action and a thumbnail-remove control.",
+              "Differences in text metrics, width constraints, padding, or card sizing are changing line wrapping and component height.",
+              "The Android capture bounds are configured separately from React's element-bounds crop."
+            ],
+            "suggestedOwner": "Composer UI team with Android and visual-test infrastructure",
+            "suggestedFixes": [
+              "Use the same fixture and composer state on both platforms, consistently rendering either the warning or the thumbnail/remove preview.",
+              "Align the action-button set, order, and bounds across platforms.",
+              "Match card constraints, padding, typography, and minimum height so the status text wraps and the action row align identically.",
+              "Capture Android using element bounds at the same target size, or explicitly account for the intentional 342×270 component height before comparison."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -4733,7 +4891,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.814Z",
+        "generatedAt": "2026-10-18T06:59:39.363Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4819,7 +4977,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.814Z",
+            "generatedAt": "2026-10-18T06:59:39.363Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4867,7 +5025,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.803Z",
+        "generatedAt": "2026-10-18T06:59:39.302Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4953,7 +5111,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.803Z",
+            "generatedAt": "2026-10-18T06:59:39.302Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5002,17 +5160,35 @@
         "currentHeight": 324
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.806Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:55:35.089Z",
+        "severity": "high",
+        "summary": [
+          "Android omits React's entire footer action row: the cyan \"#10 @Cindy\" action, replies chip with \"2 new\" state, reaction count, and plus button.",
+          "The Android message text is constrained to a narrower column, wrapping into three lines, while React fits the same content into two lines.",
+          "The hashtag is regular inline text on React but bold, pale-blue, and enclosed by a thick black rectangular border on Android.",
+          "The avatar differs substantially: React uses a small pixel-art icon, while Android uses a large lavender square with a generic user glyph; the yellow presence dot moves with the differing bounds.",
+          "Android shows an ellipsized metadata label (\"Keeps visual t…\") and has a pale vertical strip near the right edge that is absent on React."
+        ],
+        "likelyCauses": [
+          "The Android action-row component or its visibility/state binding is missing.",
+          "Android applies an incorrect text max-width, flex constraint, or right inset.",
+          "The hashtag is being rendered through Android code/highlight chip styling instead of plain message-text styling.",
+          "Avatar resource, size, and vertical-alignment specifications have diverged between platforms.",
+          "Android uses a different metadata string or ellipsis constraint, and may be exposing a scrollbar or overflow indicator."
+        ],
+        "suggestedOwner": "Android thread message-row component owner",
+        "suggestedFixes": [
+          "Restore the footer controls with React's order, dimensions, spacing, colors, labels, and state indicators within the 108dp component height.",
+          "Match React's message-column width, horizontal insets, and line height so the body wraps into two lines.",
+          "Render the hashtag as regular-weight, unboxed inline text matching the surrounding message.",
+          "Align the avatar asset size and vertical position to React while preserving the yellow presence dot's relative placement.",
+          "Match the metadata typography and truncation behavior, and remove the right-edge strip unless it is an intentional Android-only indicator."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -5088,17 +5264,35 @@
             "currentHeight": 324
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.806Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:55:35.089Z",
+            "severity": "high",
+            "summary": [
+              "Android omits React's entire footer action row: the cyan \"#10 @Cindy\" action, replies chip with \"2 new\" state, reaction count, and plus button.",
+              "The Android message text is constrained to a narrower column, wrapping into three lines, while React fits the same content into two lines.",
+              "The hashtag is regular inline text on React but bold, pale-blue, and enclosed by a thick black rectangular border on Android.",
+              "The avatar differs substantially: React uses a small pixel-art icon, while Android uses a large lavender square with a generic user glyph; the yellow presence dot moves with the differing bounds.",
+              "Android shows an ellipsized metadata label (\"Keeps visual t…\") and has a pale vertical strip near the right edge that is absent on React."
+            ],
+            "likelyCauses": [
+              "The Android action-row component or its visibility/state binding is missing.",
+              "Android applies an incorrect text max-width, flex constraint, or right inset.",
+              "The hashtag is being rendered through Android code/highlight chip styling instead of plain message-text styling.",
+              "Avatar resource, size, and vertical-alignment specifications have diverged between platforms.",
+              "Android uses a different metadata string or ellipsis constraint, and may be exposing a scrollbar or overflow indicator."
+            ],
+            "suggestedOwner": "Android thread message-row component owner",
+            "suggestedFixes": [
+              "Restore the footer controls with React's order, dimensions, spacing, colors, labels, and state indicators within the 108dp component height.",
+              "Match React's message-column width, horizontal insets, and line height so the body wraps into two lines.",
+              "Render the hashtag as regular-weight, unboxed inline text matching the surrounding message.",
+              "Align the avatar asset size and vertical position to React while preserving the yellow presence dot's relative placement.",
+              "Match the metadata typography and truncation behavior, and remove the right-edge strip unless it is an intentional Android-only indicator."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -5139,7 +5333,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.811Z",
+        "generatedAt": "2026-10-18T06:59:39.349Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5225,7 +5419,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.811Z",
+            "generatedAt": "2026-10-18T06:59:39.349Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5270,7 +5464,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.968Z",
+        "generatedAt": "2026-10-18T06:59:39.611Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5356,7 +5550,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.968Z",
+            "generatedAt": "2026-10-18T06:59:39.611Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5401,7 +5595,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.962Z",
+        "generatedAt": "2026-10-18T06:59:39.634Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5487,7 +5681,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.962Z",
+            "generatedAt": "2026-10-18T06:59:39.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5532,7 +5726,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.968Z",
+        "generatedAt": "2026-10-18T06:59:39.658Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5618,7 +5812,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.968Z",
+            "generatedAt": "2026-10-18T06:59:39.658Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5663,7 +5857,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.966Z",
+        "generatedAt": "2026-10-18T06:59:39.679Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5749,7 +5943,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.966Z",
+            "generatedAt": "2026-10-18T06:59:39.679Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5788,17 +5982,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.116Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:48:58.514Z",
+        "severity": "high",
+        "summary": [
+          "Android renders a file-preview/review layout with a large lower comments panel, while React shows a compact comments list with a composer pinned to the bottom.",
+          "The main content region does not align: React's comment card begins near the top, whereas Android's comments panel begins around the middle and occupies most of the lower viewport.",
+          "Android adds a back button, file metadata, filters, close button, Quote and Resolve actions, and a full-width Send Comment button that are absent from React.",
+          "Typography differs substantially: Android uses larger, heavier uppercase headings and section labels, while React uses a smaller mixed-case heading and lighter supporting text.",
+          "Component styling diverges: React uses a rounded pale comment card, purple avatar, light borders, and a compact pink send button; Android uses square cream panels, thick black shadows and borders, no avatar, gray disabled controls, and a yellow selected All state."
+        ],
+        "likelyCauses": [
+          "The screenshots capture different routes or UI states: thread comments on React versus file-preview comments on Android.",
+          "The test fixture or attachment metadata differs, showing agent-tabs-full-page-review.mp4 on React and agent-tabs-full-page-review.md on Android.",
+          "Android uses a different responsive layout or bottom-sheet container for comments.",
+          "The platforms are using separate typography, spacing, color, elevation, and control-state tokens.",
+          "Android is applying a different component structure for the comment card and composer."
+        ],
+        "suggestedOwner": "Android comments/thread UI owner with shared design-system support",
+        "suggestedFixes": [
+          "Run the comparison against the same route, attachment, and comments state on both platforms.",
+          "Align the Android content bounds with the React layout, including the top-positioned comment card and bottom-pinned composer.",
+          "Match the React comment treatment: rounded pale container, light border, purple avatar, author/date row, and attachment-style anchor chips.",
+          "Use the shared typography scale and weights rather than Android-specific oversized uppercase headings.",
+          "Match the composer and controls to React: use the same textarea bounds, compact pink send button, anchor-chip styling, and enabled/disabled colors; remove extra controls if they are not part of the baseline."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -5874,17 +6086,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.116Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:48:58.514Z",
+            "severity": "high",
+            "summary": [
+              "Android renders a file-preview/review layout with a large lower comments panel, while React shows a compact comments list with a composer pinned to the bottom.",
+              "The main content region does not align: React's comment card begins near the top, whereas Android's comments panel begins around the middle and occupies most of the lower viewport.",
+              "Android adds a back button, file metadata, filters, close button, Quote and Resolve actions, and a full-width Send Comment button that are absent from React.",
+              "Typography differs substantially: Android uses larger, heavier uppercase headings and section labels, while React uses a smaller mixed-case heading and lighter supporting text.",
+              "Component styling diverges: React uses a rounded pale comment card, purple avatar, light borders, and a compact pink send button; Android uses square cream panels, thick black shadows and borders, no avatar, gray disabled controls, and a yellow selected All state."
+            ],
+            "likelyCauses": [
+              "The screenshots capture different routes or UI states: thread comments on React versus file-preview comments on Android.",
+              "The test fixture or attachment metadata differs, showing agent-tabs-full-page-review.mp4 on React and agent-tabs-full-page-review.md on Android.",
+              "Android uses a different responsive layout or bottom-sheet container for comments.",
+              "The platforms are using separate typography, spacing, color, elevation, and control-state tokens.",
+              "Android is applying a different component structure for the comment card and composer."
+            ],
+            "suggestedOwner": "Android comments/thread UI owner with shared design-system support",
+            "suggestedFixes": [
+              "Run the comparison against the same route, attachment, and comments state on both platforms.",
+              "Align the Android content bounds with the React layout, including the top-positioned comment card and bottom-pinned composer.",
+              "Match the React comment treatment: rounded pale container, light border, purple avatar, author/date row, and attachment-style anchor chips.",
+              "Use the shared typography scale and weights rather than Android-specific oversized uppercase headings.",
+              "Match the composer and controls to React: use the same textarea bounds, compact pink send button, anchor-chip styling, and enabled/disabled colors; remove extra controls if they are not part of the baseline."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -5914,17 +6144,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.124Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:55:59.765Z",
+        "severity": "high",
+        "summary": [
+          "React shows one compact titlebar, while Android shows three titlebar states plus an expanded workspace switcher, producing very different component bounds and content height.",
+          "The first Android state uses the longer label “Raft Product Design Work...” and a much wider black selector; React uses “Raft Design” with a shorter selector.",
+          "Android displays pink unread dots on both the workspace selector and bell; the corresponding React bell has no unread indicator.",
+          "Android includes explanatory state labels, workspace/R avatars, visible chevrons, and a two-row expanded switcher; these elements are absent from React.",
+          "Android shifts the first bar upward and adds substantially more vertical spacing to fit the state gallery."
+        ],
+        "likelyCauses": [
+          "The platforms are rendering different fixture states or state matrices.",
+          "The React capture shows an isolated state while the Android capture shows the full state gallery.",
+          "Unread notification state is enabled only in the Android fixture.",
+          "Workspace name, avatar, and identity data are not shared or normalized across platforms.",
+          "The baseline uses component-bounds cropping while Android uses manual viewport-bounds cropping, reducing comparability."
+        ],
+        "suggestedOwner": "Cross-platform Home titlebar owners, with Slock fixture and capture-config support",
+        "suggestedFixes": [
+          "Use the same deterministic state fixture on both platforms and capture the same named states.",
+          "If comparing the compact state only, render the same “Raft Design” content on Android and disable notification dots in both captures.",
+          "Align titlebar height, selector width, padding, typography, chevron spacing, avatar bounds, and shadow tokens against shared design values.",
+          "Ensure unread-dot visibility and offset are driven by the same state on both platforms.",
+          "Capture both platforms using the same component-bounds contract; include the expanded switcher in both if it is part of the intended component."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -6000,17 +6248,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.124Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:55:59.765Z",
+            "severity": "high",
+            "summary": [
+              "React shows one compact titlebar, while Android shows three titlebar states plus an expanded workspace switcher, producing very different component bounds and content height.",
+              "The first Android state uses the longer label “Raft Product Design Work...” and a much wider black selector; React uses “Raft Design” with a shorter selector.",
+              "Android displays pink unread dots on both the workspace selector and bell; the corresponding React bell has no unread indicator.",
+              "Android includes explanatory state labels, workspace/R avatars, visible chevrons, and a two-row expanded switcher; these elements are absent from React.",
+              "Android shifts the first bar upward and adds substantially more vertical spacing to fit the state gallery."
+            ],
+            "likelyCauses": [
+              "The platforms are rendering different fixture states or state matrices.",
+              "The React capture shows an isolated state while the Android capture shows the full state gallery.",
+              "Unread notification state is enabled only in the Android fixture.",
+              "Workspace name, avatar, and identity data are not shared or normalized across platforms.",
+              "The baseline uses component-bounds cropping while Android uses manual viewport-bounds cropping, reducing comparability."
+            ],
+            "suggestedOwner": "Cross-platform Home titlebar owners, with Slock fixture and capture-config support",
+            "suggestedFixes": [
+              "Use the same deterministic state fixture on both platforms and capture the same named states.",
+              "If comparing the compact state only, render the same “Raft Design” content on Android and disable notification dots in both captures.",
+              "Align titlebar height, selector width, padding, typography, chevron spacing, avatar bounds, and shadow tokens against shared design values.",
+              "Ensure unread-dot visibility and offset are driven by the same state on both platforms.",
+              "Capture both platforms using the same component-bounds contract; include the expanded switcher in both if it is part of the intended component."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -6215,7 +6481,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.125Z",
+        "generatedAt": "2026-10-18T06:59:39.985Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6301,7 +6567,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.125Z",
+            "generatedAt": "2026-10-18T06:59:39.985Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6353,7 +6619,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.268Z",
+        "generatedAt": "2026-10-18T06:59:40.215Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6439,7 +6705,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.268Z",
+            "generatedAt": "2026-10-18T06:59:40.215Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6487,7 +6753,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.219Z",
+        "generatedAt": "2026-10-18T06:59:40.150Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6573,7 +6839,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.219Z",
+            "generatedAt": "2026-10-18T06:59:40.150Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6622,7 +6888,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.225Z",
+        "generatedAt": "2026-10-18T06:59:40.179Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6708,7 +6974,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.225Z",
+            "generatedAt": "2026-10-18T06:59:40.179Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6758,7 +7024,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.291Z",
+        "generatedAt": "2026-10-18T06:59:40.293Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6844,7 +7110,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.291Z",
+            "generatedAt": "2026-10-18T06:59:40.293Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6893,7 +7159,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.276Z",
+        "generatedAt": "2026-10-18T06:59:40.251Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6979,7 +7245,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.276Z",
+            "generatedAt": "2026-10-18T06:59:40.251Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7027,7 +7293,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.372Z",
+        "generatedAt": "2026-10-18T06:59:40.487Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7113,7 +7379,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.372Z",
+            "generatedAt": "2026-10-18T06:59:40.487Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7163,7 +7429,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.413Z",
+        "generatedAt": "2026-10-18T06:59:40.524Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7249,7 +7515,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.413Z",
+            "generatedAt": "2026-10-18T06:59:40.524Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7289,7 +7555,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7346,7 +7612,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7386,7 +7652,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7443,7 +7709,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7494,7 +7760,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.435Z",
+        "generatedAt": "2026-10-18T06:59:40.559Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7580,7 +7846,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.435Z",
+            "generatedAt": "2026-10-18T06:59:40.559Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7630,7 +7896,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.447Z",
+        "generatedAt": "2026-10-18T06:59:40.603Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7716,7 +7982,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.447Z",
+            "generatedAt": "2026-10-18T06:59:40.603Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7767,17 +8033,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.527Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:43:21.002Z",
+        "severity": "high",
+        "summary": [
+          "Android shows chat and menu buttons in the top app bar, while React shows only a vertical-overflow button; Android also adds truncated description text beneath the handle.",
+          "Android's hero block starts about 48 px lower, omits the edit pencil, and uses a smaller flat yellow status dot with “Working”; React uses a larger outlined dot and truncated monospace text, “Capturing deterministic profi...”.",
+          "Android adds a DISPLAY NAME field before DESCRIPTION, omits React's boxed Member role value, and reflows Info into stacked and combined rows rather than React's separate label/value rows.",
+          "Typography and wrapping differ: Android's description and info text are smaller, its computer value is wider monospace, and the description wraps after “into” versus React's “release”.",
+          "React uses vertical Runtime Config rows, stacked environment-variable chips, pink/pale badges, and thick black separators. Android uses two-column rows, side-by-side environment chips, purple/yellow/orange badges, thin gray separators, and shows a Created Agents card where React shows a Skills heading."
+        ],
+        "likelyCauses": [
+          "Android is using a separate responsive profile layout instead of matching the React component's spacing and section structure.",
+          "Platform font selection and typography tokens have different sizes, weights, families, and wrapping behavior.",
+          "Android's flex/grid constraints and component bounds differ from the React reference.",
+          "Color mappings for separators, status indicators, and configuration badges are not one-to-one.",
+          "The Android component receives or renders a different action set and omits the role value while adding display-name and created-agents content."
+        ],
+        "suggestedOwner": "Android profile UI engineer with design-system support",
+        "suggestedFixes": [
+          "Match the top-bar action count, icon shapes, button bounds, and header subtitle behavior to React, or document any intentional additions.",
+          "Apply the React hero top offset, avatar/text gap, edit control, status-dot size and outline, and status typography.",
+          "Align Info fields to the React section order and use the same Role/Member badge, labels, rows, wrapping, and created/creator placement.",
+          "Standardize fonts, font weights, divider thickness/color, badge palettes, and Runtime/Environment grid dimensions across platforms.",
+          "Restore the matching Skills/Runtime/Environment hierarchy and verify the bottom section is captured above the viewport crop."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -7853,17 +8137,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.527Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:43:21.002Z",
+            "severity": "high",
+            "summary": [
+              "Android shows chat and menu buttons in the top app bar, while React shows only a vertical-overflow button; Android also adds truncated description text beneath the handle.",
+              "Android's hero block starts about 48 px lower, omits the edit pencil, and uses a smaller flat yellow status dot with “Working”; React uses a larger outlined dot and truncated monospace text, “Capturing deterministic profi...”.",
+              "Android adds a DISPLAY NAME field before DESCRIPTION, omits React's boxed Member role value, and reflows Info into stacked and combined rows rather than React's separate label/value rows.",
+              "Typography and wrapping differ: Android's description and info text are smaller, its computer value is wider monospace, and the description wraps after “into” versus React's “release”.",
+              "React uses vertical Runtime Config rows, stacked environment-variable chips, pink/pale badges, and thick black separators. Android uses two-column rows, side-by-side environment chips, purple/yellow/orange badges, thin gray separators, and shows a Created Agents card where React shows a Skills heading."
+            ],
+            "likelyCauses": [
+              "Android is using a separate responsive profile layout instead of matching the React component's spacing and section structure.",
+              "Platform font selection and typography tokens have different sizes, weights, families, and wrapping behavior.",
+              "Android's flex/grid constraints and component bounds differ from the React reference.",
+              "Color mappings for separators, status indicators, and configuration badges are not one-to-one.",
+              "The Android component receives or renders a different action set and omits the role value while adding display-name and created-agents content."
+            ],
+            "suggestedOwner": "Android profile UI engineer with design-system support",
+            "suggestedFixes": [
+              "Match the top-bar action count, icon shapes, button bounds, and header subtitle behavior to React, or document any intentional additions.",
+              "Apply the React hero top offset, avatar/text gap, edit control, status-dot size and outline, and status typography.",
+              "Align Info fields to the React section order and use the same Role/Member badge, labels, rows, wrapping, and created/creator placement.",
+              "Standardize fonts, font weights, divider thickness/color, badge palettes, and Runtime/Environment grid dimensions across platforms.",
+              "Restore the matching Skills/Runtime/Environment hierarchy and verify the bottom section is captured above the viewport crop."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -7904,17 +8206,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.570Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:56:59.773Z",
+        "severity": "high",
+        "summary": [
+          "React uses an edge-to-edge cream settings panel with a yellow branded header; Android uses a smaller, centered white dialog with a gray scrim.",
+          "Android omits the “Channel / Settings / #design” header hierarchy and replaces it with a single uppercase “EDIT CHANNEL” title; the close button moves into the dialog title area.",
+          "Android field labels are uppercase and bold, controls are narrower because of the inset dialog, and the description textarea is substantially shorter than React's.",
+          "React presents “Pin channel” as a preference row with explanatory copy and a two-state toggle; Android replaces it with a full-width “Pin” action and removes the preference copy.",
+          "React keeps Cancel and an enabled pink Save button in a bottom footer; Android places Cancel and a disabled gray “Save Changes” below the form, omits the Channel actions explanation, and stacks actions immediately after a divider."
+        ],
+        "likelyCauses": [
+          "Android uses a separate Dialog or modal container rather than the shared full-screen panel layout.",
+          "Title, header, and typography are implemented from different Android resources or components rather than shared design tokens.",
+          "Android dialog constraints and padding produce smaller controls and a shorter description field.",
+          "Pin is implemented as a channel action instead of a preference control.",
+          "Android save-state logic and footer placement do not match the React form state."
+        ],
+        "suggestedOwner": "Android channel-settings UI team",
+        "suggestedFixes": [
+          "Replace the centered dialog and gray scrim with an edge-to-edge cream panel, or obtain an approved cross-platform redesign if the modal treatment is intentional.",
+          "Restore the yellow header with the “Channel”, “Settings”, and “#design” hierarchy, and position the close button to match React.",
+          "Match React's label case, font size, weight, field gutters, input heights, and especially the taller description textarea.",
+          "Implement Pin as a labeled preference row with supporting copy and a visible toggle; retain the Preferences and Channel actions section headings.",
+          "Anchor Cancel and the pink Save control to the bottom footer, match React's enabled state, and preserve the wider full-panel action-button bounds."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -7990,17 +8310,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.570Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:56:59.773Z",
+            "severity": "high",
+            "summary": [
+              "React uses an edge-to-edge cream settings panel with a yellow branded header; Android uses a smaller, centered white dialog with a gray scrim.",
+              "Android omits the “Channel / Settings / #design” header hierarchy and replaces it with a single uppercase “EDIT CHANNEL” title; the close button moves into the dialog title area.",
+              "Android field labels are uppercase and bold, controls are narrower because of the inset dialog, and the description textarea is substantially shorter than React's.",
+              "React presents “Pin channel” as a preference row with explanatory copy and a two-state toggle; Android replaces it with a full-width “Pin” action and removes the preference copy.",
+              "React keeps Cancel and an enabled pink Save button in a bottom footer; Android places Cancel and a disabled gray “Save Changes” below the form, omits the Channel actions explanation, and stacks actions immediately after a divider."
+            ],
+            "likelyCauses": [
+              "Android uses a separate Dialog or modal container rather than the shared full-screen panel layout.",
+              "Title, header, and typography are implemented from different Android resources or components rather than shared design tokens.",
+              "Android dialog constraints and padding produce smaller controls and a shorter description field.",
+              "Pin is implemented as a channel action instead of a preference control.",
+              "Android save-state logic and footer placement do not match the React form state."
+            ],
+            "suggestedOwner": "Android channel-settings UI team",
+            "suggestedFixes": [
+              "Replace the centered dialog and gray scrim with an edge-to-edge cream panel, or obtain an approved cross-platform redesign if the modal treatment is intentional.",
+              "Restore the yellow header with the “Channel”, “Settings”, and “#design” hierarchy, and position the close button to match React.",
+              "Match React's label case, font size, weight, field gutters, input heights, and especially the taller description textarea.",
+              "Implement Pin as a labeled preference row with supporting copy and a visible toggle; retain the Preferences and Channel actions section headings.",
+              "Anchor Cancel and the pink Save control to the bottom footer, match React's enabled state, and preserve the wider full-panel action-button bounds."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -8039,7 +8377,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.582Z",
+        "generatedAt": "2026-10-18T06:59:40.868Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8125,7 +8463,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.582Z",
+            "generatedAt": "2026-10-18T06:59:40.868Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8173,7 +8511,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.600Z",
+        "generatedAt": "2026-10-18T06:59:40.911Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8259,7 +8597,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.600Z",
+            "generatedAt": "2026-10-18T06:59:40.911Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8307,7 +8645,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.691Z",
+        "generatedAt": "2026-10-18T06:59:41.101Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8393,7 +8731,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.691Z",
+            "generatedAt": "2026-10-18T06:59:41.101Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8441,7 +8779,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.737Z",
+        "generatedAt": "2026-10-18T06:59:41.140Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8527,7 +8865,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.737Z",
+            "generatedAt": "2026-10-18T06:59:41.140Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8576,7 +8914,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.728Z",
+        "generatedAt": "2026-10-18T06:59:41.180Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8662,7 +9000,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.728Z",
+            "generatedAt": "2026-10-18T06:59:41.180Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8711,7 +9049,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.750Z",
+        "generatedAt": "2026-10-18T06:59:41.219Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8797,7 +9135,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.750Z",
+            "generatedAt": "2026-10-18T06:59:41.219Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8844,17 +9182,33 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.846Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:44:04.276Z",
+        "severity": "high",
+        "summary": [
+          "Below the shared header and divider, React shows one “PUSH NOTIFICATIONS” panel, while Android shows separate “SYSTEM,” “ON THIS DEVICE,” and “WORKSPACE” sections.",
+          "React includes an “UNAVAILABLE” badge, disabled Enable/Save controls, and a “Mute this server” checkbox; Android replaces these with an allowed-status banner, four switches, a test action, and radio choices.",
+          "Color and state treatments differ substantially: React is monochrome with gray and pink disabled controls, while Android uses a green permission banner and yellow selected workspace.",
+          "Section-header styling differs: React uses a bell icon with heavier, wider-spaced uppercase text; Android uses lighter gray uppercase labels without the icon.",
+          "Android content continues below the 844px viewport and crops the next workspace option, while React’s main card ends near 607px and leaves blank space below."
+        ],
+        "likelyCauses": [
+          "Android is rendering a platform-specific notification-settings composition instead of the shared React settings layout.",
+          "Permission and workspace states are mapped to Android-only banners, switches, and radio controls.",
+          "The implementations use different typography scales, row heights, padding, and disabled-state tokens."
+        ],
+        "suggestedOwner": "Notifications settings feature owner with Android UI and design-system support",
+        "suggestedFixes": [
+          "If shared parity is required, render the React push-notification card structure on Android, including the unavailable badge, explanatory copy, disabled Enable control, mute checkbox, and Save control.",
+          "Match React’s section-header iconography, type weight, letter spacing, card borders, padding, and disabled colors rather than Android-specific green and yellow states.",
+          "Align Android component bounds and vertical spacing so the page follows the React card height or uses an explicitly shared scrollable layout without a partially cropped component.",
+          "Standardize the state indicators and control dimensions across checkbox, switch, radio, badge, and action treatments.",
+          "If the Android system/workspace layout is intentional, define it as a separate platform variant and baseline rather than comparing it with the React component contract."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -8930,17 +9284,33 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.846Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:44:04.276Z",
+            "severity": "high",
+            "summary": [
+              "Below the shared header and divider, React shows one “PUSH NOTIFICATIONS” panel, while Android shows separate “SYSTEM,” “ON THIS DEVICE,” and “WORKSPACE” sections.",
+              "React includes an “UNAVAILABLE” badge, disabled Enable/Save controls, and a “Mute this server” checkbox; Android replaces these with an allowed-status banner, four switches, a test action, and radio choices.",
+              "Color and state treatments differ substantially: React is monochrome with gray and pink disabled controls, while Android uses a green permission banner and yellow selected workspace.",
+              "Section-header styling differs: React uses a bell icon with heavier, wider-spaced uppercase text; Android uses lighter gray uppercase labels without the icon.",
+              "Android content continues below the 844px viewport and crops the next workspace option, while React’s main card ends near 607px and leaves blank space below."
+            ],
+            "likelyCauses": [
+              "Android is rendering a platform-specific notification-settings composition instead of the shared React settings layout.",
+              "Permission and workspace states are mapped to Android-only banners, switches, and radio controls.",
+              "The implementations use different typography scales, row heights, padding, and disabled-state tokens."
+            ],
+            "suggestedOwner": "Notifications settings feature owner with Android UI and design-system support",
+            "suggestedFixes": [
+              "If shared parity is required, render the React push-notification card structure on Android, including the unavailable badge, explanatory copy, disabled Enable control, mute checkbox, and Save control.",
+              "Match React’s section-header iconography, type weight, letter spacing, card borders, padding, and disabled colors rather than Android-specific green and yellow states.",
+              "Align Android component bounds and vertical spacing so the page follows the React card height or uses an explicitly shared scrollable layout without a partially cropped component.",
+              "Standardize the state indicators and control dimensions across checkbox, switch, radio, badge, and action treatments.",
+              "If the Android system/workspace layout is intentional, define it as a separate platform variant and baseline rather than comparing it with the React component contract."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -8979,7 +9349,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.885Z",
+        "generatedAt": "2026-10-18T06:59:41.448Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9065,7 +9435,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.885Z",
+            "generatedAt": "2026-10-18T06:59:41.448Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9105,7 +9475,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.908Z",
+        "generatedAt": "2026-10-18T06:59:41.486Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9191,7 +9561,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.908Z",
+            "generatedAt": "2026-10-18T06:59:41.486Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9239,17 +9609,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:42.883Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:50:46.501Z",
+        "severity": "high",
+        "summary": [
+          "The Android header replaces React's single overflow button with separate chat and menu buttons, and its subtitle shows truncated description text instead of the member handle.",
+          "Android's profile identity block is about 8 px farther right and 13 px lower; it omits the edit pencil and changes the status from filled yellow plus \"Capturing deterministic profi…\" to outlined yellow plus \"Working\".",
+          "Android inserts a \"DISPLAY NAME\" section absent from React, changes description wrapping, and uses thinner light-gray dividers instead of React's thicker dark separators.",
+          "The INFO section is structurally different: Android omits the boxed \"Member\" role value and edit icon, combines computer status/version, and places Created and Creator side by side.",
+          "Runtime, environment variables, and bottom content diverge: Android uses a two-column layout, different badge colors, side-by-side variable fields, and a cropped \"CREATED AGENTS\" card where React shows \"SKILLS 2\"."
+        ],
+        "likelyCauses": [
+          "Android is using a different profile-header component with platform-specific subtitle content and actions.",
+          "Profile-section padding and typography tokens differ between the React and Android implementations.",
+          "Android uses an alternate INFO layout that omits or collapses fields visible in React.",
+          "Responsive grid rules are converting stacked runtime and environment rows into two-column layouts.",
+          "Platform color tokens and section composition are diverging for badges, dividers, and bottom content."
+        ],
+        "suggestedOwner": "Android UI implementation and cross-platform design-system team",
+        "suggestedFixes": [
+          "Align the header with React: use the handle subtitle and one overflow action unless the two Android actions are explicitly approved.",
+          "Match the profile block position and bounds, restore the edit pencil, and reproduce the filled-yellow status indicator and full baseline status treatment.",
+          "Remove or reposition the Android-only \"DISPLAY NAME\" section and match React's description width, line wrapping, and divider weight.",
+          "Render INFO as React's separate label/value rows, including the boxed \"Member\" role, edit affordance, standalone status/version rows, and divider styles.",
+          "Use React's stacked runtime and environment layouts, badge palette, section headings, and \"SKILLS 2\" content; verify the bottom card is not viewport-clipped."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9325,17 +9713,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:42.883Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:50:46.501Z",
+            "severity": "high",
+            "summary": [
+              "The Android header replaces React's single overflow button with separate chat and menu buttons, and its subtitle shows truncated description text instead of the member handle.",
+              "Android's profile identity block is about 8 px farther right and 13 px lower; it omits the edit pencil and changes the status from filled yellow plus \"Capturing deterministic profi…\" to outlined yellow plus \"Working\".",
+              "Android inserts a \"DISPLAY NAME\" section absent from React, changes description wrapping, and uses thinner light-gray dividers instead of React's thicker dark separators.",
+              "The INFO section is structurally different: Android omits the boxed \"Member\" role value and edit icon, combines computer status/version, and places Created and Creator side by side.",
+              "Runtime, environment variables, and bottom content diverge: Android uses a two-column layout, different badge colors, side-by-side variable fields, and a cropped \"CREATED AGENTS\" card where React shows \"SKILLS 2\"."
+            ],
+            "likelyCauses": [
+              "Android is using a different profile-header component with platform-specific subtitle content and actions.",
+              "Profile-section padding and typography tokens differ between the React and Android implementations.",
+              "Android uses an alternate INFO layout that omits or collapses fields visible in React.",
+              "Responsive grid rules are converting stacked runtime and environment rows into two-column layouts.",
+              "Platform color tokens and section composition are diverging for badges, dividers, and bottom content."
+            ],
+            "suggestedOwner": "Android UI implementation and cross-platform design-system team",
+            "suggestedFixes": [
+              "Align the header with React: use the handle subtitle and one overflow action unless the two Android actions are explicitly approved.",
+              "Match the profile block position and bounds, restore the edit pencil, and reproduce the filled-yellow status indicator and full baseline status treatment.",
+              "Remove or reposition the Android-only \"DISPLAY NAME\" section and match React's description width, line wrapping, and divider weight.",
+              "Render INFO as React's separate label/value rows, including the boxed \"Member\" role, edit affordance, standalone status/version rows, and divider styles.",
+              "Use React's stacked runtime and environment layouts, badge palette, section headings, and \"SKILLS 2\" content; verify the bottom card is not viewport-clipped."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -9374,7 +9780,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.019Z",
+        "generatedAt": "2026-10-18T06:59:41.716Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9460,7 +9866,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.019Z",
+            "generatedAt": "2026-10-18T06:59:41.716Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9508,7 +9914,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.039Z",
+        "generatedAt": "2026-10-18T06:59:41.756Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9594,7 +10000,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.039Z",
+            "generatedAt": "2026-10-18T06:59:41.756Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9642,7 +10048,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.054Z",
+        "generatedAt": "2026-10-18T06:59:41.796Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9728,7 +10134,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.054Z",
+            "generatedAt": "2026-10-18T06:59:41.796Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9775,17 +10181,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.068Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:44:36.454Z",
+        "severity": "high",
+        "summary": [
+          "Android uses a substantially different profile layout: the identity block starts about 22dp lower, INFO is condensed into stacked cards, and Runtime Config becomes a two-column grid.",
+          "The header differs: React shows a machine handle subtitle and one overflow button, while Android shows a description and separate comment/menu buttons.",
+          "Long-name behavior differs: React truncates both machine-name headings and shows a pencil beside the profile name; Android displays the full name and omits the pencil. Android also adds a separate Display Name section.",
+          "State and typography differ: React shows the larger monospaced, truncated text \"Capturing deterministic profi...\", while Android shows the smaller sans-serif label \"Working\". Body text, headings, and separators also differ in size, weight, and color.",
+          "Environment variables are stacked on React but side by side on Android. The bottom viewport shows \"SKILLS 2\" on React versus \"CREATED AGENTS 1\" with a partially visible card on Android."
+        ],
+        "likelyCauses": [
+          "Android implements an alternate responsive card/grid composition instead of matching the React profile layout.",
+          "Typography scales, line heights, truncation widths, and text styles are not shared across platforms.",
+          "Header actions, status text, and editable-field affordances are defined independently in each implementation.",
+          "Android uses different semantic color tokens for dividers and Runtime Config badges.",
+          "Section padding and information-row components differ between the two implementations."
+        ],
+        "suggestedOwner": "Android profile screen team with the shared design-system owner",
+        "suggestedFixes": [
+          "Match the React header bounds and actions: one overflow control, machine-handle subtitle, and the same title/subtitle truncation.",
+          "Restore the React profile-header bounds, full-name truncation, pencil affordance, status text, typography, and approximately 22dp higher vertical position.",
+          "Use the shared 390dp type scale and text styles so the description wraps identically; remove the Android-only Display Name section if it is not required by the shared contract.",
+          "Recreate INFO and Runtime Config with matching row order, label/value columns, dividers, badge colors, and visible edit affordances.",
+          "Stack environment-variable fields and align the bottom section to the React \"SKILLS 2\" heading and component bounds."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9861,17 +10285,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.068Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:44:36.454Z",
+            "severity": "high",
+            "summary": [
+              "Android uses a substantially different profile layout: the identity block starts about 22dp lower, INFO is condensed into stacked cards, and Runtime Config becomes a two-column grid.",
+              "The header differs: React shows a machine handle subtitle and one overflow button, while Android shows a description and separate comment/menu buttons.",
+              "Long-name behavior differs: React truncates both machine-name headings and shows a pencil beside the profile name; Android displays the full name and omits the pencil. Android also adds a separate Display Name section.",
+              "State and typography differ: React shows the larger monospaced, truncated text \"Capturing deterministic profi...\", while Android shows the smaller sans-serif label \"Working\". Body text, headings, and separators also differ in size, weight, and color.",
+              "Environment variables are stacked on React but side by side on Android. The bottom viewport shows \"SKILLS 2\" on React versus \"CREATED AGENTS 1\" with a partially visible card on Android."
+            ],
+            "likelyCauses": [
+              "Android implements an alternate responsive card/grid composition instead of matching the React profile layout.",
+              "Typography scales, line heights, truncation widths, and text styles are not shared across platforms.",
+              "Header actions, status text, and editable-field affordances are defined independently in each implementation.",
+              "Android uses different semantic color tokens for dividers and Runtime Config badges.",
+              "Section padding and information-row components differ between the two implementations."
+            ],
+            "suggestedOwner": "Android profile screen team with the shared design-system owner",
+            "suggestedFixes": [
+              "Match the React header bounds and actions: one overflow control, machine-handle subtitle, and the same title/subtitle truncation.",
+              "Restore the React profile-header bounds, full-name truncation, pencil affordance, status text, typography, and approximately 22dp higher vertical position.",
+              "Use the shared 390dp type scale and text styles so the description wraps identically; remove the Android-only Display Name section if it is not required by the shared contract.",
+              "Recreate INFO and Runtime Config with matching row order, label/value columns, dividers, badge colors, and visible edit affordances.",
+              "Stack environment-variable fields and align the bottom section to the React \"SKILLS 2\" heading and component bounds."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -9909,17 +10351,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.177Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:51:08.311Z",
+        "severity": "high",
+        "summary": [
+          "Android shows separate chat and hamburger actions where React has one overflow button; Android’s header subtitle is visibly truncated, and React’s profile, description, role, and runtime edit-pencil affordances are absent on Android.",
+          "The Android identity block starts lower, includes a DISPLAY NAME section not present in React, and shows a smaller gray “Working” status instead of React’s larger monospaced, clipped “Capturing deterministic profi...” status.",
+          "INFO has a different structure: React uses aligned label/value rows with separate status, version, created, and creator rows; Android stacks values beneath labels, moves the Member badge left, combines status/version, and places Created beside Creator. Android’s Connected indicator is brighter green.",
+          "Runtime and environment controls use two-column grids on Android versus vertical label/value rows on React. Android also changes badge colors—lavender model instead of pink, stronger yellow reasoning, and stronger orange Default—and reflows environment-variable boxes side by side with different truncation.",
+          "React uses thick black section dividers, while Android uses thin light-gray dividers. Android’s denser layout exposes CREATED AGENTS at the bottom and crops its card at the viewport edge; React ends after a divider with blank space below."
+        ],
+        "likelyCauses": [
+          "Android implements a separate compact mobile layout rather than a direct port of the React profile screen.",
+          "Header actions, edit permissions, and status presentation are platform-configured differently.",
+          "Related fields are grouped into different row and grid components on Android.",
+          "Typography, spacing, divider, and badge tokens are not shared consistently across platforms.",
+          "Reduced Android vertical spacing changes which lower-screen components enter the captured viewport."
+        ],
+        "suggestedOwner": "Android profile-screen team with shared design-system support",
+        "suggestedFixes": [
+          "Match the React header action set and subtitle width; restore the same edit-pencil affordances where required.",
+          "Align section order and field grouping: either add DISPLAY NAME to React or remove it from Android, then use separate status and version rows consistently.",
+          "Standardize INFO, runtime, and environment layouts, badge colors, alignment, and label casing against the approved responsive spec.",
+          "Apply shared typography, spacing, and divider tokens, then verify status text size and ellipsis behavior at 390 dp width.",
+          "Add bottom content padding or capture at the same scroll/content state so lower cards are either fully visible or consistently excluded."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9995,17 +10455,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.177Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:51:08.311Z",
+            "severity": "high",
+            "summary": [
+              "Android shows separate chat and hamburger actions where React has one overflow button; Android’s header subtitle is visibly truncated, and React’s profile, description, role, and runtime edit-pencil affordances are absent on Android.",
+              "The Android identity block starts lower, includes a DISPLAY NAME section not present in React, and shows a smaller gray “Working” status instead of React’s larger monospaced, clipped “Capturing deterministic profi...” status.",
+              "INFO has a different structure: React uses aligned label/value rows with separate status, version, created, and creator rows; Android stacks values beneath labels, moves the Member badge left, combines status/version, and places Created beside Creator. Android’s Connected indicator is brighter green.",
+              "Runtime and environment controls use two-column grids on Android versus vertical label/value rows on React. Android also changes badge colors—lavender model instead of pink, stronger yellow reasoning, and stronger orange Default—and reflows environment-variable boxes side by side with different truncation.",
+              "React uses thick black section dividers, while Android uses thin light-gray dividers. Android’s denser layout exposes CREATED AGENTS at the bottom and crops its card at the viewport edge; React ends after a divider with blank space below."
+            ],
+            "likelyCauses": [
+              "Android implements a separate compact mobile layout rather than a direct port of the React profile screen.",
+              "Header actions, edit permissions, and status presentation are platform-configured differently.",
+              "Related fields are grouped into different row and grid components on Android.",
+              "Typography, spacing, divider, and badge tokens are not shared consistently across platforms.",
+              "Reduced Android vertical spacing changes which lower-screen components enter the captured viewport."
+            ],
+            "suggestedOwner": "Android profile-screen team with shared design-system support",
+            "suggestedFixes": [
+              "Match the React header action set and subtitle width; restore the same edit-pencil affordances where required.",
+              "Align section order and field grouping: either add DISPLAY NAME to React or remove it from Android, then use separate status and version rows consistently.",
+              "Standardize INFO, runtime, and environment layouts, badge colors, alignment, and label casing against the approved responsive spec.",
+              "Apply shared typography, spacing, and divider tokens, then verify status text size and ellipsis behavior at 390 dp width.",
+              "Add bottom content padding or capture at the same scroll/content state so lower cards are either fully visible or consistently excluded."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10033,7 +10511,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10090,7 +10568,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10127,7 +10605,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10184,7 +10662,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10232,7 +10710,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.185Z",
+        "generatedAt": "2026-10-18T06:59:42.063Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10318,7 +10796,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.185Z",
+            "generatedAt": "2026-10-18T06:59:42.063Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10365,17 +10843,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.197Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:57:52.393Z",
+        "severity": "high",
+        "summary": [
+          "The agent subtitle changes from the gray identifier \"@Product-UX-Designer\" on React to a truncated description, \"Turns product feedback, screenshots, ...\", on Android.",
+          "The header actions differ: React has one bordered overflow button, while Android has separate bordered chat and menu buttons that reduce the subtitle space.",
+          "The navigation tabs are materially different: React shows Reminders, a yellow-selected Workspace tab, Apps, and a partially clipped next tab; Android shows four unselected tabs labeled Profile, Activity, Chat, and Reminders.",
+          "Android omits the React workspace path row and copy icon. Its workspace header also replaces React's small muted visibility and refresh icons with a large bordered refresh button.",
+          "The file rows differ: Android adds right-aligned \"86 B\" and \"folder\" metadata, and its folder icon is black rather than React's orange."
+        ],
+        "likelyCauses": [
+          "Android is using a different navigation configuration or tab data source.",
+          "The Android agent-detail header uses an alternate subtitle and action-button component.",
+          "Workspace path, copy, and visibility controls were not ported to Android.",
+          "Android applies different file-row metadata and folder-icon styling.",
+          "Platform-specific spacing, icon sizing, and overflow rules are diverging from the React baseline."
+        ],
+        "suggestedOwner": "Android agent-detail UI team",
+        "suggestedFixes": [
+          "Match the React navigation order and restore Workspace with the same yellow selected background, borders, width, and overflow behavior.",
+          "Render \"@Product-UX-Designer\" beneath the title and replace the two Android header buttons with React's single overflow button.",
+          "Add the workspace path and copy icon, then match the small muted visibility and refresh controls and their alignment.",
+          "Remove the \"86 B\" and \"folder\" labels and use the orange folder styling from React unless those additions are explicitly approved.",
+          "Normalize workspace header padding, divider positions, icon dimensions, text sizing, and component bounds against the 390×844 React baseline."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10451,17 +10947,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.197Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:57:52.393Z",
+            "severity": "high",
+            "summary": [
+              "The agent subtitle changes from the gray identifier \"@Product-UX-Designer\" on React to a truncated description, \"Turns product feedback, screenshots, ...\", on Android.",
+              "The header actions differ: React has one bordered overflow button, while Android has separate bordered chat and menu buttons that reduce the subtitle space.",
+              "The navigation tabs are materially different: React shows Reminders, a yellow-selected Workspace tab, Apps, and a partially clipped next tab; Android shows four unselected tabs labeled Profile, Activity, Chat, and Reminders.",
+              "Android omits the React workspace path row and copy icon. Its workspace header also replaces React's small muted visibility and refresh icons with a large bordered refresh button.",
+              "The file rows differ: Android adds right-aligned \"86 B\" and \"folder\" metadata, and its folder icon is black rather than React's orange."
+            ],
+            "likelyCauses": [
+              "Android is using a different navigation configuration or tab data source.",
+              "The Android agent-detail header uses an alternate subtitle and action-button component.",
+              "Workspace path, copy, and visibility controls were not ported to Android.",
+              "Android applies different file-row metadata and folder-icon styling.",
+              "Platform-specific spacing, icon sizing, and overflow rules are diverging from the React baseline."
+            ],
+            "suggestedOwner": "Android agent-detail UI team",
+            "suggestedFixes": [
+              "Match the React navigation order and restore Workspace with the same yellow selected background, borders, width, and overflow behavior.",
+              "Render \"@Product-UX-Designer\" beneath the title and replace the two Android header buttons with React's single overflow button.",
+              "Add the workspace path and copy icon, then match the small muted visibility and refresh controls and their alignment.",
+              "Remove the \"86 B\" and \"folder\" labels and use the orange folder styling from React unless those additions are explicitly approved.",
+              "Normalize workspace header padding, divider positions, icon dimensions, text sizing, and component bounds against the 390×844 React baseline."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10499,17 +11013,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.218Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:44:46.182Z",
+        "severity": "high",
+        "summary": [
+          "Android shows a populated Connected Apps view with two nested app cards, ACTIVE badges, permission chips, and View service buttons; React shows empty Applications and App Events sections.",
+          "The tab bar differs in both labels and selection state: React highlights Apps in yellow, while Android displays Profile, Activity, Chat, and Reminders with no highlighted tab.",
+          "React has a vertical overflow menu, while Android replaces it with separate comment and menu controls; Android also uses a different subtitle that is ellipsized.",
+          "Android uses denser horizontal padding, heavier nested borders and shadows, outlined full-width service buttons, and green status badges that are absent from React.",
+          "React uses larger, lighter-gray empty-state text and compact raised action buttons for Grant access and Refresh; Android card text is darker, smaller, and more densely arranged."
+        ],
+        "likelyCauses": [
+          "The Android route or rendering fixture is loading a connected-app state instead of the React empty state.",
+          "Navigation configuration and selected-tab styling were not shared across platforms.",
+          "The header uses a platform-specific action-icon set and subtitle source.",
+          "Android is using separate spacing, typography, border, elevation, badge, and button tokens instead of the React design-system values."
+        ],
+        "suggestedOwner": "Android member-detail UI owner, with support from the app-integrations state owner",
+        "suggestedFixes": [
+          "Normalize the visual-test state and route so both platforms render the Applications tab's empty state, including Grant access, Refresh, No connected apps, and No app events yet.",
+          "Match the React tab labels, order, widths, selected indicator, and typography; ensure Apps is visibly selected on both platforms.",
+          "Match the header action count and iconography, then use the same subtitle content and truncation width.",
+          "Apply the baseline content margins, section spacing, type scale, border widths, shadows, and button bounds.",
+          "If the populated connected-app state is intentional, add a matching React state fixture and compare empty and populated variants separately."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10585,17 +11116,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.218Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:44:46.182Z",
+            "severity": "high",
+            "summary": [
+              "Android shows a populated Connected Apps view with two nested app cards, ACTIVE badges, permission chips, and View service buttons; React shows empty Applications and App Events sections.",
+              "The tab bar differs in both labels and selection state: React highlights Apps in yellow, while Android displays Profile, Activity, Chat, and Reminders with no highlighted tab.",
+              "React has a vertical overflow menu, while Android replaces it with separate comment and menu controls; Android also uses a different subtitle that is ellipsized.",
+              "Android uses denser horizontal padding, heavier nested borders and shadows, outlined full-width service buttons, and green status badges that are absent from React.",
+              "React uses larger, lighter-gray empty-state text and compact raised action buttons for Grant access and Refresh; Android card text is darker, smaller, and more densely arranged."
+            ],
+            "likelyCauses": [
+              "The Android route or rendering fixture is loading a connected-app state instead of the React empty state.",
+              "Navigation configuration and selected-tab styling were not shared across platforms.",
+              "The header uses a platform-specific action-icon set and subtitle source.",
+              "Android is using separate spacing, typography, border, elevation, badge, and button tokens instead of the React design-system values."
+            ],
+            "suggestedOwner": "Android member-detail UI owner, with support from the app-integrations state owner",
+            "suggestedFixes": [
+              "Normalize the visual-test state and route so both platforms render the Applications tab's empty state, including Grant access, Refresh, No connected apps, and No app events yet.",
+              "Match the React tab labels, order, widths, selected indicator, and typography; ensure Apps is visibly selected on both platforms.",
+              "Match the header action count and iconography, then use the same subtitle content and truncation width.",
+              "Apply the baseline content margins, section spacing, type scale, border widths, shadows, and button bounds.",
+              "If the populated connected-app state is intentional, add a matching React state fixture and compare empty and populated variants separately."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10634,7 +11182,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.339Z",
+        "generatedAt": "2026-10-18T06:59:42.328Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10720,7 +11268,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.339Z",
+            "generatedAt": "2026-10-18T06:59:42.328Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10938,7 +11486,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.357Z",
+        "generatedAt": "2026-10-18T06:59:42.413Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11024,7 +11572,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.357Z",
+            "generatedAt": "2026-10-18T06:59:42.413Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11063,17 +11611,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.366Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:51:22.738Z",
+        "severity": "high",
+        "summary": [
+          "React displays an open avatar-picker dialog with a white panel, full-screen dark scrim, shadow, close button, Cancel button, and disabled Save button; Android renders the picker inline without an overlay.",
+          "React includes an oversized current-avatar preview and a centered grid with fewer columns and wider whitespace; Android uses eight compact equal-size tiles per full-width row.",
+          "The React dialog title is approximately 18–20 px, bold, and dark; Android's \"CHOOSE AVATAR\" label is approximately 12–13 px, semibold, uppercase, and muted gray.",
+          "Header actions differ: React shows only a vertical overflow icon, while Android shows comment and hamburger icons; Android also omits the edit pencil beside the profile name.",
+          "Android has an undimmed white background and bright yellow active Profile tab, while the React background and lower content are darkened and partially obscured by the modal scrim."
+        ],
+        "likelyCauses": [
+          "The implementations are rendering different avatar-picker states: modal-open on React and inline/closed on Android.",
+          "Avatar picker container, grid-column, and tile-sizing styles differ across platforms.",
+          "Typography, color, and spacing tokens are not consistently mapped between React and Android.",
+          "The two platforms use different member-header action-icon sets.",
+          "The avatar preview and selected-avatar components have different sizing and selection treatments."
+        ],
+        "suggestedOwner": "Android member-profile feature team with cross-platform design-system support",
+        "suggestedFixes": [
+          "Choose the canonical interaction state and align both platforms; if React is the baseline, implement the Android picker as a modal with the same viewport bounds, scrim, elevation, close control, footer buttons, and disabled Save state.",
+          "Match avatar ordering and geometry, including the oversized preview, upload tile, pink selection outline, column count, tile size, gaps, and content alignment.",
+          "Align the picker heading, body typography, muted label color, line height, section padding, and divider placement with the React values.",
+          "Use the same header actions and profile edit affordance on both platforms, including the back, overflow/comment/menu, and title-pencil treatments.",
+          "Apply the same active-tab palette and scrim layering so the React background and Android inline state are not visually confused by overlay-only color changes."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11149,17 +11715,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.366Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:51:22.738Z",
+            "severity": "high",
+            "summary": [
+              "React displays an open avatar-picker dialog with a white panel, full-screen dark scrim, shadow, close button, Cancel button, and disabled Save button; Android renders the picker inline without an overlay.",
+              "React includes an oversized current-avatar preview and a centered grid with fewer columns and wider whitespace; Android uses eight compact equal-size tiles per full-width row.",
+              "The React dialog title is approximately 18–20 px, bold, and dark; Android's \"CHOOSE AVATAR\" label is approximately 12–13 px, semibold, uppercase, and muted gray.",
+              "Header actions differ: React shows only a vertical overflow icon, while Android shows comment and hamburger icons; Android also omits the edit pencil beside the profile name.",
+              "Android has an undimmed white background and bright yellow active Profile tab, while the React background and lower content are darkened and partially obscured by the modal scrim."
+            ],
+            "likelyCauses": [
+              "The implementations are rendering different avatar-picker states: modal-open on React and inline/closed on Android.",
+              "Avatar picker container, grid-column, and tile-sizing styles differ across platforms.",
+              "Typography, color, and spacing tokens are not consistently mapped between React and Android.",
+              "The two platforms use different member-header action-icon sets.",
+              "The avatar preview and selected-avatar components have different sizing and selection treatments."
+            ],
+            "suggestedOwner": "Android member-profile feature team with cross-platform design-system support",
+            "suggestedFixes": [
+              "Choose the canonical interaction state and align both platforms; if React is the baseline, implement the Android picker as a modal with the same viewport bounds, scrim, elevation, close control, footer buttons, and disabled Save state.",
+              "Match avatar ordering and geometry, including the oversized preview, upload tile, pink selection outline, column count, tile size, gaps, and content alignment.",
+              "Align the picker heading, body typography, muted label color, line height, section padding, and divider placement with the React values.",
+              "Use the same header actions and profile edit affordance on both platforms, including the back, overflow/comment/menu, and title-pencil treatments.",
+              "Apply the same active-tab palette and scrim layering so the React background and Android inline state are not visually confused by overlay-only color changes."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -11190,7 +11774,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.501Z",
+        "generatedAt": "2026-10-18T06:59:42.634Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11276,7 +11860,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.501Z",
+            "generatedAt": "2026-10-18T06:59:42.634Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11316,7 +11900,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.511Z",
+        "generatedAt": "2026-10-18T06:59:42.678Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11402,7 +11986,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.511Z",
+            "generatedAt": "2026-10-18T06:59:42.678Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11442,7 +12026,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.437Z",
+        "generatedAt": "2026-10-18T06:59:42.561Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11528,7 +12112,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.437Z",
+            "generatedAt": "2026-10-18T06:59:42.561Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11568,7 +12152,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.522Z",
+        "generatedAt": "2026-10-18T06:59:42.763Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11654,7 +12238,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.522Z",
+            "generatedAt": "2026-10-18T06:59:42.763Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11694,7 +12278,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.598Z",
+        "generatedAt": "2026-10-18T06:59:42.868Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11780,7 +12364,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.598Z",
+            "generatedAt": "2026-10-18T06:59:42.868Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11820,7 +12404,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.667Z",
+        "generatedAt": "2026-10-18T06:59:42.942Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11906,7 +12490,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.667Z",
+            "generatedAt": "2026-10-18T06:59:42.942Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11946,7 +12530,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.631Z",
+        "generatedAt": "2026-10-18T06:59:42.891Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12032,7 +12616,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.631Z",
+            "generatedAt": "2026-10-18T06:59:42.891Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12071,17 +12655,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.625Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-10-18T06:52:08.919Z",
+        "severity": "high",
+        "summary": [
+          "Component bounds are not equivalent: React is 260×321 while Android is 260×844, leaving a large beige empty region below the Android message row.",
+          "The Android avatar is approximately 34px versus 26px on React; its header and body are also shifted roughly 14px farther right and 20px lower.",
+          "React uses monospaced text with literal Markdown markers, while Android uses proportional sans-serif text with different wrapping and a substantially taller row.",
+          "Android adds styled Markdown elements absent on React: yellow outlined #31/#521 badges, a bold underlined mention, bold task text, and gray inline-code backgrounds.",
+          "Header composition differs: Android shows a lavender placeholder avatar, bold full name, gray truncated secondary text, and right-aligned date; React shows a small pixel-art avatar and compact author/date."
+        ],
+        "likelyCauses": [
+          "The Android screenshot uses a full-height manual rect rather than the actual message-row bounds used by the React element capture.",
+          "Android and React use different avatar, header, margin, and content-column dimensions.",
+          "Platform font families or font metrics resolve differently.",
+          "Only Android parses and styles the Markdown tokens.",
+          "The platforms use different avatar/header assets or truncation rules."
+        ],
+        "suggestedOwner": "Android message-row and design-system team, with the Slock crop configuration owner",
+        "suggestedFixes": [
+          "Change the Android capture to the actual row bounds and compare the same width and height, or normalize both captures before scoring.",
+          "Align the avatar to about 26px and move the content column to approximately 55px from the component edge, matching React's header and body offsets.",
+          "Use the specified font family, size, weight, and line height on both platforms.",
+          "Use the same Markdown behavior and token styles on both platforms; either render all tokens or show literal syntax on both.",
+          "Align avatar artwork, name/status truncation, date color, and header spacing to the React component specification."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -12157,17 +12759,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.625Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-10-18T06:52:08.919Z",
+            "severity": "high",
+            "summary": [
+              "Component bounds are not equivalent: React is 260×321 while Android is 260×844, leaving a large beige empty region below the Android message row.",
+              "The Android avatar is approximately 34px versus 26px on React; its header and body are also shifted roughly 14px farther right and 20px lower.",
+              "React uses monospaced text with literal Markdown markers, while Android uses proportional sans-serif text with different wrapping and a substantially taller row.",
+              "Android adds styled Markdown elements absent on React: yellow outlined #31/#521 badges, a bold underlined mention, bold task text, and gray inline-code backgrounds.",
+              "Header composition differs: Android shows a lavender placeholder avatar, bold full name, gray truncated secondary text, and right-aligned date; React shows a small pixel-art avatar and compact author/date."
+            ],
+            "likelyCauses": [
+              "The Android screenshot uses a full-height manual rect rather than the actual message-row bounds used by the React element capture.",
+              "Android and React use different avatar, header, margin, and content-column dimensions.",
+              "Platform font families or font metrics resolve differently.",
+              "Only Android parses and styles the Markdown tokens.",
+              "The platforms use different avatar/header assets or truncation rules."
+            ],
+            "suggestedOwner": "Android message-row and design-system team, with the Slock crop configuration owner",
+            "suggestedFixes": [
+              "Change the Android capture to the actual row bounds and compare the same width and height, or normalize both captures before scoring.",
+              "Align the avatar to about 26px and move the content column to approximately 55px from the component edge, matching React's header and body offsets.",
+              "Use the specified font family, size, weight, and line height on both platforms.",
+              "Use the same Markdown behavior and token styles on both platforms; either render all tokens or show literal syntax on both.",
+              "Align avatar artwork, name/status truncation, date color, and header spacing to the React component specification."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -12198,7 +12818,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.718Z",
+        "generatedAt": "2026-10-18T06:59:43.151Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12284,7 +12904,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.718Z",
+            "generatedAt": "2026-10-18T06:59:43.151Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12324,7 +12944,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.761Z",
+        "generatedAt": "2026-10-18T06:59:43.093Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12410,7 +13030,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.761Z",
+            "generatedAt": "2026-10-18T06:59:43.093Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12450,7 +13070,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:43.737Z",
+        "generatedAt": "2026-10-18T06:59:43.133Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12536,7 +13156,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:43.737Z",
+            "generatedAt": "2026-10-18T06:59:43.133Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12565,7 +13185,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12622,7 +13242,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12662,7 +13282,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12719,7 +13339,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12759,7 +13379,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12816,7 +13436,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12856,7 +13476,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-10-18T06:36:41.376Z",
+        "generatedAt": "2026-10-18T06:59:38.529Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12913,7 +13533,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-10-18T06:36:41.376Z",
+            "generatedAt": "2026-10-18T06:59:38.529Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

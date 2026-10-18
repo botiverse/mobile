@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-10-18T06:36:43.927Z",
+  "generatedAt": "2026-10-18T06:59:43.234Z",
   "latestRunId": "2c1bc667-20261018063524",
   "latest": {
     "runId": "2c1bc667-20261018063524",
     "commit": "2c1bc667-20261018063524",
     "commitSubject": "feat(ios): wire iPad multi-scene host for document-shell server switch (task #473) (#3085)",
-    "generatedAt": "2026-10-18T06:36:43.927Z",
+    "generatedAt": "2026-10-18T06:59:43.234Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 5,
-      "pending": 94
+      "ready": 23,
+      "pending": 76
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "2c1bc667-20261018063524",
       "commit": "2c1bc667-20261018063524",
       "commitSubject": "feat(ios): wire iPad multi-scene host for document-shell server switch (task #473) (#3085)",
-      "generatedAt": "2026-10-18T06:36:43.927Z",
+      "generatedAt": "2026-10-18T06:59:43.234Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 5,
-        "pending": 94
+        "ready": 23,
+        "pending": 76
       },
       "comparisons": [
         "react__android"

@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-18 06:36:43 UTC
+Generated: 2026-10-18 06:59:43 UTC
 Latest run: 2c1bc667-20261018063524
 Latest commit: 2c1bc667-20261018063524
 Commit subject: feat(ios): wire iPad multi-scene host for document-shell server switch (task #473) (#3085)
 Providers: react vs android
 Summary: total 99, same 0, pass 0, basic-pass 1, different 90, missing 8
-AI analysis: ready 5 / total 99, pending 94
+AI analysis: ready 23 / total 99, pending 76
 Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
