@@ -134,7 +134,7 @@ class FontFaceResolutionTest {
     }
 
     @Test
-    fun defaultNativeInputFaceIsNotSpaceGrotesk() {
-        assertEquals("HankenGrotesk-Regular", slockInputFontFaceName())
+    fun defaultNativeInputFaceFollowsTheDefaultFont() {
+        assertEquals("SpaceGrotesk-Regular", slockInputFontFaceName())
     }
 }

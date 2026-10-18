@@ -164,7 +164,7 @@ enum class MyMessageAlignmentPreference(val storageKey: String) {
  * `fonts.css` theme variables, so "align with web" is one identity, not four
  * loose families:
  *
- * - [HankenGrotesk] — web `brutal` (the default): sans + heading Hanken Grotesk.
+ * - [HankenGrotesk] — web `brutal`: sans + heading Hanken Grotesk.
  * - [GeistInter] — web `elegant`: sans Geist, heading Inter.
  * - [SpaceGrotesk] — the face mobile shipped before this option existed:
  *   sans Space Grotesk, mono Space Mono.
@@ -211,8 +211,12 @@ enum class FontPreference(val storageKey: String) {
         }
 
     companion object {
-        /** Web's default theme is `brutal`, so the mobile default matches it. */
-        val Default: FontPreference = HankenGrotesk
+        /**
+         * artin 2026-10-18 (1.14.1): keep the face mobile has always shipped. Hanken Grotesk's
+         * narrower glyphs read about a size smaller at the same sp, so the web-aligned faces stay
+         * selectable in Appearance but are not the default.
+         */
+        val Default: FontPreference = SpaceGrotesk
 
         fun fromStorageKey(value: String?): FontPreference {
             val normalized = value?.trim()?.lowercase()

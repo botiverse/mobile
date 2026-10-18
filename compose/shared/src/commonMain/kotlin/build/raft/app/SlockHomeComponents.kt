@@ -7005,7 +7005,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             ) {
                 Text(
                     name,
-                    style = if (unread) SlockType.ButtonBold else SlockType.Button,
+                    style = if (unread) SlockType.ListItemBold else SlockType.ListItem,
                     color = titleColor,
                     modifier =
                         if (descriptionText != null) {

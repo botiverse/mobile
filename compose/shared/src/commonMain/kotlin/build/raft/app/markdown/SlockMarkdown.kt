@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.SlockTextSize
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
@@ -1791,8 +1792,8 @@ internal fun String.preparedSlockMarkdownFullRendererContentOrNull(): MarkdownPa
 
 private const val SlockMarkdownDefaultPreparseLimit = 20
 
-private val SlockMarkdownBodyFontSize = 14.sp
-private val SlockMarkdownBodyLineHeight = 22.sp
+private val SlockMarkdownBodyFontSize get() = SlockTextSize.Content
+private val SlockMarkdownBodyLineHeight get() = SlockTextSize.ContentLineHeight
 internal val SlockMarkdownTaskCheckboxSize = 14.dp
 internal val SlockMarkdownTaskCheckboxFirstLineOffset =
     ((22.dp - SlockMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
