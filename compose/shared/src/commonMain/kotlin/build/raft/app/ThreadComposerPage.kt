@@ -2791,11 +2791,11 @@ internal fun ThreadComposerContentLeaf(
                             imeActionRequested = composerSendKeyEnabled,
                             keyboardOptions = composerKeyboardOptions,
                             keyboardActions = composerKeyboardActions,
-                            // Same size as the default message body (14sp/20sp), per artin.
+                            // Same size as the default message body (16sp/22sp), per artin.
                             textStyle = SlockType.Input.copy(
                                 color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp
                             ),
                             // Kuikly produces keyboardHeightChange from the native input node on
                             // every platform. The height is host/window geometry, not editor
