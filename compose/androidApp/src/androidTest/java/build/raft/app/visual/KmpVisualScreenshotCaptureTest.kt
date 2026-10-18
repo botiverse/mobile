@@ -4872,7 +4872,19 @@ class KmpVisualScreenshotCaptureTest {
             if (viewAction != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
-        requireNotNull(viewAction) { "Pending mention View action is not visible" }
+        requireNotNull(viewAction) {
+            // Name what the tree did hold, so a CI-only miss is diagnosable.
+            val texts = mutableListOf<String>()
+            fun collect(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || depth > 40 || texts.size > 60) return
+                (node.text ?: node.contentDescription)?.toString()?.takeIf { it.isNotBlank() }?.let { texts += it.take(40) }
+                for (index in 0 until node.childCount) collect(node.getChild(index), depth + 1)
+            }
+            val root = uiAutomation.rootInActiveWindow
+            collect(root, 0)
+            "Pending mention View action is not visible; activeWindowPackage=${root?.packageName} " +
+                "windows=${uiAutomation.windows.size} texts=${texts.joinToString(" | ")}"
+        }
         val clickableAction = generateSequence(viewAction) { it.parent }.firstOrNull { it.isClickable }
         requireNotNull(clickableAction) { "Pending mention View action has no clickable ancestor" }
         val bounds = android.graphics.Rect()
