@@ -7264,6 +7264,44 @@ internal fun slockFilePreviewDesktopViewportScript(
         "})();"
 }
 
+/**
+ * Lower bound for the desktop-mode fit scale, in percent.
+ *
+ * `setInitialScale` takes an integer percent. On an implausibly narrow viewport the honest ratio
+ * approaches zero, and a scale of 0/1 percent renders nothing usable, so the platform call is
+ * clamped. Keeping the bound here means every platform clamps at the same place instead of each
+ * choosing its own floor.
+ */
+const val SlockFilePreviewDesktopScaleMinPercent = 10
+
+/**
+ * The fit scale that makes a [viewportPx]-wide WebView show the whole desktop layout, in percent.
+ *
+ * This is the one piece of arithmetic task #188's desktop mode depends on, and it is the same on
+ * every platform: `viewportPx / (desktopCssWidth * dpr)`. It lives in shared code so Android, iOS
+ * and OHOS cannot drift into three slightly different formulas with three sets of edge cases.
+ *
+ * Returns `null` when no fit should be applied:
+ * - a non-positive viewport width (the prop can arrive before the first layout pass), or
+ * - a non-positive or non-finite `dpr`, or
+ * - a ratio at or above 1, where the layout already fits and shrinking it would be wrong.
+ *
+ * Callers must treat `null` as "leave the view alone", not as a failure.
+ */
+fun slockFilePreviewDesktopScalePercent(
+    viewportPx: Int,
+    dpr: Float,
+    desktopCssWidth: Int = SlockFilePreviewDesktopViewportWidth,
+    minPercent: Int = SlockFilePreviewDesktopScaleMinPercent
+): Int? {
+    if (viewportPx <= 0) return null
+    if (!dpr.isFinite() || dpr <= 0f) return null
+    if (desktopCssWidth <= 0) return null
+    val needed = viewportPx.toFloat() / (desktopCssWidth.toFloat() * dpr)
+    if (needed <= 0f || needed >= 1f) return null
+    return (needed * 100).toInt().coerceIn(minPercent, 100)
+}
+
 internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.substringBefore(';').trim()
     val normalizedName = fileName.substringBefore('?').substringBefore('#')
