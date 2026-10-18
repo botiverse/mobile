@@ -5,8 +5,10 @@ import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.commitEnterBaselineForTest
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -466,6 +468,97 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(listOf("e1"), foreign.store.restore(threadScope).envelopes.map { it.fact.id })
         assertEquals(0, foreign.store.incrementalCalls)
         assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, foreign.canary.continuityOf(threadScope))
+    }
+
+    // ---- device #3092: the real thread-reply `message:new` wire, decoded exactly as the socket mapper does ----
+
+    /**
+     * botiverse/slock `broadcastAndDeliver` → `emitPersistedMessageToFrontend` (thread under a public channel):
+     * the inserted row (storage-only keys projected out) + senderName / senderMembershipStatus / attachments /
+     * mentions + conversationContext. No `senderDescription`, no `reactions` key. Such a frame is display
+     * only: an absent aggregate is never read as empty (an agent's description cannot be invented), so the
+     * window — which cannot hold the reply — turns discontinuous and the log names exactly what was absent.
+     */
+    @Test
+    fun aRealThreadReplyWithoutSenderDescriptionAndReactionsIsNeverWrittenAndSaysWhy() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enterThread(1L)
+
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(wireReply(extraKeys = "")))
+        assertEquals(0, fixture.store.incrementalCalls)
+        assertEquals(listOf("e1"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
+        assertTrue(
+            fixture.logs.any {
+                it == "canonical_v2_canary discontinuous server=server-1 scope=thread-1 scopeKind=thread " +
+                    "reason=not_full_v2 kind=new msg=reply-2 seq=2 missing=SenderDescription,Reactions"
+            },
+            fixture.logs.toString(),
+        )
+        // The same frame through the owner's second entry: display only, and the line names it.
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(wireReply(extraKeys = "")))
+        assertTrue(
+            fixture.logs.any {
+                it == "canonical_v2_canary skip=discontinuous server=server-1 scope=thread-1 scopeKind=thread " +
+                    "kind=new msg=reply-2 seq=2"
+            },
+            fixture.logs.toString(),
+        )
+    }
+
+    /** Twin: the identical wire plus the two keys the producer contract lists for `message:new` is written. */
+    @Test
+    fun theSameThreadReplyWireCarryingSenderDescriptionAndReactionsIsWritten() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.enterThread(1L)
+
+        val full = wireReply(extraKeys = """"senderDescription":null,"reactions":[],""")
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(full))
+        assertEquals(listOf("e1", "reply-2"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(threadScope))
+        assertTrue(fixture.logs.none { "discontinuous" in it }, fixture.logs.toString())
+    }
+
+    /** A frame missing only one aggregate names only that one (the detail is per field, not a fixed label). */
+    @Test
+    fun theNotFullDetailNamesEachMissingAggregateAndInvalidScalar() {
+        val onlyReactions = wireReply(extraKeys = """"senderDescription":null,""")
+        assertEquals(
+            CanonicalMessageV2EnvelopeConversion.NotFull("missing=Reactions"),
+            onlyReactions.toCanonicalMessageV2Conversion(partition, replyCount = 0),
+        )
+        val blankName = onlyReactions.copy(
+            row = onlyReactions.row.copy(senderName = ""),
+            presentAggregates = MessageAggregateField.entries.toList(),
+        )
+        assertEquals(
+            CanonicalMessageV2EnvelopeConversion.NotFull("invalid=senderName"),
+            blankName.toCanonicalMessageV2Conversion(partition, replyCount = 0),
+        )
+        assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(
+            blankName.copy(row = blankName.row.copy(senderName = "Alice"))
+                .toCanonicalMessageV2Conversion(partition, replyCount = 0),
+        )
+    }
+
+    /** The server's thread-reply `message:new` payload (public parent), decoded by the production decoder. */
+    private fun wireReply(extraKeys: String): CanonicalMessageFoldInput {
+        val raw = Json.parseToJsonElement(
+            """
+            {"id":"reply-2","seq":2,"channelId":"thread-1","senderType":"user","senderId":"user-1",
+             "randomId":"mobile-abc","messageType":"chat","content":"hello from the phone",
+             "actionMetadata":null,"threadId":null,"causalActorType":null,"causalActorId":null,
+             "systemSubtype":null,"taskStatus":null,"taskNumber":null,"taskAssigneeType":null,
+             "taskAssigneeId":null,"taskClaimedAt":null,"taskCompletedAt":null,
+             "createdAt":"2026-10-18T06:30:54.100Z","updatedAt":"2026-10-18T06:30:54.100Z",
+             "senderName":"alice","senderMembershipStatus":"active","attachments":[],"mentions":[],
+             $extraKeys
+             "conversationContext":{"channelType":"thread","parentMessageId":"root-1",
+               "parentChannelId":"channel-1","parentChannelType":"channel"}}
+            """.trimIndent(),
+        ).jsonObject
+        val carry = requireNotNull(decodeCanonicalMessageWire(raw, ProductionFace.MessageNew))
+        return CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.New, carry)
     }
 
     private inner class Fixture(var enabled: Boolean = true, val store: FakeStore = FakeStore()) {

@@ -188,7 +188,7 @@ private sealed interface CanonicalMessageV2Plan {
 private sealed interface CanonicalMessageV2AppendResult {
     data object Committed : CanonicalMessageV2AppendResult
     data object BelowWindow : CanonicalMessageV2AppendResult
-    data object NotFullV2 : CanonicalMessageV2AppendResult
+    data class NotFullV2(val detail: String) : CanonicalMessageV2AppendResult
     data object BaselineRequired : CanonicalMessageV2AppendResult
     data object PartitionRevoked : CanonicalMessageV2AppendResult
     data object ScopeEvicted : CanonicalMessageV2AppendResult
@@ -225,6 +225,12 @@ private sealed interface CanonicalMessageV2AppendResult {
  *   any reconnect makes the window display only until the thread is entered again, a leave of the thread's OR
  *   its parent channel's room does too, and a thread under a parent the user is known not to belong to never
  *   becomes continuous (its rooms are joined asynchronously on open, like a non-member channel's).
+ * - A frame without every required aggregate key ([CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES]) is
+ *   display only and turns the window discontinuous (`reason=not_full_v2 … missing=…`); absent never reads
+ *   as empty. No other realtime delivery of that message is fuller: a reply's `thread:updated.latestReply`
+ *   is the same payload (plus display fields) and is never a write candidate, and the own-send HTTP
+ *   response is the same object. So nothing is waited for: only the next enter page (REST, fully
+ *   enriched) brings the fact, and until then the window must say it is incomplete.
  */
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
 
@@ -368,8 +374,8 @@ internal class CanonicalMessageV2ProductionCanary(
                     }
                     // Display only (logged inside); continuity unchanged.
                     CanonicalMessageV2AppendResult.BelowWindow -> CanonicalMessageV2CanaryOutcome.NotSelected
-                    CanonicalMessageV2AppendResult.NotFullV2 -> {
-                        markDiscontinuous(scope, state, "not_full_v2")
+                    is CanonicalMessageV2AppendResult.NotFullV2 -> {
+                        markDiscontinuous(scope, state, "not_full_v2 ${input.frameLabel()} ${result.detail}")
                         CanonicalMessageV2CanaryOutcome.NotSelected
                     }
                     CanonicalMessageV2AppendResult.BaselineRequired -> {
@@ -425,7 +431,10 @@ internal class CanonicalMessageV2ProductionCanary(
             }
         }
         if (state.discontinuous) {
-            logger("canonical_v2_canary skip=discontinuous server=${scope.serverId} scope=${scope.scopeId}")
+            logger(
+                "canonical_v2_canary skip=discontinuous server=${scope.serverId} scope=${scope.scopeId}" +
+                    "${scope.kindLabel()} ${delivery.foldInput.frameLabel()}",
+            )
             return CanonicalMessageV2Plan.DisplayOnly
         }
         val cursor = generationEngine.currentCursor(scope) ?: state.cursor
@@ -459,8 +468,10 @@ internal class CanonicalMessageV2ProductionCanary(
             )
             return CanonicalMessageV2AppendResult.BelowWindow
         }
-        val envelope = foldInput.toCanonicalMessageV2Envelope(scope.partition, replyCount = 0)
-            ?: return CanonicalMessageV2AppendResult.NotFullV2
+        val envelope = when (val conversion = foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0)) {
+            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion.envelope
+            is CanonicalMessageV2EnvelopeConversion.NotFull -> return CanonicalMessageV2AppendResult.NotFullV2(conversion.detail)
+        }
         val advanced = cursor.advancedBy(envelope.fact.seq)
         val result = commitIncremental(
             // A `New` only ever adds: a stored fact may already be newer (edited, reacted).
@@ -514,10 +525,18 @@ internal class CanonicalMessageV2ProductionCanary(
             markDiscontinuous(scope, state, "updated_thread")
             return CanonicalMessageV2CanaryOutcome.NotSelected
         }
-        val envelope = delivery.foldInput.toCanonicalMessageV2Envelope(scope.partition, replyCount = 0)
-        if (envelope == null) {
-            markDiscontinuous(scope, state, "updated_partial")
-            return CanonicalMessageV2CanaryOutcome.NotSelected
+        val envelope = when (
+            val conversion = delivery.foldInput.toCanonicalMessageV2Conversion(scope.partition, replyCount = 0)
+        ) {
+            is CanonicalMessageV2EnvelopeConversion.Converted -> conversion.envelope
+            is CanonicalMessageV2EnvelopeConversion.NotFull -> {
+                markDiscontinuous(
+                    scope,
+                    state,
+                    "updated_partial ${delivery.foldInput.frameLabel()} ${conversion.detail}",
+                )
+                return CanonicalMessageV2CanaryOutcome.NotSelected
+            }
         }
         val stored = try {
             generationEngine.storedFactExists(scope, row.id)
@@ -821,7 +840,12 @@ internal class CanonicalMessageV2ProductionCanary(
                 continue
             }
             if (epoch != committedEpoch) return discontinuous("epoch_mismatch")
-            if (frameScope == null) return discontinuous("not_full_v2")
+            if (frameScope == null) {
+                return discontinuous(
+                    "not_full_v2 ${input.frameLabel()} invalid=conversationContext:" +
+                        (input.row.conversationContext?.channelType ?: "absent"),
+                )
+            }
             if (input.kind != CanonicalMessageFoldKind.New) return discontinuous("buffered_${input.kind.name.lowercase()}")
             if (stateMutex.withLock { state.isAlreadyCommitted(delivery) }) continue
             val seq = input.row.seq
@@ -852,7 +876,8 @@ internal class CanonicalMessageV2ProductionCanary(
             when (val result = appendNewInsideWriter(scope, state, cursor, input)) {
                 CanonicalMessageV2AppendResult.Committed -> stateMutex.withLock { state.recordCommitted(delivery) }
                 CanonicalMessageV2AppendResult.BelowWindow -> Unit
-                CanonicalMessageV2AppendResult.NotFullV2 -> return discontinuous("not_full_v2")
+                is CanonicalMessageV2AppendResult.NotFullV2 ->
+                    return discontinuous("not_full_v2 ${input.frameLabel()} ${result.detail}")
                 CanonicalMessageV2AppendResult.BaselineRequired -> return discontinuous("baseline_required")
                 CanonicalMessageV2AppendResult.PartitionRevoked -> {
                     heldAfterWindowLost(scope, state, "partition_revoked")
@@ -981,6 +1006,10 @@ internal class CanonicalMessageV2ProductionCanary(
 
 private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
 
+/** `kind=new msg=<id> seq=<seq>`: which frame a canary line is about (ids only, never content). */
+private fun CanonicalMessageFoldInput.frameLabel(): String =
+    "kind=${kind.name.lowercase()} msg=${row.id} seq=${row.seq}"
+
 /** ` scopeKind=thread` for a reply-thread scope, nothing for a top-level one (log lines keep their shape). */
 private fun SyncScopeKey.kindLabel(): String =
     if (scopeKind == REPLY_THREAD_SCOPE_KIND) " scopeKind=$REPLY_THREAD_SCOPE_KIND" else ""
@@ -1031,21 +1060,57 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
     partition: DurablePartitionKey,
     replyCount: Int,
     producerContextOverride: CanonicalConversationContextWire? = null,
-): CanonicalMessageEnvelopeV2? {
-    if (replyCount < 0) return null
-    if (!row.hasCanonicalV2Scalars()) return null
-    val requiredAggregates = setOf(
-        MessageAggregateField.SenderName,
-        MessageAggregateField.SenderDescription,
-        MessageAggregateField.SenderMembershipStatus,
-        MessageAggregateField.Mentions,
-        MessageAggregateField.Attachments,
-        MessageAggregateField.Reactions,
-        MessageAggregateField.ActionMetadata,
-    )
-    if (!presentAggregates.containsAll(requiredAggregates)) return null
-    if (producerContextOverride == null && MessageAggregateField.ConversationContext !in presentAggregates) return null
-    val context = producerContextOverride ?: row.conversationContext ?: return null
+): CanonicalMessageEnvelopeV2? =
+    (toCanonicalMessageV2Conversion(partition, replyCount, producerContextOverride)
+        as? CanonicalMessageV2EnvelopeConversion.Converted)?.envelope
+
+/**
+ * The outcome of turning one realtime frame into a full-V2 envelope. [NotFull.detail] names exactly which
+ * requirement failed (`missing=SenderDescription,Reactions`, `invalid=senderName`, …) so a device log line
+ * says WHY a window turned discontinuous. Built only on the failure path.
+ */
+internal sealed interface CanonicalMessageV2EnvelopeConversion {
+    data class Converted(val envelope: CanonicalMessageEnvelopeV2) : CanonicalMessageV2EnvelopeConversion
+
+    data class NotFull(val detail: String) : CanonicalMessageV2EnvelopeConversion
+}
+
+/**
+ * The optional aggregates a realtime frame must carry (explicit wire keys) before it can become a full-V2
+ * fact. An absent key means "the producer did not say", never "empty": e.g. the ordinary send pipeline's
+ * `message:new` omits `senderDescription` and `reactions` (botiverse/slock `broadcastAndDeliver` builds its
+ * payload from the inserted row + senderName / senderMembershipStatus / attachments / mentions only), and
+ * an agent's description cannot be invented here. Such a frame is display only.
+ */
+internal val CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES: List<MessageAggregateField> = listOf(
+    MessageAggregateField.SenderName,
+    MessageAggregateField.SenderDescription,
+    MessageAggregateField.SenderMembershipStatus,
+    MessageAggregateField.Mentions,
+    MessageAggregateField.Attachments,
+    MessageAggregateField.Reactions,
+    MessageAggregateField.ActionMetadata,
+)
+
+internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
+    partition: DurablePartitionKey,
+    replyCount: Int,
+    producerContextOverride: CanonicalConversationContextWire? = null,
+): CanonicalMessageV2EnvelopeConversion {
+    fun notFull(detail: String) = CanonicalMessageV2EnvelopeConversion.NotFull(detail)
+    if (replyCount < 0) return notFull("invalid=replyCount")
+    val required = if (producerContextOverride == null) {
+        CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES + MessageAggregateField.ConversationContext
+    } else {
+        CANONICAL_MESSAGE_V2_REQUIRED_FRAME_AGGREGATES
+    }
+    if (!presentAggregates.containsAll(required)) {
+        val missing = required.filterNot(presentAggregates::contains).joinToString(",") { it.name }
+        val invalid = row.invalidCanonicalV2Scalars()
+        return notFull("missing=$missing" + if (invalid.isEmpty()) "" else " invalid=${invalid.joinToString(",")}")
+    }
+    row.invalidCanonicalV2Scalars().takeIf { it.isNotEmpty() }?.let { return notFull("invalid=${it.joinToString(",")}") }
+    val context = producerContextOverride ?: row.conversationContext ?: return notFull("invalid=conversationContext")
     val normalizedReactions = normalizeLegacyReactionRoster(
         context = ReactionNormalizationContext(
             serverId = partition.serverId,
@@ -1054,8 +1119,9 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
             authority = ReactionIngressAuthority.SharedRoom,
         ),
         reactions = row.reactions.map { it.toLegacyReactionRosterDto() },
-    ) as? ReactionNormalizationOutcome.Normalized ?: return null
-    val actionMetadata = row.actionMetadata.toCanonicalActionMetadataV2OrNull() ?: if (row.actionMetadata != null) return null else null
+    ) as? ReactionNormalizationOutcome.Normalized ?: return notFull("invalid=reactions")
+    val actionMetadata = row.actionMetadata.toCanonicalActionMetadataV2OrNull()
+        ?: if (row.actionMetadata != null) return notFull("invalid=actionMetadata") else null
     val fact = CanonicalMessageNodeV2(
         id = row.id,
         seq = row.seq,
@@ -1084,15 +1150,20 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
         actionMetadata = actionMetadata,
         replyCount = replyCount,
     )
-    return (normalizeCanonicalMessageV2(
-        CanonicalMessageV2NormalizationInput(
-            partition = partition,
-            scopeId = row.channelId,
-            fact = fact,
-            producerContext = context,
-            childReplyScopeId = row.threadId,
-        ),
-    ) as? CanonicalMessageV2NormalizationResult.Normalized)?.envelope
+    return when (
+        val normalized = normalizeCanonicalMessageV2(
+            CanonicalMessageV2NormalizationInput(
+                partition = partition,
+                scopeId = row.channelId,
+                fact = fact,
+                producerContext = context,
+                childReplyScopeId = row.threadId,
+            ),
+        )
+    ) {
+        is CanonicalMessageV2NormalizationResult.Normalized -> CanonicalMessageV2EnvelopeConversion.Converted(normalized.envelope)
+        is CanonicalMessageV2NormalizationResult.Rejected -> notFull("invalid=normalize:${normalized.diagnostic}")
+    }
 }
 
 /** Only for a seq at or above the window's oldest edge (below-window frames are never written). */
@@ -1185,20 +1256,25 @@ private fun JsonElement?.toCanonicalActionMetadataV2OrNull(): CanonicalActionMet
     }
 }
 
-private fun CanonicalMessageRow.hasCanonicalV2Scalars(): Boolean =
-    seq >= 0L &&
-        listOf(id, channelId, senderType, senderId, messageType, createdAt, senderName).all { it.isCanonicalV2Value() } &&
-        randomId?.isCanonicalV2Value() != false &&
-        threadId?.isCanonicalV2Value() != false &&
-        mentions.all { it.id.isCanonicalV2Value() && it.name.isCanonicalV2Value() && it.type.isCanonicalV2Value() } &&
-        attachments.all {
-            it.id.isCanonicalV2Value() &&
-                it.filename.isCanonicalV2Value() &&
-                it.mimeType.isCanonicalV2Value() &&
-                it.sizeBytes >= 0L &&
-                it.width?.let { width -> width >= 0 } != false &&
-                it.height?.let { height -> height >= 0 } != false
+/** The canonical-V2 scalar requirements a row breaks, by name (empty = all hold). */
+private fun CanonicalMessageRow.invalidCanonicalV2Scalars(): List<String> = buildList {
+    if (seq < 0L) add("seq")
+    listOf(
+        "id" to id, "channelId" to channelId, "senderType" to senderType, "senderId" to senderId,
+        "messageType" to messageType, "createdAt" to createdAt, "senderName" to senderName,
+    ).forEach { (name, value) -> if (!value.isCanonicalV2Value()) add(name) }
+    if (randomId?.isCanonicalV2Value() == false) add("randomId")
+    if (threadId?.isCanonicalV2Value() == false) add("threadId")
+    if (!mentions.all { it.id.isCanonicalV2Value() && it.name.isCanonicalV2Value() && it.type.isCanonicalV2Value() }) {
+        add("mentions")
+    }
+    if (
+        !attachments.all {
+            it.id.isCanonicalV2Value() && it.filename.isCanonicalV2Value() && it.mimeType.isCanonicalV2Value() &&
+                it.sizeBytes >= 0L && it.width?.let { w -> w >= 0 } != false && it.height?.let { h -> h >= 0 } != false
         }
+    ) add("attachments")
+}
 
 private fun String.isCanonicalV2Value(): Boolean = isNotBlank() && this == trim()
 
