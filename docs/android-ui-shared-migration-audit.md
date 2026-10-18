@@ -78,8 +78,11 @@ icons.
 Non-Lucide drawable resources that still exist are intentionally outside the
 shared product icon set:
 
-- `ic_google.xml` and `ic_github.xml` are third-party brand marks used by the
-  remaining native account screen.
+- `ic_github.xml` is a third-party brand mark kept for the remaining native
+  account screen. `ic_google.xml` was the same, but nothing references it any
+  more since the provider marks moved to the shared MR asset rendered through
+  `providerIconAssetSource`, so it was deleted (it also still carried the
+  pre-fix, wrong palette).
 - launcher and splash assets are app branding, not route/action icons.
 - benchmark/local assets used by `ImageAdapterBenchmarks.kt` are not product UI.
 
