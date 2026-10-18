@@ -14,9 +14,13 @@ import UIKit
 // scope as before (shared also maps a blank id to Legacy, so always-injecting
 // it is byte-equivalent).
 //
-// Notification opens, desktop shortcuts and realtime routing remain
-// process-global for now (NotificationCenter / "legacy-app-shell" literal in
-// SlockIosRealtimeHost); per-shell routing of those events is task C scope.
+// task #483: notification opens, desktop shortcuts, OAuth callbacks and host
+// lifecycle visibility are routed per-shell via `slockShellInstanceId`.
+// Scene-attributed events (scene_connect/scene_open_url/performActionFor) carry
+// the owning scene's shell id; app-level deliveries resolve the target shell by
+// payload serverId when unique, else broadcast — a payload without
+// `slockShellInstanceId` keeps the historical broadcast path. Host lifecycle
+// visibility fans out across every registered shell id (legacy fallback).
 
 /// Canonical document-shell identity: the authenticated route owner the shell
 /// hosts. Byte-compatible port of `AndroidShellRouteOwner`.
@@ -114,6 +118,34 @@ internal enum RaftIosShellWindowRegistry {
         lock.lock()
         defer { lock.unlock() }
         return sessionsByShellInstanceId[shellInstanceId]
+    }
+
+    /// Distinct shell ids of all registered contexts, insertion order not
+    /// guaranteed. Empty before the first scene connects — callers fall back
+    /// to the legacy shell.
+    static func allShellInstanceIds() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        var seen = Set<String>()
+        return contextsBySessionId.values.compactMap { context in
+            seen.insert(context.shellInstanceId).inserted ? context.shellInstanceId : nil
+        }
+    }
+
+    /// task #483: contexts whose selected server matches `serverId`, used to
+    /// resolve the target shell of an app-level notification open. Deduped by
+    /// shellInstanceId; empty when no window shows that server.
+    static func contexts(forServerId serverId: String) -> [RaftIosShellContext] {
+        let normalized = serverId.trimmingCharacters(in: .whitespaces)
+        guard !normalized.isEmpty else { return [] }
+        lock.lock()
+        defer { lock.unlock() }
+        var seen = Set<String>()
+        return contextsBySessionId.values.compactMap { context in
+            guard context.serverId == normalized,
+                  seen.insert(context.shellInstanceId).inserted else { return nil }
+            return context
+        }
     }
 
     static func session(forOwner owner: RaftIosShellRouteOwner) -> UISceneSession? {

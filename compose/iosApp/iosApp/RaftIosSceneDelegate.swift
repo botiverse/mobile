@@ -51,6 +51,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         for context in connectionOptions.urlContexts {
             _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
                 context.url,
+                shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_connect"
             )
         }
@@ -59,17 +60,26 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             SlockIosPushHost.acceptSystemNotificationOpen(
                 userInfo: content.userInfo,
                 categoryIdentifier: content.categoryIdentifier,
+                shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_connect"
             )
         }
         if let shortcutItem = connectionOptions.shortcutItem {
-            SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "scene_connect")
+            SlockIosDesktopShortcutHost.acceptShortcutItem(
+                shortcutItem,
+                shellInstanceId: shellInstanceId(for: scene),
+                source: "scene_connect"
+            )
         }
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(context.url, source: "scene_open_url")
+            _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
+                context.url,
+                shellInstanceId: shellInstanceId(for: scene),
+                source: "scene_open_url"
+            )
         }
     }
 
@@ -90,8 +100,19 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         performActionFor shortcutItem: UIApplicationShortcutItem,
         completionHandler: @escaping (Bool) -> Void
     ) {
-        SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "scene_perform_action")
+        SlockIosDesktopShortcutHost.acceptShortcutItem(
+            shortcutItem,
+            shellInstanceId: shellInstanceId(for: windowScene),
+            source: "scene_perform_action"
+        )
         completionHandler(true)
+    }
+
+    /// task #483: shell owning this scene, resolved live from the registry so a
+    /// `scene(_:continue:)` retarget is honored; `shellContext` is the fallback.
+    private func shellInstanceId(for scene: UIScene) -> String {
+        RaftIosShellWindowRegistry.context(forSessionId: scene.session.persistentIdentifier)?
+            .shellInstanceId ?? shellContext.shellInstanceId
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

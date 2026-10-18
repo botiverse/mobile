@@ -749,7 +749,12 @@ final class SlockIosRealtimeHost: NSObject {
                 if let params = runtime.connectParams { self.openSocketLocked(runtime: runtime, params: params) }
             }
             self.foregroundEpoch += 1
-            SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: "legacy-app-shell", visible: true)
+            // task #483: every live shell is foregrounded together.
+            let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
+            for shellId in shellIds.isEmpty
+                ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
+                SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: shellId, visible: true)
+            }
             NSLog("thread_lifecycle_host_show epoch=\\(self.foregroundEpoch) runtimes=\\(self.runtimes.count)")
             self.sendAppLifecycle(event: "show")
         }
@@ -758,7 +763,12 @@ final class SlockIosRealtimeHost: NSObject {
     @objc private func appWillResignActive() {
         queue.async { [weak self] in
             guard let self else { return }
-            SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: "legacy-app-shell", visible: false)
+            // task #483: every live shell is backgrounded together.
+            let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
+            for shellId in shellIds.isEmpty
+                ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
+                SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: shellId, visible: false)
+            }
             self.sendAppLifecycle(event: "hide")
             for runtime in self.runtimes.values {
                 self.disconnectRuntimeLocked(runtime, reason: "background", keepSession: true)

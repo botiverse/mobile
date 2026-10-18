@@ -17,6 +17,8 @@ struct SlockIosOAuthDestination {
     let pageName: String
     let pageData: [String: Any]
     let revision: String
+    // task #483: non-nil targets exactly one shell; nil broadcasts as before.
+    let shellInstanceId: String?
 }
 
 final class SlockIosOAuthRouteStore: ObservableObject {
@@ -25,12 +27,13 @@ final class SlockIosOAuthRouteStore: ObservableObject {
     @Published private(set) var destination = SlockIosOAuthDestination(
         pageName: slockIosOAuthAppShellPage,
         pageData: ["pageName": slockIosOAuthAppShellPage],
-        revision: UUID().uuidString
+        revision: UUID().uuidString,
+        shellInstanceId: nil
     )
 
     private init() {}
 
-    func apply(_ result: SlockIosMobileOAuthCompletionResult) {
+    func apply(_ result: SlockIosMobileOAuthCompletionResult, shellInstanceId: String? = nil) {
         runOnMain { [weak self] in
             guard let self else { return }
             switch result.status {
@@ -41,12 +44,14 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                         "pageName": slockIosOAuthAppShellPage,
                         "slockSuppressRestoreLanding": true,
                         "slockAuthGateInstanceId": UUID().uuidString,
-                    ]
+                    ],
+                    shellInstanceId: shellInstanceId
                 )
             case "choose_server":
                 self.replace(
                     pageName: slockIosOAuthChooseServerPage,
-                    pageData: ["pageName": slockIosOAuthChooseServerPage]
+                    pageData: ["pageName": slockIosOAuthChooseServerPage],
+                    shellInstanceId: shellInstanceId
                 )
             case "legal_acceptance":
                 guard
@@ -54,7 +59,10 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                     let handoffCode = result.handoffCode, !handoffCode.isEmpty,
                     let codeVerifier = result.codeVerifier, !codeVerifier.isEmpty
                 else {
-                    self.replaceWithLoginError("Sign-in request expired. Try again.")
+                    self.replaceWithLoginError(
+                        "Sign-in request expired. Try again.",
+                        shellInstanceId: shellInstanceId
+                    )
                     return
                 }
                 self.replace(
@@ -66,10 +74,14 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                         "slockAuthLegalCode": handoffCode,
                         "slockAuthLegalCodeVerifier": codeVerifier,
                         "slockReplaceCurrentPage": true,
-                    ]
+                    ],
+                    shellInstanceId: shellInstanceId
                 )
             case "login_error":
-                self.replaceWithLoginError(result.message ?? "Mobile sign-in failed. Try again.")
+                self.replaceWithLoginError(
+                    result.message ?? "Mobile sign-in failed. Try again.",
+                    shellInstanceId: shellInstanceId
+                )
             case "settings_account":
                 self.replace(
                     pageName: slockIosOAuthAppShellPage,
@@ -79,7 +91,8 @@ final class SlockIosOAuthRouteStore: ObservableObject {
                         "slockAuthGateInstanceId": UUID().uuidString,
                         "slockInitialTab": "settings",
                         "slockInitialSettingsDestination": "account",
-                    ]
+                    ],
+                    shellInstanceId: shellInstanceId
                 )
                 if let message = result.message, !message.isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -89,7 +102,10 @@ final class SlockIosOAuthRouteStore: ObservableObject {
             case "ignored", "retry":
                 break
             default:
-                self.replaceWithLoginError("Mobile sign-in failed. Try again.")
+                self.replaceWithLoginError(
+                    "Mobile sign-in failed. Try again.",
+                    shellInstanceId: shellInstanceId
+                )
             }
         }
     }
@@ -100,22 +116,28 @@ final class SlockIosOAuthRouteStore: ObservableObject {
         }
     }
 
-    private func replaceWithLoginError(_ message: String) {
+    private func replaceWithLoginError(_ message: String, shellInstanceId: String? = nil) {
         replace(
             pageName: slockIosOAuthLoginPage,
             pageData: [
                 "pageName": slockIosOAuthLoginPage,
                 "slockAuthMessage": message,
                 "slockReplaceCurrentPage": true,
-            ]
+            ],
+            shellInstanceId: shellInstanceId
         )
     }
 
-    private func replace(pageName: String, pageData: [String: Any]) {
+    private func replace(
+        pageName: String,
+        pageData: [String: Any],
+        shellInstanceId: String? = nil
+    ) {
         destination = SlockIosOAuthDestination(
             pageName: pageName,
             pageData: pageData,
-            revision: UUID().uuidString
+            revision: UUID().uuidString,
+            shellInstanceId: shellInstanceId
         )
     }
 
@@ -154,6 +176,7 @@ final class SlockIosMobileOAuthHost: NSObject,
     private struct DeferredCallback {
         let callback: ParsedCallback
         let expectedGeneration: String?
+        let shellInstanceId: String?
         let source: String
         let attempt: Int
     }
@@ -383,9 +406,14 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     @discardableResult
-    func acceptCallbackURL(_ url: URL, source: String) -> Bool {
+    func acceptCallbackURL(_ url: URL, shellInstanceId: String? = nil, source: String) -> Bool {
         if acceptAppLoginCallback(url, source: source) { return true }
-        return acceptCallback(url, expectedGeneration: nil, source: source)
+        return acceptCallback(
+            url,
+            expectedGeneration: nil,
+            shellInstanceId: shellInstanceId,
+            source: source
+        )
     }
 
     /// Browser web login (the HarmonyOS flow): PKCE for the shared coordinator, which keeps the verifier.
@@ -557,6 +585,7 @@ final class SlockIosMobileOAuthHost: NSObject,
     private func acceptCallback(
         _ url: URL,
         expectedGeneration: String?,
+        shellInstanceId: String? = nil,
         source: String
     ) -> Bool {
         guard let callback = parseCallback(url) else { return false }
@@ -580,6 +609,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                 DeferredCallback(
                     callback: callback,
                     expectedGeneration: expectedGeneration,
+                    shellInstanceId: shellInstanceId,
                     source: source,
                     attempt: 0
                 )
@@ -608,6 +638,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                         DeferredCallback(
                             callback: deferred.callback,
                             expectedGeneration: deferred.expectedGeneration ?? result.generation,
+                            shellInstanceId: deferred.shellInstanceId,
                             source: deferred.source,
                             attempt: deferred.attempt
                         )
@@ -620,7 +651,7 @@ final class SlockIosMobileOAuthHost: NSObject,
                     "SlockIosOAuth",
                     "oauth_callback_consumed source=\(self.safeSource(deferred.source)) status=\(result.status)"
                 )
-                SlockIosOAuthRouteStore.shared.apply(result)
+                SlockIosOAuthRouteStore.shared.apply(result, shellInstanceId: deferred.shellInstanceId)
             }
         }
     }
@@ -639,6 +670,7 @@ final class SlockIosMobileOAuthHost: NSObject,
         let next = DeferredCallback(
             callback: deferred.callback,
             expectedGeneration: deferred.expectedGeneration,
+            shellInstanceId: deferred.shellInstanceId,
             source: deferred.source,
             attempt: nextAttempt
         )

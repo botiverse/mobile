@@ -112,15 +112,32 @@ private struct ShellHostView: View {
 
     var body: some View {
         let destination = oauthRouteStore.destination
+        // task #483: a destination stamped for another shell leaves this
+        // window untouched — render the neutral app shell instead.
+        let targetShellId = destination.shellInstanceId?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let effective =
+            !targetShellId.isEmpty && targetShellId != shellContext.shellInstanceId
+            ? SlockIosOAuthDestination(
+                pageName: "compose_slock_app_shell",
+                pageData: ["pageName": "compose_slock_app_shell"],
+                revision: "shell-mismatch",
+                shellInstanceId: nil
+            )
+            : destination
         KuiklyRenderViewPage(
-            pageName: destination.pageName,
-            data: ContentView.hostPageData(destination, shellContext: shellContext)
+            pageName: effective.pageName,
+            data: ContentView.hostPageData(effective, shellContext: shellContext)
         )
             // Rebuild when either the route or the owning shell changes.
-            .id("\(destination.revision)|\(shellContext.shellInstanceId)")
+            .id("\(effective.revision)|\(shellContext.shellInstanceId)")
             .ignoresSafeArea()
             .onOpenURL { url in
-                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
+                    url,
+                    shellInstanceId: shellContext.shellInstanceId,
+                    source: "swiftui_open_url"
+                )
             }
             .onAppear {
                 SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()

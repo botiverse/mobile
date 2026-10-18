@@ -3062,6 +3062,13 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(build.raft.app.data.SlockDesktopShortcutContract.OpenEventName) { eventData ->
+                // task #483: a shell-targeted event applies only to that shell;
+                // absent/blank slockShellInstanceId broadcasts to every shell.
+                val targetShellId =
+                    eventData?.optString(SLOCK_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
                 val intent = eventData.appShellDesktopShortcutEventNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
@@ -3091,6 +3098,13 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(SlockSystemNotificationContract.OpenEventName) { eventData ->
+                // task #483: a shell-targeted event applies only to that shell;
+                // absent/blank slockShellInstanceId broadcasts to every shell.
+                val targetShellId =
+                    eventData?.optString(SLOCK_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
                 val intent = eventData.appShellSystemNotificationNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")

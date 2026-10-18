@@ -215,12 +215,14 @@ enum SlockIosPushHost {
     static func acceptSystemNotificationOpen(
         userInfo: [AnyHashable: Any],
         categoryIdentifier: String? = nil,
+        shellInstanceId: String? = nil,
         source: String
     ) {
         runOnMain {
             guard let payload = sanitizedSystemNotificationOpenPayload(
                 userInfo: userInfo,
-                categoryIdentifier: categoryIdentifier
+                categoryIdentifier: categoryIdentifier,
+                shellInstanceId: shellInstanceId
             ) else {
                 SlockIosDiagnosticsRecord(
                     "warn",
@@ -274,7 +276,8 @@ enum SlockIosPushHost {
 
     private static func sanitizedSystemNotificationOpenPayload(
         userInfo: [AnyHashable: Any],
-        categoryIdentifier: String?
+        categoryIdentifier: String?,
+        shellInstanceId: String? = nil
     ) -> [String: String]? {
         func stringValue(_ key: String) -> String? {
             guard let value = userInfo[key] as? String else {
@@ -313,6 +316,15 @@ enum SlockIosPushHost {
                     .trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
         if let category {
             payload["slockNotificationCategory"] = category
+        }
+        // task #483: explicit shell target wins; a `slockShellInstanceId` key
+        // already present in userInfo also carries through so a future
+        // server-authored payload targets a shell without a scene.
+        let targetShellId =
+            shellInstanceId?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
+                ?? stringValue("slockShellInstanceId")
+        if let targetShellId {
+            payload["slockShellInstanceId"] = targetShellId
         }
         return payload
     }
@@ -404,7 +416,11 @@ enum SlockIosDesktopShortcutHost {
         }
     }
 
-    static func acceptShortcutItem(_ shortcutItem: UIApplicationShortcutItem, source: String) {
+    static func acceptShortcutItem(
+        _ shortcutItem: UIApplicationShortcutItem,
+        shellInstanceId: String? = nil,
+        source: String
+    ) {
         let userInfo = shortcutItem.userInfo ?? [:]
         guard let serverId = userInfo["slockShortcutServerId"] as? String, !serverId.isEmpty,
               let targetId = userInfo["slockShortcutTargetId"] as? String, !targetId.isEmpty else {
@@ -412,13 +428,18 @@ enum SlockIosDesktopShortcutHost {
         }
         let targetKind = userInfo["slockShortcutTargetKind"] as? String ?? "channel"
         let launchId = "\(serverId)_\(targetId)_\(Int64(Date().timeIntervalSince1970 * 1000))"
-        let payload: [String: String] = [
+        var payload: [String: String] = [
             "slockShortcutServerId": serverId,
             "slockShortcutTargetId": targetId,
             "slockShortcutTargetKind": targetKind,
             "slockShortcutLaunchId": launchId,
             "slockShortcutTitle": shortcutItem.localizedTitle
         ]
+        // task #483: a scene-scoped shortcut targets only that shell.
+        if let targetShellId = shellInstanceId?
+            .trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty() {
+            payload["slockShellInstanceId"] = targetShellId
+        }
 
         if Thread.isMainThread {
             handlePayload(payload, source: source)
@@ -561,9 +582,27 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let content = response.notification.request.content
+        // task #483: a notification whose serverId maps to exactly one live
+        // shell targets only that shell; anything else broadcasts as before.
+        let serverId = (content.userInfo["serverId"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var shellInstanceId: String?
+        if let serverId, !serverId.isEmpty {
+            let matches = RaftIosShellWindowRegistry.contexts(forServerId: serverId)
+            if matches.count == 1 {
+                shellInstanceId = matches[0].shellInstanceId
+            } else {
+                SlockIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "system_notification_open_broadcast reason=no_unique_shell matches=\(matches.count)"
+                )
+            }
+        }
         SlockIosPushHost.acceptSystemNotificationOpen(
             userInfo: content.userInfo,
             categoryIdentifier: content.categoryIdentifier,
+            shellInstanceId: shellInstanceId,
             source: "notification_response"
         )
         completionHandler()
