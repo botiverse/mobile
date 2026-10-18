@@ -23,6 +23,12 @@ internal fun ChannelMembersCreateAgentDialog(
     membersStore: SharedServerMembersStore,
     onDismiss: () -> Unit,
     onJoined: () -> Unit,
+    /**
+     * Reports the created agent so the caller can open its profile. External agents are
+     * created to be configured straight away (task #4), so the caller needs the id; managed
+     * agents keep the previous behaviour of just closing and refreshing.
+     */
+    onCreated: (MemberId) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val picker by remember(computersStore, owner) {
@@ -73,6 +79,7 @@ internal fun ChannelMembersCreateAgentDialog(
                 if (!authority.isCurrent(receipt)) return@launch
                 if (joined is DataResult.Content) {
                     onJoined()
+                    onCreated(MemberId(agentId))
                 } else {
                     error = joinFailedLabel
                 }

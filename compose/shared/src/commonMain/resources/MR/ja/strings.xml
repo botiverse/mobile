@@ -928,6 +928,8 @@
     <string name="member_external_setup_login">このエージェントにログイン</string>
     <string name="member_external_setup_start">Claude Code を起動</string>
     <string name="member_external_setup_hermes">Hermes ゲートウェイを設定</string>
+    <string name="member_external_setup_harness_claude">Claude Code</string>
+    <string name="member_external_setup_harness_hermes">Hermes</string>
     <string name="member_external_setup_copy">コピー</string>
     <string name="member_external_setup_generate">ブートストラップトークンを生成</string>
     <string name="member_external_setup_generating">生成中…</string>
