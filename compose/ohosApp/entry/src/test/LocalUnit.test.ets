@@ -100,6 +100,7 @@ import {
   SLOCK_OHOS_MOBILE_OAUTH_SCHEME,
 } from '../main/ets/kuikly/SlockOhosMobileOAuth';
 import { SlockOhosMobileOAuthIngress } from '../main/ets/kuikly/SlockOhosMobileOAuthIngress';
+import { normalizeSlockOhosAppLocaleTag } from '../main/ets/kuikly/SlockOhosKmmResource';
 import {
   formatSlockOhosStorageSizeLabel,
   slockOhosStorageRoots,
@@ -1835,6 +1836,16 @@ export default function localUnitTest() {
       expect(failure.message).assertEqual('async_taskpool_failed dropped=4');
       expect(failure.message.includes('secret')).assertFalse();
       expect(failure.tag.includes('Bearer')).assertFalse();
+    });
+    it('appLocaleTagNormalizesSystemAliasesAndUnderscores', 0, () => {
+      expect(normalizeSlockOhosAppLocaleTag('')).assertNull();
+      expect(normalizeSlockOhosAppLocaleTag('   ')).assertNull();
+      expect(normalizeSlockOhosAppLocaleTag('system')).assertNull();
+      expect(normalizeSlockOhosAppLocaleTag('SYSTEM')).assertNull();
+      expect(normalizeSlockOhosAppLocaleTag('zh-CN')).assertEqual('zh-CN');
+      expect(normalizeSlockOhosAppLocaleTag('zh_CN')).assertEqual('zh-CN');
+      expect(normalizeSlockOhosAppLocaleTag(' en ')).assertEqual('en');
+      expect(normalizeSlockOhosAppLocaleTag('ja')).assertEqual('ja');
     });
   });
 }
