@@ -291,17 +291,17 @@ class ActivitySyncBehaviorVectorTest {
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { byte -> "%02x".format(byte) }
 
     private companion object {
-        const val BEHAVIOR_VECTORS_SHA256 = "654898b6d96648bc22ea19b916e3a133053b356ade44492cf394fe91e5129033"
-        const val EXPECTED_AGGREGATE_SHA256 = "ae05ce0bc5c9c6a8dcc132759d7d5a926c51a2b37b8686ca10975f4d36bde67d"
+        const val BEHAVIOR_VECTORS_SHA256 = "ac94f85c23656184724e7b91e4957e278b4a8554878600842c3684b9c7855bd1"
+        const val EXPECTED_AGGREGATE_SHA256 = "d43b3da565b81306b3ef5338ed50f432dfd84a66c7db050b8405af51078a236d"
         val EXPECTED_CASE_DIGESTS = linkedMapOf(
-            "baseline-then-ordered-frames" to "311d73b7591030622a0534dad7b3a75c42e30d7e3372ad887403d9256494c11d",
-            "gap-stop-gates-into-repair" to "5c128b1fa3def75bcbb8584b8e0c6d04afbd34d87ebadb96ec92c359865c7c49",
-            "difference-repairs-the-gap" to "a5e5a6d632fa15254f1ce34fbf315c85cf1fddf7c57acedb5b9ab429b8d076c4",
-            "not-modified-changes-nothing" to "2d513467ff4022fa9573cc05ed9d3feeb3c4367838f1df6b228f3ca662b2c745",
-            "out-of-order-row-version-does-not-regress" to "d16d5646acfc2d0d65e0e8b59e3be4f937932f467ab6d8cb255bbb8c16ba836f",
-            "snapshot-tombstone-blocks-stale-resurrection" to "c71cfcd677091ba8620b28ca455cb287abfb17856ddcb250d4288c1fdda41f2b",
-            "uint64-adjacent-across-2p53" to "df3e85c1e529cbeae6d760c4f25385cd42ba8d548a50cdd4ad8b60a99406ae93",
-            "read-state-updated-is-version-monotonic" to "386a07c017b76fa907dfffdf40e13169ef8dd18a56748543435795d881679603",
+            "baseline-then-ordered-frames" to "db4e0d162c21ce4b776d44988394cdb6ff16d7c70007f298396eda7429784fcc",
+            "gap-stop-gates-into-repair" to "34f7c599da22516c0d392f76f3629db9e75e8a49c2a7e7ef058cf2e38e7ad105",
+            "difference-repairs-the-gap" to "82a058cc8b210973e3ff6050fb06e9f02391f3875271ad1c12d4f08b5c532c78",
+            "not-modified-changes-nothing" to "64e88f5e18f665001d84f6d625de74e7191ce93a825e1c74e2ea305f4dc6d752",
+            "out-of-order-row-version-does-not-regress" to "9f009a9952ab1c3343bee8a24e3bb78a7f13a1571cb60f65440999ecd9db7a42",
+            "snapshot-tombstone-blocks-stale-resurrection" to "f80136728835244c218983a74f49b077e7437894ef02167c5129cc3af3f75fce",
+            "uint64-adjacent-across-2p53" to "4b27d9b76d6a9a20590ab3447a144ccbf210d8432c7abefb93e22065e60fb322",
+            "read-state-updated-is-version-monotonic" to "998cde3449a80d146758f6aee5e4744120fb362d9f23fa3de228da1f31825969",
         )
     }
 }

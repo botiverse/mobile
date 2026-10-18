@@ -1,6 +1,6 @@
 // Generated directly from activity-sync.tsp via the TypeSpec compiler semantic graph.
 // DO NOT EDIT. JSON Schema and OpenAPI are parallel outputs, not inputs.
-// Source SHA-256: f464700d04af3d47290f6b7df21dc74f6ef36b0093fac4397f64078fd9d64b67
+// Source SHA-256: e47e0d12055c37c01c522f608e5d1b2e56378a588b24894f450468353791bdad
 @file:OptIn(ExperimentalSerializationApi::class)
 
 package build.raft.app.network.sync.activity.contract.v1
@@ -54,9 +54,17 @@ object ActivitySyncContractJson {
 
 }
 
-const val ACTIVITY_SYNC_TYPESPEC_SHA256: String = "f464700d04af3d47290f6b7df21dc74f6ef36b0093fac4397f64078fd9d64b67"
+const val ACTIVITY_SYNC_TYPESPEC_SHA256: String = "e47e0d12055c37c01c522f608e5d1b2e56378a588b24894f450468353791bdad"
+
+/** Wire contract identity, compared with the server-reported contract (X-Raft-Contract header, follow-up to task #3). */
+const val ACTIVITY_SYNC_CONTRACT: String = "raft.activity-sync"
+
+/** Contract revision from revisions.json; enable the sync engine only when the server reports exactly this revision. */
+const val ACTIVITY_SYNC_CONTRACT_REVISION: Int = 2
 
 typealias OpaqueId = String
+
+typealias SafeUnsignedCounter = Long
 
 @Serializable(with = UInt64StringSerializer::class)
 data class UInt64String(val value: String) {
@@ -108,7 +116,9 @@ enum class ActorKind {
     @SerialName("agent")
     Agent,
     @SerialName("system")
-    System
+    System,
+    @SerialName("external_projection")
+    ExternalProjection
 }
 
 @Serializable
@@ -223,6 +233,7 @@ data class ActivityFixtureEnvelope(
 data class ActivityRowCommon(
     val rowId: OpaqueId,
     val rowVersion: UInt64String,
+    val latestActivitySeq: UInt64String,
     val lastActivityAt: UtcInstantString,
     val unreadCount: UInt,
     val hasMention: Boolean,
@@ -292,6 +303,7 @@ data class BadRequestResponse(
 data class ChannelActivityRow(
     val rowId: OpaqueId,
     val rowVersion: UInt64String,
+    val latestActivitySeq: UInt64String,
     val lastActivityAt: UtcInstantString,
     val unreadCount: UInt,
     val hasMention: Boolean,
@@ -386,6 +398,11 @@ data class DifferenceIngress(
     val activityVersion: UInt64String,
     val rows: List<ActivityRow>,
     val tombstones: List<ActivityRowTombstone>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+    val complete: Boolean,
+    val totalCount: UInt,
+    val totalUnreadCount: UInt,
     val nextFromSeq: UInt64String?
 ) : ActivityIngress
 
@@ -401,6 +418,7 @@ data class DispatchFixtureStep(
 data class DmActivityRow(
     val rowId: OpaqueId,
     val rowVersion: UInt64String,
+    val latestActivitySeq: UInt64String,
     val lastActivityAt: UtcInstantString,
     val unreadCount: UInt,
     val hasMention: Boolean,
@@ -499,7 +517,7 @@ data class MarkInboxDoneIntent(
     val scope: ActivityScope,
     val commandId: OpaqueId,
     val rowId: OpaqueId,
-    val expectedRowVersion: UInt64String
+    val throughActivitySeq: UInt64String
 ) : ActivityIntent
 
 @SerialName("markInboxReadAll")
@@ -523,8 +541,18 @@ data class MarkThreadDoneIntent(
     val scope: ActivityScope,
     val commandId: OpaqueId,
     val threadChannelId: OpaqueId,
-    val expectedRowVersion: UInt64String
+    val throughActivitySeq: UInt64String
 ) : ActivityIntent
+
+@Serializable
+data class NotFoundResponse(
+    val statusCode: Long,
+    val body: ContractError
+) {
+    init {
+        require(statusCode == 404L)
+    }
+}
 
 @SerialName("notModified")
 @Serializable
@@ -574,11 +602,36 @@ data class SnapshotIngress(
     val window: ActivityWindow
 ) : ActivityIngress
 
+@Serializable
+data class SnapshotRequiredBody(
+    val snapshotRequired: Boolean,
+    val requestId: OpaqueId,
+    val scope: ActivityScope,
+    val epoch: UInt64String,
+    val watermark: UInt64String,
+    val activityVersion: UInt64String
+) {
+    init {
+        require(snapshotRequired == true)
+    }
+}
+
+@Serializable
+data class SnapshotRequiredResponse(
+    val statusCode: Long,
+    val body: SnapshotRequiredBody
+) {
+    init {
+        require(statusCode == 409L)
+    }
+}
+
 @SerialName("thread")
 @Serializable
 data class ThreadActivityRow(
     val rowId: OpaqueId,
     val rowVersion: UInt64String,
+    val latestActivitySeq: UInt64String,
     val lastActivityAt: UtcInstantString,
     val unreadCount: UInt,
     val hasMention: Boolean,
@@ -597,7 +650,9 @@ data class ThreadActivityRow(
     val latestActivityPreview: String,
     val latestActivitySenderKind: ActorKind,
     val latestActivitySenderId: OpaqueId,
+    val latestActivitySenderName: String?,
     val latestActivityMessageId: OpaqueId,
+    val isFollowing: Boolean,
     val replyCount: UInt,
     val lastReplyAt: UtcInstantString?,
     val taskNumber: UInt?,
@@ -605,7 +660,7 @@ data class ThreadActivityRow(
     val taskClaimedByName: String?
 ) : ActivityRow {
     init {
-        require(parentMessageSenderKind in setOf("user", "agent"))
+        require(parentMessageSenderKind in setOf("user", "agent", "external_projection"))
     }
 }
 
@@ -626,5 +681,215 @@ data class UnavailableResponse(
 ) {
     init {
         require(statusCode == 503L)
+    }
+}
+
+@Serializable
+data class V1AckResponse(
+    val ok: Boolean
+) {
+    init {
+        require(ok == true)
+    }
+}
+
+@Serializable
+data class V1AdmittedResponse(
+    val code: String,
+    val status: String,
+    val outcome: String,
+    val mutationId: String,
+    val authoritySeq: SafeUnsignedCounter,
+    val frontierUrl: String
+) {
+    init {
+        require(status == "admitted")
+        require(outcome == "unknown")
+        require(authoritySeq >= 0L)
+        require(authoritySeq <= 9007199254740991L)
+    }
+}
+
+@Serializable
+data class V1AffectedReadState(
+    val scopeId: OpaqueId,
+    val maxReadSeq: SafeUnsignedCounter,
+    val readStateVersion: SafeUnsignedCounter
+) {
+    init {
+        require(maxReadSeq >= 0L)
+        require(maxReadSeq <= 9007199254740991L)
+        require(readStateVersion >= 0L)
+        require(readStateVersion <= 9007199254740991L)
+    }
+}
+
+@Serializable
+data class V1AuthErrorBody(
+    val error: String,
+    val code: String
+)
+
+@Serializable
+data class V1BadRequestResponse(
+    val statusCode: Long,
+    val body: V1ErrorBody
+) {
+    init {
+        require(statusCode == 400L)
+    }
+}
+
+@Serializable
+data class V1ConflictResponse(
+    val statusCode: Long,
+    val body: V1DoneConflictBody
+) {
+    init {
+        require(statusCode == 409L)
+    }
+}
+
+@Serializable
+data class V1DoneBadRequestBody(
+    val error: String,
+    val code: OptionalField<String> = OptionalField.Missing
+)
+
+@Serializable
+data class V1DoneBadRequestResponse(
+    val statusCode: Long,
+    val body: V1DoneBadRequestBody
+) {
+    init {
+        require(statusCode == 400L)
+    }
+}
+
+@Serializable
+data class V1DoneConflictBody(
+    val error: String,
+    val code: String
+)
+
+@Serializable
+data class V1ErrorBody(
+    val error: String
+)
+
+@Serializable
+data class V1ForbiddenResponse(
+    val statusCode: Long,
+    val body: V1ErrorBody
+) {
+    init {
+        require(statusCode == 403L)
+    }
+}
+
+@Serializable
+data class V1InboxPage(
+    val items: List<JsonElement>,
+    val hasMore: Boolean,
+    val totalCount: SafeUnsignedCounter,
+    val totalUnreadCount: SafeUnsignedCounter,
+    val activeUnreadCount: SafeUnsignedCounter
+) {
+    init {
+        require(totalCount >= 0L)
+        require(totalCount <= 9007199254740991L)
+        require(totalUnreadCount >= 0L)
+        require(totalUnreadCount <= 9007199254740991L)
+        require(activeUnreadCount >= 0L)
+        require(activeUnreadCount <= 9007199254740991L)
+    }
+}
+
+@Serializable
+data class V1InternalErrorResponse(
+    val statusCode: Long,
+    val body: V1ErrorBody
+) {
+    init {
+        require(statusCode == 500L)
+    }
+}
+
+@Serializable
+data class V1MarkChannelReadAllResponse(
+    val ok: Boolean,
+    val seq: SafeUnsignedCounter,
+    val readStateVersion: SafeUnsignedCounter
+) {
+    init {
+        require(ok == true)
+        require(seq >= 0L)
+        require(seq <= 9007199254740991L)
+        require(readStateVersion >= 0L)
+        require(readStateVersion <= 9007199254740991L)
+    }
+}
+
+@Serializable
+data class V1MarkInboxDoneRequest(
+    val channelId: OpaqueId,
+    val throughActivitySeq: UInt64String,
+    val frontierSpace: String
+) {
+    init {
+        require(frontierSpace == "storage")
+    }
+}
+
+@Serializable
+data class V1MarkInboxReadAllResponse(
+    val ok: Boolean,
+    val markedCount: Int,
+    val scopes: List<V1AffectedReadState>
+) {
+    init {
+        require(ok == true)
+        require(markedCount >= 0)
+    }
+}
+
+@Serializable
+data class V1MarkThreadDoneRequest(
+    val threadChannelId: OpaqueId,
+    val throughActivitySeq: UInt64String,
+    val frontierSpace: String
+) {
+    init {
+        require(frontierSpace == "storage")
+    }
+}
+
+@Serializable
+data class V1NotFoundResponse(
+    val statusCode: Long,
+    val body: V1ErrorBody
+) {
+    init {
+        require(statusCode == 404L)
+    }
+}
+
+@Serializable
+data class V1PreconditionFailedResponse(
+    val statusCode: Long,
+    val body: V1DoneConflictBody
+) {
+    init {
+        require(statusCode == 412L)
+    }
+}
+
+@Serializable
+data class V1UnauthorizedResponse(
+    val statusCode: Long,
+    val body: V1AuthErrorBody
+) {
+    init {
+        require(statusCode == 401L)
     }
 }

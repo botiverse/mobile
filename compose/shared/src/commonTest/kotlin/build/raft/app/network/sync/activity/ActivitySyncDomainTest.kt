@@ -253,6 +253,7 @@ class ActivitySyncDomainTest {
         ChannelActivityRow(
             rowId = rowId,
             rowVersion = u(rowVersion),
+            latestActivitySeq = u(rowVersion),
             lastActivityAt = lastActivityAt,
             unreadCount = unreadCount,
             hasMention = false,
