@@ -7279,14 +7279,14 @@ private fun SharedThreadRouteContentContent(
             }
         } ?: false
 
-    // Decided once per thread open (a Local Feature Overrides change applies to the next open):
-    // flipping the layout under a live list would re-map every index.
-    val threadReverseLayoutEnabled =
-        remember(threadInstanceKey, markdownLightGateInputs != null) {
-            threadReverseLayoutEffective(
-                userChoice = chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync()
-            ) {
-            markdownLightGateInputs?.let { gateInputs ->
+    // Decided once per thread open: flipping the layout under a live list would re-map every
+    // index. Task #193 (option C, artin 2026-10-18): the first frame must not wait for the gate,
+    // whose inputs (reply-cache provenance) arrive after a warm entry has already rendered
+    // content. The open locks userChoice, else this server's last gate-resolved value, else
+    // reverse; a gate result arriving later only updates the per-server value for the NEXT open.
+    val threadReverseLayoutGateResolved: Boolean? =
+        markdownLightGateInputs?.let { gateInputs ->
+            remember(gateInputs) {
                 resolveThreadReverseLayoutEnabled(
                     registry = ProcessDiagnosticFeatureFlagOverrides.registry,
                     serverEffective =
@@ -7298,9 +7298,22 @@ private fun SharedThreadRouteContentContent(
                     accountId = gateInputs.accountId,
                     serverId = gateInputs.serverId
                 )
-            } ?: false
             }
         }
+    val threadReverseLayoutEnabled =
+        remember(threadInstanceKey) {
+            threadReverseLayoutFirstFrame(
+                userChoice = chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync(),
+                gateResolved = threadReverseLayoutGateResolved,
+                lastResolvedForServer =
+                    ThreadReverseLayoutLastDecision.get(markdownLightGateInputs?.serverId ?: storeScope.initialServerId)
+            )
+        }
+    LaunchedEffect(markdownLightGateInputs?.serverId, threadReverseLayoutGateResolved) {
+        val serverId = markdownLightGateInputs?.serverId ?: return@LaunchedEffect
+        val resolved = threadReverseLayoutGateResolved ?: return@LaunchedEffect
+        ThreadReverseLayoutLastDecision.record(serverId, resolved)
+    }
 
     // Read-only evidence of the per-open decision (QA asked for one on every platform).
     LaunchedEffect(threadInstanceKey, threadReverseLayoutEnabled) {
