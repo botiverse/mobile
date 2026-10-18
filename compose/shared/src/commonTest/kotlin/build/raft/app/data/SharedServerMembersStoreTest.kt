@@ -20,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SharedServerMembersStoreTest {
@@ -2011,6 +2012,20 @@ class SharedServerMembersStoreTest {
         )
         assertNull(store.state.value.memberStatus(ServerId("server-1"), "agent-1"))
         assertNull(store.state.value.memberProfile(ServerId("server-1"), "agent-1"))
+    }
+
+    @Test
+    fun memberProfileSuppressesDeletedAgentFromStaleProfileCache() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.membersByServer["server-1"] = listOf(
+            member("agent-1", "Build Agent").copy(kind = MemberKind.Agent)
+        )
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+
+        assertNotNull(store.memberProfile(ServerId("server-1"), "agent-1"))
+        assertTrue(store.markAgentDeleted(ServerId("server-1"), MemberId("agent-1")))
+        assertNull(store.memberProfile(ServerId("server-1"), "agent-1"))
     }
 
     @Test

@@ -17,7 +17,13 @@ if args == ['simctl', 'list', 'runtimes', '-j']:
  print(json.dumps({'runtimes': [{'identifier': 'ios9', 'version': '9.0', 'platform': 'iOS', 'isAvailable': True}, {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-2', 'version': '18.2', 'isAvailable': True}]}))
 elif args == ['simctl', 'list', 'devicetypes', '-j']:
  print(json.dumps({'devicetypes': [{'name': 'iPhone 14', 'identifier': 'iphone14'}]}))
-elif args[:2] == ['simctl', 'create']: print('01234567-89AB-CDEF-0123-456789ABCDEF')
+elif args[:2] == ['simctl', 'create']:
+ name = args[2]
+ suffix = name.rsplit('-s', 1)[-1]
+ if name.endswith('-s' + suffix) and suffix.isdigit():
+     print('01234567-89AB-CDEF-0123-456789ABCD' + format(int(suffix), '02x'))
+ else:
+     print('01234567-89AB-CDEF-0123-456789ABCDEF')
 elif len(args) > 1 and args[1] == os.environ.get('FAIL_COMMAND'): sys.exit(7)
 '''
 
@@ -89,6 +95,29 @@ class RunnerTest(unittest.TestCase):
         shutil.rmtree(self.env["RUNNER_TEMP"])
         self.assertEqual(json.loads(self.receipt.read_text())["udid"], UDID)
 
+    def test_multi_shard_creates_and_cleans_all_devices(self):
+        self.env["IOS_CAPTURE_SHARDS"] = "3"
+        self.run_phase("boot")
+        creates = [c for c in self.calls() if c[:2] == ["simctl", "create"]]
+        self.assertEqual(len(creates), 3)
+        udids = [self.calls()[i][-1] for i, c in enumerate(self.calls())
+                 if c[:2] == ["simctl", "boot"]]
+        self.assertEqual(sorted(set(udids)), sorted(
+            ["01234567-89AB-CDEF-0123-456789ABCD0%d" % i for i in range(3)]))
+        self.run_phase("cleanup")
+        deletes = [c[-1] for c in self.calls() if c[:2] == ["simctl", "delete"]]
+        self.assertEqual(sorted(deletes), sorted(udids))
+        self.assertFalse(self.capture.exists())
+
+    def test_shards_out_of_range_rejected(self):
+        self.env["IOS_CAPTURE_SHARDS"] = "99"
+        result = subprocess.run(["bash", str(SCRIPT), "boot"], env=self.env,
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("out of range", result.stderr)
+        # Refuses before touching simctl create.
+        self.assertFalse(any(c[:2] == ["simctl", "create"] for c in self.calls()))
+
     def test_pre_boot_failure_cleanup_never_touches_simulators(self):
         before = self.calls()
         self.run_phase("cleanup")
@@ -103,6 +132,57 @@ class RunnerTest(unittest.TestCase):
         self.run_phase("cleanup", success=False)
         self.assertTrue(self.capture.exists())
         self.assertTrue(self.neighbor.exists())
+
+
+SHARD_SCRIPT = Path(__file__).with_name("ios_visual_capture_shard.sh").resolve()
+SHARD_FAKE = '''#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+if args[:2] == ['simctl', 'launch']:
+    print('SLOCK_VISUAL_FIXTURE_READY page=' + os.environ['SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE'], flush=True)
+elif args[:3] == ['simctl', 'io', args[2] if len(args) > 2 else ''] and 'screenshot' in args:
+    if os.environ.get('FAIL_SCREENSHOT'):
+        sys.exit(7)
+    open(args[-1], 'wb').write(b'png')
+'''
+
+
+class ShardCaptureTest(unittest.TestCase):
+    """The shard loop must fail closed on unexpected simctl failures."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        for name, body in (("xcrun", SHARD_FAKE), ("plistbuddy", "#!/bin/sh\necho test.bundle\n")):
+            tool = self.root / name
+            tool.write_text(body)
+            tool.chmod(0o755)
+        self.temp = self.root / "capture"
+        (self.temp / "DerivedData/Build/Products/Debug-iphonesimulator/App.app").mkdir(parents=True)
+        self.cases = self.temp / "ios-cases.0.tsv"
+        self.cases.write_text("case-a\tPageA\t{}\n")
+        self.out = self.root / "results/ios"
+        self.env = dict(os.environ, IOS_CAPTURE_TEMP=str(self.temp),
+                        PLISTBUDDY=str(self.root / "plistbuddy"),
+                        PATH=str(self.root) + os.pathsep + os.environ["PATH"])
+
+    def run_shard(self):
+        return subprocess.run(["bash", str(SHARD_SCRIPT), UDID, str(self.cases), str(self.out)],
+                              env=self.env, capture_output=True, text=True)
+
+    def test_successful_case_writes_png_and_tally(self):
+        result = self.run_shard()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertTrue((self.out / "case-a.png").exists())
+        tally = (self.temp / f"shard-result.{UDID}").read_text()
+        self.assertEqual("captured=1\nfailed=0\ntotal=1\n", tally)
+
+    def test_screenshot_failure_fails_shard_without_tally(self):
+        self.env["FAIL_SCREENSHOT"] = "1"
+        result = self.run_shard()
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse((self.temp / f"shard-result.{UDID}").exists())
 
 
 if __name__ == "__main__":

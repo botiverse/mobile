@@ -16,6 +16,7 @@
 #import <pthread.h>
 #import <Photos/Photos.h>
 #import <PhotosUI/PhotosUI.h>
+#import <SDWebImage/SDImageCache.h>
 #import <stdatomic.h>
 #import <string.h>
 #import <sys/stat.h>
@@ -42,11 +43,17 @@ static NSString *const SlockThreadAttachmentImageCompressionErrorDomain =
     @"build.raft.app.thread-attachment-image-compression";
 static NSString *const SlockThreadImageCompressionSource = @"composer_image_compressor";
 static NSString *const SlockThreadImageCompressionDirectoryName = @"PickedAttachments";
+// Caches/<SlockPickedAttachmentParentDirectoryName>/<SlockThreadImageCompressionDirectoryName>
+// holds composer-picked/compressed attachments (camera roll, Files, image compressor).
+static NSString *const SlockPickedAttachmentParentDirectoryName = @"Slock";
 static NSUInteger const SlockThreadImageCompressionMaxRequestIdLength = 128;
 static NSUInteger const SlockThreadImageCompressionMaxFileNameLength = 256;
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
 static NSString *const SlockAttachmentExportDestinationOpen = @"open";
+static NSString *const SlockAttachmentExportDirectoryName = @"SlockAttachmentExports";
+// Camera captures are written as tmp/<UUID>.<SlockCameraCaptureFileExtension>.
+static NSString *const SlockCameraCaptureFileExtension = @"jpg";
 static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
 static NSTimeInterval const SlockThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
@@ -54,6 +61,12 @@ static NSString *const SlockDiagnosticsLogDirName = @"raft_diagnostics_logs";
 static NSString *const SlockDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
 static NSString *const SlockDiagnosticsFeedbackDirName = @"raft-feedback";
 static NSString *const SlockDiagnosticsFeedbackFilePrefix = @"raft-feedback-";
+static NSString *const SlockFeedbackDiagnosticsArchivePrefix = @"raft-feedback-diagnostics-";
+static NSString *const SlockFeedbackDiagnosticsArchiveExtension = @"zip";
+// Mirrors iosDatabaseBasePath() in compose/shared/src/iosMain/kotlin/build/raft/app/data/
+// RelationalStoreFactory.ios.kt (Application Support/Slock/databases). That helper and
+// SlockSqlDatabase.DatabaseName are Kotlin-internal, so they are not exported to Objective-C.
+static NSString *const SlockSqlDatabaseDirectoryRelativePath = @"Slock/databases";
 static NSString *const SlockDiagnosticsSummaryFileName = @"raft-diagnostics-summary.txt";
 static NSString *const SlockFeedbackDiagnosticsContentType = @"application/zip";
 static unsigned long long const SlockFeedbackDiagnosticsMaxBytes = 200ULL * 1024ULL * 1024ULL;
@@ -2983,7 +2996,8 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         }];
         return nil;
     }
-    NSString *name = [NSString stringWithFormat:@"raft-feedback-diagnostics-%@.zip", NSUUID.UUID.UUIDString.lowercaseString];
+    NSString *name = [[SlockFeedbackDiagnosticsArchivePrefix stringByAppendingString:NSUUID.UUID.UUIDString.lowercaseString]
+        stringByAppendingPathExtension:SlockFeedbackDiagnosticsArchiveExtension];
     NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
     NSOutputStream *stream = [NSOutputStream outputStreamToFileAtPath:path append:NO];
     [stream open];
@@ -3362,6 +3376,19 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 - (void)slock_destroyFeedbackDiagnosticsUploads;
 
 @end
+
+// Settings → Storage (row contract: SettingsHomePage.kt localizedSettingsStorageRowDetail /
+// localizedSettingsStorageFeedback; Android reference: StorageManagementRepository.kt).
+typedef struct {
+    unsigned long long database;
+    unsigned long long imageCache;
+    unsigned long long attachmentDownloads;
+    unsigned long long temporaryAndLogs;
+} SlockStorageUsage;
+
+static SlockStorageUsage SlockStorageMeasure(void);
+static NSDictionary *SlockStoragePayload(SlockStorageUsage usage, NSString *feedback);
+static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result));
 
 // 扩展桥接接口
 /*
@@ -3836,6 +3863,21 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         });
         return;
     }
+    if ([action isEqualToString:@"loadStorage"] || [action isEqualToString:@"clearStorage"]) {
+        // Storage rows walk app directories; never measure or delete on the main thread.
+        NSString *target = SlockBridgeString(params[@"target"]);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            void (^deliver)(NSDictionary *) = ^(NSDictionary *result) {
+                SlockBridgeRunOnMain(^{ callback(result); });
+            };
+            if ([action isEqualToString:@"loadStorage"]) {
+                deliver(SlockStoragePayload(SlockStorageMeasure(), @""));
+            } else {
+                SlockStorageClearTarget(target, deliver);
+            }
+        });
+        return;
+    }
     callback([self slock_settingsCapabilityResultForAction:action params:params]);
 }
 
@@ -4160,7 +4202,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     NSURL *cacheDirectory = cacheRootPath.length > 0
         ? [[[NSURL fileURLWithPath:cacheRootPath isDirectory:YES]
-            URLByAppendingPathComponent:@"Slock" isDirectory:YES]
+            URLByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName isDirectory:YES]
             URLByAppendingPathComponent:SlockThreadImageCompressionDirectoryName isDirectory:YES]
         : nil;
     if (!cacheDirectory) {
@@ -4478,6 +4520,247 @@ static NSString *SlockAttachmentStoreRoot() {
                                                           forKey:NSURLIsExcludedFromBackupKey
                                                            error:nil];
     return root;
+}
+
+// Throwaway download staging for Save to Files / Photos exports (one subdirectory per request).
+static NSString *SlockAttachmentExportRootPath(void) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:SlockAttachmentExportDirectoryName];
+}
+
+#pragma mark - Settings storage
+
+static NSString *SlockStorageDatabaseDirectoryPath(void) {
+    NSString *base = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    return base.length > 0 ? [base stringByAppendingPathComponent:SlockSqlDatabaseDirectoryRelativePath] : @"";
+}
+
+static NSString *SlockStoragePickedAttachmentDirectoryPath(void) {
+    NSString *caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    if (caches.length == 0) return @"";
+    return [[caches stringByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName]
+        stringByAppendingPathComponent:SlockThreadImageCompressionDirectoryName];
+}
+
+static BOOL SlockStorageIsFeedbackDiagnosticsArchiveName(NSString *name) {
+    return [name hasPrefix:SlockFeedbackDiagnosticsArchivePrefix] &&
+        [name.pathExtension isEqualToString:SlockFeedbackDiagnosticsArchiveExtension];
+}
+
+static BOOL SlockStorageIsCameraCaptureName(NSString *name) {
+    return [name.pathExtension isEqualToString:SlockCameraCaptureFileExtension] &&
+        [[NSUUID alloc] initWithUUIDString:name.stringByDeletingPathExtension] != nil;
+}
+
+/// Logical byte size (same measure as Android File.length()) of a file or directory tree.
+static unsigned long long SlockStorageTreeBytes(NSString *path) {
+    if (path.length == 0) return 0;
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    BOOL isDirectory = NO;
+    if (![fileManager fileExistsAtPath:path isDirectory:&isDirectory]) return 0;
+    if (!isDirectory) return [[fileManager attributesOfItemAtPath:path error:nil] fileSize];
+    NSArray<NSURLResourceKey> *keys = @[ NSURLIsRegularFileKey, NSURLFileSizeKey ];
+    NSDirectoryEnumerator<NSURL *> *enumerator =
+        [fileManager enumeratorAtURL:[NSURL fileURLWithPath:path isDirectory:YES]
+          includingPropertiesForKeys:keys
+                             options:0
+                        errorHandler:^BOOL(NSURL *url, NSError *error) { return YES; }];
+    unsigned long long total = 0;
+    for (NSURL *url in enumerator) {
+        @autoreleasepool {
+            NSDictionary<NSURLResourceKey, id> *values = [url resourceValuesForKeys:keys error:nil];
+            if ([values[NSURLIsRegularFileKey] boolValue]) {
+                total += [values[NSURLFileSizeKey] unsignedLongLongValue];
+            }
+        }
+    }
+    return total;
+}
+
+/// Regular files directly inside NSTemporaryDirectory() whose name matches. Only app-owned
+/// name patterns are passed in; the rest of tmp is never counted or touched.
+static unsigned long long SlockStorageTemporaryFileBytes(BOOL (*matches)(NSString *name)) {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSString *temporaryDirectory = NSTemporaryDirectory();
+    unsigned long long total = 0;
+    for (NSString *name in [fileManager contentsOfDirectoryAtPath:temporaryDirectory error:nil] ?: @[]) {
+        if (!matches(name)) continue;
+        NSDictionary<NSFileAttributeKey, id> *attributes =
+            [fileManager attributesOfItemAtPath:[temporaryDirectory stringByAppendingPathComponent:name] error:nil];
+        if ([attributes.fileType isEqualToString:NSFileTypeRegular]) total += attributes.fileSize;
+    }
+    return total;
+}
+
+/// Deletes the children of `path`, keeping the directory itself (Android deleteContents()).
+static BOOL SlockStorageRemoveDirectoryContents(NSString *path) {
+    if (path.length == 0) return YES;
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    BOOL isDirectory = NO;
+    if (![fileManager fileExistsAtPath:path isDirectory:&isDirectory]) return YES;
+    if (!isDirectory) return NO;
+    BOOL removedAll = YES;
+    for (NSString *name in [fileManager contentsOfDirectoryAtPath:path error:nil] ?: @[]) {
+        NSString *child = [path stringByAppendingPathComponent:name];
+        if (![fileManager removeItemAtPath:child error:nil] && [fileManager fileExistsAtPath:child]) {
+            removedAll = NO;
+        }
+    }
+    return removedAll;
+}
+
+/// Clears a directory that AttachmentDownloadCoordinator writes into. The directory reservation
+/// rejects new downloads under the prefix; active ones are cancelled and their sink cleanup is
+/// awaited before any file is removed (same fence as Android clearDirectAttachmentStaging).
+static BOOL SlockStorageClearDownloadDirectory(NSString *directory) {
+    if (directory.length == 0) return YES;
+    NSString *prefix = [directory hasSuffix:@"/"] ? directory : [directory stringByAppendingString:@"/"];
+    SharedAttachmentDownloadCoordinator *coordinator = SharedAttachmentDownloadCoordinator.shared;
+    SharedAttachmentDownloadDirectoryCleanupReservation *directoryReservation =
+        [coordinator beginDirectoryCleanupTargetPrefix:prefix];
+    NSMutableDictionary<NSString *, NSString *> *targetTokens = [NSMutableDictionary dictionary];
+    BOOL fenced = YES;
+    for (NSString *targetKey in directoryReservation.targetKeys) {
+        SharedAttachmentDownloadCleanupReservation *reservation =
+            [coordinator beginTargetCleanupTargetKey:targetKey expectedAttemptToken:nil];
+        if (reservation.token.length > 0) targetTokens[targetKey] = reservation.token;
+        if (![reservation.status isEqualToString:@"missing"] &&
+            ![reservation.status isEqualToString:@"cancelled"] &&
+            ![reservation.status isEqualToString:@"complete"]) {
+            fenced = NO;
+        }
+    }
+    BOOL cleared = fenced && SlockStorageRemoveDirectoryContents(directory);
+    [targetTokens enumerateKeysAndObjectsUsingBlock:^(NSString *targetKey, NSString *token, BOOL *stop) {
+        [coordinator finishTargetCleanupTargetKey:targetKey token:token];
+    }];
+    [coordinator finishDirectoryCleanupTargetPrefix:prefix token:directoryReservation.token];
+    return cleared;
+}
+
+static void SlockStorageRemoveStaleFeedbackDiagnosticsArchives(void) {
+    // An upload operation owns and deletes its archive; only leftovers past the feedback prune
+    // age (orphans from a killed upload) are removed so an in-flight upload keeps its file.
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSString *temporaryDirectory = NSTemporaryDirectory();
+    NSDate *now = NSDate.date;
+    for (NSString *name in [fileManager contentsOfDirectoryAtPath:temporaryDirectory error:nil] ?: @[]) {
+        if (!SlockStorageIsFeedbackDiagnosticsArchiveName(name)) continue;
+        NSString *path = [temporaryDirectory stringByAppendingPathComponent:name];
+        NSDate *modifiedAt = [[fileManager attributesOfItemAtPath:path error:nil] fileModificationDate] ?: NSDate.distantPast;
+        if ([now timeIntervalSinceDate:modifiedAt] >= SlockDiagnosticsFeedbackPruneMinimumAgeSeconds) {
+            [fileManager removeItemAtPath:path error:nil];
+        }
+    }
+}
+
+static SlockStorageUsage SlockStorageMeasure(void) {
+    SlockStorageUsage usage;
+    usage.database = SlockStorageTreeBytes(SlockStorageDatabaseDirectoryPath());
+    // Avatars are counted here but cleared only by the shared avatar runtime (store.clearAll),
+    // which SharedSettingsDataSource.clearStorage runs before this host's imageCache clear.
+    usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize] +
+        SlockStorageTreeBytes(SlockIosAvatarCacheHost.shared.rootPath);
+    usage.attachmentDownloads = SlockStorageTreeBytes(SlockAttachmentStoreRoot()) +
+        SlockStorageTreeBytes(SlockAttachmentExportRootPath());
+    // Picked attachments and camera captures belong to composer drafts (retired through
+    // SlockIosRetireThreadComposerTemporaryFileRefs); they are counted but never cleared here.
+    usage.temporaryAndLogs = SlockStorageTreeBytes(SlockDiagnosticsDirectoryPath()) +
+        SlockStorageTreeBytes(SlockThreadShareImageDirectoryPath()) +
+        SlockStorageTemporaryFileBytes(SlockStorageIsFeedbackDiagnosticsArchiveName) +
+        SlockStorageTemporaryFileBytes(SlockStorageIsCameraCaptureName) +
+        SlockStorageTreeBytes(SlockStoragePickedAttachmentDirectoryPath());
+    return usage;
+}
+
+/// Mirrors Android formatStorageSizeLabel: 1024-based B/KB/MB/GB, integer bytes, one decimal otherwise.
+static NSString *SlockStorageSizeLabel(unsigned long long bytes) {
+    if (bytes == 0) return @"0 B";
+    NSArray<NSString *> *units = @[ @"B", @"KB", @"MB", @"GB" ];
+    double value = (double)bytes;
+    NSUInteger index = 0;
+    while (value >= 1024.0 && index + 1 < units.count) {
+        value /= 1024.0;
+        index++;
+    }
+    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+    formatter.locale = NSLocale.currentLocale;
+    formatter.numberStyle = NSNumberFormatterDecimalStyle;
+    formatter.usesGroupingSeparator = NO;
+    formatter.minimumFractionDigits = index == 0 ? 0 : 1;
+    formatter.maximumFractionDigits = index == 0 ? 0 : 1;
+    NSString *number = [formatter stringFromNumber:@(value)] ?: @"0";
+    return [NSString stringWithFormat:@"%@ %@", number, units[index]];
+}
+
+static NSDictionary *SlockStorageRow(NSString *target, NSString *title, NSString *detail,
+                                     unsigned long long bytes, BOOL clearEnabled) {
+    return @{
+        @"target" : target,
+        @"title" : title,
+        @"detail" : detail,
+        @"sizeLabel" : SlockStorageSizeLabel(bytes),
+        @"clearEnabled" : @(clearEnabled)
+    };
+}
+
+static NSDictionary *SlockStoragePayload(SlockStorageUsage usage, NSString *feedback) {
+    unsigned long long total =
+        usage.database + usage.imageCache + usage.attachmentDownloads + usage.temporaryAndLogs;
+    return @{
+        @"status" : @"ok",
+        @"totalSizeLabel" : SlockStorageSizeLabel(total),
+        @"feedback" : feedback ?: @"",
+        @"rows" : @[
+            SlockStorageRow(@"database", @"Local database",
+                            @"Messages, task metadata, and server snapshots stored on this device.",
+                            usage.database, NO),
+            SlockStorageRow(@"imageCache", @"Image cache",
+                            @"Downloaded image previews kept for faster viewing.",
+                            usage.imageCache, YES),
+            SlockStorageRow(@"attachmentDownloads", @"Attachment cache",
+                            @"Private copies kept for opening or installing files. Public exports are not removed.",
+                            usage.attachmentDownloads, YES),
+            SlockStorageRow(@"temporaryAndLogs", @"Temporary files and logs",
+                            @"Debug logs and temporary files generated by the app.",
+                            usage.temporaryAndLogs, YES)
+        ]
+    };
+}
+
+/// Runs on a background queue; `completion` may be called on any queue.
+static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result)) {
+    if ([target isEqualToString:@"imageCache"]) {
+        SDImageCache *cache = SDImageCache.sharedImageCache;
+        [cache clearMemory];
+        [cache clearDiskOnCompletion:^{
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=imageCache");
+                completion(SlockStoragePayload(SlockStorageMeasure(), @"Image cache cleared."));
+            });
+        }];
+        return;
+    }
+    if ([target isEqualToString:@"attachmentDownloads"]) {
+        BOOL storeCleared = SlockStorageClearDownloadDirectory(SlockAttachmentStoreRoot());
+        BOOL exportsCleared = SlockStorageClearDownloadDirectory(SlockAttachmentExportRootPath());
+        if (!storeCleared || !exportsCleared) {
+            SlockDiagnosticsRecord(@"warn", @"SlockStorage", @"shared_clear target=attachmentDownloads result=failure");
+            completion(@{ @"status" : @"error", @"code" : @"settings_storage_clear_failed" });
+            return;
+        }
+        SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=attachmentDownloads");
+        completion(SlockStoragePayload(SlockStorageMeasure(), @"Attachment cache cleared. Public exports were not removed."));
+        return;
+    }
+    if ([target isEqualToString:@"temporaryAndLogs"]) {
+        SlockStorageRemoveDirectoryContents(SlockThreadShareImageDirectoryPath());
+        SlockStorageRemoveStaleFeedbackDiagnosticsArchives();
+        SlockDiagnosticsClear();
+        SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=temporaryAndLogs");
+        completion(SlockStoragePayload(SlockStorageMeasure(), @"Temporary files and diagnostics logs cleared."));
+        return;
+    }
+    completion(@{ @"status" : @"error", @"code" : @"settings_storage_clear_unsupported" });
 }
 
 NSString *SlockAttachmentSafeComponent(NSString *raw) {
@@ -4806,7 +5089,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     if (downloadId.length == 0) downloadId = requestId;
     self.slock_attachmentExportRequestId = @"pending";
     NSFileManager *fileManager = NSFileManager.defaultManager;
-    NSURL *root = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SlockAttachmentExports"] isDirectory:YES];
+    NSURL *root = [NSURL fileURLWithPath:SlockAttachmentExportRootPath() isDirectory:YES];
     NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
     NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
     NSError *fileError = nil;
@@ -5211,7 +5494,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     BOOL compressImages = self.slock_attachmentPickerCompressImages;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
-            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"jpg"]
+            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:SlockCameraCaptureFileExtension]
                          isDirectory:NO];
         NSError *error = nil;
         BOOL encoded = compressImages
@@ -5442,8 +5725,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     if (!cacheRoot) {
         return nil;
     }
-    NSURL *directory = [[cacheRoot URLByAppendingPathComponent:@"Slock" isDirectory:YES]
-        URLByAppendingPathComponent:@"PickedAttachments" isDirectory:YES];
+    NSURL *directory = [[cacheRoot URLByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName isDirectory:YES]
+        URLByAppendingPathComponent:SlockThreadImageCompressionDirectoryName isDirectory:YES];
     if (![fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:error]) {
         return nil;
     }
@@ -5770,36 +6053,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         about[@"status"] = @"ok";
         return about;
     }
-    if ([action isEqualToString:@"loadStorage"]) {
-        return @{
-            @"status" : @"ok",
-            @"totalSizeLabel" : @"--",
-            @"feedback" : @"iOS P0 host bridge does not expose storage usage yet.",
-            @"rows" : @[
-                @{
-                    @"target" : @"database",
-                    @"title" : @"Local database",
-                    @"detail" : @"Database storage is not wired on iOS P0.",
-                    @"sizeLabel" : @"--",
-                    @"clearEnabled" : @NO
-                },
-                @{
-                    @"target" : @"imageCache",
-                    @"title" : @"Image cache",
-                    @"detail" : @"Image cache clearing is not wired on iOS P0.",
-                    @"sizeLabel" : @"--",
-                    @"clearEnabled" : @NO
-                },
-                @{
-                    @"target" : @"temporaryAndLogs",
-                    @"title" : @"Temporary files and logs",
-                    @"detail" : @"Diagnostics export is not wired on iOS P0.",
-                    @"sizeLabel" : @"--",
-                    @"clearEnabled" : @NO
-                }
-            ]
-        };
-    }
     if ([action isEqualToString:@"loadDeveloper"]) {
         return [self slock_developerCapabilityResultWithFeedback:nil];
     }
@@ -5876,10 +6129,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         [self slock_submitHandsFeedbackWithDescription:description];
         SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_submit_started");
         return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
-    }
-    if ([action isEqualToString:@"clearStorage"]) {
-        return [self slock_unsupportedResultWithCode:@"settings_capability_unsupported"
-                                             message:[NSString stringWithFormat:@"%@ is not wired on iOS P0", action]];
     }
     return [self slock_unsupportedResultWithCode:@"settings_capability_unknown"
                                          message:[NSString stringWithFormat:@"Unsupported settings capability action: %@", action]];

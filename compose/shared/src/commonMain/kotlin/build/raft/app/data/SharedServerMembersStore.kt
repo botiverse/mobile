@@ -514,6 +514,13 @@ class SharedServerMembersStore internal constructor(
     private fun presenceFactsNow(serverId: ServerId): Map<String, MemberPresenceUpdated> =
         presenceOwner(serverId)?.let(presenceRegistry::current).orEmpty()
 
+    /** Returns a profile only while it is still active in this server. */
+    fun memberProfile(serverId: ServerId, memberId: String): MemberProfile? {
+        val cleanServerId = serverId.value.normalizedServerMembersId() ?: return null
+        val profile = _state.value.memberProfile(serverId, memberId) ?: return null
+        return profile.takeUnless { it.isDeletedAgentProfile(cleanServerId) }
+    }
+
     fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> {
         val entryFlow =
             state
