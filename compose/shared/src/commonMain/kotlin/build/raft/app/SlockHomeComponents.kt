@@ -267,10 +267,12 @@ internal fun homeChannelTitleTextStyle(
     hasUnread: Boolean,
     badgeTone: HomeSidebarBadgeTone,
 ): TextStyle =
+    // Channel names and DM / agent names in the sidebar read the same ListItem token so the rows
+    // stay the same size (artin 2026-10-18: pinned DMs rendered larger than channels).
     if (selected || (hasUnread && badgeTone == HomeSidebarBadgeTone.Loud)) {
-        SlockType.ButtonBold
+        SlockType.ListItemBold
     } else {
-        SlockType.Button
+        SlockType.ListItem
     }
 
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): SlockLucideIconName? =
@@ -6161,7 +6163,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = SlockType.ListItem, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),

@@ -1148,7 +1148,7 @@ class SlockHomeComponentsTest {
     @Test
     fun homeChannelTitleMatchesReactSelectedAndUnreadWeightRules() {
         assertEquals(
-            SlockType.Button,
+            SlockType.ListItem,
             homeChannelTitleTextStyle(
                 selected = false,
                 hasUnread = false,
@@ -1156,7 +1156,7 @@ class SlockHomeComponentsTest {
             ),
         )
         assertEquals(
-            SlockType.ButtonBold,
+            SlockType.ListItemBold,
             homeChannelTitleTextStyle(
                 selected = true,
                 hasUnread = false,
@@ -1164,7 +1164,7 @@ class SlockHomeComponentsTest {
             ),
         )
         assertEquals(
-            SlockType.ButtonBold,
+            SlockType.ListItemBold,
             homeChannelTitleTextStyle(
                 selected = false,
                 hasUnread = true,
@@ -1172,7 +1172,7 @@ class SlockHomeComponentsTest {
             ),
         )
         assertEquals(
-            SlockType.Button,
+            SlockType.ListItem,
             homeChannelTitleTextStyle(
                 selected = false,
                 hasUnread = true,
@@ -1180,7 +1180,7 @@ class SlockHomeComponentsTest {
             ),
         )
         assertEquals(
-            SlockType.ButtonBold,
+            SlockType.ListItemBold,
             homeChannelTitleTextStyle(
                 selected = true,
                 hasUnread = true,

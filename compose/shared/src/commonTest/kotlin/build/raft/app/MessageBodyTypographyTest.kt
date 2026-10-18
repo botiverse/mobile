@@ -11,11 +11,11 @@ class MessageBodyTypographyTest {
         val medium = slockMessageBodyTextStyle("md")
         val large = slockMessageBodyTextStyle("lg")
 
-        assertEquals(14.sp, small.fontSize)
-        assertEquals(20.sp, small.lineHeight)
-        assertEquals(16.sp, medium.fontSize)
-        assertEquals(22.sp, medium.lineHeight)
-        assertEquals(18.sp, large.fontSize)
+        assertEquals(12.sp, small.fontSize)
+        assertEquals(18.sp, small.lineHeight)
+        assertEquals(14.sp, medium.fontSize)
+        assertEquals(20.sp, medium.lineHeight)
+        assertEquals(16.sp, large.fontSize)
         assertEquals(24.sp, large.lineHeight)
     }
 
