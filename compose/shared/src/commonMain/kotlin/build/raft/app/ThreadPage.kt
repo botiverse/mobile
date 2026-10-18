@@ -405,6 +405,8 @@ import kotlin.time.TimeMark
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.atomicfu.locks.SynchronizedObject
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
@@ -16294,6 +16296,7 @@ private fun ThreadComposerRoute(
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
+    val restingHeightKey = surface.threadComposerRestingHeightKey()
     if (
         !threadComposerEditorReadyToMount(
             composerInstanceId = baseComposerState.instanceId,
@@ -16301,6 +16304,10 @@ private fun ThreadComposerRoute(
             draftState = composerDraftState,
         )
     ) {
+        // Reserve the editor's resting height while it waits to mount, so the message list above
+        // is laid out at its final height on the first frame. Returning nothing here made the
+        // bottom-pinned list jump up ~76pt one frame later on every channel entry.
+        Spacer(Modifier.fillMaxWidth().height(ThreadComposerRestingHeight.get(restingHeightKey).dp))
         return
     }
     val composerState =
@@ -16311,9 +16318,17 @@ private fun ThreadComposerRoute(
                 resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
             )
         }
+    val composerUiState = composerState.toThreadComposerUiState()
+    val composerAtRest = composerUiState.isThreadComposerAtRest()
+    Box(
+        modifier =
+            Modifier.fillMaxWidth().onSizeChangedDp { size ->
+                if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)
+            }
+    ) {
     ThreadComposerContentWithSuggestions(
         surface = surface,
-        state = composerState.toThreadComposerUiState(),
+        state = composerUiState,
         threadMessages = timelineSlice.messages,
         originMessage = renderedPayload.originMessage,
         prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
@@ -16331,7 +16346,40 @@ private fun ThreadComposerRoute(
         contentPaddingBottom = 0.dp,
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
+    }
 }
+
+/**
+ * The composer's measured height at rest (empty draft, no attachments/actions/suggestions), per
+ * composer surface kind, for the process lifetime. The pre-mount placeholder uses it so the
+ * first frame already has the final list height; [DEFAULT_DP] covers the first open.
+ */
+internal object ThreadComposerRestingHeight {
+    const val DEFAULT_DP = 76
+    private val lock = SynchronizedObject()
+    private val byKey = mutableMapOf<String, Int>()
+
+    fun get(key: String): Int = synchronized(lock) { byKey[key] } ?: DEFAULT_DP
+
+    fun record(key: String, heightDp: Int) {
+        if (heightDp <= 0) return
+        synchronized(lock) { byKey[key] = heightDp }
+    }
+
+    internal fun clearForTest() {
+        synchronized(lock) { byKey.clear() }
+    }
+}
+
+internal fun ThreadComposerSurface.threadComposerRestingHeightKey(): String = "$kind|$showTaskButton"
+
+internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
+    seedText.isBlank() &&
+        pendingAttachments.isEmpty() &&
+        pendingMentionActions.isEmpty() &&
+        statusLabel == null &&
+        memberSuggestions.isEmpty() &&
+        channelSuggestions.isEmpty()
 
 /**
  * A restored draft is read synchronously by the persistence slice during Start, but Start itself
