@@ -82,7 +82,7 @@ internal fun UiSegmentedControlVisualContent() {
 }
 
 @Composable
-internal fun UiButtonVisualContent(rowSpacing: Dp = 10.dp) {
+internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
     Box(
         modifier =
             Modifier
@@ -91,11 +91,12 @@ internal fun UiButtonVisualContent(rowSpacing: Dp = 10.dp) {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        // react spaces these buttons 12px apart (box edge to box edge). Brutal keeps the
-        // default 10dp spacing because the button reserves its 2dp shadow as trailing/
-        // bottom layout space (10 + 2 = 12 visible, task #370). The elegant register draws
-        // an ambient shadow with no reserved layout space, so its page passes rowSpacing
-        // = 12.dp to reach the same visible 12dp gap (measured 30px vs react 36px otherwise).
+        // Mirrors web VisualTestingCases `ui-button` (raft-ui 0.6.0, slock #10148): two rows
+        // of `size="sm"` buttons 12px apart — outline Save / primary Sync / accent Delete,
+        // information Add / success Continue / muted disabled Disabled. The brutal fills map
+        // onto those variants (yellow + pink -> pink accent sticker; cyan, lime, white ->
+        // paper outline) and every minHeight below 38dp lands on raft's 32dp `md` size.
+        // Raft buttons cast no shadow and reserve none, so the gap is the full 12dp.
         Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
             Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
@@ -105,9 +106,7 @@ internal fun UiButtonVisualContent(rowSpacing: Dp = 10.dp) {
             Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Add", onClick = {}, backgroundColor = SlockColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 SlockBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = SlockColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
-                // tone="stone" (#C0B9B1) to match react's disabled button. Brutal disabled
-                // ignores this (uses the fixed disabledBackgroundColor), so the brutal PNG is
-                // unchanged; elegant disabled fades this tone via alpha(0.4) → #E5E2DF like react.
+                // Disabled is raft's opaque fill-muted / line-muted / disabled-ink chrome.
                 SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
         }
@@ -153,9 +152,8 @@ internal fun UiButtonThemeVisualContent() {
 internal fun UiCardVisualContent() {
     val theme = LocalSlockTheme.current
     // Core-bbox normalization across registers (XiShi contract): the brutal card reserves a
-    // 4dp shadow gutter (visible core = outer - 4dp), the elegant card reserves none (core =
-    // outer). React's box-shadow doesn't occupy layout, so the visible card core must be the
-    // same across registers — a theme-aware outer width keeps the visible core at 310dp both.
+    // 4dp shadow gutter (visible core = outer - 4dp); the raft card (container radius,
+    // hairline, no shadow) reserves none, matching web's 310px `rounded-container` card.
     val cardWidth = if (theme.isAmbient) 310.dp else 314.dp
     // Fixed 342x190 backdrop with only start/top padding (no end/bottom) so the outer
     // width isn't constrained to 310 — brutal outer 314 (core 314-4=310) and elegant outer
@@ -278,39 +276,26 @@ internal fun UiFormFieldVisualContent() {
 
 @Composable
 internal fun UiTextareaVisualContent() {
-    // Fixed 342x252 frame (capture-contract, XiShi source-derived H=252dp): the old 240dp crop
-    // dropped the 2nd textarea's error row ("Agreement body must be shorter." + 57/40) on iOS.
-    // 252 = max(brutal) content height (two frames 92+4 / 68+4 shadow reserve, helper rows
-    // 4 gap + 14 line, 16 between textareas, 32 outer padding); elegant drops the two 4dp reserves
-    // (244dp) and simply gains ~8dp of bottom white. UI_TEXTAREA_CROP matches.
+    // Fixed 342x252 frame (capture-contract, XiShi source-derived H=252dp; UI_TEXTAREA_CROP).
+    // Mirrors web VisualTestingCases `ui-textarea` after raft-ui 0.6.0: one invalid raft
+    // Textarea (min-h-24 = 96dp, two rows) followed by its error + `TextareaCounter` row.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(252.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Panel)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockBrutalTextarea(
-                value = "Capture the Android visual artifact and compare it with React.",
-                onValueChange = {},
-                hint = "Plain helper text",
-                showCounter = true,
-                limit = 120,
-                fieldHeight = 92.dp,
-                maxLines = 3
-            )
-            SlockBrutalTextarea(
-                value = "This agreement copy is too long for the configured limit.",
-                onValueChange = {},
-                error = "Agreement body must be shorter.",
-                showCounter = true,
-                limit = 40,
-                fieldHeight = 68.dp,
-                maxLines = 2
-            )
-        }
+        SlockBrutalTextarea(
+            value = "This agreement copy is too long for the configured limit.",
+            onValueChange = {},
+            error = "Agreement body must be shorter.",
+            showCounter = true,
+            limit = 40,
+            fieldHeight = 96.dp,
+            maxLines = 2
+        )
     }
 }
 

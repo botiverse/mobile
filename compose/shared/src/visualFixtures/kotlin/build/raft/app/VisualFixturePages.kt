@@ -813,7 +813,7 @@ internal class ComposeUiSegmentedControlVisualPage : BasePager() {
 internal class ComposeUiButtonVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiButtonVisualContent() }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -825,15 +825,14 @@ internal class ComposeUiButtonThemeVisualPage : BasePager() {
     }
 }
 
-// Elegant-register capture of the SAME button content as compose_ui_button_visual,
-// wrapped in SlockThemeProvider(elegantTheme). Paired against the React elegant
-// render (data-theme="elegant") as components.ui.button.states.elegant so the
-// react-elegant <-> android-elegant parity is visible in the baseline.
+// raft-ui 0.6.0 removed the elegant register: web renders the raft look for both the
+// base and the ".elegant" case ids (slock #10148), so both pages pin raftLightTheme and
+// render the same primitives. The ".elegant" page id is kept for the case manifest.
 @Page("compose_ui_button_elegant_visual", supportInLocal = true)
 internal class ComposeUiButtonElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiButtonVisualContent(rowSpacing = 12.dp) } }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -841,18 +840,16 @@ internal class ComposeUiButtonElegantVisualPage : BasePager() {
 internal class ComposeUiCardVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCardVisualContent() }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME card content, wrapped in
-// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
-// components.ui.card.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft card as compose_ui_card_visual (the ".elegant" case id is kept; see button).
 @Page("compose_ui_card_elegant_visual", supportInLocal = true)
 internal class ComposeUiCardElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiCardVisualContent() } }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
@@ -860,18 +857,16 @@ internal class ComposeUiCardElegantVisualPage : BasePager() {
 internal class ComposeUiFormFieldVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiFormFieldVisualContent() }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME form-field content, wrapped in
-// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
-// components.ui.form-field.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft form fields as compose_ui_form_field_visual (".elegant" case id kept).
 @Page("compose_ui_form_field_elegant_visual", supportInLocal = true)
 internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiFormFieldVisualContent() } }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
@@ -879,20 +874,16 @@ internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
 internal class ComposeUiTextareaVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiTextareaVisualContent() }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME textarea content, wrapped in
-// SlockThemeProvider(elegantTheme). The textarea renders via SlockBrutalInputField, so it
-// inherits the elegant flat-field register (8dp rounded + #CACACE hairline + no offset
-// shadow) with no component change. Paired against the React elegant render as
-// components.ui.textarea.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft textarea as compose_ui_textarea_visual (".elegant" case id kept).
 @Page("compose_ui_textarea_elegant_visual", supportInLocal = true)
 internal class ComposeUiTextareaElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiTextareaVisualContent() } }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
@@ -900,18 +891,16 @@ internal class ComposeUiTextareaElegantVisualPage : BasePager() {
 internal class ComposeUiCheckboxVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCheckboxVisualContent() }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME checkbox content, wrapped in
-// SlockThemeProvider(elegantTheme): softly-rounded 4dp box + #CACACE hairline + #0A0A0A ink
-// fill. Paired against the React elegant render as components.ui.checkbox.states.elegant.
+// Same raft checkbox as compose_ui_checkbox_visual (".elegant" case id kept).
 @Page("compose_ui_checkbox_elegant_visual", supportInLocal = true)
 internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiCheckboxVisualContent() } }
+        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 
