@@ -19,6 +19,12 @@ import kotlin.test.assertTrue
 
 class SharedCreateAgentDialogTest {
     @Test
+    fun externalMembersCreateModeSkipsComputerPicker() {
+        assertTrue(MembersCreateAgentMode.External.requiresComputerSelection().not())
+        assertTrue(MembersCreateAgentMode.Managed.requiresComputerSelection())
+    }
+
+    @Test
     fun runtimeDropdownUsesSupportedRuntimes() {
         val items = createAgentRuntimeDropdownItems()
 

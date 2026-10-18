@@ -16,6 +16,7 @@ internal fun ChannelMembersCreateAgentDialog(
     owner: AuthenticatedRouteOwner,
     channelId: ChannelId,
     initialName: String,
+    mode: MembersCreateAgentMode = MembersCreateAgentMode.Managed,
     authority: AuthenticatedRouteAuthorityGateway,
     computersStore: SharedComputersStore,
     formStore: SharedCreateAgentFormStore,
@@ -37,8 +38,10 @@ internal fun ChannelMembersCreateAgentDialog(
     var createdId by remember(owner) { mutableStateOf<String?>(null) }
     val failedLabel = stringResource(MR.strings.common_error)
     val joinFailedLabel = stringResource(MR.strings.thread_members_created_join_failed)
-    LaunchedEffect(owner) {
-        computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(owner.serverId, DataRequestPriority.Visible))
+    LaunchedEffect(owner, mode) {
+        if (mode.requiresComputerSelection()) {
+            computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(owner.serverId, DataRequestPriority.Visible))
+        }
     }
     fun submit(request: SharedCreateAgentDialogSubmit?) {
         if (submitting) return
@@ -89,9 +92,11 @@ internal fun ChannelMembersCreateAgentDialog(
         }
     } else {
         SharedCreateAgentDialog(
+            external = mode == MembersCreateAgentMode.External,
             submitting = submitting, errorMessage = error, initialName = initialName,
-            machines = picker.machines, machinesLoading = picker.initialLoadInFlight,
-            machinesErrorMessage = if (picker.initialLoadError != null) failedLabel else null,
+            machines = if (mode.requiresComputerSelection()) picker.machines else emptyList(),
+            machinesLoading = mode.requiresComputerSelection() && picker.initialLoadInFlight,
+            machinesErrorMessage = if (mode.requiresComputerSelection() && picker.initialLoadError != null) failedLabel else null,
             onMachinesRetry = { computersStore.dispatch(SharedComputersIntent.RefreshComputerPicker(owner.serverId, DataRequestPriority.Visible)) },
             createAgentFormStore = formStore, createAgentServerId = owner.serverId,
             takenAgentNames = serverMembers.members.takenAgentNames(),

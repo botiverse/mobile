@@ -4510,6 +4510,7 @@ private fun ThreadMembersPageScreen() {
             member.handles.any { it.lowercase().contains(query) }
     }
     var createAgentName by remember(routeOwner) { mutableStateOf<String?>(null) }
+    var createAgentMode by remember(routeOwner) { mutableStateOf(MembersCreateAgentMode.Managed) }
     var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
@@ -4679,7 +4680,12 @@ private fun ThreadMembersPageScreen() {
             onBack = { router.closePage() }, onRefresh = ::refreshMembers,
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
             canCreateAgents = canCreateAgents,
-            onCreateAgent = { if (canCreateAgents && liveOwner == routeOwner) createAgentName = it },
+            onCreateAgent = { name, mode ->
+                if (canCreateAgents && liveOwner == routeOwner) {
+                    createAgentName = name
+                    createAgentMode = mode
+                }
+            },
             onSubmit = { selectedMembers ->
                 val profiles = selectedMembers.mapNotNull { it.toMemberProfile() }
                 if (profiles.isEmpty() || profiles.size != selectedMembers.size) return@ThreadMembersPageContent
@@ -4726,7 +4732,7 @@ private fun ThreadMembersPageScreen() {
         }
         createAgentName?.let { initialName ->
             ChannelMembersCreateAgentDialog(
-                owner = routeOwner, channelId = route.channelId, initialName = initialName,
+                owner = routeOwner, channelId = route.channelId, initialName = initialName, mode = createAgentMode,
                 authority = authorityGateway, computersStore = sharedStores.computersStore(storeScope),
                 formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
                 onDismiss = { createAgentName = null; refreshMembers() },
@@ -4795,7 +4801,7 @@ internal fun ThreadMembersPageContent(
     onRemoveMember: (KuiklyThreadMemberItem) -> Unit,
     onSubmit: (List<KuiklyThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
-    onCreateAgent: (String) -> Unit = {},
+    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
 ) {
     val rosterListState = rememberLazyListState()
     // task #175: the page draws under the system navigation bar; whichever
@@ -31737,7 +31743,7 @@ private fun ThreadAddMemberModal(
     onSubmit: (KuiklyThreadMemberItem) -> Unit,
     onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null,
     canCreateAgents: Boolean = false,
-    onCreateAgent: (String) -> Unit = {},
+    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     // Caller-local TextFieldValue is the sole editor owner for the search box;
@@ -31757,6 +31763,8 @@ private fun ThreadAddMemberModal(
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
+    var createAgentMenuOpen by remember { mutableStateOf(false) }
+    var createAgentMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val addFailedLabel = stringResource(MR.strings.thread_add_member_failed)
     val genericErrorLabel = stringResource(MR.strings.common_error)
     val errorText =
@@ -31922,7 +31930,13 @@ private fun ThreadAddMemberModal(
                         else stringResource(MR.strings.thread_members_create_named_agent, createName),
                     modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
                     enabled = !adding && canCreateAgents,
-                    onClick = { onCreateAgent(createName) },
+                    onClick = {},
+                    onClick2 = { anchor ->
+                        if (canCreateAgents) {
+                            createAgentMenuAnchor = anchor
+                            createAgentMenuOpen = true
+                        }
+                    },
                 )
                 if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = SlockType.Caption)
                 SlockBrutalActionButton(
@@ -31948,6 +31962,35 @@ private fun ThreadAddMemberModal(
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
+    }
+    if (createAgentMenuOpen && createAgentMenuAnchor != null) {
+        SlockRaftUiControlledMenu(
+            expanded = true,
+            anchor = createAgentMenuAnchor!!,
+            width = 220.dp,
+            items = listOf(
+                SlockRaftUiMenuItem(
+                    id = MembersCreateAgentMode.Managed.name,
+                    label = stringResource(MR.strings.agent_create_action_create),
+                    icon = SlockLucideIconName.Bot
+                ),
+                SlockRaftUiMenuItem(
+                    id = MembersCreateAgentMode.External.name,
+                    label = stringResource(MR.strings.agent_create_action_create_external),
+                    icon = SlockLucideIconName.Link2
+                )
+            ),
+            onSelect = { id ->
+                createAgentMenuOpen = false
+                createAgentMenuAnchor = null
+                val mode = MembersCreateAgentMode.entries.firstOrNull { it.name == id } ?: return@SlockRaftUiControlledMenu
+                onCreateAgent(createName, mode)
+            },
+            onDismiss = {
+                createAgentMenuOpen = false
+                createAgentMenuAnchor = null
+            }
+        )
     }
 }
 

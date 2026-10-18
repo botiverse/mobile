@@ -369,6 +369,7 @@ internal class SlockAgentsApiClient(
             AgentBootstrapTokenSummary(
                 tokenId = tokenId,
                 tokenPrefix = prefix,
+                bootstrapToken = wire.bootstrapToken?.takeIf { it.isNotBlank() },
                 bootstrapTokenPresent = !wire.bootstrapToken.isNullOrBlank(),
                 scopeCount = wire.scopes.size,
             )
@@ -452,6 +453,8 @@ internal data class AgentSkillsSummary(val globalCount: Int, val workspaceCount:
 internal data class AgentBootstrapTokenSummary(
     val tokenId: String,
     val tokenPrefix: String,
+    /** Raw token is returned once by the server and must remain in UI-local state. */
+    val bootstrapToken: String? = null,
     val bootstrapTokenPresent: Boolean,
     val scopeCount: Int
 )
