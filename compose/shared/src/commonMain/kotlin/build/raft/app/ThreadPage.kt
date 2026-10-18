@@ -27598,11 +27598,19 @@ internal fun ThreadMessageFooterMeta(
                     taskStatusActionsEnabled = taskStatusActionsEnabled,
                     taskOpenEnabled = taskOpenEnabled
                 )
+            // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
+            // soft fill with a status-strong glyph and a 12/16 label.
             SlockAnchoredMetaChip(
                 label = label,
                 iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
-                color = selectedStatus.color,
+                color = selectedStatus.status.threadTaskChipSoftFill(),
+                iconColorArgb = slockArgbHex(selectedStatus.status.threadTaskChipStrong()),
+                borderWidth = 0.dp,
+                minHeight = 22.dp,
+                horizontalPadding = 7.dp,
+                labelFontSize = 12.sp,
+                labelLineHeight = 16.sp,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
@@ -27643,6 +27651,24 @@ internal fun ThreadMessageFooterMeta(
         }
     }
 }
+
+private fun TaskStatus.threadTaskChipSoftFill(): Color =
+    when (this) {
+        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoSoft
+        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressSoft
+        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewSoft
+        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneSoft
+        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedSoft
+    }
+
+private fun TaskStatus.threadTaskChipStrong(): Color =
+    when (this) {
+        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoStrong
+        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressStrong
+        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewStrong
+        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneStrong
+        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedStrong
+    }
 
 internal data class ThreadReactionPendingKey(
     val messageId: String,
