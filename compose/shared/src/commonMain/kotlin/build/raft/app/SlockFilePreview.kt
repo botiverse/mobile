@@ -7756,9 +7756,15 @@ internal fun SlockFilePreviewPayloadContent(
                         allowScripts = true,
                         // task #188: desktop mode pins a desktop-width viewport at document start, so
                         // the page's own responsive breakpoints pick the wide layout -- the same thing
-                        // a browser's "Request desktop site" does. Injection is the shared mechanism:
-                        // all three platforms already route `injectedJavaScript` (iOS via
-                        // WKUserScript at document start). Off -> empty, i.e. the page's own meta.
+                        // a browser's "Request desktop site" does. Off -> empty, i.e. the page's own meta.
+                        //
+                        // One shared mechanism, verified on all three platforms' injection paths:
+                        //   Android -- SlockSandboxWebViewRenderView applies injectedJavaScript
+                        //   iOS     -- WKUserScript at WKUserScriptInjectionTimeAtDocumentStart
+                        //   OHOS    -- ArkWeb rule, wrapped by scopedInjectedJavaScript() and run at
+                        //              document start behind a URL/top-frame fence
+                        // The script itself is self-invoking and does not depend on any platform
+                        // global, so the fence wrapper (which calls it in place) leaves it intact.
                         injectedJavaScript =
                             if (htmlDesktopMode) slockFilePreviewDesktopViewportScript() else "",
                         modifier = Modifier.fillMaxSize()
