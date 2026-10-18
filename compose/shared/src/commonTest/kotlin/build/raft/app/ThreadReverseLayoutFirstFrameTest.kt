@@ -5,65 +5,66 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * task #193: on a reply-cache hit (#3083) the thread renders content on the FIRST frame, before the
- * reverse-layout gate has resolved. The list used to be built forward in that window and locked
- * there -- latest item off the bottom, a large empty band, back-to-bottom pill mid-screen.
+ * task #193: on a reply-cache hit (#3083) the thread renders content on the FIRST frame, while the
+ * reverse-layout gate inputs (reply-cache provenance) are still null. The list used to fall back to
+ * FORWARD in that window and latch it, so the real answer never arrived: latest item off the bottom,
+ * a large empty band, back-to-bottom pill floating mid-screen. 1.14.0 did not show this because its
+ * first frame was a loading shell, by which time the gate had resolved.
  *
- * The fix has two halves and these cover both:
- *  1. an undecided gate now defaults to REVERSE, so the first frame is already built in the
- *     direction it will almost certainly keep (1.14.0 measured 63/63 entries `enabled=true`);
- *  2. a gate that later resolves to FORWARD still moves the list, exactly once, so the
- *     `LazyListState` initial index is recomputed for the new orientation.
+ * Decided contract (artin): with no explicit user choice and the gate unresolved, the open runs
+ * REVERSE for its whole lifetime. A gate that later resolves to `false` takes effect on the NEXT
+ * open -- the direction is latched once per thread instance, so nothing within one open flips.
  */
 class ThreadReverseLayoutFirstFrameTest {
 
-    /** The production fallback the real call site uses (`ThreadPage`, `?: THREAD_..._DEFAULT`). */
-    private fun gateUndecidedDefault(): Boolean = THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT
+    /**
+     * Models `threadReverseLayoutEffective(userChoice) { gate }` with the one change that matters:
+     * the unresolved-gate fallback is [THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT] rather than `false`.
+     */
+    private fun directionForOpen(userChoice: Boolean?, gateResolvedTo: Boolean?): Boolean =
+        userChoice ?: (gateResolvedTo ?: THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT)
 
     @Test
-    fun anUndecidedGateDefaultsToReverseSoTheFirstFrameIsAlreadyCorrect() {
-        // This is the regression. Before the fix the fallback was `false`, so a cache-hit entry that
-        // composed before the gate resolved produced a forward list; the old code had no way to
-        // correct it afterwards. `false` here means the bug is back.
+    fun warmEntryWithALateGateRunsReverseOnTheFirstFrame() {
+        // The regression. A cache-hit entry composes with the gate unresolved; before this change
+        // that produced `false` and the list was latched forward. Reading `false` here means the bug
+        // is back.
         assertTrue(
-            gateUndecidedDefault(),
-            "a cache-hit entry composes before the gate; defaulting to forward re-creates the bug"
+            directionForOpen(userChoice = null, gateResolvedTo = null),
+            "an unresolved gate must not produce a forward list on a warm entry"
         )
+        assertTrue(THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT)
     }
 
     @Test
-    fun theUndecidedDefaultIsOnlyADefaultNotAUserChoice() {
-        // threadReverseLayoutEffective is `userChoice ?: followedDefault()`. A user who explicitly
-        // picked forward short-circuits before the fallback is ever consulted, so flipping the
-        // default must not override them.
+    fun anExplicitUserChoiceAlwaysWins() {
         assertFalse(
-            threadReverseLayoutForList(requested = false, decided = true),
-            "an explicit forward choice must survive the default flip"
+            directionForOpen(userChoice = false, gateResolvedTo = null),
+            "a user who chose forward must not be flipped to reverse by the new default"
         )
-        assertTrue(
-            threadReverseLayoutForList(requested = true, decided = true),
-            "an explicit reverse choice is unaffected too"
-        )
-    }
-
-    @Test
-    fun aGateThatResolvesToForwardStillNeedsToMoveTheList() {
-        // With the default now reverse, this is the remaining direction change: reverse -> forward.
-        // It must be visible to the list as a real change, otherwise the LazyListState initial index
-        // stays computed for the reverse orientation.
-        val beforeGate = gateUndecidedDefault()
-        val afterGate = false // server says forward for this server
-        assertTrue(
-            beforeGate != afterGate,
-            "a reverse default followed by a forward gate is a real transition the list must follow"
+        assertTrue(directionForOpen(userChoice = true, gateResolvedTo = null))
+        assertFalse(
+            directionForOpen(userChoice = false, gateResolvedTo = true),
+            "an explicit forward choice is not overridden by a reverse gate either"
         )
     }
 
     @Test
-    fun anExplicitChoiceMeansTheGateIsNeverConsulted() {
-        assertTrue(threadReverseLayoutIsDecided(userChoice = true, gateReady = false))
-        assertTrue(threadReverseLayoutIsDecided(userChoice = false, gateReady = false))
-        assertFalse(threadReverseLayoutIsDecided(userChoice = null, gateReady = false))
-        assertTrue(threadReverseLayoutIsDecided(userChoice = null, gateReady = true))
+    fun aGateThatResolvesFalseDoesNotFlipTheOpenItArrivedIn() {
+        // Latching once per thread instance: the second argument is only consulted when the gate was
+        // already resolved at first composition. Within an open that started undecided, the late
+        // `false` must not change it -- it applies on the next open.
+        val firstOpenWithLateGate = directionForOpen(userChoice = null, gateResolvedTo = null)
+        val nextOpenWithKnownGate = directionForOpen(userChoice = null, gateResolvedTo = false)
+        assertTrue(firstOpenWithLateGate, "the open that raced the gate stays reverse")
+        assertFalse(nextOpenWithKnownGate, "the following open honours the resolved false")
+    }
+
+    @Test
+    fun aGateThatResolvesTrueKeepsTheOpenReverse() {
+        // The common case: reverse either way, so the open is consistent from its first frame to its
+        // last and there is no in-open direction change to handle.
+        assertTrue(directionForOpen(userChoice = null, gateResolvedTo = null))
+        assertTrue(directionForOpen(userChoice = null, gateResolvedTo = true))
     }
 }

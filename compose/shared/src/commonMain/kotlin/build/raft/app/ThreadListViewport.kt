@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
@@ -15,18 +14,6 @@ import kotlinx.coroutines.delay
 
 /** Whether this thread route lays its message list out bottom-up; see [ThreadListViewport]. */
 internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
-
-/**
- * task #193: whether [LocalThreadReverseLayout] has been *decided* yet.
- *
- * The gate that resolves the direction depends on reply-cache provenance, which arrives after the
- * first composition (task #390/#3083 made that window visible by rendering content on frame one).
- * A list built in that window cannot tell "forward because the gate said forward" from "forward
- * because nobody has said anything yet", so it froze the wrong answer.
- *
- * `false` here means the direction above is a placeholder and must not be locked in.
- */
-internal val LocalThreadReverseLayoutDecided = compositionLocalOf { false }
 
 /**
  * Same identity rules as the markdown light path: decided on the route's reply-cache provenance.

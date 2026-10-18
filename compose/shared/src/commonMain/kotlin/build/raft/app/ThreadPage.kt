@@ -7289,8 +7289,15 @@ private fun SharedThreadRouteContentContent(
         remember(threadInstanceKey) {
             chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync()
         }
+    // task #193: latched per thread instance, NOT re-keyed on gate arrival.
+    //
+    // Decided contract (artin, 2026-08-.. / 1.14.1): with no explicit user choice and the gate not
+    // yet resolved, the open starts REVERSE and keeps reverse for its whole lifetime. If the gate
+    // later resolves to false, that takes effect on the NEXT open. This is why nothing below needs
+    // to react to the gate landing: the direction cannot change within one open, so there is no
+    // rebuild to do and no window for a rebuilt list to hold stale state.
     val threadReverseLayoutEnabled =
-        remember(threadInstanceKey, markdownLightGateInputs != null) {
+        remember(threadInstanceKey) {
             threadReverseLayoutEffective(
                 userChoice = threadReverseLayoutUserChoice
             ) {
@@ -10668,14 +10675,6 @@ private fun SharedThreadRouteContentContent(
                 LocalSlockMarkdownRenderConfig provides
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
-                // task #193: tells the list whether the direction above is a real decision or just
-                // the placeholder used before the gate resolves. An explicit user choice is already
-                // a decision and does not wait for the gate.
-                LocalThreadReverseLayoutDecided provides
-                    threadReverseLayoutIsDecided(
-                        userChoice = threadReverseLayoutUserChoice,
-                        gateReady = markdownLightGateInputs != null
-                    ),
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -18222,44 +18221,32 @@ private fun ThreadMessagesListContent(
         } else {
             0
         }
-    // task #193: the direction must not be frozen before the gate has decided it.
+    // task #193: with a reply-cache hit (#3083) content renders on the FIRST frame, while the gate
+    // inputs (reply-cache provenance) are still null. The list used to fall back to FORWARD in that
+    // window and lock it, so it never picked up the real answer: latest item off the bottom, a large
+    // empty band, back-to-bottom pill floating mid-screen.
     //
-    // With #3083 a reply-cache hit renders content on the FIRST frame, while reply-cache provenance
-    // (which supplies the gate inputs) is still null. The list used to capture `forward` in that
-    // window and key `remember` on the thread instance alone, so it never saw the real answer:
-    // latest item off the bottom, a large empty band, back-to-bottom pill mid-screen.
+    // The fix is at the source rather than after the fact: an undecided gate now falls back to
+    // REVERSE (THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT), and the direction is latched once per
+    // thread instance (see threadReverseLayoutEnabled). Reverse is what the gate reports for
+    // essentially every real thread (1.14.0: 63/63 entries enabled=true), so the first frame is
+    // built in the direction the open will keep for its whole lifetime.
     //
-    // Three things move together here:
-    //   1. the pre-gate fallback is REVERSE (THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT), so the common
-    //      case builds the first frame in the direction it keeps and needs no rebuild at all;
-    //   2. a gate that resolves to FORWARD still moves the list once;
-    //   3. when the direction moves, the LazyListState must be REBUILT -- `rememberLazyListState` has
-    //      no key and its `initialFirstVisibleItemIndex` is fixed at first composition, so flipping
-    //      only the flag would leave the scroll position computed for the old orientation.
-    //
-    // The key is the direction VALUE. That is stable by construction (it cannot oscillate the way an
-    // edge predicate did), so "at most one rebuild per direction change" holds without bookkeeping.
-    val reverseLayoutRequested = LocalThreadReverseLayout.current
-    val reverseLayoutDecided = LocalThreadReverseLayoutDecided.current
-    val reverseLayout = threadReverseLayoutForList(
-        requested = reverseLayoutRequested,
-        decided = reverseLayoutDecided
-    )
-    // Keying on the value (not on `LocalThreadReverseLayout` itself) is what carries the change to
-    // this reader: the local is a staticCompositionLocalOf, so a change to it alone would not.
-    val listDirectionKey = reverseLayoutRequested
+    // Because the direction cannot change within one open:
+    //   - a gate that resolves to false takes effect on the NEXT open (decided contract, artin);
+    //   - there is no in-open direction transition, so no LazyListState rebuild and no effect
+    //     rewiring is needed -- the list keeps the identity it was built with.
+    val reverseLayout = LocalThreadReverseLayout.current
     val rawListState =
-        key(threadInstanceKey, listDirectionKey) {
-            rememberLazyListState(
-                // Kuikly commits a non-top initial Compose viewport to native ScrollView
-                // before its first child placement. Start at the final latest viewport;
-                // the existing anchor owner only performs measured bottom correction.
-                // Reversed, physical item 0 (the bottom padding row) already is that viewport.
-                initialFirstVisibleItemIndex =
-                    if (reverseLayout) 0
-                    else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
-            )
-        }
+        rememberLazyListState(
+            // Kuikly commits a non-top initial Compose viewport to native ScrollView
+            // before its first child placement. Start at the final latest viewport;
+            // the existing anchor owner only performs measured bottom correction.
+            // Reversed, physical item 0 (the bottom padding row) already is that viewport.
+            initialFirstVisibleItemIndex =
+                if (reverseLayout) 0
+                else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
+        )
     val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
     var frozenReadAnchor by remember(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
         mutableStateOf(readAnchorOwner?.let(readAnchorStore::read))
@@ -18324,14 +18311,10 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
-    // task #193: keyed on the list instance, NOT only the thread. When the direction settles the
-    // scroll state is rebuilt (see rawListState), and anchor state that survived that rebuild would
-    // describe a list that no longer exists -- `initialBottomAnchorReady = true` left over from the
-    // old state suppresses the first bottom anchor of the new one, which is the blank-list path.
-    var allowBottomAutoAnchor by remember(threadInstanceKey, rawListState) {
+    var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(true)
     }
-    var initialBottomAnchorReady by remember(threadInstanceKey, rawListState) {
+    var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
     // Non-empty destination path (continues the READY chain opened above): restore the
@@ -18382,14 +18365,11 @@ private fun ThreadMessagesListContent(
                 excludedMessageIds = renderPayload.gapRefillMessageIds,
             )
         }
-    // task #193: like the anchor flags above, the viewport controller and its generation describe a
-    // specific list. Keeping them across a direction-driven rebuild would leave a pending intent
-    // aimed at the previous scroll state.
-    var viewportControllerState by remember(threadInstanceKey, rawListState) {
+    var viewportControllerState by remember(threadInstanceKey) {
         diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
         mutableStateOf(LazyViewportControllerState())
     }
-    var viewportLayoutGeneration by remember(threadInstanceKey, rawListState) { mutableStateOf(0L) }
+    var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
         val previousIntent = viewportControllerState.intent
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
@@ -19077,13 +19057,7 @@ private fun ThreadMessagesListContent(
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
     }
     // The only production owner allowed to mutate listState.
-    // task #193: keyed on rawListState as well, so a direction-driven rebuild cancels any command
-    // aimed at the previous list instead of replaying it against a state nobody renders.
-    LaunchedEffect(
-        threadInstanceKey,
-        rawListState,
-        viewportControllerState.pendingCommand?.id
-    ) {
+    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
         val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
         fun commandStillCurrent(): Boolean =
             currentViewportControllerState.value.acceptsRenderedTailCommand(
@@ -19659,9 +19633,6 @@ private fun ThreadMessagesListContent(
     }
     LaunchedEffect(
         threadInstanceKey,
-        // task #193: this effect mutates listState via the older-page anchor. Keyed on rawListState
-        // so a direction-driven rebuild cannot replay a pending anchor against the old list.
-        rawListState,
         renderPayload.olderMessagesStatus,
         renderPayload.messages.size,
         renderPayload.messages.firstOrNull()?.id
@@ -22287,11 +22258,6 @@ internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
  */
 internal const val THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT: Boolean = true
 
-internal fun threadReverseLayoutForList(
-    requested: Boolean,
-    decided: Boolean,
-): Boolean = requested
-
 /**
  * task #193: whether the reverse-layout direction is settled.
  *
@@ -22301,9 +22267,6 @@ internal fun threadReverseLayoutForList(
  *    a needless rebuild for exactly the users who already know what they want;
  *  - the gate resolved ([gateReady]) -- reply-cache provenance arrived and the flag could be read.
  */
-internal fun threadReverseLayoutIsDecided(userChoice: Boolean?, gateReady: Boolean): Boolean =
-    userChoice != null || gateReady
-
 internal fun threadInitialBottomAnchorTargetItemIndex(
     latestMessageItemIndex: Int,
     bottomPaddingItemIndex: Int
