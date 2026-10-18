@@ -8,6 +8,9 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
+import build.raft.app.components.slockRaftOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.model.ConversationSummary
@@ -99,7 +102,8 @@ private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerHostKeyboardBasePadding = 12.dp
 private val ThreadComposerVisualInputWidth = 321.dp
-private val ThreadComposerTextFieldMinHeight = 20.dp
+// raft-ui `ComposerInput` `min-h-6`.
+private val ThreadComposerTextFieldMinHeight = 24.dp
 private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerIconButtonSize = 26.dp
@@ -1303,7 +1307,7 @@ internal fun ThreadComposerScreen() {
     }
     SlockInputFocusDismissHost { focusDismissModifier ->
         Box(
-            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.Panel),
             contentAlignment = Alignment.TopCenter
         ) {
             if (suggestionUnderlayOracleEnabled) {
@@ -1334,7 +1338,7 @@ internal fun ThreadComposerScreen() {
                                     suggestionScrollOracleLeak -> ThreadComposerSuggestionScrollOracleLeak
                                     suggestionInteractionOracleActionReceived ->
                                         ThreadComposerSuggestionInteractionOracleSuccess
-                                    else -> SlockColor.SurfaceWhite
+                                    else -> SlockColor.Panel
                                 }
                             ),
                     contentAlignment = Alignment.Center
@@ -1365,7 +1369,7 @@ internal fun ThreadComposerScreen() {
                                     }
                             )
                 ) {
-                    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
                     Box(
                         modifier = Modifier
                             .width(ThreadComposerVisualInputWidth)
@@ -2614,7 +2618,7 @@ internal fun ThreadComposerContentLeaf(
             Modifier
                 .fillMaxWidth()
                 .retainInputFocusForInteractions()
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Panel)
                 .padding(
                     start = hostPaddingHorizontal,
                     top = hostPaddingTop,
@@ -2694,19 +2698,20 @@ internal fun ThreadComposerContentLeaf(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(end = 2.dp, bottom = 2.dp)
                         .slockCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
                             if (composerCardSize != nextSize) composerCardSize = nextSize
                         }
             ) {
-                Box(
-                    modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
-                )
+                // raft-ui `Composer`: card layer, container radius, 1.5dp line-strong edge,
+                // no shadow.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftControlSurface(
+                            fill = SlockColor.Card,
+                            border = SlockColor.BorderBlack,
+                            radius = SlockRadius.Container
+                        )
                         .clickable(enabled = composerEnabled) { composerFocusRequester.requestFocus() }
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2793,7 +2798,7 @@ internal fun ThreadComposerContentLeaf(
                             keyboardActions = composerKeyboardActions,
                             // SlockType.Input uses the shared content size, same as message text.
                             textStyle = SlockType.Input.copy(
-                                color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+                                color = if (composerEnabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
                             ),
                             // Kuikly produces keyboardHeightChange from the native input node on
                             // every platform. The height is host/window geometry, not editor
@@ -2809,7 +2814,7 @@ internal fun ThreadComposerContentLeaf(
                                     keyboardInsetDp = nextInset
                                 }
                             },
-                            placeholderColor = SlockColor.TextMutedGray,
+                            placeholderColor = SlockColor.ForegroundPlaceholder,
                             cursorBrush = SolidColor(SlockColor.TextBlack),
                             systemNewlineAction = true,
                             nativeEditingStateReader = nativeEditingStateReader,
@@ -3528,7 +3533,7 @@ private fun ComposerSuggestionHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(Color.Transparent)
                 .clickable(onClick = {})
     ) {
         if (topDivider) {
@@ -3582,7 +3587,7 @@ private fun ComposerMemberSuggestionRow(
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = muted,
-        selectedColor = SlockColor.BrandYellow,
+        selectedColor = SlockColor.PrimarySoft,
         minHeight = ComposerMemberSuggestionRowMinHeight,
         mutedOverlay = true,
         onClick = onClick
@@ -3591,7 +3596,7 @@ private fun ComposerMemberSuggestionRow(
             modifier =
                 Modifier
                     .size(ComposerMemberSuggestionAvatarSize)
-                    .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
+                    .background(if (muted) SlockColor.FillMuted else SlockColor.Card),
             contentAlignment = Alignment.Center
         ) {
             SlockAvatar(
@@ -3752,14 +3757,13 @@ private fun PendingMentionActionBanner(
     LaunchedEffect(displayedActions.size, detailsVisible) {
         if (detailsVisible && displayedActions.isEmpty()) detailsVisible = false
     }
-    Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
-        Box(modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack))
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // raft-ui card: card layer, container radius, hairline, no shadow.
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .slockRaftCardSurface()
                     .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -3804,20 +3808,13 @@ private fun PendingMentionActionBanner(
         // task #176: ModalBottomSheet applies no insets; lift the card (and its
         // Add all / Done buttons) above the system navigation bar.
         Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp + mentionSheetBottomSafeArea)) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = 4f, y = 4f)
-                        .background(SlockColor.ShadowBlack)
-            )
+            // raft-ui dialog surface: dialog radius, popover layer, seam ring, float shadow.
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 256.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftOverlaySurface(SlockRadius.Dialog)
             ) {
                 PendingMentionActionDetailsSheet(
                     actions = displayedActions,
@@ -3950,8 +3947,7 @@ private fun PendingMentionActionAvatarStack(
                 modifier =
                     Modifier
                         .size(24.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -3988,7 +3984,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Popover)
                 .padding(start = 24.dp, top = 32.dp, end = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -4015,7 +4011,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = 420.dp)
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Popover)
                 .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
     ) {
         mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
@@ -4046,7 +4042,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                             Modifier
                                 .fillMaxWidth()
                                 .height(SlockStroke.Thin)
-                                .background(SlockColor.BorderBlack.copy(alpha = 0.2f))
+                                .background(SlockColor.BorderHairline)
                     )
                 }
             }
@@ -4056,7 +4052,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Popover)
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -4418,9 +4414,9 @@ private fun ComposerImageAttachmentPreview(
             Modifier
                 .fillMaxSize()
                 .clickable(enabled = previewEnabled, onClick = onPreview)
-                .slockSquareCorners()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .slockThemedCorners(SlockRadius.Control)
+                .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         if (imagePreviewUri != null) {
@@ -4432,7 +4428,7 @@ private fun ComposerImageAttachmentPreview(
                 contentScale = SlockImageThumbnailContentScale
             )
         } else {
-            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = slockArgbHex(SlockColor.ForegroundIcon))
         }
     }
 }
@@ -4448,9 +4444,9 @@ private fun ComposerFileAttachmentPreview(
             Modifier
                 .fillMaxSize()
                 .clickable(enabled = previewEnabled, onClick = onPreview)
-                .slockSquareCorners()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockThemedCorners(SlockRadius.Control)
+                .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control))
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
@@ -4458,7 +4454,7 @@ private fun ComposerFileAttachmentPreview(
         SlockLucideIcon(
             SlockLucideIconName.FileText,
             modifier = Modifier.size(16.dp),
-            color = "#B3000000"
+            color = slockArgbHex(SlockColor.ForegroundIcon)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -4492,16 +4488,16 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
         modifier =
             Modifier
                 .fillMaxSize()
-                .slockSquareCorners()
-                .background(SlockColor.SurfaceWhite.copy(alpha = 0.86f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .slockThemedCorners(SlockRadius.Control)
+                .background(SlockColor.Card.copy(alpha = 0.86f), RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = "#FF000000", spinning = true)
+            SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb, spinning = true)
             Text(
                 text = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
@@ -4517,7 +4513,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         .fillMaxWidth()
                         .height(4.dp)
                         .slockSquareCorners()
-                        .background(SlockColor.ShadowBlack.copy(alpha = 0.15f))
+                        .background(SlockColor.FillMuted)
             ) {
                 Box(
                     modifier =
@@ -4539,10 +4535,10 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .clickable(onClick = onRetry)
-                .slockSquareCorners()
+                .slockThemedCorners(SlockRadius.Control)
                 // deliberate near-opaque failure scrim over the attachment thumbnail; triaged token-audit #1066
-                .background(SlockColor.AccentOrange.copy(alpha = 0.92f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.AccentOrange.copy(alpha = 0.92f), RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control))
                 .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -4639,8 +4635,8 @@ private fun ComposerSuggestionPanel(
             Modifier
                 .fillMaxWidth()
                 .height(panelHeight)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite),
+                // raft-ui `ComposerSuggestionList`: popover layer, seam ring, float shadow.
+                .slockRaftOverlaySurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         LazyColumn(
@@ -4670,7 +4666,7 @@ private fun ComposerChannelSuggestionRow(
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = false,
-        selectedColor = SlockColor.AccentPink,
+        selectedColor = SlockColor.PrimarySoft,
         minHeight = ComposerChannelSuggestionRowMinHeight,
         onClick = onClick
     ) {
@@ -4683,14 +4679,14 @@ private fun ComposerChannelSuggestionRow(
                 modifier =
                     Modifier
                         .size(ComposerChannelSuggestionIconSize)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                        // raft-ui framed suggestion icon: fill-muted sticker, muted glyph.
+                        .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(
                     SlockLucideIconName.Hash,
                     modifier = Modifier.size(ComposerChannelSuggestionGlyphSize),
-                    color = SlockColor.TextBlackArgb
+                    color = slockArgbHex(SlockColor.TextMuted)
                 )
             }
             Text(
@@ -4703,8 +4699,8 @@ private fun ComposerChannelSuggestionRow(
             channel.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
                 Text(
                     text = subtitle,
-                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    style = SlockType.Caption.copy(color = SlockColor.ForegroundHint),
+                    color = SlockColor.ForegroundHint,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -4727,8 +4723,7 @@ private fun ComposerSuggestionInteractiveRow(
     val background =
         when {
             selected -> selectedColor
-            muted -> SlockColor.SurfaceWhite
-            else -> SlockColor.SurfaceWhite
+            else -> Color.Transparent
         }
     Column(modifier = Modifier.fillMaxWidth().background(background)) {
         Box(
@@ -4751,7 +4746,7 @@ private fun ComposerSuggestionInteractiveRow(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(SlockColor.SurfaceWhite.copy(alpha = 0.52f))
+                            .background(SlockColor.Popover.copy(alpha = 0.52f))
                 )
             }
         }
@@ -4760,7 +4755,7 @@ private fun ComposerSuggestionInteractiveRow(
 
 @Composable
 private fun ComposerSuggestionDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
 }
 
 @Composable
@@ -4777,7 +4772,7 @@ private fun ComposerSuggestionRow(
                 .fillMaxWidth()
                 .heightIn(min = ComposerMemberSuggestionRowMinHeight)
                 .clickable(onClick = onClick)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .border(SlockStroke.Thin, SlockColor.BorderHairline)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4923,8 +4918,8 @@ private fun ComposerTextChip(
         Row(
             modifier =
                 Modifier
-                    .background(SlockColor.TextBlack.copy(alpha = 0.04f))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                    // raft-ui disabled control: fill-muted, line-muted edge, control radius.
+                    .slockRaftControlSurface(fill = SlockColor.FillMuted, border = SlockColor.LineMuted)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
