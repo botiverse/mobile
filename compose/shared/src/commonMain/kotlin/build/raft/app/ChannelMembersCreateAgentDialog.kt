@@ -78,8 +78,15 @@ internal fun ChannelMembersCreateAgentDialog(
                     AddChannelMembersBatchRequest(channelId, emptyList(), listOf(MemberId(agentId))))
                 if (!authority.isCurrent(receipt)) return@launch
                 if (joined is DataResult.Content) {
-                    onJoined()
-                    onCreated(MemberId(agentId))
+                    // task #5 (Hands 906abab9): ordering is the contract — see
+                    // createdAgentAfterJoinSteps. Opening the profile after the dismissal never
+                    // ran because the dismissal cancels this composable's scope.
+                    createdAgentAfterJoinSteps(mode, isExternalAgent = true).forEach { step ->
+                        when (step) {
+                            CreatedAgentAfterJoinStep.OpenProfile -> onCreated(MemberId(agentId))
+                            CreatedAgentAfterJoinStep.DismissDialog -> onJoined()
+                        }
+                    }
                 } else {
                     error = joinFailedLabel
                 }
@@ -109,5 +116,33 @@ internal fun ChannelMembersCreateAgentDialog(
             takenAgentNames = serverMembers.members.takenAgentNames(),
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
+    }
+}
+
+/**
+ * Ordered steps to perform once the created agent has been joined into the channel.
+ *
+ * task #5 (Hands 906abab9): #3132 called `onJoined` before `onCreated`. `onJoined` clears
+ * `createAgentName`, which removes the dialog from composition and cancels the dialog's own
+ * coroutine scope, so the follow-on navigation never ran. On device change #3132 looked like a
+ * no-op while its unit tests stayed green, because nothing pinned this ordering.
+ *
+ * The sequence is a contract, so it is modelled here where a test can assert it rather than
+ * being implied by statement order inside a composable body.
+ */
+internal enum class CreatedAgentAfterJoinStep { OpenProfile, DismissDialog }
+
+internal fun createdAgentAfterJoinSteps(
+    mode: MembersCreateAgentMode,
+    isExternalAgent: Boolean
+): List<CreatedAgentAfterJoinStep> {
+    val openProfile =
+        mode == MembersCreateAgentMode.External && isExternalAgent
+    // Navigation must happen while the dialog's coroutine scope is still alive, i.e. before the
+    // dismissal that tears the dialog down.
+    return if (openProfile) {
+        listOf(CreatedAgentAfterJoinStep.OpenProfile, CreatedAgentAfterJoinStep.DismissDialog)
+    } else {
+        listOf(CreatedAgentAfterJoinStep.DismissDialog)
     }
 }
