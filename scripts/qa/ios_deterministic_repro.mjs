@@ -113,7 +113,13 @@ async function ensureLoggedIn() {
   rec(`email typed at [${p.x},${p.y}]`);
   p = fieldUnder("Password");
   await drv.tap(p.x, p.y);
-  await drv.text(password);
+  try {
+    await drv.text(password);
+  } catch {
+    // Never let the driver's error text (which may echo the typed value)
+    // reach the steps/verdict output.
+    throw new Error("typing the password failed");
+  }
   rec(`password typed at [${p.x},${p.y}]`);
 
   // On this auth form, agent-device keyboard dismiss taps Return/Go and
@@ -149,9 +155,16 @@ async function ensureLoggedIn() {
 }
 
 const verdict = { verdict: "error", reason: "", steps };
+// Secret hygiene: the verdict and its console echo must never carry the QA
+// password, whatever an error message contains.
+const redactSecrets = (text) => {
+  const pw = process.env.QA_TEST_PASSWORD;
+  const s = String(text);
+  return pw ? s.split(pw).join("***") : s;
+};
 const writeVerdict = (v, reason) => {
   verdict.verdict = v;
-  verdict.reason = reason;
+  verdict.reason = redactSecrets(reason);
   fs.writeFileSync(path.join(outDir, "steps.jsonl"), steps.map((s) => JSON.stringify(s)).join("\n") + "\n");
   fs.writeFileSync(path.join(outDir, "verdict.json"), JSON.stringify(verdict, null, 2));
   console.log(JSON.stringify(verdict, null, 2));
