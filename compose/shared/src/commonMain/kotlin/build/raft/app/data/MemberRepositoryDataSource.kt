@@ -987,12 +987,14 @@ class RealMemberRepository(
 
     override suspend fun deleteAgent(
         priority: DataRequestPriority,
-        agentId: MemberId
+        agentId: MemberId,
+        workspaceChoice: AgentArchiveWorkspaceChoice
     ): DataResult<AgentLifecycleActionResult> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return executeAgentLifecycleAction(agentId, "delete") {
-            agentsApiClient.deleteAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "delete")
+            agentsApiClient.deleteAgent(agentId, workspaceChoice.toRequestBody())
+                .toLifecycleActionResult(agentId = agentId, action = "delete")
         }
     }
 

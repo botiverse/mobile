@@ -150,7 +150,7 @@ private class RecordingCreateAgentApi(
     override suspend fun startAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
-    override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
+    override suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun agentActivityLog(agentId: MemberId, limit: Int): HomeNetworkResponse = error("unused")

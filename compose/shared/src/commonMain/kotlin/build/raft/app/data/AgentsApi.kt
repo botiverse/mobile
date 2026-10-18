@@ -35,6 +35,23 @@ private val agentsApiJson = Json {
  * Field names are exact, camelCase, matching the server payload. No snake_case
  * fallbacks, no speculative aliases.
  */
+/**
+ * Workspace disposition when archiving an agent (web `AgentArchiveWorkspaceChoice`
+ * in `packages/shared/src/agentArchive.ts` — "keep" | "delete"). `Keep` is the
+ * server default and matches what mobile delete always did.
+ */
+enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
+    Keep("keep"),
+    Delete("delete");
+
+    /**
+     * `DELETE /agents/:id` request body, e.g. `{"workspace":"delete"}`. Web sends
+     * the field for every archive (default "keep"), so serializing always is the
+     * contract, not an optimization.
+     */
+    fun toRequestBody(): String = "{\"workspace\":\"$wireValue\"}"
+}
+
 internal interface SlockAgentsApi {
     suspend fun agents(): HomeNetworkResponse
     suspend fun agent(agentId: MemberId): HomeNetworkResponse
@@ -43,7 +60,13 @@ internal interface SlockAgentsApi {
     suspend fun startAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse
-    suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse
+    /**
+     * `DELETE /agents/:id` — the server's "archive" endpoint (the former delete).
+     * Body `{ workspace: "keep" | "delete" }` chooses what happens to the agent's
+     * workspace on its Computer; web sends the field unconditionally
+     * (`store/agentStore.ts` `deleteAgent`), so the client does the same.
+     */
+    suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse
     suspend fun agentActivityLog(agentId: MemberId, limit: Int = 50): HomeNetworkResponse
@@ -122,11 +145,12 @@ internal class SlockAgentsNetworkApi(
             bodyText = body
         )
 
-    override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse =
+    override suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}",
-            method = "DELETE"
+            method = "DELETE",
+            bodyText = body
         )
 
     override suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse =
@@ -276,8 +300,8 @@ internal class SlockAgentsApiClient(
     suspend fun resetAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
         transport.resetAgent(agentId, body).mapAgentsCommand("agent_reset_contract_mismatch", diagnosticsLogger)
 
-    suspend fun deleteAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
+    suspend fun deleteAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
+        transport.deleteAgent(agentId, body).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
 
     // #89 React parity: agent scope grants typed accessors. Mirror React
     // `AgentScopesPanel.tsx` load / save / reset flows.

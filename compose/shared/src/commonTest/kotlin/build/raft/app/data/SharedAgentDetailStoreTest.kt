@@ -659,7 +659,8 @@ class SharedAgentDetailStoreTest {
         val actions = object : SharedAgentDetailActions {
             override suspend fun runLifecycleAction(
                 agentId: MemberId,
-                action: MembersAgentLifecycleAction
+                action: MembersAgentLifecycleAction,
+                workspaceChoice: AgentArchiveWorkspaceChoice
             ): DataResult<AgentLifecycleActionResult> = DataResult.Empty(EmptyReason.NoMembers)
 
             override fun copyDiagnostics(diagnostics: String) = Unit

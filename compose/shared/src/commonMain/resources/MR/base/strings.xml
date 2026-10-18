@@ -902,7 +902,7 @@
     <string name="member_roles_help_agent_member_details">Allowed channels, DMs, and tasks. No server-level settings, channels, or membership management.</string>
     <string name="member_role_removed">Removed</string>
     <string name="member_role_none">No role</string>
-    <string name="member_status_deleted">Deleted</string>
+    <string name="member_status_deleted">Archived</string>
     <string name="member_external_status">External</string>
     <string name="member_external_setup_required">External · Not signed in yet — open Raft on the web to finish setup</string>
     <string name="member_external_active">External · Active</string>
@@ -931,8 +931,8 @@
     <string name="member_action_copy_diagnostic_info">Copy Diagnostic Info</string>
     <string name="member_action_report_issue">Report Issue</string>
     <string name="member_action_reporting">Reporting...</string>
-    <string name="member_action_delete_agent">Delete Agent</string>
-    <string name="member_action_deleting">Deleting...</string>
+    <string name="member_action_delete_agent">Archive Agent</string>
+    <string name="member_action_deleting">Archiving...</string>
     <string name="member_action_restart_agent">Restart Agent</string>
     <string name="member_action_restart_session">Reset Session &amp; Restart</string>
     <string name="member_action_full_reset_restart">Full Reset &amp; Restart</string>
@@ -986,7 +986,7 @@
     <string name="member_label_created">Created</string>
     <string name="member_label_creator">Creator</string>
     <string name="member_label_status">Status</string>
-    <string name="member_label_deleted_at">Deleted at</string>
+    <string name="member_label_deleted_at">Archived on</string>
     <string name="member_label_runtime">Runtime</string>
     <string name="member_label_model">Model</string>
     <string name="member_label_reasoning">Reasoning</string>
@@ -1016,6 +1016,15 @@
     <string name="member_hint_permissions_cli">Controls what the agent can actively do through Raft CLI commands.</string>
     <string name="member_dialog_restart_title">Restart %1$s</string>
     <string name="member_dialog_confirm_stop">Are you sure you want to stop &quot;%1$s&quot;? The agent will stop processing messages.</string>
+    <string name="member_archive_title">Archive %1$s?</string>
+    <string name="member_archive_description">The agent stops and no longer counts toward your plan&#8217;s agent limit. Its profile and message history stay visible, read-only.</string>
+    <string name="member_archive_workspace_question">What should happen to its workspace?</string>
+    <string name="member_archive_option_keep">Keep it on the Computer</string>
+    <string name="member_archive_option_keep_desc">Nothing is deleted. You can browse it read-only while %1$s is online, and delete it later.</string>
+    <string name="member_archive_option_delete">Delete the workspace</string>
+    <string name="member_archive_option_delete_desc">The workspace is removed from %1$s. The profile and messages stay.</string>
+    <string name="member_archive_delete_warning">Deleting the workspace cannot be undone.</string>
+    <string name="member_archive_unknown_computer">its Computer</string>
     <string name="member_dialog_confirm_delete">Are you sure you want to delete &quot;%1$s&quot;? This will remove all associated data and cannot be undone.</string>
     <string name="member_dialog_confirm_unassign">Are you sure you want to unassign the machine from &quot;%1$s&quot;?</string>
     <string name="member_error_reset_agent">Failed to reset agent: %1$s</string>

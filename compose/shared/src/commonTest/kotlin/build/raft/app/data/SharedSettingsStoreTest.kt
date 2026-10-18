@@ -4567,7 +4567,8 @@ class SharedSettingsStoreTest {
 
         override suspend fun deleteAgent(
             priority: DataRequestPriority,
-            agentId: MemberId
+            agentId: MemberId,
+            workspaceChoice: AgentArchiveWorkspaceChoice
         ): DataResult<AgentLifecycleActionResult> = error("unused")
 
         override suspend fun assignAgentMachine(

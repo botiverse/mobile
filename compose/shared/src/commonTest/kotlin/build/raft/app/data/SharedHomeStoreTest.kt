@@ -3919,7 +3919,8 @@ class SharedHomeStoreTest {
 
         override suspend fun deleteAgent(
             priority: DataRequestPriority,
-            agentId: MemberId
+            agentId: MemberId,
+            workspaceChoice: AgentArchiveWorkspaceChoice
         ): DataResult<AgentLifecycleActionResult> = noMembers()
 
         override suspend fun assignAgentMachine(

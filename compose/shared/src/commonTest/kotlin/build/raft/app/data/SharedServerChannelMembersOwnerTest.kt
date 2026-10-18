@@ -332,7 +332,7 @@ private abstract class UnsupportedMemberRepository : MemberRepository {
     override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> =
         error("unused")
 
-    override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+    override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId, workspaceChoice: AgentArchiveWorkspaceChoice): DataResult<AgentLifecycleActionResult> =
         error("unused")
 
     override suspend fun assignAgentMachine(
