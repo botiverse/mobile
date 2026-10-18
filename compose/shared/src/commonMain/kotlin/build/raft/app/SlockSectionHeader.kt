@@ -463,7 +463,8 @@ internal fun SlockCollapsibleSectionHeader(
         )
         Text(
             if (uppercaseLabel) label.slockDisplayUppercase() else label,
-            style = SlockType.SectionLabel,
+            // raft-ui `SidebarSectionDisclosure`: normal tracking in source case.
+            style = if (uppercaseLabel) SlockType.SectionLabel else SlockType.SectionLabel.copy(letterSpacing = 0.sp),
             color = SlockColor.TextBlack
         )
         Text(
