@@ -3676,7 +3676,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 }
                             ),
                         icon = SlockLucideIconName.Monitor,
-                        onSelect = { htmlDesktopMode = !htmlDesktopMode }
+                        selected = htmlDesktopMode
                     )
                 } else {
                     null
@@ -3769,6 +3769,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewOpenWithActionId -> requestExternalOpen()
                 SlockFilePreviewSaveToFilesActionId -> requestExternalSave(exportPrivateDownload = true)
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
+                // task #188: toggle the HTML desktop viewport. Selection goes through this one
+                // dispatcher; SlockRaftUiMenuItem itself is data-only.
+                SlockFilePreviewDesktopModeActionId -> htmlDesktopMode = !htmlDesktopMode
             }
         }
     ) {
