@@ -52,7 +52,7 @@ Practical rules we follow:
 
 - **Steady-state only**: discard the first 2 seconds after navigation or mode change.
 - **Physical device only**: emulators and cloud phones are for functional checks, never for jank numbers.
-- **Threshold**: count a dropped frame at `>2×` the expected frame interval (16.6ms at 60Hz, 8.3ms at 120Hz), and only call it a regression when the paired A/B run shows a statistically visible difference (e.g. p95 frame time or dropped-frame ratio), not a single spike.
+- **Threshold**: count a dropped frame at `>2×` the expected frame interval (16.6ms at 60Hz, 8.3ms at 120Hz), and only call it a regression when the paired A/B run shows a statistically visible difference (e.g. p95 frame time or dropped-frame ratio), not a single spike. Minimum collection window: at least 10 seconds of steady state per run, three repeated runs per side, and the claim is made from the trend across runs, never from one run.
 - **Confirm with a second instrument**: `Choreographer` sampling, `gfxinfo framestats`, and a systrace/Perfetto capture should agree before a jank claim is treated as real.
 
 ## 5. Platform boundary (as of 2026-10-18)
