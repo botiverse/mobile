@@ -3837,6 +3837,12 @@ internal class SlockKuiklyImageAdapter(
                             SlockKuiklyThreadAdapter.executeOnSubThread {
                                 val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
                                 if (renderRead == null) {
+                                    SlockAppLog.record(
+                                            "SlockImageLoad",
+                                            "source=managed_avatar status=render_read_unavailable " +
+                                                    "slot=${descriptor.slot} " +
+                                                    "commitIdentityHash=${descriptor.commitIdentity.hashCode().toString(16)}"
+                                    )
                                     complete(Result.failure(IllegalStateException("Avatar render read failed")))
                                     return@executeOnSubThread
                                 }
