@@ -229,7 +229,12 @@ class AgentsApiTest {
         assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(client.agentScopes(agentId)).data.granted.size)
         val scopesUpdateBody = client.updateAgentScopes(agentId, listOf("server:read", "channel:read"))
         assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(scopesUpdateBody).data.granted.size)
-        assertEquals(true, assertIs<DataResult.Content<AgentBootstrapTokenSummary>>(client.issueBootstrapToken(agentId, """{"ttlMs":60000}""")).data.bootstrapTokenPresent)
+        val bootstrapToken =
+            assertIs<DataResult.Content<AgentBootstrapTokenSummary>>(
+                client.issueBootstrapToken(agentId, """{"ttlMs":60000}""")
+            ).data
+        assertEquals(true, bootstrapToken.bootstrapTokenPresent)
+        assertEquals("sk_agent_secret", bootstrapToken.bootstrapToken)
 
         assertEquals(
             listOf(

@@ -316,6 +316,14 @@ private val MembersActionSize = 28.dp
 private val MembersAgentActivityIndicatorLaneWidth = 24.dp
 private val MembersAgentActivityContentGap = 0.dp
 
+/** The two create flows exposed by the web Agents section action menu. */
+internal enum class MembersCreateAgentMode {
+    Managed,
+    External
+}
+
+internal fun MembersCreateAgentMode.requiresComputerSelection(): Boolean = this == MembersCreateAgentMode.Managed
+
 internal enum class MembersAgentDetailTab(
     val label: String,
     val iconName: SlockLucideIconName,
@@ -3922,6 +3930,7 @@ internal fun MemberDetailPageContent(
                             onAgentRuntimeModelsRequest = loadAgentRuntimeModels
                         ),
                         createAgentFormStore = provider.createAgentFormStore,
+                        externalSetupServerUrl = provider.apiEnvironmentStore.current().webUrl,
                         agentProfileEditAuthority = agentProfileEditAuthority,
                         canViewPrivateAgentSurfaces = { _, detail ->
                             current.accessMode.allowsPrivateAgentSurfaces &&
@@ -4804,7 +4813,9 @@ internal fun MembersListContent(
     }
     fun isAgentGroupCollapsed(groupKey: String): Boolean =
         resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
-    var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
+    var activeCreateAgentMode by remember(payload.instanceId) { mutableStateOf<MembersCreateAgentMode?>(null) }
+    var createAgentMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
+    var createAgentMenuAnchor by remember(payload.instanceId) { mutableStateOf<SlockPopoverAnchor?>(null) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
@@ -4926,10 +4937,10 @@ internal fun MembersListContent(
                                 contentDescription = stringResource(MR.strings.agent_create_action_create),
                                 size = MembersListSectionAddActionSize,
                                 iconSize = MembersListSectionAddActionIconSize,
-                                onClick = {
+                                onClick2 = { anchor ->
                                     if (createAgentSubmit != null) {
-                                        activeCreateAgent = true
-                                        createAgentLoadMachines()
+                                        createAgentMenuAnchor = anchor
+                                        createAgentMenuOpen = true
                                     }
                                 }
                             )
@@ -5051,10 +5062,43 @@ internal fun MembersListContent(
         }
         }
     }
+    if (createAgentMenuOpen && createAgentMenuAnchor != null && createAgentSubmit != null) {
+        SlockRaftUiControlledMenu(
+            expanded = true,
+            anchor = createAgentMenuAnchor!!,
+            width = 220.dp,
+            items = listOf(
+                SlockRaftUiMenuItem(
+                    id = MembersCreateAgentMode.Managed.name,
+                    label = stringResource(MR.strings.agent_create_action_create),
+                    icon = SlockLucideIconName.Bot
+                ),
+                SlockRaftUiMenuItem(
+                    id = MembersCreateAgentMode.External.name,
+                    label = stringResource(MR.strings.agent_create_action_create_external),
+                    icon = SlockLucideIconName.Link2
+                )
+            ),
+            onSelect = { id ->
+                createAgentMenuOpen = false
+                createAgentMenuAnchor = null
+                MembersCreateAgentMode.entries.firstOrNull { it.name == id }?.let { mode ->
+                    activeCreateAgentMode = mode
+                    if (mode.requiresComputerSelection()) createAgentLoadMachines()
+                }
+            },
+            onDismiss = {
+                createAgentMenuOpen = false
+                createAgentMenuAnchor = null
+            }
+        )
+    }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
+    val activeCreateAgent = activeCreateAgentMode != null
     if (activeCreateAgent && submit != null) {
         val scope = rememberCoroutineScope()
         SharedCreateAgentDialog(
+            external = activeCreateAgentMode == MembersCreateAgentMode.External,
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
             errorFieldKeys = createAgentErrorFields,
@@ -5072,7 +5116,7 @@ internal fun MembersListContent(
             maxAgents = createAgentMaxAgents,
             onDismiss = {
                 if (!createAgentSubmitting) {
-                    activeCreateAgent = false
+                    activeCreateAgentMode = null
                     createAgentError = null
                 }
             },
@@ -5086,7 +5130,7 @@ internal fun MembersListContent(
                     createAgentErrorFields = (result as? DataResult.Error)?.error?.formFieldKeys.orEmpty().toSet()
                     when (result) {
                         is DataResult.Content -> {
-                            activeCreateAgent = false
+                            activeCreateAgentMode = null
                             createAgentError = null
                         }
                         is DataResult.Empty -> {
@@ -5295,7 +5339,8 @@ private fun MembersDetailContent(
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
+    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    externalSetupServerUrl: String? = null
 ) {
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
@@ -5961,6 +6006,8 @@ private fun MembersDetailContent(
                                             onUpdateAgentProfile = onUpdateAgentProfile,
                                             onApplyAgentProfileResult = onApplyAgentProfileResult,
                                             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
+                                            agentsApiClient = agentsApiClient,
+                                            externalSetupServerUrl = externalSetupServerUrl,
                                             onUnavailableAction = onUnavailableAction,
                                             lifecycle = MembersAgentLifecycleInputs(
                                                 lifecycleInFlight = lifecycleInFlight,
@@ -5968,6 +6015,7 @@ private fun MembersDetailContent(
                                                 onRunLifecycleAction = { runLifecycleAction(it) },
                                                 onOpenRestartReset = { openRestartResetDialog() },
                                                 onCopyDiagnostics = { copyDiagnostics() },
+                                                onCopyText = { text -> agentDetailActions?.copyDiagnostics(text) ?: Unit },
                                                 onReportIssue = {
                                                     issueReportReceipt = null
                                                     issueReportReferenceCopied = false
@@ -8459,6 +8507,7 @@ private class MembersAgentLifecycleInputs(
     val onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
     val onOpenRestartReset: () -> Unit = {},
     val onCopyDiagnostics: () -> Unit = {},
+    val onCopyText: (String) -> Unit = {},
     val onReportIssue: () -> Unit = {},
     val onOpenComputer: (() -> Unit)? = null
 )
@@ -9681,6 +9730,85 @@ private fun MembersAgentRuntimeConfigSection(
 }
 
 @Composable
+private fun MembersExternalAgentSetupSection(
+    agentId: MemberId,
+    profileName: String,
+    serverUrl: String?,
+    agentsApiClient: build.raft.app.data.SlockAgentsApiClient?,
+    canManage: Boolean,
+    onCopy: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scope = rememberCoroutineScope()
+    val tokenUnavailable = stringResource(MR.strings.member_external_setup_token_unavailable)
+    val tokenFailed = stringResource(MR.strings.member_external_setup_token_failed)
+    var token by remember(agentId) { mutableStateOf<String?>(null) }
+    var tokenLoading by remember(agentId) { mutableStateOf(false) }
+    var error by remember(agentId) { mutableStateOf<String?>(null) }
+    val cleanServer = serverUrl?.trim()?.trimEnd('/')?.removeSuffix("/api")?.takeIf { it.isNotBlank() }
+        ?: "<server-url>"
+    val profile = profileName.trim().replace(Regex("[^A-Za-z0-9_-]+"), "-").trim('-').ifBlank { agentId.value.take(8) }
+    val loginCommand = "raft agent login --server $cleanServer --agent ${agentId.value} --profile-slug $profile"
+    val installCommand =
+        "npm i -g @botiverse/raft@latest && " +
+            "claude plugin marketplace add botiverse/raft-external-agents && " +
+            "claude plugin marketplace update raft && " +
+            "claude plugin install raft-channel@raft && " +
+            "claude plugin update raft-channel@raft"
+    val startCommand =
+        "RAFT_PROFILE=$profile claude --append-system-prompt 'You are connected to Raft, a shared workspace for humans and agents. Treat Raft as your primary collaboration surface.' --dangerously-load-development-channels plugin:raft-channel@raft"
+    val hermesCommand = "hermes gateway setup"
+    Column(
+        modifier = modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.AccentCyan.copy(alpha = 0.12f)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        SlockSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
+        Text(stringResource(MR.strings.member_external_setup_description), style = SlockType.Caption, color = SlockColor.TextBlack)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
+        if (canManage && agentsApiClient != null) {
+            SlockBrutalActionButton(
+                label = stringResource(if (tokenLoading) MR.strings.member_external_setup_generating else MR.strings.member_external_setup_generate),
+                enabled = !tokenLoading,
+                onClick = {
+                    tokenLoading = true
+                    error = null
+                    scope.launch {
+                        when (val result = agentsApiClient.issueBootstrapToken(agentId, build.raft.app.data.buildIssueAgentBootstrapTokenBody(build.raft.app.data.IssueAgentBootstrapTokenBody()))) {
+                            is DataResult.Content -> {
+                                token = result.data.bootstrapToken
+                                if (token == null) error = tokenUnavailable
+                            }
+                            else -> error = tokenFailed
+                        }
+                        tokenLoading = false
+                    }
+                }
+            )
+            token?.let { value ->
+                Text(stringResource(MR.strings.member_external_setup_token_once), style = SlockType.Caption, color = SlockColor.TextBlack)
+                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_token_label), value, onCopy)
+            }
+            error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
+        }
+    }
+}
+
+@Composable
+private fun MembersExternalSetupCommand(label: String, command: String, onCopy: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            Text(command, modifier = Modifier.weight(1f), style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace), color = SlockColor.TextBlack)
+            SlockBrutalActionButton(label = stringResource(MR.strings.member_external_setup_copy), minHeight = 28.dp, onClick = { onCopy(command) })
+        }
+    }
+}
+
+@Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
@@ -9704,6 +9832,8 @@ private fun MembersAgentProfileTab(
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    externalSetupServerUrl: String? = null,
     onUnavailableAction: (String) -> Unit,
     lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
@@ -9716,6 +9846,7 @@ private fun MembersAgentProfileTab(
     val onRunLifecycleAction = lifecycle.onRunLifecycleAction
     val onOpenRestartReset = lifecycle.onOpenRestartReset
     val onCopyDiagnostics = lifecycle.onCopyDiagnostics
+    val onCopyText = lifecycle.onCopyText
     val onReportIssue = lifecycle.onReportIssue
     val onOpenComputer = lifecycle.onOpenComputer
     val errorStrings = localizedErrorPresentationStrings()
@@ -9783,6 +9914,17 @@ private fun MembersAgentProfileTab(
             createAgentFormStore = createAgentFormStore,
             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
         )
+
+        if (member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime)) {
+            MembersExternalAgentSetupSection(
+                agentId = member.id,
+                profileName = member.displayName,
+                serverUrl = externalSetupServerUrl,
+                agentsApiClient = agentsApiClient,
+                canManage = canManage,
+                onCopy = onCopyText
+            )
+        }
 
         // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
         // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`

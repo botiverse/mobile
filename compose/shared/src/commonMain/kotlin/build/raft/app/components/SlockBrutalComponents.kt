@@ -1235,6 +1235,7 @@ private fun SlockBrutalActionButtonInnerContent(
 internal fun SlockBrutalActionButton(
     label: String,
     onClick: () -> Unit,
+    onClick2: ((SlockPopoverAnchor) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
@@ -1287,6 +1288,7 @@ internal fun SlockBrutalActionButton(
         val shape = RoundedCornerShape(theme.cornerRadius)
         SlockAnchorButton(
             onClick = onClick,
+            onClick2 = onClick2,
             enabled = enabled,
             pressFeedback = enabled,
             modifier =
@@ -1345,6 +1347,7 @@ internal fun SlockBrutalActionButton(
         )
         SlockAnchorButton(
             onClick = onClick,
+            onClick2 = onClick2,
             enabled = enabled,
             pressFeedback = enabled,
             modifier =
