@@ -3273,7 +3273,7 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopeEventBus(context)
         installAndroidThreadComposerTemporaryFileRetirement(context)
         SlockAndroidSqlDatabaseContext.init(context)
-        SlockAndroidAvatarCacheProcess.install(context.applicationContext)
+        SlockAndroidAvatarCacheProcess.startAsync(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
             // Transport failures must reach release-build feedback logs: avatar/image
             // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).

@@ -20,6 +20,7 @@ import build.raft.app.data.SlockAvatarNativeStagedCandidate
 import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.concurrent.Executors
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.locks.ReentrantLock
@@ -885,6 +886,9 @@ internal fun recoverSlockAndroidAvatarTransportStaging(stagingRoot: File): Boole
 
 internal object SlockAndroidAvatarCacheProcess {
     private val lock = Any()
+    private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "slock-avatar-cache-startup").apply { isDaemon = true }
+    }
 
     @Volatile
     private var controller: SlockAndroidAvatarCacheController? = null
@@ -896,6 +900,21 @@ internal object SlockAndroidAvatarCacheProcess {
                 SlockAvatarMountedNativeProviderRegistry.install(created)
             }
         }
+
+    /** Starts durable-cache recovery without putting Files.walk/stat on the UI thread. */
+    fun startAsync(context: Context) {
+        synchronized(lock) {
+            if (controller != null) return
+            startupExecutor.execute {
+                synchronized(lock) {
+                    if (controller == null) {
+                        controller = SlockAndroidAvatarCacheController.create(context)
+                        SlockAvatarMountedNativeProviderRegistry.install(controller!!)
+                    }
+                }
+            }
+        }
+    }
 
     fun currentOrNull(): SlockAndroidAvatarCacheController? = controller
 }
