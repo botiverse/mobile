@@ -12,6 +12,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
+import build.raft.app.shared.SlockAndroidWebViewWarmup
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
@@ -33,6 +34,10 @@ class SlockApplication : Application() {
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
+        // task #6: warm the WebView provider off the critical path so the first real web
+        // surface does not pay cold initialisation on the UI thread. Single shot, idle
+        // scheduled, failure-silent; no other startup work depends on it.
+        SlockAndroidWebViewWarmup.schedule(this)
         SlockAndroidLocalDiagnostics.init(this)
         installAndroidNetworkKmmAppIdentity(
             name = "Raft",
