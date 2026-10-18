@@ -1126,7 +1126,7 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 ->
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
-                title = "#raft-mobile-reconcile",
+                title = "#demo-visuals",
                 subtitle = "Narrow markdown wrap fixture (slice-1)",
                 status = "content",
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
@@ -1139,29 +1139,29 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
-                // #791 is a PR (not a known task) so it stays plain; only #787 chips.
-                knownMarkdownChannelNames = listOf("raft-mobile-reconcile"),
-                knownMarkdownMentionNames = listOf("artin", "Mahua", "王小明"),
-                knownMarkdownTaskNumbers = listOf(787),
+                // Keep all markdown entities synthetic so this public fixture never exposes
+                // real collaborators, channels, task IDs, or release metadata.
+                knownMarkdownChannelNames = listOf("demo-visual-testing"),
+                knownMarkdownMentionNames = listOf("DemoUser"),
+                knownMarkdownTaskNumbers = listOf(101),
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
                             id = "msg_md_wrap_slice1_visual",
-                            authorId = "agent-cindy",
-                            authorName = "Cindy",
-                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorId = "visual-bot",
+                            authorName = "Visual Bot",
+                            authorDescription = "Keeps demo fixtures stable.",
                             authorKind = "agent",
-                            avatarLabel = "CI",
+                            avatarLabel = "VB",
                             timestampLabel = "07/13 05:55",
                             messageType = "Chat",
                             body =
-                                "@artin **slice-1 已合入 main** —— PR #791 squash → `80e3162da`。\n\n" +
-                                    "- 重跑那个 flaky job **绿了**（`realtimeReadStatePreservesPartialSummary` 重跑即过，确认是 flake），Android/OHOS host/OHOS shared 三端 compile+test 全绿。\n" +
-                                    "- **披露 merge actor**：走 CI 身份 `release-bot` squash-merge，已删分支。\n" +
-                                    "- 落地形态：flag `sync_core_messages_v1` **默认关 = 零行为变化**；开了才在旁边 shadow fold+persist（不可见、fail-open、eligibility 仍 false）。真实用户完全无感。\n" +
-                                    "- **mapper 解耦设计点**按你说的转 post-merge follow-up，我留着 observer-routed 方案等后续定。\n" +
-                                    "- 我另外给 @Mahua 报了那个 flaky 测试（#787 的，main 上间歇误挂无关 PR）。\n\n" +
-                                    "**数据流接线地基这块落了。** 下一步 V2 归一化信封在 #raft-mobile-reconcile 跟 @王小明 对齐字段（canonical DRI）——形状定了我就落 mobile V2，然后翻 eligibility 就到你能\"试效果\"那步。"
+                                "**Synthetic slice is ready** — this message is generated for visual testing only.\n\n" +
+                                    "- The synthetic CI job **passed** after a repeat check (`demo-retry-check`), and Android/OHOS host/shared checks are all green.\n" +
+                                    "- **Synthetic merge record**: an automated test identity completed the sample merge; no production release is involved.\n" +
+                                    "- Feature flag `demo_sync_v1` **stays off by default**; enabling it records only local demo state and remains invisible to users.\n" +
+                                    "- The **data-flow sample** stays in the fixture for cross-platform rendering comparison in #demo-visual-testing.\n\n" +
+                                    "**Sample data is ready.** Next, @DemoUser can compare the synthetic envelope in task #101 and continue the cross-platform check without importing real collaboration content."
                         )
                     ),
                 members =
