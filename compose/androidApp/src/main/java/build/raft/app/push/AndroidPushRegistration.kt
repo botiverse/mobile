@@ -4,6 +4,7 @@ import android.content.Context
 import build.raft.app.BuildConfig
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.data.SlockAndroidPushRegistrationBridge
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import java.util.UUID
 
@@ -26,6 +27,17 @@ internal object AndroidPushRegistration {
         // FirebaseMessagingService.onRegistered, now and whenever it changes.
         runCatching {
             FirebaseMessaging.getInstance().register()
+            // onRegistered is not guaranteed to fire again for an FID the SDK
+            // already registered (e.g. an upgrade from a build that ignored it),
+            // so also read the current FID directly. The shared coordinator
+            // dedupes, so delivering the same FID twice costs nothing.
+            FirebaseInstallations.getInstance().id
+                .addOnSuccessListener { fid ->
+                    if (!fid.isNullOrBlank()) onFirebaseInstallationId(context, fid)
+                }
+                .addOnFailureListener { error ->
+                    SlockAppLog.w(TAG, "fcm_installation_id_unavailable errorType=${error::class.simpleName ?: "unknown"}")
+                }
         }.onFailure { error ->
             // Builds without google-services.json have no Firebase app.
             SlockAppLog.i(TAG, "fcm_register_unavailable errorType=${error::class.simpleName ?: "unknown"}")
