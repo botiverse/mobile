@@ -9,6 +9,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
@@ -140,6 +141,9 @@ class PushRegistrationTest {
                     coordinator.onSessionSaved()
                     return HomeNetworkResponse(code = 204, bodyText = null)
                 }
+
+                override suspend fun deliveryStatus(installationId: String): HomeNetworkResponse =
+                    HomeNetworkResponse(code = 404, bodyText = null)
             }
         coordinator =
             coordinator(
@@ -328,6 +332,105 @@ class PushRegistrationTest {
     }
 
     @Test
+    fun deliveryStatusIsFetchedAfterUpsertAndStoredForEnvironmentUserAndInstallation() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true, "server-2" to false)
+        val coordinator = deliveryStatusCoordinator(store, currentSession = { storedSession("user-1") }, api = api)
+        val installationId = coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertTrue(coordinator.updateRegistration("cX9-AbC_dEfGhIjKlMnOpQ", "build.raft.app", "production", "1.3.0"))
+
+        assertEquals("GET delivery-status $installationId", api.calls.last())
+        assertEquals(
+            SlockPushDeliveryStatus(
+                environmentId = "https://api.example",
+                userId = "user-1",
+                installationId = installationId,
+                fcmActiveByServer = mapOf("server-1" to true, "server-2" to false)
+            ),
+            coordinator.storedDeliveryStatus()
+        )
+    }
+
+    @Test
+    fun failedOrMissingDeliveryStatusRouteKeepsThePreviousAnswer() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val api = RecordingPushRegistrationApi()
+        val coordinator = deliveryStatusCoordinator(store, currentSession = { storedSession("user-1") }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        // An older server without the route: nothing stored, so the background path posts locally.
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        assertEquals(null, coordinator.storedDeliveryStatus())
+
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        assertTrue(coordinator.refreshDeliveryStatus(reason = "test"))
+        val answer = coordinator.storedDeliveryStatus()
+
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 404, bodyText = null)
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 200, bodyText = """{"unexpected":true}""")
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        assertEquals(answer, coordinator.storedDeliveryStatus())
+    }
+
+    @Test
+    fun logoutClearsTheDeliveryStatusAndAccountSwitchRefetches() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        var session: StoredAuthSession? = storedSession("user-1")
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator = deliveryStatusCoordinator(store, currentSession = { session }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        coordinator.handleSessionSaved()
+        assertEquals("user-1", coordinator.storedDeliveryStatus()?.userId, "login fetches")
+
+        // Same user again (token rotation, selection change): the stored answer still matches, no fetch.
+        val fetches = api.calls.count { it.startsWith("GET") }
+        coordinator.handleSessionSaved()
+        assertEquals(fetches, api.calls.count { it.startsWith("GET") })
+
+        coordinator.unbindBeforeLogout()
+        assertEquals(null, coordinator.storedDeliveryStatus(), "logout clears")
+
+        session = storedSession("user-2")
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to false)
+        coordinator.handleSessionSaved()
+        assertEquals("user-2", coordinator.storedDeliveryStatus()?.userId)
+        assertEquals(mapOf("server-1" to false), coordinator.storedDeliveryStatus()?.fcmActiveByServer)
+    }
+
+    @Test
+    fun deliveryStatusLandingAfterAnAccountSwitchIsNotStored() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        var session: StoredAuthSession? = storedSession("user-1")
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        api.onDeliveryStatus = { session = storedSession("user-2") }
+        val coordinator = deliveryStatusCoordinator(store, currentSession = { session }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        assertEquals(null, coordinator.storedDeliveryStatus())
+    }
+
+    @Test
+    fun withoutAnEnvironmentProviderTheCoordinatorNeverAsksForDeliveryStatus() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator = coordinator(currentSession = { storedSession("user-1") }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
+        assertTrue(api.calls.none { it.startsWith("GET") }, "iOS (APNs) behaviour is unchanged")
+        assertEquals(null, coordinator.storedDeliveryStatus())
+    }
+
+    @Test
     fun fcmRegistrationRejectsSandboxAndMalformedIds() = runBlocking {
         val api = RecordingPushRegistrationApi()
         val coordinator =
@@ -364,11 +467,13 @@ class PushRegistrationTest {
 
         api.upsert("""{"installationId":"installation-1"}""")
         api.unbind("installation-1")
+        api.deliveryStatus("installation-1")
 
         assertEquals(
             listOf(
                 "POST push/registrations body={\"installationId\":\"installation-1\"}",
-                "DELETE push/registrations/installation-1 body=null"
+                "DELETE push/registrations/installation-1 body=null",
+                "GET push/delivery-status?installationId=installation-1 body=null"
             ),
             network.calls
         )
@@ -380,15 +485,43 @@ class PushRegistrationTest {
         currentSession: suspend () -> StoredAuthSession? = { null },
         api: SlockPushRegistrationApi = RecordingPushRegistrationApi(),
         remoteNotificationsController: SlockIosRemoteNotificationsController =
-            RecordingRemoteNotificationsController()
+            RecordingRemoteNotificationsController(),
+        currentEnvironmentId: (() -> String?)? = null,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob())
     ): SlockPushRegistrationCoordinator =
         SlockPushRegistrationCoordinator(
             store = store,
             spec = spec,
             currentSession = currentSession,
             apiProvider = { api },
-            scope = CoroutineScope(SupervisorJob()),
-            remoteNotificationsController = remoteNotificationsController
+            scope = scope,
+            remoteNotificationsController = remoteNotificationsController,
+            currentEnvironmentId = currentEnvironmentId
+        )
+
+    /** Unconfined: a refresh launched by the coordinator has finished when the triggering call returns. */
+    private fun deliveryStatusCoordinator(
+        store: SlockKeyValueStore,
+        currentSession: suspend () -> StoredAuthSession?,
+        api: SlockPushRegistrationApi,
+        environmentId: () -> String? = { "https://api.example/" }
+    ): SlockPushRegistrationCoordinator =
+        coordinator(
+            store = store,
+            spec = SlockPushProviderSpec.Fcm,
+            currentSession = currentSession,
+            api = api,
+            currentEnvironmentId = environmentId,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        )
+
+    private fun deliveryStatusBody(vararg servers: Pair<String, Boolean>): HomeNetworkResponse =
+        HomeNetworkResponse(
+            code = 200,
+            bodyText =
+                servers.joinToString(prefix = """{"servers":{""", postfix = "}}") { (id, active) ->
+                    """"$id":{"fcmActive":$active}"""
+                }
         )
 
     private fun storedSession(userId: String, serverId: String = "server-1"): StoredAuthSession =
@@ -410,6 +543,15 @@ class PushRegistrationTest {
         override suspend fun unbind(installationId: String): HomeNetworkResponse {
             calls += "DELETE $installationId"
             return HomeNetworkResponse(code = 204, bodyText = null)
+        }
+
+        var deliveryStatusResponse: HomeNetworkResponse = HomeNetworkResponse(code = 404, bodyText = null)
+        var onDeliveryStatus: (() -> Unit)? = null
+
+        override suspend fun deliveryStatus(installationId: String): HomeNetworkResponse {
+            calls += "GET delivery-status $installationId"
+            onDeliveryStatus?.invoke()
+            return deliveryStatusResponse
         }
     }
 
@@ -434,7 +576,8 @@ class PushRegistrationTest {
             serverIdOverride: ServerId?,
             bodyText: String?
         ): HomeNetworkResponse {
-            calls += "$method $path body=$bodyText"
+            val queryText = if (query.isEmpty()) "" else "?" + query.joinToString("&") { (k, v) -> "$k=$v" }
+            calls += "$method $path$queryText body=$bodyText"
             return HomeNetworkResponse(code = 204, bodyText = null)
         }
     }

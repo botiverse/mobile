@@ -17,6 +17,7 @@ import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedSlockAuthTransport
+import build.raft.app.data.SlockAndroidPushRegistrationBridge
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockHostNetworkNotifyContract
 import build.raft.app.data.updateSlockHostVisibility
@@ -76,6 +77,8 @@ internal object AndroidAppScopeRealtimeOwner {
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
                 }
+                // Keeps the FCM delivery-status answer fresh for the background tray decision.
+                runCatching { SlockAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground") }
             } else {
                 onAppHidden(source = "process_activity_stopped")
             }
@@ -976,12 +979,14 @@ internal object AndroidAppScopeRealtimeOwner {
     internal fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,
         preferenceEnabled: Boolean,
-        isAppInForeground: Boolean
+        isAppInForeground: Boolean,
+        remotePushActive: Boolean = false
     ): Boolean =
         AndroidAppScopeRealtimeHostContext.shouldPostBackgroundUnreadNotification(
             hasAttachedConsumers = hasAttachedConsumers,
             preferenceEnabled = preferenceEnabled,
-            isAppInForeground = isAppInForeground
+            isAppInForeground = isAppInForeground,
+            remotePushActive = remotePushActive
         )
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =

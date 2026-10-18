@@ -127,6 +127,15 @@ class AndroidAppScopeRealtimeOwnerTest {
                 isAppInForeground = true
             )
         )
+        // FCM covers this server: the background socket must not post a second copy.
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
+                hasAttachedConsumers = false,
+                preferenceEnabled = true,
+                isAppInForeground = false,
+                remotePushActive = true
+            )
+        )
     }
 
     @Test

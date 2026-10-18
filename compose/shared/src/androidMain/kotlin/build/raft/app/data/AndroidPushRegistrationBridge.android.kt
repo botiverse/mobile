@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
  * unbind and account switches go through [SlockPushRegistrationLifecycle].
  * Android has no OS-level remote-notification switch to toggle (the android
  * actual of that hook is a no-op); the server-side unbind is what stops delivery.
+ * It also keeps the server's delivery-status answer, which tells the background
+ * realtime path whether FCM already delivers a server's tray notifications.
  */
 object SlockAndroidPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
@@ -53,6 +55,24 @@ object SlockAndroidPushRegistrationBridge {
         }
     }
 
+    /** Re-asks the server whether push delivers to this installation (app foreground). */
+    fun refreshDeliveryStatus(reason: String) {
+        val runtime = coordinator ?: return
+        scope.launch {
+            runtime.refreshDeliveryStatus(reason = reason)
+        }
+    }
+
+    /**
+     * The stored delivery-status answer and this installation's id, for the background realtime path to
+     * match against the current environment and user. Null when [install] has not run in this process.
+     */
+    fun storedDeliveryStatusOrNull(): SlockPushDeliveryStatus? =
+        runCatching { coordinator?.storedDeliveryStatus() }.getOrNull()
+
+    fun installationIdOrNull(): String? =
+        runCatching { coordinator?.currentInstallationId() }.getOrNull()
+
     private fun createCoordinator(): SlockPushRegistrationCoordinator {
         val store =
             SlockSharedKeyValueStoreProvider.create(
@@ -68,6 +88,9 @@ object SlockAndroidPushRegistrationBridge {
                 SlockSharedStoreRegistry.currentOrNull()?.networkClient?.let(::SlockPushRegistrationNetworkApi)
             },
             scope = scope,
+            currentEnvironmentId = {
+                SlockSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
+            },
             infoLogger = { message -> slockLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
             warningLogger = { message -> slockLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
         )

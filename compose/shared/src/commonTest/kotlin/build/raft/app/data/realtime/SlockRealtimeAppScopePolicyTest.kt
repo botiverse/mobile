@@ -4,6 +4,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEnhancedNotifyEvent
 import build.raft.app.data.SlockEnhancedNotifyEventBus
+import build.raft.app.data.SlockPushDeliveryStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -91,6 +92,92 @@ class SlockRealtimeAppScopePolicyTest {
             )
         )
     }
+
+    @Test
+    fun backgroundUnreadNotificationSkipsWhenRemotePushIsActive() {
+        assertFalse(
+            SlockRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
+                hasAttachedConsumers = false,
+                preferenceEnabled = true,
+                isAppInForeground = false,
+                remotePushActive = true
+            )
+        )
+        assertEquals(
+            "remote_push_active",
+            SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
+                hasAttachedConsumers = false,
+                preferenceEnabled = true,
+                isAppInForeground = false,
+                remotePushActive = true
+            )
+        )
+        // An earlier reason still wins, so existing skip logs keep their meaning.
+        assertEquals(
+            "preference_disabled",
+            SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
+                hasAttachedConsumers = false,
+                preferenceEnabled = false,
+                isAppInForeground = false,
+                remotePushActive = true
+            )
+        )
+    }
+
+    @Test
+    fun remotePushIsActiveForTheEventServerWhenTheMatchingAnswerSaysFcmActive() {
+        assertTrue(remotePushActive())
+        // The answer covers every server of the user; the event's server decides, not the selected one.
+        assertTrue(remotePushActive(serverId = ServerId("server-2"), status = deliveryStatus(server2 = true)))
+        // A trailing slash on the environment is the same environment.
+        assertTrue(remotePushActive(environmentId = "https://api.example/"))
+    }
+
+    @Test
+    fun remotePushIsInactiveWithoutAStoredAnswer() {
+        // Never fetched, every fetch failed, a 404 from an older server, or cleared on logout.
+        assertFalse(remotePushActive(status = null))
+    }
+
+    @Test
+    fun remotePushIsInactiveForAServerMissingFromTheAnswerOrNotFcmActive() {
+        assertFalse(remotePushActive(serverId = ServerId("server-3")), "server missing from the answer")
+        assertFalse(remotePushActive(serverId = ServerId("server-2")), "server-2 is fcmActive=false")
+        assertFalse(remotePushActive(serverId = ServerId(" ")), "blank server")
+    }
+
+    @Test
+    fun remotePushIsInactiveForAnAnswerOfAnotherUserInstallationOrEnvironment() {
+        assertFalse(remotePushActive(currentUserId = "user-b"), "account switched")
+        assertFalse(remotePushActive(currentUserId = null), "signed out")
+        assertFalse(remotePushActive(installationId = "installation-2"), "another installation")
+        assertFalse(remotePushActive(installationId = null), "no installation")
+        assertFalse(remotePushActive(environmentId = "https://staging.example"), "another environment")
+        assertFalse(remotePushActive(environmentId = null), "unknown environment")
+    }
+
+    private fun remotePushActive(
+        serverId: ServerId = ServerId("server-1"),
+        environmentId: String? = "https://api.example",
+        currentUserId: String? = "user-a",
+        installationId: String? = "installation-1",
+        status: SlockPushDeliveryStatus? = deliveryStatus()
+    ): Boolean =
+        SlockRealtimeAppScopePolicy.isRemotePushActive(
+            serverId = serverId,
+            environmentId = environmentId,
+            currentUserId = currentUserId,
+            installationId = installationId,
+            deliveryStatus = status
+        )
+
+    private fun deliveryStatus(server2: Boolean = false): SlockPushDeliveryStatus =
+        SlockPushDeliveryStatus(
+            environmentId = "https://api.example",
+            userId = "user-a",
+            installationId = "installation-1",
+            fcmActiveByServer = mapOf("server-1" to true, "server-2" to server2)
+        )
 
     @Test
     fun backgroundUnreadNotificationKindTreatsThreadMessagesAsThread() {
