@@ -1667,8 +1667,9 @@ internal const val ThreadReplyEmptyDetail = ""
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
 private val ThreadHeaderActionSize = 30.dp
-private val ThreadHeaderActionShadowOffset = 2.dp
-private val ThreadHeaderActionGroupSpacing = 4.dp
+// raft head actions cast no shadow, so the group gap alone carries the former
+// 4dp gap + 2dp shadow inset.
+private val ThreadHeaderActionGroupSpacing = 6.dp
 private val ThreadHeaderActionIconSize = 16.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
@@ -13367,7 +13368,7 @@ private fun ThreadImagePreviewOverlay(
                 title = stringResource(MR.strings.thread_image_preview_title),
                 subtitle = null,
                 iconName = SlockLucideIconName.Image,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = SlockColor.Panel,
                 leadingContent = {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.ArrowLeft,
@@ -16042,7 +16043,7 @@ internal fun ThreadPageHeader(
             )
     SlockTopPageHeader(
         title = localizedHeaderTitle,
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = SlockColor.Panel,
         topSafeAreaOverride = topSafeArea,
         contentSpacing = ThreadHeaderContentSpacing,
         leadingContent = {
@@ -16087,7 +16088,8 @@ internal fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        // raft-ui `PanelTitle`: text-headline (17/22 bold).
+                        style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -16105,7 +16107,7 @@ internal fun ThreadPageHeader(
                     Text(
                         text = it,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -16154,11 +16156,11 @@ internal fun ThreadPageHeader(
 
 @Composable
 private fun ThreadActivityMutedBadge() {
+    // raft-ui `PanelStatus`: a bare attribute (no edge, no fill), caption medium in
+    // source case on foreground-hint.
     Row(
         modifier =
             Modifier
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.AccentOrange.copy(alpha = 0.25f))
                 .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -16166,12 +16168,12 @@ private fun ThreadActivityMutedBadge() {
         SlockLucideIcon(
             SlockLucideIconName.BellOff,
             Modifier.size(11.dp),
-            color = SlockColor.TextBlackArgb
+            color = slockArgbHex(SlockColor.ForegroundHint)
         )
         Text(
-            text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = SlockColor.TextBlack,
+            text = stringResource(MR.strings.member_label_muted),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
+            color = SlockColor.ForegroundHint,
             maxLines = 1
         )
     }
@@ -16223,10 +16225,10 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
             text = state.label,
             style =
                 SlockType.Caption.copy(
-                    color = SlockColor.TextMutedGray,
+                    color = SlockColor.ForegroundHint,
                     fontFamily = SlockMonoFamily
                 ),
-            color = SlockColor.TextMutedGray,
+            color = SlockColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -16240,19 +16242,21 @@ internal fun SlockChannelIdentityTile(
     iconSize: Dp = ThreadHeaderChannelIconSize,
     onPublicPage: Boolean = false
 ) {
+    // raft-ui `PanelHeaderIcon`: Source Yellow sticker, sticker radius, 1.5dp sticker-ink edge.
+    val shape = RoundedCornerShape(SlockRadius.Sticker)
     Box(
         modifier = Modifier.size(tileSize)
-            .background(SlockColor.BrandYellow)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .background(SlockColor.Primary, shape)
+            .border(SlockStroke.Control, SlockColor.StickerInk, shape),
         contentAlignment = Alignment.Center
     ) {
         if (onPublicPage) {
-            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = "#FF141111")
+            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = slockArgbHex(SlockColor.StickerInk))
         } else {
             SlockLucideIcon(
                 channelKind.threadChannelHeaderIcon(),
                 modifier = Modifier.size(iconSize),
-                color = "#FF141111"
+                color = slockArgbHex(SlockColor.StickerInk)
             )
         }
     }
@@ -16818,18 +16822,14 @@ internal fun ThreadHeaderActionButton(
     horizontalPadding: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
-    Box(modifier = modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
-        Box(Modifier.matchParentSize()
-            .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
-            .background(SlockColor.ShadowBlack))
-        Button(
-            onClick = onClick,
-            modifier = Modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = horizontalPadding),
-            content = content,
-        )
+    // raft-ui `PanelAction`: ghost head action, no edge and no offset shadow.
+    SlockRaftPanelAction(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth),
+    ) {
+        Box(modifier = Modifier.padding(horizontal = horizontalPadding), contentAlignment = Alignment.Center) {
+            content()
+        }
     }
 }
 
@@ -16848,7 +16848,7 @@ private fun ThreadHeaderCompactAction(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = "#FF000000")
+            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = slockArgbHex(SlockColor.ForegroundIcon))
             label?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -16858,7 +16858,7 @@ private fun ThreadHeaderCompactAction(
 }
 
 internal fun threadHeaderVisibleActionGapDp(): Float =
-    (ThreadHeaderActionGroupSpacing + ThreadHeaderActionShadowOffset).value
+    ThreadHeaderActionGroupSpacing.value
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
 
@@ -31034,7 +31034,7 @@ private fun ThreadForwardBundleScreen() {
         SlockTopPageHeader(
             title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
             iconName = SlockLucideIconName.Share2,
-            backgroundColor = SlockColor.SurfaceWhite,
+            backgroundColor = SlockColor.Panel,
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -31284,7 +31284,7 @@ internal fun <T> SlockForwardTargetPicker(
                 title = stringResource(MR.strings.thread_action_forward),
                 subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
                 iconName = SlockLucideIconName.Send,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = SlockColor.Panel,
                 leadingContent = {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.ArrowLeft,
