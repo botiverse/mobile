@@ -17,10 +17,13 @@ import build.raft.app.data.SlockAvatarNativeStageFinish
 import build.raft.app.data.SlockAvatarNativeStageOpen
 import build.raft.app.data.SlockAvatarNativeStageSink
 import build.raft.app.data.SlockAvatarNativeStagedCandidate
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import com.caverock.androidsvg.SVG
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.locks.ReentrantLock
@@ -886,6 +889,37 @@ internal fun recoverSlockAndroidAvatarTransportStaging(stagingRoot: File): Boole
     !stagingRoot.exists() ||
         (stagingRoot.deleteRecursively() && !stagingRoot.exists())
 
+internal class SlockAndroidAvatarStartupGate {
+    private val scheduled = AtomicBoolean(false)
+
+    fun trySchedule(): Boolean = scheduled.compareAndSet(false, true)
+
+    fun reset(): Unit = scheduled.set(false)
+}
+
+internal class SlockAndroidAvatarStartupScheduler(
+    private val executor: Executor,
+    private val create: () -> Unit,
+    private val publish: () -> Unit,
+    private val onFailure: (Throwable) -> Unit,
+) {
+    private val gate = SlockAndroidAvatarStartupGate()
+
+    fun start(): Boolean {
+        if (!gate.trySchedule()) return false
+        executor.execute {
+            try {
+                create()
+                publish()
+            } catch (error: Throwable) {
+                gate.reset()
+                onFailure(error)
+            }
+        }
+        return true
+    }
+}
+
 internal object SlockAndroidAvatarCacheProcess {
     private val lock = Any()
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -894,10 +928,12 @@ internal object SlockAndroidAvatarCacheProcess {
 
     @Volatile
     private var controller: SlockAndroidAvatarCacheController? = null
+    private val startupGate = SlockAndroidAvatarStartupGate()
 
     fun install(context: Context): SlockAndroidAvatarCacheController =
         synchronized(lock) {
             controller ?: SlockAndroidAvatarCacheController.create(context).also { created ->
+                startupGate.trySchedule()
                 controller = created
                 SlockAvatarMountedNativeProviderRegistry.install(created)
             }
@@ -905,15 +941,22 @@ internal object SlockAndroidAvatarCacheProcess {
 
     /** Starts durable-cache recovery without putting Files.walk/stat on the UI thread. */
     fun startAsync(context: Context) {
-        synchronized(lock) {
-            if (controller != null) return
-            startupExecutor.execute {
+        if (controller != null || !startupGate.trySchedule()) return
+        startupExecutor.execute {
+            try {
+                val created = SlockAndroidAvatarCacheController.create(context)
                 synchronized(lock) {
                     if (controller == null) {
-                        controller = SlockAndroidAvatarCacheController.create(context)
-                        SlockAvatarMountedNativeProviderRegistry.install(controller!!)
+                        controller = created
+                        SlockAvatarMountedNativeProviderRegistry.install(created)
                     }
                 }
+            } catch (error: Throwable) {
+                startupGate.reset()
+                SlockAppLog.e(
+                    "SlockAndroidAvatarCache",
+                    "startup recovery failed: ${error::class.simpleName}: ${error.message}",
+                )
             }
         }
     }
