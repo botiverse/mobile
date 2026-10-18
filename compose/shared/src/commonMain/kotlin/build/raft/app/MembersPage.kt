@@ -6022,6 +6022,31 @@ private fun MembersDetailContent(
                                             onApplyAgentProfileResult = onApplyAgentProfileResult,
                                             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
                                             agentsApiClient = agentsApiClient,
+                                            archiveInputs = MembersAgentArchiveInputs(
+                                                loadArchive = { id ->
+                                                    agentsApiClient?.agentArchive(id)
+                                                        ?: DataResult.Error(
+                                                            ScreenError(code = "archive_unavailable", retryable = false)
+                                                        )
+                                                },
+                                                deleteWorkspace = { id ->
+                                                    agentsApiClient?.deleteAgentArchiveWorkspace(id)
+                                                        ?: DataResult.Error(
+                                                            ScreenError(code = "archive_unavailable", retryable = false)
+                                                        )
+                                                },
+                                                memberNameByUserId = { userId ->
+                                                    val serverId = currentServerId
+                                                    if (serverId.isNullOrBlank()) {
+                                                        null
+                                                    } else {
+                                                        serverMembersState.entryFor(ServerId(serverId))
+                                                            ?.members
+                                                            ?.firstOrNull { it.id.value == userId }
+                                                            ?.displayName
+                                                    }
+                                                }
+                                            ),
                                             externalSetupServerUrl = externalSetupServerUrl,
                                             onUnavailableAction = onUnavailableAction,
                                             lifecycle = MembersAgentLifecycleInputs(
@@ -6784,6 +6809,223 @@ private fun MembersLifecycleWarningBanner(destructive: Boolean, text: String) {
             style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
             color = SlockColor.TextBlack
         )
+    }
+}
+
+// ── task #517: post-archive workspace section (web AgentArchiveSection parity) ──
+
+/** Server-bound callbacks for the archive section so page wiring stays flat. */
+internal class MembersAgentArchiveInputs(
+    /** `GET /agents/:id/archive` — `Content(null)` means no archive record. */
+    val loadArchive: suspend (MemberId) -> DataResult<build.raft.app.data.SlockAgentArchive?> = {
+        DataResult.Error(ScreenError(code = "archive_unavailable", retryable = false))
+    },
+    /** `POST /agents/:id/archive/workspace {"action":"delete"}` — returns the updated view. */
+    val deleteWorkspace: suspend (MemberId) -> DataResult<build.raft.app.data.SlockAgentArchive> = {
+        DataResult.Error(ScreenError(code = "archive_unavailable", retryable = false))
+    },
+    /** Resolves `archivedByUserId` to a display name; null = render the date alone. */
+    val memberNameByUserId: (String) -> String? = { null }
+)
+
+internal sealed interface MembersAgentArchiveUiState {
+    data object Loading : MembersAgentArchiveUiState
+    data class Loaded(val archive: build.raft.app.data.SlockAgentArchive?) : MembersAgentArchiveUiState
+    data object Failed : MembersAgentArchiveUiState
+}
+
+/** Maps the archive view's `lastErrorCode` to a user-readable line
+ *  (web `archiveErrorMessageId` + pending-op overlays). */
+@Composable
+private fun membersArchiveLastErrorText(
+    archive: build.raft.app.data.SlockAgentArchive,
+    computer: String
+): String? {
+    val code = archive.lastErrorCode ?: return null
+    return if (archive.pendingOp == null) {
+        when (code) {
+            "ARCHIVE_WORKSPACE_MISSING" ->
+                stringResource(MR.strings.member_archive_error_workspace_missing)
+            "ARCHIVE_DELETE_UNCONFIRMED" ->
+                stringResource(MR.strings.member_archive_error_delete_unconfirmed)
+            else -> stringResource(MR.strings.member_archive_error_generic)
+        }
+    } else if (code == "ARCHIVE_DELETE_TIMED_OUT") {
+        stringResource(MR.strings.member_archive_still_deleting, computer)
+    } else {
+        stringResource(MR.strings.member_archive_retrying)
+    }
+}
+
+/** Maps a refused workspace-delete `ScreenError` to text: known machine codes
+ *  get localized copy, everything else shows the raw server message or the
+ *  generic failure line (web `archiveRequestErrorMessage`). */
+@Composable
+private fun membersArchiveDeleteErrorText(error: ScreenError): String =
+    when (error.code) {
+        "archive_migration_active" ->
+            stringResource(MR.strings.member_archive_error_migration_active)
+        else -> error.serverMessage?.takeIf { it.isNotBlank() }
+            ?: stringResource(MR.strings.member_archive_error_generic)
+    }
+
+@Composable
+private fun MembersAgentArchiveSection(
+    agentId: MemberId,
+    canManage: Boolean,
+    fallbackArchivedAt: String?,
+    timeContext: SlockTimeContext,
+    inputs: MembersAgentArchiveInputs
+) {
+    var archiveState by remember(agentId) {
+        mutableStateOf<MembersAgentArchiveUiState>(MembersAgentArchiveUiState.Loading)
+    }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<ScreenError?>(null) }
+
+    LaunchedEffect(agentId) {
+        archiveState = when (val result = inputs.loadArchive(agentId)) {
+            is DataResult.Content -> MembersAgentArchiveUiState.Loaded(result.data)
+            else -> MembersAgentArchiveUiState.Failed
+        }
+    }
+
+    val archive = (archiveState as? MembersAgentArchiveUiState.Loaded)?.archive
+    val computer = archive?.machineName?.takeIf { it.isNotBlank() }
+        ?: stringResource(MR.strings.member_archive_unknown_computer)
+    val workspaceText = when {
+        archive == null -> stringResource(MR.strings.member_archive_workspace_unknown)
+        archive.pendingOp != null ->
+            stringResource(MR.strings.member_archive_workspace_deleting, computer)
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer ->
+            stringResource(MR.strings.member_archive_workspace_on_computer, computer)
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.Deleted ->
+            stringResource(MR.strings.member_archive_workspace_deleted)
+        else -> stringResource(MR.strings.member_archive_workspace_unknown)
+    }
+    val archivedAtIso = archive?.archivedAt ?: fallbackArchivedAt
+    val archivedAtText = archivedAtIso?.let {
+        timeContext.formatTimestampLabel(it).ifBlank { it }
+    }
+    val archivedByName = archive?.archivedByUserId?.let(inputs.memberNameByUserId)
+    val canDeleteWorkspace = canManage && archive != null && archive.pendingOp == null &&
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer && !deleting
+
+    MembersDetailSection(
+        title = stringResource(MR.strings.member_archive_section_title).slockDisplayUppercase()
+    ) {
+        if (archiveState == MembersAgentArchiveUiState.Failed) {
+            MembersLifecycleWarningBanner(
+                destructive = false,
+                text = stringResource(MR.strings.member_archive_load_failed)
+            )
+        }
+        if (archiveState == MembersAgentArchiveUiState.Failed || archive == null) {
+            // Fallback: the same block the pre-archive detail rendered.
+            MembersDetailField(
+                stringResource(MR.strings.member_label_status),
+                stringResource(MR.strings.member_status_deleted)
+            )
+            MembersDetailField(
+                stringResource(MR.strings.member_label_deleted_at),
+                archivedAtIso.orDash()
+            )
+        } else {
+            val byName = archivedByName
+            MembersDetailField(
+                stringResource(MR.strings.member_archive_archived_at),
+                if (byName != null && archivedAtText != null) {
+                    stringResource(MR.strings.member_archive_archived_at_by, archivedAtText, byName)
+                } else {
+                    archivedAtText.orDash()
+                }
+            )
+            MembersDetailField(stringResource(MR.strings.member_archive_workspace_label), workspaceText)
+            if (archive.waitingForComputer) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_waiting_for_computer, computer),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        }
+        val lastErrorText = archive?.let { membersArchiveLastErrorText(it, computer) }
+        if (lastErrorText != null) {
+            MembersLifecycleWarningBanner(destructive = false, text = lastErrorText)
+        }
+        val requestError = deleteError
+        if (requestError != null) {
+            MembersLifecycleWarningBanner(
+                destructive = false,
+                text = membersArchiveDeleteErrorText(requestError)
+            )
+        }
+        if (canDeleteWorkspace) {
+            SlockBrutalActionButton(
+                label = stringResource(MR.strings.member_archive_action_delete_workspace),
+                onClick = { confirmDelete = true },
+                enabled = !deleting,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+
+    // Drive the suspend delete off the dialog's sync confirm click: the
+    // dialog only owns the click, the section owns the request.
+    LaunchedEffect(deleting) {
+        if (!deleting) return@LaunchedEffect
+        when (val result = inputs.deleteWorkspace(agentId)) {
+            is DataResult.Content -> {
+                archiveState = MembersAgentArchiveUiState.Loaded(result.data)
+                confirmDelete = false
+            }
+            is DataResult.Error -> {
+                deleteError = result.error
+                confirmDelete = false
+            }
+            else -> {
+                deleteError = ScreenError(code = "agent_archive_workspace_delete_contract_mismatch", retryable = true)
+                confirmDelete = false
+            }
+        }
+        deleting = false
+    }
+
+    if (confirmDelete) {
+        // Web `ConfirmDialog`: action-label title, one message line, cancel +
+        // danger confirm (the irreversible red lives here, not on the trigger).
+        SlockUnifiedDialog(
+            title = stringResource(MR.strings.member_archive_action_delete_workspace),
+            dismissEnabled = !deleting,
+            contentPadding = 24.dp,
+            onDismiss = { confirmDelete = false }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_confirm_delete_workspace, computer),
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack
+                )
+                SlockDialogFooter {
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        enabled = !deleting,
+                        onClick = { confirmDelete = false }
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.member_archive_action_delete_workspace),
+                        enabled = !deleting,
+                        backgroundColor = SlockColor.AccentRed,
+                        leadingIcon = if (deleting) SlockLucideIconName.Loader else SlockLucideIconName.Trash2,
+                        onClick = {
+                            deleting = true
+                            deleteError = null
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -10034,6 +10276,7 @@ private fun MembersAgentProfileTab(
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    archiveInputs: MembersAgentArchiveInputs = MembersAgentArchiveInputs(),
     externalSetupServerUrl: String? = null,
     onUnavailableAction: (String) -> Unit,
     lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
@@ -10069,10 +10312,17 @@ private fun MembersAgentProfileTab(
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
         if (deleted) {
-            MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).slockDisplayUppercase()) {
-                MembersDetailField(stringResource(MR.strings.member_label_status), stringResource(MR.strings.member_status_deleted))
-                MembersDetailField(stringResource(MR.strings.member_label_deleted_at), summary.deletedAt.orDash())
-            }
+            // task #517 (web `AgentArchiveSection` parity): the archive block
+            // carries the workspace state + delete-later affordance; when the
+            // archive record can't be fetched it falls back to the same plain
+            // status + timestamp block the pre-archive detail rendered.
+            MembersAgentArchiveSection(
+                agentId = member.id,
+                canManage = canManage,
+                fallbackArchivedAt = summary?.deletedAt,
+                timeContext = timeContext,
+                inputs = archiveInputs
+            )
         }
 
         MembersAgentProfileHeader(

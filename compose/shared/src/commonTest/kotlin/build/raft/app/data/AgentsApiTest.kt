@@ -476,6 +476,91 @@ class AgentsApiTest {
         assertEquals("agent_bootstrap_token_contract_mismatch", assertIs<DataResult.Error>(client.issueBootstrapToken(agentId, "{}")).error.code)
     }
 
+    // ── task #517: agent archive section endpoints ──
+
+    @Test
+    fun agentArchiveMapsEnvelopeAndFields() = runPortableCoroutineTest {
+        val api = RecordingAgentsApi()
+        val client = SlockAgentsApiClient(api)
+
+        val archive = assertIs<DataResult.Content<SlockAgentArchive?>>(
+            client.agentArchive(MemberId("agent-1"))
+        ).data
+
+        assertEquals(listOf("GET agents/agent-1/archive"), api.calls)
+        requireNotNull(archive)
+        assertEquals("agent-1", archive.agentId)
+        assertEquals("user-9", archive.archivedByUserId)
+        assertEquals("Mini M4", archive.machineName)
+        assertEquals(AgentArchiveWorkspaceState.OnComputer, archive.workspaceState)
+        assertEquals(null, archive.pendingOp)
+        assertEquals(false, archive.waitingForComputer)
+        assertEquals(null, archive.lastErrorCode)
+    }
+
+    @Test
+    fun agentArchiveNullEnvelopeMeansNoArchiveRecord() = runPortableCoroutineTest {
+        val client = SlockAgentsApiClient(
+            RecordingAgentsApi(archiveBody = """{"archive":null}""")
+        )
+
+        val result = assertIs<DataResult.Content<SlockAgentArchive?>>(
+            client.agentArchive(MemberId("agent-1"))
+        )
+
+        assertEquals(null, result.data)
+    }
+
+    @Test
+    fun agentArchiveUnknownWorkspaceStateCollapsesToUnknown() = runPortableCoroutineTest {
+        val client = SlockAgentsApiClient(
+            RecordingAgentsApi(
+                archiveBody = """{"archive":{"agentId":"agent-1","workspaceState":"migrating"}}"""
+            )
+        )
+
+        val archive = assertIs<DataResult.Content<SlockAgentArchive?>>(
+            client.agentArchive(MemberId("agent-1"))
+        ).data
+
+        assertEquals(AgentArchiveWorkspaceState.Unknown, archive?.workspaceState)
+    }
+
+    @Test
+    fun deleteAgentArchiveWorkspacePostsDeleteAndMapsUpdatedView() = runPortableCoroutineTest {
+        val api = RecordingAgentsApi()
+        val client = SlockAgentsApiClient(api)
+
+        val archive = assertIs<DataResult.Content<SlockAgentArchive>>(
+            client.deleteAgentArchiveWorkspace(MemberId("agent-1"))
+        ).data
+
+        assertEquals(
+            listOf("""POST agents/agent-1/archive/workspace body={"action":"delete"}"""),
+            api.calls
+        )
+        assertEquals(AgentArchivePendingOp.Delete, archive.pendingOp)
+        assertEquals(true, archive.waitingForComputer)
+    }
+
+    @Test
+    fun deleteAgentArchiveWorkspaceSurfacesServerRefusalCode() = runPortableCoroutineTest {
+        val client = SlockAgentsApiClient(
+            RecordingAgentsApi(
+                archiveDeleteCode = 409,
+                archiveDeleteErrorBody =
+                    """{"error":"workspace migration in progress","code":"archive_migration_active"}"""
+            )
+        )
+
+        val error = assertIs<DataResult.Error>(
+            client.deleteAgentArchiveWorkspace(MemberId("agent-1"))
+        )
+
+        assertEquals("archive_migration_active", error.error.code)
+        assertEquals("workspace migration in progress", error.error.serverMessage)
+    }
+
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
         private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","serverRole":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
@@ -495,7 +580,11 @@ class AgentsApiTest {
         private val skillsBody: String = """{"global":[{"name":"openai-docs"}],"workspace":[{"name":"android-regression"}]}""",
         private val scopesBody: String = """{"agentId":"agent-1","granted":["messages:read","messages:send"],"revision":7,"updatedAt":"2026-05-22T00:00:00.000Z"}""",
         private val loginBody: String = """{"credentialId":"credential-1","apiKey":"sk_agent_secret","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}""",
-        private val bootstrapBody: String = """{"tokenId":"token-1","bootstrapToken":"sk_agent_secret","tokenPrefix":"sk_agent","ttlExpiresAt":"2026-05-22T01:00:00.000Z","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}"""
+        private val bootstrapBody: String = """{"tokenId":"token-1","bootstrapToken":"sk_agent_secret","tokenPrefix":"sk_agent","ttlExpiresAt":"2026-05-22T01:00:00.000Z","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}""",
+        private val archiveBody: String = """{"archive":{"agentId":"agent-1","archivedAt":"2026-10-18T12:00:00.000Z","archivedByUserId":"user-9","machineId":"machine-1","machineName":"Mini M4","workspaceState":"on_computer","pendingOp":null,"waitingForComputer":false,"lastErrorCode":null,"lastErrorAt":null}}""",
+        private val archiveDeleteBody: String = """{"archive":{"agentId":"agent-1","archivedAt":"2026-10-18T12:00:00.000Z","archivedByUserId":"user-9","machineId":"machine-1","machineName":"Mini M4","workspaceState":"on_computer","pendingOp":"delete","waitingForComputer":true,"lastErrorCode":null,"lastErrorAt":null}}""",
+        private val archiveDeleteCode: Int = 200,
+        private val archiveDeleteErrorBody: String? = null
     ) : SlockAgentsApi {
         val calls = mutableListOf<String>()
 
@@ -541,6 +630,20 @@ class AgentsApiTest {
         override suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse {
             calls += "DELETE agents/${agentId.value} body=$body"
             return ok(commandBody)
+        }
+
+        override suspend fun agentArchive(agentId: MemberId): HomeNetworkResponse {
+            calls += "GET agents/${agentId.value}/archive"
+            return ok(archiveBody)
+        }
+
+        override suspend fun deleteAgentArchiveWorkspace(agentId: MemberId, body: String): HomeNetworkResponse {
+            calls += "POST agents/${agentId.value}/archive/workspace body=$body"
+            return if (archiveDeleteErrorBody != null || archiveDeleteCode !in 200..299) {
+                HomeNetworkResponse(code = archiveDeleteCode, bodyText = null, errorBodyText = archiveDeleteErrorBody)
+            } else {
+                ok(archiveDeleteBody)
+            }
         }
 
         override suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse {
