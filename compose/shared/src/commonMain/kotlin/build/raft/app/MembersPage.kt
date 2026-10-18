@@ -9764,10 +9764,6 @@ private fun MembersExternalAgentSetupSection(
     ) {
         SlockSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
         Text(stringResource(MR.strings.member_external_setup_description), style = SlockType.Caption, color = SlockColor.TextBlack)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
         if (canManage && agentsApiClient != null) {
             SlockBrutalActionButton(
                 label = stringResource(if (tokenLoading) MR.strings.member_external_setup_generating else MR.strings.member_external_setup_generate),
@@ -9792,6 +9788,10 @@ private fun MembersExternalAgentSetupSection(
             }
             error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
         }
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
     }
 }
 
