@@ -16009,7 +16009,7 @@ internal fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                        style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
