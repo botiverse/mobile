@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
-class IosPushRegistrationTest {
+class PushRegistrationTest {
     @AfterTest
     fun tearDown() {
         SlockPushRegistrationLifecycle.clearForTests()
@@ -125,7 +125,7 @@ class IosPushRegistrationTest {
     fun tokenRefreshDuringLogoutCannotRaceARegistrationBackAfterUnbind() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val calls = mutableListOf<String>()
-        lateinit var coordinator: SlockIosPushRegistrationCoordinator
+        lateinit var coordinator: SlockPushRegistrationCoordinator
         val api =
             object : SlockPushRegistrationApi {
                 override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
@@ -381,8 +381,8 @@ class IosPushRegistrationTest {
         api: SlockPushRegistrationApi = RecordingPushRegistrationApi(),
         remoteNotificationsController: SlockIosRemoteNotificationsController =
             RecordingRemoteNotificationsController()
-    ): SlockIosPushRegistrationCoordinator =
-        SlockIosPushRegistrationCoordinator(
+    ): SlockPushRegistrationCoordinator =
+        SlockPushRegistrationCoordinator(
             store = store,
             spec = spec,
             currentSession = currentSession,

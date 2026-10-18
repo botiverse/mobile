@@ -28,7 +28,7 @@ private val pushRegistrationJson = Json {
 }
 
 @Serializable
-internal data class IosPushRegistrationPayload(
+internal data class SlockPushRegistrationPayload(
     val installationId: String,
     val provider: String = "apns",
     val platform: String = "ios",
@@ -60,7 +60,7 @@ internal enum class SlockPushProviderSpec(val provider: String, val platform: St
             Fcm -> raw.trim()
         }
 
-    fun accepts(payload: IosPushRegistrationPayload): Boolean {
+    fun accepts(payload: SlockPushRegistrationPayload): Boolean {
         if (payload.provider != provider || payload.platform != platform) return false
         if (payload.installationId.isBlank() || payload.topic.isBlank() || payload.appVersion.isBlank()) return false
         val token = payload.deviceToken
@@ -193,7 +193,7 @@ private object PlatformSlockIosRemoteNotificationsController : SlockIosRemoteNot
     }
 }
 
-internal class SlockIosPushRegistrationCoordinator(
+internal class SlockPushRegistrationCoordinator(
     private val store: SlockKeyValueStore,
     private val spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
     private val currentSession: suspend () -> StoredAuthSession?,
@@ -238,7 +238,7 @@ internal class SlockIosPushRegistrationCoordinator(
             return false
         }
         val payload =
-            IosPushRegistrationPayload(
+            SlockPushRegistrationPayload(
                 installationId = installationId,
                 provider = spec.provider,
                 platform = spec.platform,
@@ -409,7 +409,7 @@ object SlockIosPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
 
     @Volatile
-    private var coordinator: SlockIosPushRegistrationCoordinator? = null
+    private var coordinator: SlockPushRegistrationCoordinator? = null
 
     fun install(candidateInstallationId: String): String {
         val runtime = coordinator ?: createCoordinator().also {
@@ -449,13 +449,13 @@ object SlockIosPushRegistrationBridge {
         }
     }
 
-    private fun createCoordinator(): SlockIosPushRegistrationCoordinator {
+    private fun createCoordinator(): SlockPushRegistrationCoordinator {
         val store =
             SlockSharedKeyValueStoreProvider.create(
                 namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
                 storageName = "push registration"
             ).store
-        return SlockIosPushRegistrationCoordinator(
+        return SlockPushRegistrationCoordinator(
             store = store,
             currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
             authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },
@@ -487,7 +487,7 @@ object SlockAndroidPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
 
     @Volatile
-    private var coordinator: SlockIosPushRegistrationCoordinator? = null
+    private var coordinator: SlockPushRegistrationCoordinator? = null
 
     fun install(candidateInstallationId: String): String {
         val runtime = coordinator ?: createCoordinator().also {
@@ -519,13 +519,13 @@ object SlockAndroidPushRegistrationBridge {
         }
     }
 
-    private fun createCoordinator(): SlockIosPushRegistrationCoordinator {
+    private fun createCoordinator(): SlockPushRegistrationCoordinator {
         val store =
             SlockSharedKeyValueStoreProvider.create(
                 namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
                 storageName = "push registration"
             ).store
-        return SlockIosPushRegistrationCoordinator(
+        return SlockPushRegistrationCoordinator(
             store = store,
             spec = SlockPushProviderSpec.Fcm,
             currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
