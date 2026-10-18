@@ -1984,7 +1984,7 @@ private fun SlockStructuralHomeShellContent(
         )
     }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
-    // task #512: custom sections render after the system sections, in
+    // task #512: custom sections interleave with the system sections in web's
     // sectionOrder order; empty ones stay hidden (mobile always hides empties).
     val displayedCustomSections =
         remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedIdSet) {
@@ -1995,6 +1995,18 @@ private fun SlockStructuralHomeShellContent(
                 sectionOrder = sectionOrder,
                 sectionPlacements = sectionPlacements,
                 pinnedConversationIds = pinnedIdSet
+            )
+        }
+    val hasDisplayedPinned = displayedPinned.isNotEmpty()
+    val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
+    val displayedSidebarSections =
+        remember(sectionOrder, customSections, displayedCustomSections, hasDisplayedPinned, hasDisplayedJointChannels) {
+            homeSidebarSectionOrder(
+                sectionOrder = sectionOrder,
+                customSections = customSections,
+                customSectionRows = displayedCustomSections,
+                hasPinned = hasDisplayedPinned,
+                hasJointChannels = hasDisplayedJointChannels
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2350,155 +2362,159 @@ private fun SlockStructuralHomeShellContent(
                                     )
                                 }
                             }
-                            if (displayedPinned.isNotEmpty()) {
-                                item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                                item {
-                                    SlockCollapsibleSectionHeader(
-                                        label = labels.pinned,
-                                        count = displayedPinned.size,
-                                        expanded = pinnedExpanded,
-                                        onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
-                                        showCollapsedUnreadDot = pinnedSectionHasUnread,
-                                        sortContentDescription = "${labels.sortChannels} ${labels.pinned}",
-                                        onSortClick = { anchor ->
-                                            if (sidebarInteractionsEnabled) {
-                                                activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
-                                                sortMenuAnchor = anchor
-                                            }
-                                        },
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                    )
-                                }
-                                if (pinnedExpanded) {
-                                    items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
-                                        val pinnedRow = displayedPinned[index]
-                                        val pinned = pinnedRow.conversation
-                                        val pinnedMember = pinnedRow.member
-                                        val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
-                                        // #211 React parity (revised by @artin 23:38): pinned copy and
-                                        // original-section copy of the same conversation both
-                                        // render Selected when their conversationId matches.
-                                        // Selected wins over pressed so the user never confuses
-                                        // "I'm pressing" with "this is the current conversation".
-                                        val rowInteractionState = when {
-                                            pinned != null && sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
-                                            pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
-                                            else -> ChannelRowInteractionState.Default
-                                        }
-                                        val handleLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
-                                            when {
-                                                pinned != null -> {
-                                                    onChannelLongPressWithDismiss(pinned.id, anchor)
-                                                    activePinnedMemberMenuKey = null
-                                                    activePinMenuConversationId = pinned.id
-                                                    activeMenuSection = SlockHomeSortSection.Pinned
-                                                    pinMenuAnchor = anchor
+                        // Sections render in web's normalized sectionOrder: system and
+                        // custom sections interleave (web Sidebar.tsx renders every block
+                        // with CSS `order = sectionOrder.indexOf(id)`); empty sections hide.
+                        displayedSidebarSections.forEach { sidebarSection ->
+                            when (sidebarSection) {
+                                SlockHomeSidebarSection.Pinned -> {
+                                    item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                                    item {
+                                        SlockCollapsibleSectionHeader(
+                                            label = labels.pinned,
+                                            count = displayedPinned.size,
+                                            expanded = pinnedExpanded,
+                                            onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                            showCollapsedUnreadDot = pinnedSectionHasUnread,
+                                            sortContentDescription = "${labels.sortChannels} ${labels.pinned}",
+                                            onSortClick = { anchor ->
+                                                if (sidebarInteractionsEnabled) {
+                                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
+                                                    sortMenuAnchor = anchor
                                                 }
-                                                pinnedMember != null -> {
-                                                    // Typed pinned members can exist before a DM
-                                                    // conversation is materialized. They still own
-                                                    // a stable member id in the per-user pinned
-                                                    // order, so expose the section-level Sort action
-                                                    // without inventing conversation operations.
-                                                    dismissNotificationCenterForFocusLoss()
-                                                    activePinMenuConversationId = null
-                                                    activePinnedMemberMenuKey = pinnedRow.key
-                                                    activeMenuSection = SlockHomeSortSection.Pinned
-                                                    pinMenuAnchor = anchor
-                                                }
+                                            },
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        )
+                                    }
+                                    if (pinnedExpanded) {
+                                        items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
+                                            val pinnedRow = displayedPinned[index]
+                                            val pinned = pinnedRow.conversation
+                                            val pinnedMember = pinnedRow.member
+                                            val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
+                                            // #211 React parity (revised by @artin 23:38): pinned copy and
+                                            // original-section copy of the same conversation both
+                                            // render Selected when their conversationId matches.
+                                            // Selected wins over pressed so the user never confuses
+                                            // "I'm pressing" with "this is the current conversation".
+                                            val rowInteractionState = when {
+                                                pinned != null && sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
+                                                pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
+                                                else -> ChannelRowInteractionState.Default
                                             }
-                                            // Menu opens: clear press so the visual doesn't stick
-                                            // while the user reads it.
-                                            pressedRowKey = null
-                                        }
-                                        if (isDirectMessage) {
-                                            val badgeProjection = pinned?.homeConversationBadgeProjection()
-                                            DirectMessageRow(
-                                                interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
-                                                name = pinned?.name ?: pinnedMember?.name.orEmpty(),
-                                                description = pinned?.description ?: pinnedMember?.description,
-                                                avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
-                                                peerType =
-                                                    pinned?.peerType
-                                                        ?: pinnedMember?.identity?.kind?.memberKindWireValue(),
-                                                memberId =
-                                                    pinned?.presenceMemberId
-                                                        ?: pinnedMember?.identity?.memberId?.value,
-                                                cacheServerId = currentServerId,
-                                                agentStatusResolver = agentStatusResolver,
-                                                memberAvatarResolver = memberAvatarResolver,
-                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                hasDraft = pinned?.hasDraft == true,
-                                                muted = pinned?.activityMuted == true,
-                                                badge = badgeProjection?.label,
-                                                badgeTone = badgeProjection?.tone ?: HomeSidebarBadgeTone.Loud,
-                                                interactionState = rowInteractionState,
-                                                captureLongPressAnchor = captureRowAnchors,
-                                                onClick =
-                                                    if (sidebarInteractionsEnabled) {
-                                                        {
-                                                            when (val target = pinnedRow.clickTarget()) {
-                                                                is SlockHomePinnedClickTarget.Conversation -> {
-                                                                    diagnosticsLogger(
-                                                                        "shared_home_pinned_click serverId=$currentServerId " +
-                                                                            "key=${pinnedRow.key} target=conversation " +
-                                                                            "conversationId=${target.conversationId}"
-                                                                    )
-                                                                    onChannelClickWithDismiss(target.conversationId)
+                                            val handleLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
+                                                when {
+                                                    pinned != null -> {
+                                                        onChannelLongPressWithDismiss(pinned.id, anchor)
+                                                        activePinnedMemberMenuKey = null
+                                                        activePinMenuConversationId = pinned.id
+                                                        activeMenuSection = SlockHomeSortSection.Pinned
+                                                        pinMenuAnchor = anchor
+                                                    }
+                                                    pinnedMember != null -> {
+                                                        // Typed pinned members can exist before a DM
+                                                        // conversation is materialized. They still own
+                                                        // a stable member id in the per-user pinned
+                                                        // order, so expose the section-level Sort action
+                                                        // without inventing conversation operations.
+                                                        dismissNotificationCenterForFocusLoss()
+                                                        activePinMenuConversationId = null
+                                                        activePinnedMemberMenuKey = pinnedRow.key
+                                                        activeMenuSection = SlockHomeSortSection.Pinned
+                                                        pinMenuAnchor = anchor
+                                                    }
+                                                }
+                                                // Menu opens: clear press so the visual doesn't stick
+                                                // while the user reads it.
+                                                pressedRowKey = null
+                                            }
+                                            if (isDirectMessage) {
+                                                val badgeProjection = pinned?.homeConversationBadgeProjection()
+                                                DirectMessageRow(
+                                                    interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
+                                                    name = pinned?.name ?: pinnedMember?.name.orEmpty(),
+                                                    description = pinned?.description ?: pinnedMember?.description,
+                                                    avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
+                                                    peerType =
+                                                        pinned?.peerType
+                                                            ?: pinnedMember?.identity?.kind?.memberKindWireValue(),
+                                                    memberId =
+                                                        pinned?.presenceMemberId
+                                                            ?: pinnedMember?.identity?.memberId?.value,
+                                                    cacheServerId = currentServerId,
+                                                    agentStatusResolver = agentStatusResolver,
+                                                    memberAvatarResolver = memberAvatarResolver,
+                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    hasDraft = pinned?.hasDraft == true,
+                                                    muted = pinned?.activityMuted == true,
+                                                    badge = badgeProjection?.label,
+                                                    badgeTone = badgeProjection?.tone ?: HomeSidebarBadgeTone.Loud,
+                                                    interactionState = rowInteractionState,
+                                                    captureLongPressAnchor = captureRowAnchors,
+                                                    onClick =
+                                                        if (sidebarInteractionsEnabled) {
+                                                            {
+                                                                when (val target = pinnedRow.clickTarget()) {
+                                                                    is SlockHomePinnedClickTarget.Conversation -> {
+                                                                        diagnosticsLogger(
+                                                                            "shared_home_pinned_click serverId=$currentServerId " +
+                                                                                "key=${pinnedRow.key} target=conversation " +
+                                                                                "conversationId=${target.conversationId}"
+                                                                        )
+                                                                        onChannelClickWithDismiss(target.conversationId)
+                                                                    }
+                                                                    is SlockHomePinnedClickTarget.Member -> {
+                                                                        diagnosticsLogger(
+                                                                            "shared_home_pinned_click serverId=$currentServerId " +
+                                                                                "key=${pinnedRow.key} target=member " +
+                                                                                "memberId=${target.identity.memberId.value} " +
+                                                                                "memberKind=${target.identity.kind.memberKindWireValue()}"
+                                                                        )
+                                                                        dismissNotificationCenterForFocusLoss()
+                                                                        onPinnedMemberClick(target.identity)
+                                                                    }
+                                                                    null -> Unit
                                                                 }
-                                                                is SlockHomePinnedClickTarget.Member -> {
-                                                                    diagnosticsLogger(
-                                                                        "shared_home_pinned_click serverId=$currentServerId " +
-                                                                            "key=${pinnedRow.key} target=member " +
-                                                                            "memberId=${target.identity.memberId.value} " +
-                                                                            "memberKind=${target.identity.kind.memberKindWireValue()}"
-                                                                    )
-                                                                    dismissNotificationCenterForFocusLoss()
-                                                                    onPinnedMemberClick(target.identity)
-                                                                }
-                                                                null -> Unit
                                                             }
-                                                        }
-                                                    } else {
-                                                        null
-                                                    },
-                                                onLongPress = if (sidebarInteractionsEnabled && pinnedRow.supportsLongPress()) handleLongPress else null,
-                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
-                                                onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
-                                            )
-                                        } else if (pinned != null) {
-                                            val badgeProjection = pinned.homeConversationBadgeProjection()
-                                            ChannelRow(
-                                                content =
-                                                    ChannelRowContent(
-                                                        name = pinned.name,
-                                                        symbol = pinned.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                        joined = pinned.joined,
-                                                        hasDraft = pinned.hasDraft,
-                                                        muted = pinned.activityMuted,
-                                                        bridgeProvider = pinned.bridgeProvider,
-                                                        badge = badgeProjection.label,
-                                                        badgeTone = badgeProjection.tone
-                                                    ),
-                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interaction =
-                                                    ChannelRowInteraction(
-                                                        identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
-                                                        state = rowInteractionState,
-                                                        captureLongPressAnchor = captureRowAnchors,
-                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
-                                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
-                                                        onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
-                                                    )
-                                            )
+                                                        } else {
+                                                            null
+                                                        },
+                                                    onLongPress = if (sidebarInteractionsEnabled && pinnedRow.supportsLongPress()) handleLongPress else null,
+                                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                    onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                )
+                                            } else if (pinned != null) {
+                                                val badgeProjection = pinned.homeConversationBadgeProjection()
+                                                ChannelRow(
+                                                    content =
+                                                        ChannelRowContent(
+                                                            name = pinned.name,
+                                                            symbol = pinned.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                            joined = pinned.joined,
+                                                            hasDraft = pinned.hasDraft,
+                                                            muted = pinned.activityMuted,
+                                                            bridgeProvider = pinned.bridgeProvider,
+                                                            badge = badgeProjection.label,
+                                                            badgeTone = badgeProjection.tone
+                                                        ),
+                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    interaction =
+                                                        ChannelRowInteraction(
+                                                            identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
+                                                            state = rowInteractionState,
+                                                            captureLongPressAnchor = captureRowAnchors,
+                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
+                                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                            onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                        )
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        homeChannelSectionOrder(displayedJointChannels.isNotEmpty()).forEach { section ->
-                            when (section) {
-                                SlockHomeChannelSection.JointChannels -> {
+
+                                SlockHomeSidebarSection.JointChannels -> {
                                     item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                                     item {
                                         SlockCollapsibleSectionHeader(
@@ -2553,7 +2569,7 @@ private fun SlockStructuralHomeShellContent(
                                     }
                                 }
 
-                                SlockHomeChannelSection.Channels -> {
+                                SlockHomeSidebarSection.Channels -> {
                                     item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                                     item {
                                         SlockCollapsibleSectionHeader(
@@ -2622,191 +2638,196 @@ private fun SlockStructuralHomeShellContent(
                                         }
                                     }
                                 }
-                            }
-                        }
-                        item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                        item {
-                            SlockCollapsibleSectionHeader(
-                                label = labels.directMessages,
-                                count = displayedDirectMessages.size,
-                                expanded = directMessagesExpanded,
-                                onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
-                                showCollapsedUnreadDot = directMessageSectionHasUnread,
-                                sortContentDescription = "${labels.sortChannels} ${labels.directMessages}",
-                                onSortClick = { anchor ->
-                                    if (sidebarInteractionsEnabled) {
-                                        activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
-                                        sortMenuAnchor = anchor
-                                    }
-                                },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                trailingContent = null
-                            )
-                        }
-                        if (directMessagesExpanded) {
-                            items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
-                                val dm = displayedDirectMessages[index]
-                                val badgeProjection = dm.homeConversationBadgeProjection()
-                                val dmInteractionState = when {
-                                    sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
-                                    pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
-                                    else -> ChannelRowInteractionState.Default
-                                }
-                                DirectMessageRow(
-                                    interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
-                                    name = dm.name,
-                                    description = dm.description,
-                                    avatarLabel = dm.avatarLabel,
-                                    peerType = dm.peerType,
-                                    memberId = dm.presenceMemberId,
-                                    cacheServerId = currentServerId,
-                                    agentStatusResolver = agentStatusResolver,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    hasDraft = dm.hasDraft,
-                                    muted = dm.activityMuted,
-                                    badge = badgeProjection.label,
-                                    badgeTone = badgeProjection.tone,
-                                    interactionState = dmInteractionState,
-                                    captureLongPressAnchor = captureRowAnchors,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
-                                    onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                        onChannelLongPressWithDismiss(dm.id, anchor)
-                                        activePinMenuConversationId = dm.id
-                                        activeMenuSection = SlockHomeSortSection.DirectMessages
-                                        pinMenuAnchor = anchor
-                                        pressedRowKey = null
-                                    }) else null,
-                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
-                                    onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
-                                )
-                            }
-                        }
-                        if (directMessagesExpanded && showLoadingSkeletons) {
-                            items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
-                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
-                            }
-                        }
-                        // task #512: custom sections (web channel-sections port) render
-                        // after the system sections, each with an emoji + name header;
-                        // long-press (or the trailing ellipsis) opens the section menu.
-                        displayedCustomSections.forEach { sectionRows ->
-                            val customSection = sectionRows.section
-                            val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
-                            item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
-                                Spacer(Modifier.height(SlockSpacing.Xs))
-                            }
-                            item(key = "custom-section-header:$currentServerId:${customSection.id}") {
-                                SlockCollapsibleSectionHeader(
-                                    label = customSection.sidebarSectionHeaderLabel(),
-                                    count = sectionRows.items.size,
-                                    expanded = customSectionExpanded,
-                                    onExpandedChange = { expanded ->
-                                        if (sidebarInteractionsEnabled) {
-                                            collapsedCustomSectionIds =
-                                                if (expanded) {
-                                                    collapsedCustomSectionIds - customSection.id
-                                                } else {
-                                                    collapsedCustomSectionIds + customSection.id
+
+                                SlockHomeSidebarSection.DirectMessages -> {
+                                    item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                                    item {
+                                        SlockCollapsibleSectionHeader(
+                                            label = labels.directMessages,
+                                            count = displayedDirectMessages.size,
+                                            expanded = directMessagesExpanded,
+                                            onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
+                                            showCollapsedUnreadDot = directMessageSectionHasUnread,
+                                            sortContentDescription = "${labels.sortChannels} ${labels.directMessages}",
+                                            onSortClick = { anchor ->
+                                                if (sidebarInteractionsEnabled) {
+                                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
+                                                    sortMenuAnchor = anchor
                                                 }
+                                            },
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                            trailingContent = null
+                                        )
+                                    }
+                                    if (directMessagesExpanded) {
+                                        items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
+                                            val dm = displayedDirectMessages[index]
+                                            val badgeProjection = dm.homeConversationBadgeProjection()
+                                            val dmInteractionState = when {
+                                                sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
+                                                pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
+                                                else -> ChannelRowInteractionState.Default
+                                            }
+                                            DirectMessageRow(
+                                                interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
+                                                name = dm.name,
+                                                description = dm.description,
+                                                avatarLabel = dm.avatarLabel,
+                                                peerType = dm.peerType,
+                                                memberId = dm.presenceMemberId,
+                                                cacheServerId = currentServerId,
+                                                agentStatusResolver = agentStatusResolver,
+                                                memberAvatarResolver = memberAvatarResolver,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                hasDraft = dm.hasDraft,
+                                                muted = dm.activityMuted,
+                                                badge = badgeProjection.label,
+                                                badgeTone = badgeProjection.tone,
+                                                interactionState = dmInteractionState,
+                                                captureLongPressAnchor = captureRowAnchors,
+                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
+                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                    onChannelLongPressWithDismiss(dm.id, anchor)
+                                                    activePinMenuConversationId = dm.id
+                                                    activeMenuSection = SlockHomeSortSection.DirectMessages
+                                                    pinMenuAnchor = anchor
+                                                    pressedRowKey = null
+                                                }) else null,
+                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
+                                                onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
+                                            )
                                         }
-                                    },
-                                    showCollapsedUnreadDot =
-                                        sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
-                                    uppercaseLabel = false,
-                                    onLongPress =
-                                        if (sidebarInteractionsEnabled) {
-                                            { anchor ->
-                                                activeSectionMenuId = customSection.id
-                                                sectionMenuAnchor = anchor
+                                    }
+                                    if (directMessagesExpanded && showLoadingSkeletons) {
+                                        items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
+                                            HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                        }
+                                    }
+                                }
+
+                                // task #512: custom sections (web channel-sections port), each
+                                // with an emoji + name header; long-press (or the trailing
+                                // ellipsis) opens the section menu.
+                                is SlockHomeSidebarSection.Custom -> {
+                                    val sectionRows = sidebarSection.rows
+                                    val customSection = sectionRows.section
+                                    val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
+                                    item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
+                                        Spacer(Modifier.height(SlockSpacing.Xs))
+                                    }
+                                    item(key = "custom-section-header:$currentServerId:${customSection.id}") {
+                                        SlockCollapsibleSectionHeader(
+                                            label = customSection.sidebarSectionHeaderLabel(),
+                                            count = sectionRows.items.size,
+                                            expanded = customSectionExpanded,
+                                            onExpandedChange = { expanded ->
+                                                if (sidebarInteractionsEnabled) {
+                                                    collapsedCustomSectionIds =
+                                                        if (expanded) {
+                                                            collapsedCustomSectionIds - customSection.id
+                                                        } else {
+                                                            collapsedCustomSectionIds + customSection.id
+                                                        }
+                                                }
+                                            },
+                                            showCollapsedUnreadDot =
+                                                sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
+                                            uppercaseLabel = false,
+                                            onLongPress =
+                                                if (sidebarInteractionsEnabled) {
+                                                    { anchor ->
+                                                        activeSectionMenuId = customSection.id
+                                                        sectionMenuAnchor = anchor
+                                                        pressedRowKey = null
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                            longPressAnchorIdentity = "$currentServerId:${customSection.id}",
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        ) {
+                                            SlockSectionHeaderIconAction(
+                                                SlockLucideIconName.Ellipsis,
+                                                customSection.name,
+                                                onClick2 = { anchor ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        activeSectionMenuId = customSection.id
+                                                        sectionMenuAnchor = anchor
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                    if (customSectionExpanded) {
+                                        items(
+                                            sectionRows.items.size,
+                                            key = { index -> "custom:$currentServerId:${customSection.id}:${sectionRows.items[index].id}" }
+                                        ) { index ->
+                                            val item = sectionRows.items[index]
+                                            val badgeProjection = item.homeConversationBadgeProjection()
+                                            val customRowKey = "custom:${customSection.id}:${item.id}"
+                                            val customInteractionState = when {
+                                                sidebarSelection.conversationId == item.id -> ChannelRowInteractionState.Selected
+                                                pressedRowKey == customRowKey -> ChannelRowInteractionState.Pressed
+                                                else -> ChannelRowInteractionState.Default
+                                            }
+                                            val customLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
+                                                onChannelLongPressWithDismiss(item.id, anchor)
+                                                activePinMenuConversationId = item.id
+                                                activeMenuSection = null
+                                                pinMenuAnchor = anchor
                                                 pressedRowKey = null
                                             }
-                                        } else {
-                                            null
-                                        },
-                                    longPressAnchorIdentity = "$currentServerId:${customSection.id}",
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                ) {
-                                    SlockSectionHeaderIconAction(
-                                        SlockLucideIconName.Ellipsis,
-                                        customSection.name,
-                                        onClick2 = { anchor ->
-                                            if (sidebarInteractionsEnabled) {
-                                                activeSectionMenuId = customSection.id
-                                                sectionMenuAnchor = anchor
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                            if (customSectionExpanded) {
-                                items(
-                                    sectionRows.items.size,
-                                    key = { index -> "custom:$currentServerId:${customSection.id}:${sectionRows.items[index].id}" }
-                                ) { index ->
-                                    val item = sectionRows.items[index]
-                                    val badgeProjection = item.homeConversationBadgeProjection()
-                                    val customRowKey = "custom:${customSection.id}:${item.id}"
-                                    val customInteractionState = when {
-                                        sidebarSelection.conversationId == item.id -> ChannelRowInteractionState.Selected
-                                        pressedRowKey == customRowKey -> ChannelRowInteractionState.Pressed
-                                        else -> ChannelRowInteractionState.Default
-                                    }
-                                    val customLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
-                                        onChannelLongPressWithDismiss(item.id, anchor)
-                                        activePinMenuConversationId = item.id
-                                        activeMenuSection = null
-                                        pinMenuAnchor = anchor
-                                        pressedRowKey = null
-                                    }
-                                    if (item.isDirectMessageConversation()) {
-                                        DirectMessageRow(
-                                            interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
-                                            name = item.name,
-                                            description = item.description,
-                                            avatarLabel = item.avatarLabel,
-                                            peerType = item.peerType,
-                                            memberId = item.presenceMemberId,
-                                            cacheServerId = currentServerId,
-                                            agentStatusResolver = agentStatusResolver,
-                                            memberAvatarResolver = memberAvatarResolver,
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                            hasDraft = item.hasDraft,
-                                            muted = item.activityMuted,
-                                            badge = badgeProjection.label,
-                                            badgeTone = badgeProjection.tone,
-                                            interactionState = customInteractionState,
-                                            captureLongPressAnchor = captureRowAnchors,
-                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
-                                            onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
-                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
-                                            onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
-                                        )
-                                    } else {
-                                        ChannelRow(
-                                            content =
-                                                ChannelRowContent(
+                                            if (item.isDirectMessageConversation()) {
+                                                DirectMessageRow(
+                                                    interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
                                                     name = item.name,
-                                                    symbol = item.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                    joined = item.joined,
+                                                    description = item.description,
+                                                    avatarLabel = item.avatarLabel,
+                                                    peerType = item.peerType,
+                                                    memberId = item.presenceMemberId,
+                                                    cacheServerId = currentServerId,
+                                                    agentStatusResolver = agentStatusResolver,
+                                                    memberAvatarResolver = memberAvatarResolver,
+                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                                     hasDraft = item.hasDraft,
                                                     muted = item.activityMuted,
-                                                    bridgeProvider = item.bridgeProvider,
                                                     badge = badgeProjection.label,
-                                                    badgeTone = badgeProjection.tone
-                                                ),
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                            interaction =
-                                                ChannelRowInteraction(
-                                                    identity = homeSidebarInteractionIdentity("custom", customRowKey),
-                                                    state = customInteractionState,
+                                                    badgeTone = badgeProjection.tone,
+                                                    interactionState = customInteractionState,
                                                     captureLongPressAnchor = captureRowAnchors,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
                                                     onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
                                                     onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
                                                 )
-                                        )
+                                            } else {
+                                                ChannelRow(
+                                                    content =
+                                                        ChannelRowContent(
+                                                            name = item.name,
+                                                            symbol = item.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                            joined = item.joined,
+                                                            hasDraft = item.hasDraft,
+                                                            muted = item.activityMuted,
+                                                            bridgeProvider = item.bridgeProvider,
+                                                            badge = badgeProjection.label,
+                                                            badgeTone = badgeProjection.tone
+                                                        ),
+                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    interaction =
+                                                        ChannelRowInteraction(
+                                                            identity = homeSidebarInteractionIdentity("custom", customRowKey),
+                                                            state = customInteractionState,
+                                                            captureLongPressAnchor = captureRowAnchors,
+                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
+                                                            onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
+                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
+                                                            onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                                        )
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3371,14 +3392,44 @@ internal fun homeLazyItemCount(
         (if (pinnedExpanded) pinnedCount else 0)
 }
 
-internal enum class SlockHomeChannelSection { JointChannels, Channels }
+/** One top-level block of the home sidebar list. */
+internal sealed interface SlockHomeSidebarSection {
+    object Pinned : SlockHomeSidebarSection
+    object JointChannels : SlockHomeSidebarSection
+    object Channels : SlockHomeSidebarSection
+    object DirectMessages : SlockHomeSidebarSection
+    data class Custom(val rows: SlockHomeCustomSectionRows) : SlockHomeSidebarSection
+}
 
-internal fun homeChannelSectionOrder(hasJointChannels: Boolean): List<SlockHomeChannelSection> =
-    if (hasJointChannels) {
-        listOf(SlockHomeChannelSection.JointChannels, SlockHomeChannelSection.Channels)
-    } else {
-        listOf(SlockHomeChannelSection.Channels)
+/**
+ * The home sidebar's top-level blocks in render order. Mirrors web Sidebar.tsx,
+ * which renders every system block (`system:pinned` / `system:joint` /
+ * `system:channels` / `system:dms`) and every custom section with CSS
+ * `order = sectionOrder.indexOf(id)`, where sectionOrder is web
+ * `normalizeSidebarSectionOrder` output: so system and custom sections
+ * interleave in the user's order, and ids missing from it fall back to system
+ * sections in canonical order, then custom sections in declaration order.
+ * Visibility keeps mobile's rules: pinned and joint hide when empty, custom
+ * sections appear only if [customSectionRows] has them (non-empty), DMs always show.
+ */
+internal fun homeSidebarSectionOrder(
+    sectionOrder: List<String>,
+    customSections: List<SettingsServerSidebarCustomSection>,
+    customSectionRows: List<SlockHomeCustomSectionRows>,
+    hasPinned: Boolean,
+    hasJointChannels: Boolean
+): List<SlockHomeSidebarSection> {
+    val rowsBySectionId = customSectionRows.associateBy { it.section.id }
+    return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
+        when (id) {
+            "system:pinned" -> SlockHomeSidebarSection.Pinned.takeIf { hasPinned }
+            "system:joint" -> SlockHomeSidebarSection.JointChannels.takeIf { hasJointChannels }
+            "system:channels" -> SlockHomeSidebarSection.Channels
+            "system:dms" -> SlockHomeSidebarSection.DirectMessages
+            else -> rowsBySectionId[id]?.let { SlockHomeSidebarSection.Custom(it) }
+        }
     }
+}
 
 private enum class SlockHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
 

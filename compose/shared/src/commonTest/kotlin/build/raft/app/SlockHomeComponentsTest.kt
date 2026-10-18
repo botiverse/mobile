@@ -1755,13 +1755,21 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeChannelSectionsPutJointChannelsBeforeRegularChannels() {
+        fun order(hasJointChannels: Boolean) =
+            homeSidebarSectionOrder(
+                sectionOrder = emptyList(),
+                customSections = emptyList(),
+                customSectionRows = emptyList(),
+                hasPinned = false,
+                hasJointChannels = hasJointChannels
+            )
         assertEquals(
-            listOf(SlockHomeChannelSection.JointChannels, SlockHomeChannelSection.Channels),
-            homeChannelSectionOrder(hasJointChannels = true)
+            listOf(SlockHomeSidebarSection.JointChannels, SlockHomeSidebarSection.Channels, SlockHomeSidebarSection.DirectMessages),
+            order(hasJointChannels = true)
         )
         assertEquals(
-            listOf(SlockHomeChannelSection.Channels),
-            homeChannelSectionOrder(hasJointChannels = false)
+            listOf(SlockHomeSidebarSection.Channels, SlockHomeSidebarSection.DirectMessages),
+            order(hasJointChannels = false)
         )
     }
 
