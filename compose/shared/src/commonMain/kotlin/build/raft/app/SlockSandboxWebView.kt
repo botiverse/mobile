@@ -118,6 +118,11 @@ internal class SlockSandboxWebViewAttr : Attr() {
         return this
     }
 
+    fun domStorageEnabled(value: Boolean): SlockSandboxWebViewAttr {
+        "domStorageEnabled" with value
+        return this
+    }
+
     /**
      * task #188: lets the WebView honour `width=` in the page's viewport meta. Android ignores it
      * otherwise, so a desktop-width viewport injection has no effect there.
