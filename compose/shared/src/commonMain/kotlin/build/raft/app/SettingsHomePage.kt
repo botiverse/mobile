@@ -1745,6 +1745,7 @@ internal fun appShellBottomTabsVisible(
         // behind them so returning does not recreate it after the root is already visible.
         "home" ->
             selectedHomeDestination == null ||
+                retainedHomeSecondaryDestination(selectedHomeDestination) != HomeDestinationSaved &&
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
         else -> true
     }
@@ -19615,8 +19616,8 @@ private fun SharedHomeScreen(
             val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
                 remember(serverMembersState, snapshot.server.id) {
                     { memberId ->
-                        serverMembersState
-                            .memberProfile(snapshot.server.id, memberId)
+                        serverMembersStore
+                            ?.memberProfile(snapshot.server.id, memberId)
                             ?.toSlockHomePinnedMemberItem()
                     }
                 }
