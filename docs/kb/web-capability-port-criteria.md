@@ -71,7 +71,11 @@ Evidence required per state:
 
 **CI green does not clear a runtime gate; CI red is not always a failure.** A `CI gate` check can go red because a duplicate workflow run was cancelled by a concurrency group, while the surviving run is still executing. Read the surviving run's terminal state before reporting red.
 
-**One asset is usually several.** A brand mark existed in three places in this repo: a shared `MR/assets` SVG, an inline URL-encoded data URI in Kotlin (the one Android actually renders), and a leftover platform drawable. Fixing the file named in the review would have left the user-visible copy wrong. Grep for the payload (here: the hex colours), not for the filename.
+**Verify the tree you are quoting.** A gap report claimed a brand mark lived in three places (shared `MR/assets` SVG, an inline URL-encoded data URI, a leftover platform drawable) and that Android rendered from the inline copy. At the base commit that was wrong: the inline URI had been deleted when the three hosts were unified on one `assets://` path, so the shared SVG is the only live render source and the drawable is dead. The conclusion happened to survive (fix one asset, delete the dead one) but the mechanism was fabricated by a stale checkout — the report was produced by grepping a worktree that had not been updated for two months, while CI was green against a much newer base.
+
+  Rules that prevent it: resolve the base commit first (`git ls-remote`, the PR's base SHA) and read through `git show <sha>:<path>` / `git grep <sha>`; a clean `git status` says nothing about age, and `git fetch --depth=1 <ref>` updates `FETCH_HEAD` without touching the working tree. Quote the base SHA next to every file-level claim, so a reader can re-check it.
+
+  The same failure one level removed: a doc line in this repo still said the dead drawable was "used by the remaining native account screen" long after that screen was retired. Dead code is cheap to spot; dead *claims* about code survive reviews.
 
 **Logic tests do not cover layout.** A jsdom/node harness can prove a viewport-meta rewrite happens; it cannot prove `window.innerWidth`. Anything whose criterion is a layout or timing value needs a device, and the fixture must include the failure shape (page that already declares a viewport; page that inserts one 1.5 s after load; both transition directions).
 
@@ -88,6 +92,7 @@ Evidence required per state:
 5. Level assigned with the default-path and silent-failure modifiers considered.
 6. One lane owner proposed; product owner notified of the priority, not asked to implement.
 7. State recorded with the evidence column filled, or explicitly `candidate`.
+8. Every file-level claim carries the base SHA it was read at.
 
 ## 8. Recording a candidate
 
