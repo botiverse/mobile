@@ -12,13 +12,13 @@ import kotlin.test.assertNull
  */
 class FontPreferenceTest {
     @Test
-    fun defaultMatchesWebsDefaultTheme() {
-        // Web's default theme is `brutal`, whose sans is Hanken Grotesk, so a user with no stored
-        // choice must land on the same face as web rather than on the face mobile shipped before.
-        assertEquals(FontPreference.HankenGrotesk, FontPreference.Default)
-        assertEquals(FontPreference.HankenGrotesk, FontPreference.fromStorageKey(null))
-        assertEquals(FontPreference.HankenGrotesk, FontPreference.fromStorageKey(""))
-        assertEquals(FontPreference.HankenGrotesk, FontPreference.fromStorageKey("not-a-font"))
+    fun defaultIsTheFaceMobileHasAlwaysShipped() {
+        // artin 2026-10-18: a user with no stored choice stays on Space Grotesk; the web faces are
+        // opt-in from Appearance.
+        assertEquals(FontPreference.SpaceGrotesk, FontPreference.Default)
+        assertEquals(FontPreference.SpaceGrotesk, FontPreference.fromStorageKey(null))
+        assertEquals(FontPreference.SpaceGrotesk, FontPreference.fromStorageKey(""))
+        assertEquals(FontPreference.SpaceGrotesk, FontPreference.fromStorageKey("not-a-font"))
     }
 
     @Test
@@ -89,15 +89,15 @@ class FontPreferenceTest {
         val first =
             PersistentFontPreferenceRepository(KeyValueFontPreferenceStore(store))
 
-        // Nothing stored yet -> the web-aligned default.
-        assertEquals(FontPreference.HankenGrotesk, runBlocking { first.getFontPreference() }.current)
+        // Nothing stored yet -> the default.
+        assertEquals(FontPreference.SpaceGrotesk, runBlocking { first.getFontPreference() }.current)
 
         // Choose a non-default option, then read it back through a FRESH repository over the same
         // storage. That is what a cold start does, so this is the restart contract, not internals.
-        runBlocking { first.selectFontPreference(FontPreference.SpaceGrotesk) }
+        runBlocking { first.selectFontPreference(FontPreference.HankenGrotesk) }
         val afterRestart =
             PersistentFontPreferenceRepository(KeyValueFontPreferenceStore(store))
 
-        assertEquals(FontPreference.SpaceGrotesk, runBlocking { afterRestart.getFontPreference() }.current)
+        assertEquals(FontPreference.HankenGrotesk, runBlocking { afterRestart.getFontPreference() }.current)
     }
 }
