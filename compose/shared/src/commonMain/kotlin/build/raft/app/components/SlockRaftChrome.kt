@@ -45,6 +45,8 @@ internal object SlockRaftMetrics {
     val MenuRowHeight = 36.dp
     /** Menu / select popup padding (`p-1.5`). */
     val PopupPadding = 6.dp
+    /** Vertical inset on each side of a menu separator (`my-1.5`). */
+    val MenuSeparatorInset = 6.dp
     /** Status / attention pixel (`size-[9px]`). */
     val StatusSize = 9.dp
     /** Approximates `--theme-shadow-float` (0 12px 32px -12px ink/32) on Kuikly's elevation shadow. */

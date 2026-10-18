@@ -48,7 +48,10 @@ class SlockThemeStateTest {
     @Test
     fun argbHexMatchesTheLiteralFormat() {
         assertEquals("#FFFFFFFF", slockArgbHex(RaftUiPalette.white))
-        assertEquals(SlockColor.BrandYellowArgb, slockArgbHex(SlockColor.BrandYellow))
+        // Source Yellow is raft-ui's `--primary-400` (#FFD440). 0.6.0 re-derives the legacy
+        // `--color-brutal-yellow-400` from a rounded oklch that lands one step off (#FFD441),
+        // so the brand literal is checked against the primary token.
+        assertEquals(SlockColor.BrandYellowArgb, slockArgbHex(SlockColor.Primary))
     }
 
 }

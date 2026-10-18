@@ -8,8 +8,9 @@ import kotlin.test.assertEquals
 class ThreadMessageMenuLayoutTest {
     @Test
     fun contentHeightIsExactBeforeFirstPlacement() {
+        // 8 rows x 44 + 2 group separators x 13 + reaction header (36 + 13) + 2 x 6 inset.
         assertEquals(
-            400f,
+            439f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "copy", "message", "message", "task", "task", "task"),
                 showReactionActions = true
@@ -19,15 +20,16 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun contentHeightTracksRowsGroupDividersAndOptionalReactionHeader() {
+        // 3 rows x 44 + 1 group separator x 13 + 2 x 6 inset.
         assertEquals(
-            141f,
+            157f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = false
             )
         )
         assertEquals(
-            179f,
+            206f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = true
