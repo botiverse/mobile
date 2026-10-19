@@ -12,11 +12,9 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
+import androidx.compose.ui.text.TextRange
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -53,14 +51,13 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 // Visual pages clear native focus when their window first gains focus, then post
                 // the same cleanup once more. Requesting editor focus while that initial window
                 // transition is still pending makes the harness dismiss its own suggestion panel.
-                scenario.awaitVisualInputHostReadyForEditorFocus(
-                    "interaction fixture composer"
-                ) { activity -> activity.window.decorView.findComposerEditText() != null }
-                scenario.onActivity { activity ->
-                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-                    assertTrue("composer should accept focus", editor.requestFocus())
-                    editor.setSelection(editor.text.length)
+                scenario.awaitVisualInputHostReadyForEditorFocus("interaction fixture composer") { activity ->
+                    activity.raftHasTextField()
                 }
+                scenario.focusComposerAtEnd()
+                // Suppressed-keyboard visual host: the focus-requested IME must not resize the
+                // page under the pixel oracles below or edit the composer behind the test's back.
+                scenario.hideSoftKeyboardAndAwaitHidden("interaction fixture composer")
                 waitUntil("interaction fixture composer should expose its seeded channel trigger") {
                     scenario.composerText() == "#"
                 }
@@ -77,6 +74,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                     scenario.composerHasFocus()
                 }
                 val editorFocusedAfterTap = scenario.composerHasFocus()
+                // A tap on a focused Compose text field asks for the soft keyboard again; keep the
+                // suppressed-keyboard host contract for the pixel oracles and the IME probe below.
+                scenario.hideSoftKeyboardAndAwaitHidden("interaction fixture composer after the editor tap")
                 val editorTapPanelUnderlayRatio =
                     waitForInteractionPanelUnderlayRatio(
                         scenario = scenario,
@@ -85,8 +85,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                     )
 
                 scenario.onActivity { activity ->
-                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-                    val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
+                    val inputConnection = requireNotNull(activity.raftFocusedInputConnection())
                     assertTrue("focused editor should accept another character", inputConnection.commitText("d", 1))
                 }
                 waitUntil("typing should continue to update the composer under the open suggestions") {
@@ -187,11 +186,11 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 }
                 scenario.awaitVisualInputHostReadyForEditorFocus(
                     "late '${case.trigger}' fixture composer"
-                ) { activity -> activity.window.decorView.findComposerEditText() != null }
+                ) { activity -> activity.raftHasTextField() }
+                scenario.focusComposerAtEnd()
+                scenario.hideSoftKeyboardAndAwaitHidden("late '${case.trigger}' fixture composer")
                 scenario.onActivity { activity ->
-                    val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-                    assertTrue("composer should accept focus", editor.requestFocus())
-                    val inputConnection = requireNotNull(editor.onCreateInputConnection(EditorInfo()))
+                    val inputConnection = requireNotNull(activity.raftFocusedInputConnection())
                     assertTrue("IME should commit '${case.trigger}'", inputConnection.commitText(case.trigger, 1))
                 }
 
@@ -208,9 +207,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                     "${case.candidateLabel} selection should close its popover",
                     device.wait(Until.gone(By.text(case.candidateLabel)), CandidateTapWaitMs)
                 )
-                scenario.onActivity { activity ->
-                    assertTrue("candidate selection should preserve composer focus", activity.window.decorView.findComposerEditText()?.hasFocus() == true)
-                }
+                assertTrue("candidate selection should preserve composer focus", scenario.composerHasFocus())
             }
         }
     }
@@ -638,37 +635,36 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         assertTrue("$label candidate bounds are empty or inverted: $bounds", bounds.left < bounds.right && bounds.top < bounds.bottom)
     }
 
-    private fun ActivityScenario<SlockCmpActivity>.composerText(): String? {
-        var value: String? = null
-        onActivity { activity -> value = activity.window.decorView.findComposerEditText()?.text?.toString() }
-        return value
+    /**
+     * Focuses the composer and puts the caret after its draft, as a user resuming typing would.
+     * CMP renders the composer as a Compose BasicTextField, so this goes through its semantics.
+     */
+    private fun ActivityScenario<SlockCmpActivity>.focusComposerAtEnd() {
+        val editor = requireNotNull(raftFirstTextField()) { "composer editor is not attached" }
+        assertTrue("composer should accept focus", raftRequestTextFieldFocus(editor.id))
+        // SetSelection reports false when the caret is already there, so assert the outcome.
+        raftSetTextFieldSelection(editor.id, editor.text.length, editor.text.length)
+        val end = TextRange(editor.text.length)
+        waitUntil("composer should be focused with its caret after the draft") {
+            raftFirstTextField()?.let { it.focused && it.selection == end } == true
+        }
+        raftAwaitTextInputSession("thread composer")
     }
 
-    private fun ActivityScenario<SlockCmpActivity>.composerHasFocus(): Boolean {
-        var focused = false
-        onActivity { activity -> focused = activity.window.decorView.findComposerEditText()?.hasFocus() == true }
-        return focused
-    }
+    private fun ActivityScenario<SlockCmpActivity>.composerText(): String? = raftFirstTextField()?.text
+
+    private fun ActivityScenario<SlockCmpActivity>.composerHasFocus(): Boolean = raftFirstTextField()?.focused == true
 
     private fun ActivityScenario<SlockCmpActivity>.composerEditTextBounds(): Rect {
-        var bounds: Rect? = null
-        onActivity { activity ->
-            val editor = requireNotNull(activity.window.decorView.findComposerEditText())
-            val location = IntArray(2)
-            editor.getLocationOnScreen(location)
-            bounds = Rect(location[0], location[1], location[0] + editor.width, location[1] + editor.height)
-        }
-        return requireNotNull(bounds)
-    }
-
-    private fun View.findComposerEditText(): EditText? {
-        if (this is EditText) return this
-        if (this is ViewGroup) {
-            for (index in 0 until childCount) {
-                getChildAt(index).findComposerEditText()?.let { return it }
-            }
-        }
-        return null
+        val windowBounds = requireNotNull(raftFirstTextField()) { "composer editor is not attached" }.boundsInWindow
+        val windowOrigin = IntArray(2)
+        onActivity { activity -> activity.window.decorView.getLocationOnScreen(windowOrigin) }
+        return Rect(
+            windowOrigin[0] + windowBounds.left.toInt(),
+            windowOrigin[1] + windowBounds.top.toInt(),
+            windowOrigin[0] + windowBounds.right.toInt(),
+            windowOrigin[1] + windowBounds.bottom.toInt(),
+        )
     }
 
     private fun waitUntil(

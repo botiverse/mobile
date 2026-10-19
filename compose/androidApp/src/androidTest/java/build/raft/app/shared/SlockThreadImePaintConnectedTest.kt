@@ -9,15 +9,11 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.KeyEvent
-import android.view.View
-import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.inputmethod.BaseInputConnection
-import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
+import androidx.compose.ui.text.TextRange
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -56,32 +52,28 @@ class SlockThreadImePaintConnectedTest {
 
         ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             dismissAndroidCompatibilityDialog()
-            waitUntil(RenderTimeoutMs, "initial editor") {
-                scenario.currentComposerEditText() != null
-            }
+            waitUntil(RenderTimeoutMs, "initial editor") { scenario.raftFirstTextField() != null }
 
-            lateinit var retiredEditor: EditText
-            scenario.onActivity { activity ->
-                retiredEditor = requireNotNull(activity.window.decorView.findAttachedComposerEditText())
-            }
+            // CMP: the composer is a Compose BasicTextField. Its identity is the semantics node
+            // id of that text field, which survives recomposition and changes only if the editor
+            // is re-created - the counterpart of the Kuikly-era EditText instance.
+            val retiredEditorId = requireNotNull(scenario.raftFirstTextField()).id
             // Drive focus through the same bounded wait as the rest of the suite:
             // a present-but-not-yet-focusable editor (window focus still settling on
-            // a slow CI emulator) makes the one-shot requestFocus() flake.
+            // a slow CI emulator) makes a one-shot focus request flake.
             waitUntil(RenderTimeoutMs, "retired editor focused") {
-                scenario.onActivity { retiredEditor.requestFocus() }
-                retiredEditor.hasFocus()
+                scenario.raftRequestTextFieldFocus(retiredEditorId)
+                scenario.raftFirstTextField()?.let { it.id == retiredEditorId && it.focused } == true
             }
+            scenario.raftAwaitTextInputSession("retired editor")
             scenario.onActivity { activity ->
-                val inputMethodManager =
-                    activity.getSystemService(InputMethodManager::class.java)
-                inputMethodManager.showSoftInput(retiredEditor, InputMethodManager.SHOW_IMPLICIT)
                 if (android.os.Build.VERSION.SDK_INT >= 30) {
                     activity.window.insetsController?.show(WindowInsets.Type.ime())
                 }
-                val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
+                val connection = requireNotNull(activity.raftFocusedInputConnection())
                 assertTrue("initial IME commit should succeed", connection.commitText("sent", 1))
             }
-            scenario.waitForRetiredEditorImeSetup(retiredEditor)
+            scenario.waitForRetiredEditorImeSetup(retiredEditorId)
 
             val imeHiddenDuringReplacement = AtomicBoolean(false)
             scenario.onActivity { activity ->
@@ -115,17 +107,17 @@ class SlockThreadImePaintConnectedTest {
             } catch (failure: AssertionError) {
                 throw AssertionError(
                     "${failure.message}; " +
-                        scenario.composerRetirementDiagnostics(nonce, retiredEditor),
+                        scenario.composerRetirementDiagnostics(nonce, retiredEditorId),
                     failure,
                 )
             }
             // task #465 (artin ruling: keep the current product contract — send
-            // retires the logical editor session but REUSES the same native
-            // EditText; there is no replacement view). Assert the retained editor
-            // is cleared (session advanced in place) rather than a new instance.
+            // retires the logical editor session but REUSES the same editor; there
+            // is no replacement editor). Assert the retained editor is cleared
+            // (session advanced in place) rather than a new instance.
             // finishComposingBeforeStateRead drains any in-flight IME composition
             // before the send reads state, so no real stale-session write can queue
-            // past send — the contract to verify is "same view, cleared, next real
+            // past send — the contract to verify is "same editor, cleared, next real
             // composition accepted".
             val editorRetained = AtomicBoolean(false)
             val draftClearedAfterSend = AtomicBoolean(false)
@@ -133,22 +125,16 @@ class SlockThreadImePaintConnectedTest {
             try {
                 var lastEdgeDiagnostic: String? = null
                 waitUntil(SendTimeoutMs, "same editor cleared after send") {
-                    var captured = false
-                    scenario.onActivity { activity ->
-                        val candidate = activity.window.decorView.findAttachedComposerEditText()
-                        if (candidate != null && candidate === retiredEditor && candidate.text.isEmpty()) {
-                            editorRetained.set(true)
-                            draftClearedAfterSend.set(true)
-                            imeVisibleAfterSend.set(
-                                activity.window.decorView.rootWindowInsets
-                                    ?.isVisible(WindowInsets.Type.ime()) == true
-                            )
-                            captured = true
-                        }
-                    }
-                    if (!captured) {
+                    val candidate = scenario.raftFirstTextField()
+                    val captured =
+                        candidate != null && candidate.id == retiredEditorId && candidate.text.isEmpty()
+                    if (captured) {
+                        editorRetained.set(true)
+                        draftClearedAfterSend.set(true)
+                        imeVisibleAfterSend.set(scenario.isImeVisible())
+                    } else {
                         val diagnostic =
-                            scenario.composerRetirementDiagnostics(nonce, retiredEditor)
+                            scenario.composerRetirementDiagnostics(nonce, retiredEditorId)
                         if (diagnostic != lastEdgeDiagnostic) {
                             lastEdgeDiagnostic = diagnostic
                             println("retainedEditorWait edge: $diagnostic")
@@ -159,44 +145,92 @@ class SlockThreadImePaintConnectedTest {
             } catch (failure: AssertionError) {
                 throw AssertionError(
                     "${failure.message}; " +
-                        scenario.composerRetirementDiagnostics(nonce, retiredEditor),
+                        scenario.composerRetirementDiagnostics(nonce, retiredEditorId),
                     failure,
                 )
             }
-            // A REAL first composition on the retained editor must still be
-            // accepted — same view, no focus/IME loss.
+            // The IME stayed up through Send; sample that before the composition probe below
+            // deliberately parks it.
+            val imeNeverHiddenThroughSend = !imeHiddenDuringReplacement.get()
+            // A REAL first composition on the retained editor must still be accepted, and its
+            // composing region must survive the composer's controlled-value round trip
+            // (onValueChange -> editor owner -> recomposition) - same editor, no focus loss.
+            //
+            // The test plays the IME through the focused view's InputConnection. A visible
+            // soft keyboard "repairs" composing regions it did not create (recent Gboard
+            // finishes them), which races the probe, so the keyboard is parked for the probe
+            // and shown again afterwards to prove the retained editor is still the IME target.
+            scenario.hideSoftKeyboardAndAwaitHidden("first-composition probe")
+            scenario.raftAwaitTextInputSession("retained editor")
             val firstCompositionAccepted = AtomicBoolean(false)
-            scenario.onActivity {
-                val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
+            scenario.onActivity { activity ->
+                val connection = requireNotNull(activity.raftFocusedInputConnection())
                 firstCompositionAccepted.set(connection.setComposingText("sent", 1))
             }
             assertTrue("first composition on retained editor must be accepted", firstCompositionAccepted.get())
             waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") {
                 ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1 &&
-                scenario.currentComposerEditText()?.let { editor ->
-                    editor === retiredEditor && editor.isAttachedToWindow &&
-                    editor.text.toString() == "sent" &&
-                        BaseInputConnection.getComposingSpanStart(editor.text) == 0 &&
-                        BaseInputConnection.getComposingSpanEnd(editor.text) == 4 &&
-                        editor.selectionStart == 4 && editor.selectionEnd == 4 &&
-                        editor.hasFocus() && scenario.isImeVisible()
-                } == true
+                    scenario.raftFirstTextField()?.let { editor ->
+                        editor.id == retiredEditorId &&
+                            editor.text == "sent" &&
+                            editor.selection == TextRange(4, 4) &&
+                            editor.focused
+                    } == true
+            }
+            val firstSelectionPreserved = scenario.raftFirstTextField()?.selection == TextRange(4, 4)
+            // Compose does not expose the composing region through semantics. Prove it still
+            // spans [0, 4) after the composer's round trip the way an IME observes it: updating
+            // the composing text replaces exactly the composing region, so "sent" becomes
+            // "sends" only if that region is intact (a dropped composition would append, giving
+            // "sentsends").
+            scenario.onActivity { activity ->
+                val connection = requireNotNull(activity.raftFocusedInputConnection())
+                assertTrue(
+                    "updating the open first composition must be accepted",
+                    connection.setComposingText("sends", 1),
+                )
+            }
+            waitUntil(ImeTransitionTimeoutMs, "composition update to reach the retained editor") {
+                scenario.raftFirstTextField()?.text != "sent"
+            }
+            val recomposed = scenario.raftFirstTextField()
+            assertEquals(
+                "the first composition must still be open over [0, 4) after the composer round " +
+                    "trip; ${scenario.composerRetirementDiagnostics(nonce, retiredEditorId)}",
+                "sends" to TextRange(5, 5),
+                recomposed?.text to recomposed?.selection,
+            )
+            // Then bring the keyboard back: the same, still-focused editor must take it.
+            scenario.onActivity { activity -> activity.window.insetsController?.show(WindowInsets.Type.ime()) }
+            try {
+                waitUntil(ImeTransitionTimeoutMs, "retained editor focused with the IME back") {
+                    scenario.raftFirstTextField()?.let { editor ->
+                        editor.id == retiredEditorId &&
+                            editor.text == "sends" &&
+                            editor.focused && scenario.isImeVisible()
+                    } == true
+                }
+            } catch (failure: AssertionError) {
+                throw AssertionError(
+                    "${failure.message}; " +
+                        scenario.composerRetirementDiagnostics(nonce, retiredEditorId),
+                    failure,
+                )
             }
             val sentRequestCount = ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)
             assertEquals("session retirement send must issue exactly one request", 1, sentRequestCount)
-            val firstSelectionPreserved =
-                retiredEditor.selectionStart == 4 && retiredEditor.selectionEnd == 4
+            val retainedEditor = requireNotNull(scenario.raftFirstTextField())
             val receipt =
                 "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS " +
                     "editorRetained=${editorRetained.get()} " +
-                    "retainedFocused=${retiredEditor.hasFocus()} " +
+                    "retainedFocused=${retainedEditor.id == retiredEditorId && retainedEditor.focused} " +
                     "draftClearedAfterSend=${draftClearedAfterSend.get()} " +
                     "firstComposition=${firstCompositionAccepted.get()} " +
                     "firstSelection=$firstSelectionPreserved " +
                     "requestCount=$sentRequestCount " +
                     "imeSetupFailureDiagnostics=$imeSetupFailureDiagnosticsVerified " +
                     "imeVisibleAfterSend=${imeVisibleAfterSend.get()} " +
-                    "imeNeverHiddenDuringSample=${!imeHiddenDuringReplacement.get()}"
+                    "imeNeverHiddenDuringSample=$imeNeverHiddenThroughSend"
             instrumentation.sendStatus(
                 0,
                 Bundle().apply { putString("composerSessionRetirement", receipt) },
@@ -295,7 +329,7 @@ class SlockThreadImePaintConnectedTest {
             (1L..16L).map(::threadNewerAutoMessageLabel) +
                 (0 until SendCycles).map { cycle -> "IME-SEND-$cycle" }
         return labels.mapNotNull { label ->
-            root.findAccessibilityNodeInfosByText(label)
+            root.raftFindNodesByText(label)
                 .mapNotNull { node ->
                     val bounds = Rect()
                     node.getBoundsInScreen(bounds)
@@ -485,10 +519,10 @@ class SlockThreadImePaintConnectedTest {
     }
 
     private fun ActivityScenario<SlockCmpActivity>.waitForRetiredEditorImeSetup(
-        retiredEditor: EditText,
+        retiredEditorId: Int,
     ) {
         waitForComposerImeSetup(ImeTransitionTimeoutMs) {
-            composerImeSetupSnapshot(retiredEditor)
+            composerImeSetupSnapshot(retiredEditorId)
         }
     }
 
@@ -567,42 +601,21 @@ class SlockThreadImePaintConnectedTest {
     }
 
     private fun ActivityScenario<SlockCmpActivity>.composerImeSetupSnapshot(
-        retiredEditor: EditText,
+        retiredEditorId: Int,
     ): ComposerImeSetupSnapshot {
-        var snapshot = ComposerImeSetupSnapshot.missingEditor()
-        onActivity { activity ->
-            val decorView = activity.window.decorView
-            val attachedEditor = decorView.findAttachedComposerEditText()
-            val treeEditor = decorView.findComposerEditText()
-            val sameInstance = attachedEditor === retiredEditor
-            val focused = attachedEditor?.hasFocus() == true
-            val text = attachedEditor?.text?.toString()
-            val imeVisible =
-                if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    decorView.rootWindowInsets
-                        ?.isVisible(WindowInsets.Type.ime()) == true
-                } else {
-                    activity.getSystemService(InputMethodManager::class.java).isAcceptingText
-                }
-            snapshot =
-                ComposerImeSetupSnapshot(
-                    currentIdentity = attachedEditor?.let { System.identityHashCode(it) },
-                    sameInstance = sameInstance,
-                    focused = focused,
-                    text = text,
-                    imeVisible = imeVisible,
-                    treeIdentity = treeEditor?.let { System.identityHashCode(it) },
-                    treeSameAsRetired = treeEditor === retiredEditor,
-                    treeAttached = treeEditor?.isAttachedToWindow == true,
-                )
-        }
-        return snapshot
-    }
-
-    private fun ActivityScenario<SlockCmpActivity>.currentComposerEditText(): EditText? {
-        var editor: EditText? = null
-        onActivity { activity -> editor = activity.window.decorView.findAttachedComposerEditText() }
-        return editor
+        val editors = raftTextFields()
+        val current = editors.firstOrNull()
+        val retained = editors.firstOrNull { it.id == retiredEditorId }
+        return ComposerImeSetupSnapshot(
+            currentIdentity = current?.id,
+            sameInstance = current != null && current.id == retiredEditorId,
+            focused = current?.focused == true,
+            text = current?.text,
+            imeVisible = isImeVisible(),
+            treeIdentity = retained?.id,
+            treeSameAsRetired = retained != null,
+            treeAttached = retained != null,
+        )
     }
 
     private fun ActivityScenario<SlockCmpActivity>.isImeVisible(): Boolean {
@@ -620,58 +633,28 @@ class SlockThreadImePaintConnectedTest {
 
     private fun ActivityScenario<SlockCmpActivity>.composerRetirementDiagnostics(
         nonce: String,
-        retiredEditor: EditText,
+        retiredEditorId: Int,
     ): String {
-        var attachedCurrentSummary = "none"
-        var treeCurrentSummary = "none"
-        var imeVisible = false
-        onActivity { activity ->
-            val decorView = activity.window.decorView
-            attachedCurrentSummary =
-                decorView.findAttachedComposerEditText()
-                    ?.composerEditorDiagnostics(retiredEditor)
-                    ?: "none"
-            treeCurrentSummary =
-                decorView.findComposerEditText()
-                    ?.composerEditorDiagnostics(retiredEditor)
-                    ?: "none"
-            imeVisible =
-                if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
-                } else {
-                    activity.getSystemService(InputMethodManager::class.java).isAcceptingText
-                }
-        }
+        val editors = raftTextFields()
+        val currentSummary =
+            editors.firstOrNull()?.composerEditorDiagnostics(retiredEditorId) ?: "none"
+        val retainedSummary =
+            editors.firstOrNull { it.id == retiredEditorId }?.composerEditorDiagnostics(retiredEditorId) ?: "none"
+        val imeVisible = isImeVisible()
         val sendActionSummary =
             sendActionNode()?.let { node ->
                 "enabled=${node.isEnabled} clickable=${node.isClickable} " +
                     "description=${node.contentDescription}"
             } ?: "none"
         return "requestCount=${ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)} " +
-            "retiredIdentity=${System.identityHashCode(retiredEditor)} " +
-            "retiredAttached=${retiredEditor.isAttachedToWindow} " +
-            "retiredFocused=${retiredEditor.hasFocus()} retiredText=${retiredEditor.text} " +
-            "attachedCurrent=[$attachedCurrentSummary] treeCurrent=[$treeCurrentSummary] " +
+            "retiredIdentity=$retiredEditorId editorCount=${editors.size} " +
+            "current=[$currentSummary] retained=[$retainedSummary] " +
             "imeVisible=$imeVisible sendAction=[$sendActionSummary]"
     }
 
-    private fun EditText.composerEditorDiagnostics(retiredEditor: EditText): String =
-        "identity=${System.identityHashCode(this)} " +
-            "sameAsRetired=${this === retiredEditor} " +
-            "attached=$isAttachedToWindow focused=${hasFocus()} text=$text"
-
-    private fun View.findAttachedComposerEditText(): EditText? =
-        findComposerEditText(requireAttached = true)
-
-    private fun View.findComposerEditText(requireAttached: Boolean = false): EditText? {
-        if (this is EditText && (!requireAttached || isAttachedToWindow)) return this
-        if (this is ViewGroup) {
-            repeat(childCount) { index ->
-                getChildAt(index).findComposerEditText(requireAttached)?.let { return it }
-            }
-        }
-        return null
-    }
+    private fun RaftTextFieldSnapshot.composerEditorDiagnostics(retiredEditorId: Int): String =
+        "identity=$id sameAsRetired=${id == retiredEditorId} focused=$focused " +
+            "text=$text selection=$selection"
 
     private data class VisibleNode(val bounds: Rect)
 

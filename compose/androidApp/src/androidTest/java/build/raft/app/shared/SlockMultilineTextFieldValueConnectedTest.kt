@@ -59,6 +59,9 @@ class SlockMultilineTextFieldValueConnectedTest {
             ) { _ -> true }
             editor.performSemanticsAction(SemanticsActions.RequestFocus)
             composeRule.waitForIdle()
+            // The test plays the IME below; keep the real (focus-requested) keyboard out of it.
+            scenario.hideSoftKeyboardAndAwaitHidden("attachment-comment fixture editor")
+            scenario.raftAwaitTextInputSession("attachment-comment fixture editor")
 
             // Composition: setComposingText replaces the in-flight composition each time, so the
             // final text proves the composing region was retained across recompositions.

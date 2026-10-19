@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application>
+        <!--
+            androidx.tracing.perfetto merges an androidx.startup InitializationProvider into the
+            test APK, but its classes ship in the tested app APK only. Any component started in the
+            test package's own process (ActivityScenario's InstrumentationActivityInvoker
+            EmptyActivity on close) then crashes with ClassNotFoundException, and after a few runs
+            the "keeps stopping" dialog steals window focus from the next connected test.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="remove" />
         <activity
             android:name="build.raft.app.shared.AndroidAttachmentPublicDownloadsExternalReadProbeActivity"
             android:excludeFromRecents="true"

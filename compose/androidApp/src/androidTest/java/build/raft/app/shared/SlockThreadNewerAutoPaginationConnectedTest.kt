@@ -339,9 +339,9 @@ class SlockThreadNewerAutoPaginationConnectedTest {
     private fun retryRevealState(instrumentation: Instrumentation): RetryRevealState {
         val root = instrumentation.uiAutomation.rootInActiveWindow
             ?: return RetryRevealState(retryBounds = null, viewportBounds = null, backToBottomBounds = emptyList())
-        val retryNode = root.findAccessibilityNodeInfosByText(RetryLabel).firstOrNull()
+        val retryNode = root.raftFindNodesByText(RetryLabel).firstOrNull()
         val backToBottomBounds =
-            root.findAccessibilityNodeInfosByText(BackToBottomLabel)
+            root.raftFindNodesByText(BackToBottomLabel)
                 .filter { node -> node.isVisibleToUser }
                 .map { node -> Rect().also(node::getBoundsInScreen) }
                 .filter { bounds -> bounds.width() > 0 && bounds.height() > 0 }
@@ -487,7 +487,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
     private fun visibleFixtureMarker(instrumentation: Instrumentation, seq: Long): VisibleMarker? {
         val label = threadNewerAutoMessageLabel(seq)
         val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
-        return root.findAccessibilityNodeInfosByText(label)
+        return root.raftFindNodesByText(label)
             .mapNotNull { node ->
                 val bounds = Rect()
                 node.getBoundsInScreen(bounds)
@@ -508,7 +508,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         waitUntil(AccessibilityTimeoutMs, "accessibility text '$text'") {
             node =
                 instrumentation.uiAutomation.rootInActiveWindow
-                    ?.findAccessibilityNodeInfosByText(text)
+                    ?.raftFindNodesByText(text)
                     ?.firstOrNull()
             node != null
         }
@@ -629,7 +629,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
 
     private fun hasAccessibilityText(instrumentation: Instrumentation, text: String): Boolean =
         instrumentation.uiAutomation.rootInActiveWindow
-            ?.findAccessibilityNodeInfosByText(text)
+            ?.raftFindNodesByText(text)
             ?.isNotEmpty() == true
 
     private fun dismissAndroidCompatibilityDialog(instrumentation: Instrumentation) {
