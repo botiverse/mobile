@@ -22,17 +22,6 @@ THREAD_PATHS=(
   compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 )
-OHOS_PATHS=(
-  .github/workflows/test.yml
-  compose/build.ohos.gradle.kts
-  compose/ohosBridge
-  compose/ohosApp/hvigor
-  compose/ohosApp/entry/src/main/cpp
-  compose/ohosApp/entry/src/main/ets/entryability
-  compose/ohosApp/scripts
-  compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt
-  compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt
-)
 
 repo="$TMP_ROOT/repo"
 git init -q "$repo"
@@ -41,11 +30,9 @@ git -C "$repo" config user.email ci-fixture@example.invalid
 mkdir -p \
   "$repo/compose/shared/src/commonMain/kotlin/build/raft/app" \
   "$repo/compose/shared/src/visualFixtures/kotlin/build/raft/app" \
-  "$repo/compose/ohosBridge" \
   "$repo/docs"
 printf 'thread base\n' > "$repo/${THREAD_PATHS[0]}"
 printf 'fixture base\n' > "$repo/${THREAD_PATHS[4]}"
-printf 'ohos base\n' > "$repo/compose/ohosBridge/bridge.txt"
 git -C "$repo" add .
 git -C "$repo" commit -qm base
 base="$(git -C "$repo" rev-parse HEAD)"
@@ -64,11 +51,6 @@ printf 'fixture changed\n' >> "$repo/${THREAD_PATHS[4]}"
 git -C "$repo" add "${THREAD_PATHS[4]}"
 git -C "$repo" commit -qm fixture-changed
 fixture_changed="$(git -C "$repo" rev-parse HEAD)"
-
-printf 'ohos changed\n' >> "$repo/compose/ohosBridge/bridge.txt"
-git -C "$repo" add compose/ohosBridge/bridge.txt
-git -C "$repo" commit -qm ohos-changed
-ohos_changed="$(git -C "$repo" rev-parse HEAD)"
 
 fixture_helper="$repo/scripts/ci/git-diff-path-state.sh"
 mkdir -p "$(dirname "$fixture_helper")"
@@ -106,11 +88,7 @@ assert_error_rc() {
 assert_rc thread-unchanged 0 "$base" "$unrelated" "${THREAD_PATHS[@]}"
 assert_rc thread-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
 assert_rc fixture-changed 1 "$unrelated" "$fixture_changed" "${THREAD_PATHS[@]}"
-assert_error_rc thread-diff-error definitely-not-a-commit "$ohos_changed" "${THREAD_PATHS[@]}"
-
-assert_rc ohos-unchanged 0 "$base" "$unrelated" "${OHOS_PATHS[@]}"
-assert_rc ohos-changed 1 "$thread_changed" "$ohos_changed" "${OHOS_PATHS[@]}"
-assert_error_rc ohos-diff-error definitely-not-a-commit "$ohos_changed" "${OHOS_PATHS[@]}"
+assert_error_rc thread-diff-error definitely-not-a-commit "$fixture_changed" "${THREAD_PATHS[@]}"
 
 capture_outside_rc() {
   local base_ref="$1"
@@ -192,24 +170,6 @@ def find_step(workflow, name)
   end
   fail_contract("expected one #{name.inspect} step, found #{matches.length}") unless matches.length == 1
   matches.first.fetch("run")
-end
-
-def validate_git_safe_action_wiring(workflow, job_name, expected_scope)
-  job = workflow.fetch("jobs").fetch(job_name)
-  fail_contract("#{job_name} is no longer a container job") unless job.key?("container")
-  steps = job.fetch("steps")
-  checkout_indexes = steps.each_index.select { |index| steps[index]["uses"] == "actions/checkout@v5" }
-  fail_contract("expected one #{job_name} checkout, found #{checkout_indexes.length}") unless checkout_indexes.length == 1
-  action_indexes = steps.each_index.select do |index|
-    steps[index]["uses"] == "./.github/actions/git-safe-workspace"
-  end
-  fail_contract("expected one #{job_name} git-safe action, found #{action_indexes.length}") unless action_indexes.length == 1
-  fail_contract("#{job_name} git-safe action is not immediately after checkout") unless
-    action_indexes.first == checkout_indexes.first + 1
-
-  action_step = steps[action_indexes.first]
-  scope = action_step.fetch("with", {}).fetch("scope", "workspace")
-  fail_contract("#{job_name} git-safe scope expected #{expected_scope}, got #{scope}") unless scope == expected_scope
 end
 
 def validate_kuikly_manifest_job(workflow)
@@ -375,30 +335,12 @@ thread_paths = %w[
   compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 ]
-ohos_paths = %w[
-  .github/workflows/test.yml
-  compose/build.ohos.gradle.kts
-  compose/ohosBridge
-  compose/ohosApp/hvigor
-  compose/ohosApp/entry/src/main/cpp
-  compose/ohosApp/entry/src/main/ets/entryability
-  compose/ohosApp/scripts
-  compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt
-  compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt
-]
-
 thread = find_step(workflow, "Select Thread newer-pagination gate")
-ohos = find_step(workflow, "Detect OHOS native-bridge changes")
 validate_kuikly_manifest_job(workflow)
-validate_git_safe_action_wiring(workflow, "ohos", "workspace")
-validate_git_safe_action_wiring(workflow, "ohos-host", "all")
 validate_consumer(thread, "run_gate", thread_paths)
 validate_thread_non_pr(thread)
 assert_thread_event_runs(thread, root, "push")
 assert_thread_event_runs(thread, root, "workflow_dispatch")
-validate_consumer(ohos, "required", ohos_paths)
-fail_contract("OHOS diff status is no longer observable in Hosted logs") unless
-  ohos.include?('echo "OHOS native-bridge path diff rc: $diff_rc"')
 
 expect_failure("git-safe-default-wildcard") do
   mutated = Marshal.load(Marshal.dump(safe_workspace_action))
@@ -424,29 +366,6 @@ expect_failure("kuikly-manifest-source-prebuild-restored") do
   }
   validate_kuikly_manifest_job(mutated)
 end
-expect_failure("ohos-git-safe-action-missing") do
-  mutated = Marshal.load(Marshal.dump(workflow))
-  mutated.fetch("jobs").fetch("ohos").fetch("steps").reject! do |step|
-    step["uses"] == "./.github/actions/git-safe-workspace"
-  end
-  validate_git_safe_action_wiring(mutated, "ohos", "workspace")
-end
-expect_failure("ohos-git-safe-action-not-immediate") do
-  mutated = Marshal.load(Marshal.dump(workflow))
-  steps = mutated.fetch("jobs").fetch("ohos").fetch("steps")
-  action_index = steps.index { |step| step["uses"] == "./.github/actions/git-safe-workspace" }
-  steps[action_index], steps[action_index + 1] = steps[action_index + 1], steps[action_index]
-  validate_git_safe_action_wiring(mutated, "ohos", "workspace")
-end
-expect_failure("ohos-git-safe-scope-widened") do
-  mutated = Marshal.load(Marshal.dump(workflow))
-  action_step = mutated.fetch("jobs").fetch("ohos").fetch("steps").find do |step|
-    step["uses"] == "./.github/actions/git-safe-workspace"
-  end
-  action_step["with"] = { "scope" => "all" }
-  validate_git_safe_action_wiring(mutated, "ohos", "workspace")
-end
-
 non_pr_branch = <<~'SH'.strip
   if [ "$EVENT_NAME" != "pull_request" ]; then
     run_gate=true
@@ -481,16 +400,6 @@ end
 expect_failure("thread-error-skipped") do
   validate_consumer(mutate_error_arm(thread, "run_gate"), "run_gate", thread_paths)
 end
-expect_failure("ohos-unchanged-runs") do
-  validate_consumer(replace_once(ohos, "0) required=false ;;", "0) required=true ;;"), "required", ohos_paths)
-end
-expect_failure("ohos-changed-skipped") do
-  validate_consumer(replace_once(ohos, "1) required=true ;;", "1) required=false ;;"), "required", ohos_paths)
-end
-expect_failure("ohos-error-skipped") do
-  validate_consumer(mutate_error_arm(ohos, "required"), "required", ohos_paths)
-end
-
 puts "git diff consumer workflow contract: PASS"
 RUBY
 

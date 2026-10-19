@@ -8,7 +8,7 @@ The picker/editor path is deliberately a two-stage protocol:
   the native host to produce one new JPEG temporary file.
 
 This checker only verifies the structural faces of that protocol.  It does not
-claim that an iOS/OHOS compiler, a camera, or a physical device was exercised.
+claim that an iOS compiler, a camera, or a physical device was exercised.
 Run ``--self-test`` to exercise mutation arms against small source fixtures;
 without the flag the checker reads the current repository and fails closed when
 any required source or contract face is absent.
@@ -31,7 +31,6 @@ PATHS = {
     "uploaded_preview": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerUploadedImagePreview.kt",
     "android": "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt",
     "ios": "compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m",
-    "ohos": "compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets",
 }
 
 ERROR_CODE = "attachment_image_compression_failed"
@@ -94,44 +93,6 @@ def _require_video_set_covers(
         raise Violation(
             f"{label}: missing shared video extensions: {', '.join(missing)}"
         )
-
-
-def _ohos_video_regex_extensions(
-    region: str,
-    target: str,
-    label: str,
-) -> set[str]:
-    """Extract alternatives from an OHOS ``/\\.(a|b)$/`` guard."""
-
-    match = re.search(
-        rf"/\\\.\((?P<body>[^)]+)\)\$/\.test\(\s*{re.escape(target)}\s*\)",
-        region,
-    )
-    if match is None:
-        raise Violation(f"{label}: video-extension regex for {target} is missing")
-    extensions = {
-        token.strip().lower()
-        for token in match.group("body").split("|")
-        if token.strip()
-    }
-    if not extensions:
-        raise Violation(f"{label}: video-extension regex for {target} is empty")
-    return extensions
-
-
-def _ohos_video_array_extensions(region: str, label: str) -> set[str]:
-    """Extract quoted extensions from an OHOS ``[...].includes(extension)`` guard."""
-
-    match = re.search(
-        r"\[(?P<body>[^\]]+)\]\.includes\(\s*extension\s*\)",
-        region,
-    )
-    if match is None:
-        raise Violation(f"{label}: video-extension array guard is missing")
-    extensions = _quoted_tokens(match.group("body"))
-    if not extensions:
-        raise Violation(f"{label}: video-extension array guard is empty")
-    return extensions
 
 
 def _objc_video_set_extensions(region: str, label: str) -> set[str]:
@@ -733,69 +694,6 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
                 "iOS picker image/video classifier: video guard must precede image acceptance"
             )
 
-    ohos = _source(sources, "ohos")
-    ohos_fn = _region(
-        ohos,
-        "private isOhosImageAttachment(",
-        "private async cacheCompressedPickedThreadImage(",
-        "OHOS image/video classifier",
-    )
-    _require_all(
-        ohos_fn,
-        ("startsWith('video/')", "startsWith('image/')", "\\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)"),
-        "OHOS image/video classifier",
-    )
-    _ordered(
-        ohos_fn,
-        ("startsWith('video/')", "startsWith('image/')"),
-        "OHOS video MIME priority",
-    )
-    ohos_picker_video_extensions = _ohos_video_regex_extensions(
-        ohos_fn,
-        "lowerUri",
-        "OHOS picker image/video classifier",
-    )
-    _require_video_set_covers(
-        ohos_picker_video_extensions,
-        shared_video_extensions,
-        "OHOS picker video-extension contract",
-    )
-
-    # The lower-level compression admission receives the resolved source path,
-    # which may disagree with the picker display name.  It must apply the same
-    # video-suffix guard before opening the source file/ImageKit decoder.
-    ohos_input = _region(
-        ohos,
-        "private async isThreadImageCompressionInput(",
-        "private threadImageCompressionOutputName(",
-        "OHOS source-path image/video classifier",
-    )
-    _require_all(
-        ohos_input,
-        (
-            "sourcePath",
-            "normalizedSourcePath",
-            "test(normalizedSourcePath)",
-            "fs.stat(sourcePath)",
-        ),
-        "OHOS source-path image/video classifier",
-    )
-    source_guard = ohos_input.find("test(normalizedSourcePath)")
-    stat_position = ohos_input.find("fs.stat(sourcePath)")
-    if source_guard < 0 or stat_position < 0 or source_guard > stat_position:
-        raise Violation(
-            "OHOS source-path image/video classifier: source extension guard must precede source stat/decode"
-        )
-    ohos_source_video_extensions = _ohos_video_regex_extensions(
-        ohos_input,
-        "normalizedSourcePath",
-        "OHOS source-path image/video classifier",
-    )
-    _require_video_set_covers(
-        ohos_source_video_extensions,
-        shared_video_extensions,
-        "OHOS source-path video-extension contract",
-    )
 
 
 def _check_android_native(sources: Mapping[str, str]) -> None:
@@ -893,61 +791,6 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
         _require(source, "removeItemAtURL:self.outputURL", "iOS native compression cleanup implementation")
 
 
-def _check_ohos_native(sources: Mapping[str, str]) -> None:
-    source = _source(sources, "ohos")
-    _require_all(
-        source,
-        (
-            "static readonly COMPRESS_THREAD_IMAGE = \"compressThreadImage\"",
-            "static readonly CANCEL_COMPRESS_THREAD_IMAGE = \"cancelCompressThreadImage\"",
-            "case KRBridgeModule.COMPRESS_THREAD_IMAGE",
-            "case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE",
-            "private async compressThreadImage(",
-            "private cancelCompressThreadImage(",
-            SOURCE_MARKER,
-            ERROR_CODE,
-            "image/jpeg",
-            "UUID",
-            "await fs.unlink",
-        ),
-        "OHOS native compression bridge",
-    )
-    method = _region(source, "private async compressThreadImage(", "private cancelCompressThreadImage(", "OHOS native compression")
-    _require_all(
-        method,
-        (
-            '["requestId"]',
-            '["fileRef"]',
-            '["fileName"]',
-            '["mimeType"]',
-        ),
-        "OHOS native compression",
-    )
-    # The production bridge keeps ImageKit work in a separate helper so the
-    # request dispatcher remains small. Inspect that helper when the encode
-    # markers are not in the dispatcher itself (the fixture keeps both forms
-    # valid for mutation testing).
-    encode_source = method
-    if "packToFile" not in encode_source:
-        _require(source, "cacheCompressedPickedThreadImage", "OHOS native compression dispatch")
-        encoder_end = (
-            "private async applyOhosImageOrientation("
-            if "private async applyOhosImageOrientation(" in source
-            else "private cancelCompressThreadImage("
-        )
-        encode_source = _region(
-            source,
-            "private async cacheCompressedPickedThreadImage(",
-            encoder_end,
-            "OHOS native compression encoder",
-        )
-    _require_all(
-        encode_source,
-        ("packToFile", "format: 'image/jpeg'", "await fs.unlink"),
-        "OHOS native compression encoder",
-    )
-
-
 def check_contract(sources: Mapping[str, str]) -> None:
     """Run every gate in a deterministic order."""
 
@@ -959,7 +802,6 @@ def check_contract(sources: Mapping[str, str]) -> None:
     _check_video_priority(sources)
     _check_android_native(sources)
     _check_ios_native(sources)
-    _check_ohos_native(sources)
 
 
 def load_repo_sources(root: Path) -> dict[str, str]:

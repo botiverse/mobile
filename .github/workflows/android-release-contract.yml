@@ -21,8 +21,6 @@ on:
       - "scripts/ci/kuikly_release_manifest_gate.py"
       - "scripts/ci/verify_kuikly_release_manifest.sh"
       - "compose/gradle/kuikly-release-closure.json"
-      - "scripts/check_ohos_hands_dependency.py"
-      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -52,8 +50,6 @@ on:
       - "scripts/ci/kuikly_release_manifest_gate.py"
       - "scripts/ci/verify_kuikly_release_manifest.sh"
       - "compose/gradle/kuikly-release-closure.json"
-      - "scripts/check_ohos_hands_dependency.py"
-      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -91,6 +87,3 @@ jobs:
 
       - name: Validate Hands identifier migration
         run: scripts/test_hands_identifier_migration.sh
-
-      - name: Validate OHOS Hands dependency admission
-        run: python3 scripts/test_check_ohos_hands_dependency.py

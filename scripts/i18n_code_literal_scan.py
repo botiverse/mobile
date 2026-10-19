@@ -29,9 +29,7 @@ DEFAULT_ROOTS = (
     Path("compose/shared/src/iosMain/kotlin"),
     Path("compose/shared/src/jsMain/kotlin"),
     Path("compose/shared/src/nativeMain/kotlin"),
-    Path("compose/shared/src/ohosArm64Main/kotlin"),
     Path("compose/androidApp/src/main/java"),
-    Path("compose/ohosApp/entry/src/main/ets"),
 )
 DEFAULT_ALLOWLIST = Path("scripts/i18n_code_literal_allowlist.json")
 DEFAULT_MR_BASE = Path("compose/shared/src/commonMain/resources/MR/base/strings.xml")
