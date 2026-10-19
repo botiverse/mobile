@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.ui.status-dot.states",
+  "image": "visual-testing-results/react/components.ui.status-dot.states.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.ui.status-dot.states']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 92
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 92
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-19T21:40:21.693Z"
+}

@@ -1,0 +1,21 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.auth.register.inputs",
+  "image": "components.auth.register.inputs.png",
+  "pageName": "compose_auth_register_inputs",
+  "pageData": {
+    "registerEmail": "new@slock.ai",
+    "registerPassword": "correct horse battery staple",
+    "pageName": "compose_auth_register_inputs",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

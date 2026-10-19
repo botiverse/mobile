@@ -1,0 +1,19 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.ui.selection-popover.states",
+  "image": "components.ui.selection-popover.states.png",
+  "pageName": "compose_ui_selection_popover_visual",
+  "pageData": {
+    "pageName": "compose_ui_selection_popover_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

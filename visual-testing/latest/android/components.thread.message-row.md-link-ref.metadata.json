@@ -7,20 +7,20 @@
               "stringDescLocale": null,
               "route": {"pageName":"compose_thread_message_row_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.message-row.md-link-ref.png",
-              "viewport": { "width": 1170, "height": 2532, "density": 1 },
+              "viewport": { "width": 1170, "height": 669, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
                 "contract": "component-bounds",
-                "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 223 }
               },
               "capture": {
                 "method": "app-window-root-draw-manual-crop-density-resize",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 748,
-                  "dominantRatio": 0.69313705
+                  "uniqueColors": 1725,
+                  "dominantRatio": 0.82048726
                 },
                 "readyTokenObserved": false,
                 "readyTokenRequired": false,
@@ -33,20 +33,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 45,
-    "laidOutViews": 44,
+    "totalViews": 46,
+    "laidOutViews": 45,
     "visibleContentLeafViews": 2,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4578,
+    "processId": 4391,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "ff0545b68aa7feeaa233654dc2267215",
-                "bootId": "5e99597e-c01b-4493-b3e6-714293f76774",
-                "capturedAtEpochMs": 1792301665406,
-                "capturedAtMonotonicNs": 364335469841
+                "generation": "9ef04415e181214ace49f897ee146b20",
+                "bootId": "7efaeee4-1aa1-4130-aff6-58f23d78e4c6",
+                "capturedAtEpochMs": 1792447156489,
+                "capturedAtMonotonicNs": 387133978774
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1792301665406"
+              "capturedAt": "1792447156489"
             }
