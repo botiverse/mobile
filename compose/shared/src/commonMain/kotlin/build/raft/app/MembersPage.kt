@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
@@ -4946,6 +4947,7 @@ internal fun MembersListContent(
             modifier = Modifier
                 .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
                 .fillMaxSize()
+                .raftPullToRefresh(pullToRefreshState, enabled = showPullToRefreshItem)
                 .padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
         ) {

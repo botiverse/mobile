@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -21443,7 +21444,11 @@ internal fun SharedHomeSavedPanel(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .background(SlockColor.SurfaceWhite),
+                        .background(SlockColor.SurfaceWhite)
+                        .raftPullToRefresh(
+                            pullToRefreshState,
+                            enabled = slockPlatformSupportsKuiklyPullToRefreshItem()
+                        ),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 if (slockPlatformSupportsKuiklyPullToRefreshItem()) {

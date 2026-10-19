@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalInputField
@@ -2316,6 +2317,7 @@ private fun SlockStructuralHomeShellContent(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
+                                    .raftPullToRefresh(pullToRefreshState, enabled = pullToRefreshEnabled)
                                     .touchListener { type, _ ->
                                         if (type == TouchType.Move) {
                                             homeUserScrollGeneration.value += 1
