@@ -1,13 +1,16 @@
 package build.raft.app.data
 
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -91,26 +94,39 @@ class SlockStoreThreadingTest {
     }
 
     @Test
-    fun storeScopeRunsOneTaskAtATime() = runTest {
-        // A plain read-modify-write: lost updates are only impossible if tasks never overlap.
-        var counter = 0
-        var overlapping = 0
-        var maxOverlap = 0
-        val scope = SlockStoreThreading.newScope()
-        val jobs =
-            List(500) {
-                scope.launch {
-                    overlapping += 1
-                    maxOverlap = maxOf(maxOverlap, overlapping)
-                    val read = counter
-                    repeat(100) { counter = read }
-                    counter = read + 1
-                    overlapping -= 1
-                }
-            }
-        jobs.joinAll()
+    fun storeDispatcherAdmitsOneTaskAtATime() {
+        // Deterministic: a manual delegate stands in for the thread pool, so the test observes how
+        // many workers the store dispatcher hands to it instead of racing real threads.
+        val pool = ManualDispatcher()
+        val scope = CoroutineScope(slockStoreConfinedDispatcher(pool))
+        val order = mutableListOf<String>()
+        var workersQueuedWhileFirstTaskRan = -1
 
-        assertEquals(500, counter)
-        assertEquals(1, maxOverlap)
+        scope.launch {
+            order += "first confined=${SlockStoreThreading.isOnStoreDispatcher}"
+            scope.launch { order += "third" }
+            workersQueuedWhileFirstTaskRan = pool.queued
+        }
+        scope.launch { order += "second" }
+
+        assertEquals(1, pool.queued, "two pending tasks, but only one worker may reach the pool")
+        pool.runNext()
+
+        assertEquals(0, workersQueuedWhileFirstTaskRan, "no second worker while a store task is running")
+        assertEquals(listOf("first confined=true", "second", "third"), order)
+        assertEquals(0, pool.queued)
+        assertFalse(SlockStoreThreading.isOnStoreDispatcher, "confinement ends with the worker")
+    }
+
+    private class ManualDispatcher : CoroutineDispatcher() {
+        private val tasks = ArrayDeque<Runnable>()
+
+        val queued: Int get() = tasks.size
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks.addLast(block)
+        }
+
+        fun runNext() = tasks.removeFirst().run()
     }
 }
