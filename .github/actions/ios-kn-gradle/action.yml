@@ -1,0 +1,29 @@
+name: iOS Kotlin/Native Gradle settings
+description: >
+  Shared Gradle settings for every hosted-macOS job that builds the shared iOS
+  framework. Writes the user-home gradle.properties (which overrides
+  compose/gradle.properties) so the framework sync step and the Gradle runs
+  Xcode's script phases start all use the same heap. Run it after
+  gradle/actions/setup-gradle and before the first ./gradlew call.
+inputs:
+  heap:
+    description: Gradle daemon -Xmx for the Kotlin/Native compile + link.
+    required: false
+    default: 6g
+runs:
+  using: composite
+  steps:
+    - name: Configure Gradle for the Kotlin/Native framework link
+      shell: bash
+      env:
+        KN_HEAP: ${{ inputs.heap }}
+      run: |
+        # The debug framework link exhausts the 4g heap from
+        # compose/gradle.properties on the 7 GB hosted macOS runner: GC thrash,
+        # then java.lang.OutOfMemoryError (visual-testing diagnostic run
+        # 39190227083, ~46 min; earlier ios-simulator-app run 33805615758).
+        # With 6g the same link finishes in ~12 min (run 39190258424).
+        props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+        mkdir -p "$(dirname "$props")"
+        echo "org.gradle.jvmargs=-Xmx${KN_HEAP} -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> "$props"
+        echo "== $props"; cat "$props"

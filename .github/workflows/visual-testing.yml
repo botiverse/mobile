@@ -495,6 +495,9 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
+
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
@@ -503,11 +506,43 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Boot job-owned simulator
-        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
+      # Compile the simulator target on its own first, as test.yml's iOS job does.
+      # When the framework sync is the job's first Kotlin/Native compile, its
+      # input snapshot is taken before the K/N distribution under ~/.konan is
+      # complete ("Input property 'libraries' ... has been added") and the link
+      # sees a different konanCacheKind, so Xcode's "Copy kmmresource MR bundle"
+      # phase (:shared:copyFrameworkResourcesToApp) recompiled and relinked the
+      # whole framework again (~15-20 min; info log of diagnostic run 39212776556).
+      - name: Compile shared iOS simulator target
+        working-directory: compose
+        run: |
+          ./gradlew :shared:compileKotlinIosSimulatorArm64 \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
 
-      # Built AFTER simulator boot, pinned to its udid: an unmatched named
-      # destination makes xcodebuild silently fall back to a device build.
+      # Sync the K/N framework as its own step (same as test.yml's iOS job) so
+      # Gradle output is visible and cached, instead of running nested and
+      # silent inside xcodebuild's [CP-User] Build shared phase — that nested
+      # build is where single-shard runs sat until the job timeout.
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
+      # Concrete destination (any available iPhone UDID, not booted): avoids
+      # "Unable to find a device" while CoreSimulator boots N shards, and — unlike
+      # "generic/platform=iOS Simulator" — keeps Xcode's MR-bundle phase from
+      # recompiling the framework (see scripts/ci/ios_build_sim_udid.sh).
+      # Simulators are booted after the build.
       - name: Build iOS app for simulator
         working-directory: compose/iosApp
         run: |
@@ -517,15 +552,18 @@ jobs:
           # phase behind the Pods compile spew, hiding the real cause of build
           # breaks — capture the whole log and grep the errors out on failure.
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          udid=$(bash "$GITHUB_WORKSPACE/scripts/ci/ios_build_sim_udid.sh")
+          echo "build destination UDID=$udid"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${UDID}" \
+            -destination "platform=iOS Simulator,id=$udid" \
             -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             build > "$log" 2>&1
           status=$?
           tail -200 "$log"
@@ -536,6 +574,9 @@ jobs:
             cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
           fi
           exit "$status"
+
+      - name: Boot job-owned simulator
+        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
 
       - name: Generate case manifest
         run: |

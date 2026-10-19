@@ -947,6 +947,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
       - name: Compile shared iOS targets and unit tests
         working-directory: compose
         run: |
