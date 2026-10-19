@@ -6,6 +6,7 @@ set -euo pipefail
 
 source_root="compose/shared/src/commonMain/kotlin"
 core_source_root="compose/core/src/commonMain/kotlin"
+ui_cmp_source_root="compose/ui-cmp/src/commonMain/kotlin"
 compat_file="build/raft/app/base/CommonMapCompat.kt"
 
 usage() {
@@ -180,6 +181,7 @@ case "${1:-}" in
     status=0
     check_source_root "$source_root" || status=1
     check_source_root "$core_source_root" || status=1
+    check_source_root "$ui_cmp_source_root" || status=1
     exit "$status"
     ;;
   *)

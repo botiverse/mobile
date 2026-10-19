@@ -28,8 +28,14 @@ fun interface HostBridgeTransport {
  * [HostCapabilities] for CMP pages that reuses the native implementations behind the Kuikly bridge.
  *
  * Every capability is encoded exactly as the Kuikly `BridgeModule` encodes it (method names, param
- * keys and order, Kuikly-compatible JSON text via [toSlockJsonString]), so the native side cannot
- * tell a CMP page from a Kuikly page. Keep the two in step until `BridgeModule` is deleted.
+ * keys and order, Kuikly-compatible JSON text via [toSlockJsonString]), so the bridge module sees
+ * the same calls from a CMP page as from a Kuikly page. Keep the two in step until `BridgeModule`
+ * is deleted.
+ *
+ * Known Android gap: native methods that cast their host to `SlockKuiklyActivity` (realtime
+ * reports, attachment upload, social auth, the settings OAuth link) answer "unavailable" or drop
+ * the call when the host is `SlockCmpActivity`. iOS falls back to the top view controller instead.
+ * A page that needs one of these must first move it behind a host interface both activities share.
  */
 class BridgeWireHostCapabilities(
     private val transport: HostBridgeTransport,

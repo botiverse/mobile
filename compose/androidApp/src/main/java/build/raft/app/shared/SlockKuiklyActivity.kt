@@ -1031,7 +1031,16 @@ open class SlockKuiklyActivity :
     private fun redirectToCmpHostIfRouted(): Boolean {
         val routedPageName = pageName
         if (this is SlockAppShellActivity || !SlockCmpRouter.rendersOnCmp(routedPageName)) return false
-        startActivity(SlockCmpActivity.intent(this, routedPageName, resolvedPageData(intent).text))
+        val forwardedFlags =
+            intent.flags and (
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                    Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                )
+        startActivity(
+            SlockCmpActivity.intent(this, routedPageName, resolvedPageData(intent).text)
+                .addFlags(forwardedFlags)
+        )
         finish()
         return true
     }

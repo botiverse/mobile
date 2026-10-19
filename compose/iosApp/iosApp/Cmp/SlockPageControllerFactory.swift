@@ -31,6 +31,10 @@ import shared
             navigator: navigator
         )
         navigator.controller = controller
+        // Match KuiklyRenderViewController: pages draw their own top bar, and every
+        // pushed page can be swiped back from anywhere (the FD push swizzle reads both).
+        controller.fd_prefersNavigationBarHidden = true
+        controller.fd_interactivePopAllowsFullScreen = true
         return controller
     }
 
