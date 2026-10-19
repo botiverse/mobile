@@ -47,6 +47,7 @@ internal object SlockFlingFrameProbe {
     private val location = IntArray(2)
 
     private var reportedDisabled = false
+    private var lastPreDrawNanos = 0L
 
     fun onPreDraw(root: View) {
         if (!SlockPerformanceTraceRing.isEnabled()) {
@@ -58,8 +59,13 @@ internal object SlockFlingFrameProbe {
             }
             return
         }
+        SlockMainThreadStallWatchdog.ensureStarted()
         if (framesThisProcess >= MaxFramesPerProcess) return
         val now = SystemClock.elapsedRealtimeNanos()
+        // Width of the blind spot before this frame: a stall shows up as a large gap here even
+        // though no frame inside it could be sampled.
+        val gapSinceLastFrameMs = if (lastPreDrawNanos == 0L) -1L else (now - lastPreDrawNanos) / 1_000_000
+        lastPreDrawNanos = now
         if (tracked.isEmpty() || now - lastScanNanos > RescanIntervalNanos) {
             rescan(root)
             lastScanNanos = now
@@ -72,7 +78,7 @@ internal object SlockFlingFrameProbe {
                 iterator.remove()
                 continue
             }
-            sample(entry, list, now)
+            sample(entry, list, now, gapSinceLastFrameMs)
             if (framesThisProcess >= MaxFramesPerProcess) return
         }
     }
@@ -110,7 +116,7 @@ internal object SlockFlingFrameProbe {
         }
     }
 
-    private fun sample(entry: Tracked, list: RecyclerView, now: Long) {
+    private fun sample(entry: Tracked, list: RecyclerView, now: Long, gapSinceLastFrameMs: Long) {
         val content = list.getChildAt(0) ?: return
         val translation = content.translationY
         val offset = -content.top
@@ -145,7 +151,7 @@ internal object SlockFlingFrameProbe {
             tag = Tag,
             message =
                 "thread_fling_frame t=${now / 1_000_000} fling=${entry.flingId} " +
-                    "frame=${entry.framesThisFling} list=${System.identityHashCode(list).toString(16)} " +
+                    "frame=${entry.framesThisFling} gapSinceLastFrameMs=$gapSinceLastFrameMs list=${System.identityHashCode(list).toString(16)} " +
                     "listClass=${list.javaClass.simpleName} contentClass=${content.javaClass.simpleName} " +
                     "screenX=${location[0]} screenY=${location[1]} w=${list.width} h=$viewportHeight " +
                     "state=${list.scrollState} offset=$offset max=$maxOffset overscroll=$translation " +
