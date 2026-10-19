@@ -90,6 +90,9 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      - name: Validate OHOS shared font cold-start ordering
+        run: node compose/ohosApp/scripts/test_font_cold_start_source_contract.mjs
+
       - name: Validate attachment save failure mapping across native bridges
         run: python3 scripts/ci/test_attachment_save_mapping_contract.py
 
