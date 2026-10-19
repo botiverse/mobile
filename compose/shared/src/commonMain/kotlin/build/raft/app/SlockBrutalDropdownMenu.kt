@@ -333,11 +333,17 @@ private fun SlockRaftMenuSeparator() {
     )
 }
 
+/**
+ * One dropdown row with the shared press feedback. Also used by [SlockBaseMenuOverlay]'s
+ * raft popup so every raft menu row shares the BrandSoft press wash. [emphasized] (raft
+ * only) sets the label bold, the Select / status-menu treatment of the selected row.
+ */
 @Composable
-private fun SlockBrutalDropdownMenuRow(
+internal fun SlockBrutalDropdownMenuRow(
     item: SlockBrutalDropdownMenuItem,
     rowHeight: Dp,
     iconSize: Dp = SlockRaftMetrics.MenuIconSize,
+    emphasized: Boolean = false,
     onClick: () -> Unit
 ) {
     // Press feedback mirrors web MenuItem `hover:bg-palette-yellow/30` (artin,
@@ -360,6 +366,7 @@ private fun SlockBrutalDropdownMenuRow(
             item = item,
             rowHeight = rowHeight,
             iconSize = iconSize,
+            emphasized = emphasized,
             pressed = pressed,
             gestureModifier = Modifier.slockGesturePointerInput(gestureOwner, item.enabled) { owner ->
                 var gesture: SlockGestureSession<SlockBrutalDropdownRowGestureCallbacks>? = null
@@ -485,6 +492,7 @@ private fun SlockRaftDropdownMenuRow(
     item: SlockBrutalDropdownMenuItem,
     rowHeight: Dp,
     iconSize: Dp,
+    emphasized: Boolean,
     pressed: Boolean,
     gestureModifier: Modifier
 ) {
@@ -519,7 +527,7 @@ private fun SlockRaftDropdownMenuRow(
         Text(
             text = item.label,
             // callout 14/20 medium = the shared content size.
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Medium),
+            style = SlockType.Body.withSlockFontWeight(if (emphasized) FontWeight.Bold else FontWeight.Medium),
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -112,7 +112,7 @@ internal fun SlockBaseMenuOverlay(
             selectedId = selectedId,
             onDismiss = onDismiss,
             onSelect = onSelect,
-            width = width ?: slockRaftMenuWidth(slockBaseMenuWidth(items, uppercaseLabels = false, minWidth = minWidth)),
+            width = slockRaftBaseMenuWidth(items, fixedWidth = width, minWidth = minWidth),
             horizontalOffset = horizontalOffset,
             // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
             // own gap (the 4dp status menu) is kept.
@@ -227,6 +227,8 @@ internal fun SlockTaskStatusMenuOverlay(
         uppercaseLabels = false,
         // react's status menu renders at exactly its 140px min-width (the longest
         // label "In Progress" is narrower); the char estimate overshoots to 172dp.
+        // Raft sets the selected label bold, so there 140dp is only the minimum
+        // (see slockRaftBaseMenuWidth).
         width = 140.dp,
         rowHeight = 36.dp,
         labelFontSize = 14.sp,
@@ -247,7 +249,8 @@ internal fun SlockTaskStatusMenuOverlay(
  * radius, popover layer, seam ring, float shadow) with a `p-1.5` inset; 36dp control-radius
  * rows (`px-2.5`, `gap-2.5`) in callout medium ink with a 16dp muted-ink icon; the selected
  * row is bold with a trailing 16dp check (no selected fill, no uppercase); `dividerBefore`
- * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. The brutal colour / label tuning
+ * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. Rows are the shared
+ * [SlockBrutalDropdownMenuRow] (BrandSoft press wash). The brutal colour / label tuning
  * parameters of the overlay do not apply here.
  */
 @Composable
@@ -295,50 +298,49 @@ private fun SlockRaftBaseMenuOverlay(
                     SlockRaftSeparator(verticalSpacing = SlockRaftMetrics.MenuSeparatorInset)
                 }
                 val selected = item.id == selectedId
-                Button(
-                    onClick = { onSelect(item.id) },
-                    // Rows sit in the popup's 6dp side inset; separators bleed through it.
-                    modifier = Modifier
-                        .padding(horizontal = SlockRaftMetrics.PopupPadding)
-                        .fillMaxWidth()
-                        .height(SlockRaftMetrics.MenuRowHeight)
-                        .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap)
-                    ) {
-                        item.icon?.let {
-                            SlockLucideIcon(
-                                it,
-                                modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
-                                color = slockArgbHex(SlockColor.TextMuted)
-                            )
-                        }
-                        Text(
-                            text = item.label,
-                            style = SlockType.Body
-                                .copy(fontSize = 14.sp, lineHeight = 20.sp)
-                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (selected) {
-                            SlockLucideIcon(
-                                SlockLucideIconName.Check,
-                                modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
-                                color = SlockColor.TextBlackArgb,
-                                strokeWidth = 2f
-                            )
-                        }
-                    }
+                // Rows sit in the popup's 6dp side inset; separators bleed through it.
+                Box(modifier = Modifier.padding(horizontal = SlockRaftMetrics.PopupPadding).fillMaxWidth()) {
+                    SlockBrutalDropdownMenuRow(
+                        item =
+                            SlockBrutalDropdownMenuItem(
+                                id = item.id,
+                                label = item.label,
+                                icon = item.icon,
+                                trailingIcon = if (selected) SlockLucideIconName.Check else null
+                            ),
+                        rowHeight = SlockRaftMetrics.MenuRowHeight,
+                        emphasized = selected,
+                        onClick = { onSelect(item.id) }
+                    )
                 }
             }
         }
     }
+}
+
+/**
+ * Width of the raft [SlockBaseMenuOverlay] popup. Without a caller width it is the label
+ * estimate, never under `min-w-60`. A caller width (the 140dp status menu) is a minimum,
+ * like web's `min-w-[140px]`: the popup grows to fit the widest label set bold (the
+ * selected row) plus the row chrome and trailing check, up to the brutal max width.
+ */
+internal fun slockRaftBaseMenuWidth(items: List<SlockBaseMenuItem>, fixedWidth: Dp?, minWidth: Dp): Dp {
+    if (fixedWidth == null) return slockRaftMenuWidth(slockBaseMenuWidth(items, uppercaseLabels = false, minWidth = minWidth))
+    // Bold 14sp: ~8.5dp per Latin glyph, a full em for CJK and other wide glyphs.
+    val widestLabelWidth =
+        items.maxOfOrNull { item ->
+            item.label.fold(0f) { total, char -> total + if (char.code > 127) 14f else 8.5f }
+        } ?: 0f
+    val iconWidth =
+        if (items.any { it.icon != null }) (SlockRaftMetrics.MenuIconSize + SlockRaftMetrics.MenuItemGap).value else 0f
+    val chrome =
+        SlockRaftMetrics.PopupPadding.value * 2 +
+            SlockRaftMetrics.MenuItemPaddingHorizontal.value * 2 +
+            iconWidth +
+            // Trailing check of the selected row.
+            SlockRaftMetrics.MenuIconSize.value + SlockRaftMetrics.MenuItemGap.value
+    val maxWidth = maxOf(fixedWidth, SlockBaseMenuMaxWidth)
+    return kotlin.math.ceil(widestLabelWidth + chrome).dp.coerceIn(fixedWidth, maxWidth)
 }
 
 private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: Boolean, minWidth: Dp): Dp {
