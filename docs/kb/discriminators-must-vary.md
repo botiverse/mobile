@@ -89,22 +89,26 @@ Full treatment in `numeric-criteria-that-pass-while-the-feature-is-broken.md`.
 The most convincing form, because both numbers are real and correctly measured — they are just not
 about the same subject.
 
-Observed on this repo: a frame of **478 ms** recorded by `FrameMetrics` sat in the same diagnostic line
-as a tag `operation=thread_first_frame` applied by the app's own render layer. Read together they
-form a clean causal sentence: *the first-frame path took 478 ms.* But they come from two sources with
-different subjects:
+Observed on this repo: a frame of **478 ms** sat in the same diagnostic line as a tag
+`operation=thread_first_frame`. Read together they form a clean causal sentence: *the first-frame path
+took 478 ms.* Neither half supports that sentence on its own:
 
-- `FrameMetrics` describes frames of the thread that **owns the `ViewRootImpl`**. Its listener is
-  registered with its own `Handler`, so it fires on a **different thread** from the one it measures —
-  `SlockPerformanceDiagnostics.kt:327` installs it with
-  `window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))`, and the file contains
-  no `Looper.myLooper()` / thread assertion anywhere.
-- `operation=` is a label the application's render layer attaches. Which thread that label describes
-  depends on the renderer's execution mode.
+- the **478 ms** comes from JankStats (`SlockPerformanceDiagnostics.kt:51`,
+  `frameData.frameDurationUiNanos`), and by API definition that is time spent on the **UI thread** of
+  the window — so the duration is genuinely about the main thread;
+- **`operation=` is an `AtomicReference`** set by `updateOperation` (`:125`) and merely read at the
+  moment a jank frame is logged (`:79`). It reports *the last operation that was set*, not what the
+  measured interval was spent doing, and not which thread was doing it.
 
-Sharing a timestamp proves they share a **window**, not a **subject**. Whether these two actually
-refer to the same thread on this stack is **unresolved as of 2026-10-19**; the next probe prints both
-thread names so the question is answered rather than assumed.
+So the honest reading is: **the main thread had a 478 ms frame, and the operation label happened to be
+`thread_first_frame` when it was recorded.** Whether the main thread was doing that work itself or
+blocking on another thread is a separate question, unresolved as of 2026-10-19.
+
+(Note this correction: an earlier draft attributed the 478 ms to a `FrameMetrics` listener registered
+on its own `Handler` at `:327` and argued the callback thread is not the measured thread. That
+listener emits a *different* log line. `jank_frame` is JankStats, and its duration is UI-thread time.
+The general rule below survived the correction; the specific reasoning did not, which is exactly why
+examples need pinning to `file:line`.)
 
 **The tell is the same as form 4, pointed the other way.** Form 4 is *asking the wrong object*; this is
 *two right objects read as one*. It is invisible precisely because nothing is wrong with either
