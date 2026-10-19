@@ -758,7 +758,18 @@ internal fun ThreadMessageVisualScreenContent() {
         LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
         LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
-        Box {
+        Box(
+            modifier =
+                if (menuVariant.isNotBlank()) {
+                    // The web menu cases capture the whole bg-layer-panel viewport around the
+                    // portal, so the page behind the open menu is the panel, not the host cream.
+                    Modifier
+                        .size(ThreadMessageMenuVisualViewportWidth, ThreadMessageMenuVisualViewportHeight)
+                        .background(SlockColor.Panel)
+                } else {
+                    Modifier
+                }
+        ) {
             Column(
                 modifier =
                     Modifier
