@@ -81,10 +81,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import build.raft.app.compat.ui.nativeRef
 import androidx.compose.foundation.lazy.LazyColumn
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
-import build.raft.app.compat.ui.MakeKuiklyComposeNode
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -115,8 +113,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewRef
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
@@ -127,7 +123,6 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
-import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -141,6 +136,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -602,7 +599,6 @@ internal const val SlockFilePreviewRouteEphemeral = "ephemeral"
 private const val SlockFilePreviewLaunchContractVersion = 1
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
-private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
 private const val SlockScopedNavigationLogTag = "slock_scoped_navigation"
 
@@ -1836,7 +1832,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     val onComposerImageEditCaptureRef =
         remember(composerImageEditCaptureOwner) {
-            { ref: ViewRef<DeclarativeBaseView<*, *>> ->
+            { ref: RaftViewCaptureRef ->
                 composerImageEditCaptureSlot.value =
                     composerImageEditCaptureSlot.value.bind(
                         owner = composerImageEditCaptureOwner,
@@ -3467,7 +3463,7 @@ private fun SlockFilePreviewStandalonePageContent() {
 
     fun requestComposerImageEditSave() {
         if (composerImageEditSaving || composerImageFinalizing) return
-        val captureView = composerImageEditCaptureSlot.value.ref?.view
+        val captureView = composerImageEditCaptureSlot.value.ref
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
@@ -3478,25 +3474,27 @@ private fun SlockFilePreviewStandalonePageContent() {
             ) ?: return
         composerImageEditSaving = true
         val captureTerminal = atomic(false)
-        captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
+        // CMP: the editor subtree is recorded into a GraphicsLayer (Modifier.raftCaptureRef) and
+        // encoded to a cache PNG, replacing Kuikly `toImage(ImageType.FILE, 1)`. The capture runs
+        // NonCancellable so a produced file always reaches the gate check below for cleanup.
+        val onCaptured: (RaftViewCaptureResult) -> Unit = toImage@{ result ->
             if (!captureTerminal.compareAndSet(false, true)) return@toImage
-            val fileRef = result?.optString("data")?.trim().orEmpty()
-            // `toImage` has no cancellation handle. If the page went away while the renderer
-            // was producing its snapshot, retire the late file but never touch page state.
+            val fileRef = result.fileRef?.trim().orEmpty()
+            // The capture has no cancellation handle. If the page went away while the snapshot
+            // was being produced, retire the late file but never touch page state.
             if (!composerImageOperationGate.isCurrent(token)) {
                 fileRef.takeIf { it.isNotBlank() }?.let { ref ->
                     cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
                 return@toImage
             }
-            val code = result?.optInt("code", -1) ?: -1
-            if (code != 0 || fileRef.isBlank()) {
+            if (fileRef.isBlank()) {
                 fileRef.takeIf { it.isNotBlank() }?.let { ref ->
                     cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
                 composerImageOperationGate.complete(token)
                 composerImageEditSaving = false
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                bridge.toast(result.errorMessage.orEmpty().ifBlank { imageEditorExportFailed })
                 return@toImage
             }
             if (!trackEphemeralTemporaryFileRef(fileRef)) {
@@ -3615,6 +3613,17 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
             activeComposerImageOperationJob.value = operationJob
             operationJob.start()
+        }
+        coroutineScope.launch {
+            withContext(NonCancellable) {
+                val result =
+                    try {
+                        captureView.captureToPngFile()
+                    } catch (error: Throwable) {
+                        RaftViewCaptureResult(fileRef = null, errorMessage = error.message)
+                    }
+                onCaptured(result)
+            }
         }
     }
     DisposableEffect(launchPayloadTrace.sessionId, launchPayloadTrace.routeKind) {
@@ -4292,11 +4301,11 @@ internal data class SlockComposerImageEditCaptureOwner(
 
 internal data class SlockComposerImageEditCaptureSlot(
     val owner: SlockComposerImageEditCaptureOwner,
-    val ref: ViewRef<DeclarativeBaseView<*, *>>? = null,
+    val ref: RaftViewCaptureRef? = null,
 ) {
     fun bind(
         owner: SlockComposerImageEditCaptureOwner,
-        ref: ViewRef<DeclarativeBaseView<*, *>>,
+        ref: RaftViewCaptureRef,
     ): SlockComposerImageEditCaptureSlot =
         if (owner == this.owner) copy(ref = ref) else this
 }
@@ -4306,7 +4315,7 @@ internal fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     state: SlockComposerImageEditorState,
     saving: Boolean,
-    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
+    onCaptureRef: (RaftViewCaptureRef) -> Unit,
     onDone: () -> Unit,
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
@@ -4523,7 +4532,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             .height(captureSize.height.dp)
                             .clipToBounds()
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
-                            .nativeRef { ref -> onCaptureRef(ref) }
+                            .raftCaptureRef(onCaptureRef)
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == SlockComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
@@ -8329,29 +8338,18 @@ internal fun SlockFilePreviewKuiklyVideo(
     onFirstFrame: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MakeKuiklyComposeNode(
-        factory = { VideoView() },
-        modifier = modifier,
-        viewUpdate = { view ->
-            view.getViewAttr().apply {
-                src(source)
-                resizeModeToContain()
-                muted(false)
-                rate(1f)
-                playControl(playControl)
-                seekRequest?.let { seekToTimeMs(it) }
-            }
-            view.getViewEvent().apply {
-                playStateDidChanged { state, _ -> onPlayStateChanged(state) }
-                playTimeDidChanged { current, total -> onPlayTimeChanged(current, total) }
-                firstFrameDidDisplay { onFirstFrame() }
-            }
-        }
+    RaftVideoPlayer(
+        source = source,
+        playControl = playControl,
+        seekRequestId = seekRequest?.id,
+        seekTimeMs = seekRequest?.timeMs ?: 0,
+        muted = false,
+        rate = 1f,
+        onPlayStateChanged = onPlayStateChanged,
+        onPlayTimeChanged = onPlayTimeChanged,
+        onFirstFrame = onFirstFrame,
+        modifier = modifier
     )
-}
-
-private fun com.tencent.kuikly.core.views.VideoAttr.seekToTimeMs(request: SlockFilePreviewVideoSeekRequest) {
-    setProp(SlockFilePreviewVideoSeekProp, "${request.id}:${request.timeMs}")
 }
 
 internal data class SlockFilePreviewVideoStateTerms(
