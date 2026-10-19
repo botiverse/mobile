@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,9 +22,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,12 +77,17 @@ internal fun raftSelectTriggerLook(
     }
 
 /**
- * raft-ui 0.8.0 Select trigger: the field that opens a Select's list. 44dp, control
- * radius, 1.5dp `line-strong` edge on `layer-card`, 14dp before the text and 12dp after
- * the 16dp chevron (inside the edge), 8dp gap. The [value] is `text-subhead` semibold
- * `foreground`; with no value the [placeholder] ("Select a role") is medium
- * `foreground-hint`. Pressed lays `fill-pressed` over it; keyboard focus rings it;
+ * raft-ui 0.8.0 Select trigger: the field that opens a Select's list. At least 44dp,
+ * control radius, 1.5dp `line-strong` edge on `layer-card`, 14dp before the text and 12dp
+ * after the 16dp chevron (inside the edge), 8dp gap. The [value] is `text-subhead`
+ * semibold `foreground`; with no value the [placeholder] ("Select a role") is medium
+ * `foreground-hint`. Inside a [RaftField] the text takes the field type (16/24) so it
+ * lines up with the inputs. Pressed lays `fill-pressed` over it; keyboard focus rings it;
  * [invalid] turns the edge `danger-strong`; disabled greys it. [leadingIcon] is 16dp.
+ *
+ * Screen readers hear a drop-down list named by the field's label (or [label]) with the
+ * value, or the placeholder when empty, and, when [expanded] is given, whether it is
+ * expanded (the expand / collapse actions; [onCollapse] closes it).
  */
 @Composable
 fun RaftSelectTrigger(
@@ -85,6 +97,9 @@ fun RaftSelectTrigger(
     placeholder: String = "",
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     invalid: Boolean = LocalRaftFieldState.current.invalid,
+    label: String? = LocalRaftFieldState.current.label,
+    expanded: Boolean? = null,
+    onCollapse: (() -> Unit)? = null,
     leadingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
@@ -94,17 +109,29 @@ fun RaftSelectTrigger(
     val pressed = enabled && raftIsPressed(source)
     val focused = enabled && raftIsFocused(source)
     val shape = RoundedCornerShape(RaftRadius.Control)
-    val base = RaftTheme.typography.subhead
+    val field = LocalRaftFieldState.current
+    val base = if (field.inField) RaftTheme.typography.bodyLarge else RaftTheme.typography.subhead
+    val shown = value ?: placeholder
     Row(
         modifier
             .fillMaxWidth()
-            .height(44.dp)
+            // A minimum, so a large font scale grows the trigger instead of clipping its text.
+            .heightIn(min = 44.dp)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(look.fill, shape)
             .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
             .border(RaftStroke.Control, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
-            .padding(start = 14.dp + RaftStroke.Control, end = 12.dp + RaftStroke.Control),
+            .semantics {
+                if (label != null) contentDescription = if (shown.isEmpty()) label else "$label, $shown"
+                when (expanded) {
+                    true -> collapse { onCollapse?.invoke(); onCollapse != null }
+                    false -> expand { onClick(); true }
+                    null -> {}
+                }
+                if (invalid && enabled) error(field.error ?: RaftInvalidValueMessage)
+            }
+            .padding(start = 14.dp + RaftStroke.Control, end = 12.dp + RaftStroke.Control, top = 6.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -114,7 +141,7 @@ fun RaftSelectTrigger(
             }
         }
         RaftText(
-            value ?: placeholder,
+            shown,
             Modifier.weight(1f),
             style = base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
             color = look.ink,
@@ -127,9 +154,9 @@ fun RaftSelectTrigger(
 
 /**
  * raft-ui 0.8.0 Select: pick one value from a list. A [RaftSelectTrigger] that opens a
- * [RaftDropdownMenu] as wide as the trigger (at least 220dp) listing [options] by
+ * [RaftDropdownMenu] exactly as wide as the trigger (at least 220dp) listing [options] by
  * [optionLabel]; the current [value] is bold with a check, never a fill. Picking calls
- * [onValueChange] and closes the list.
+ * [onValueChange] and closes the list; from the keyboard, focus goes back to the trigger.
  */
 @Composable
 fun <T> RaftSelect(
@@ -141,24 +168,30 @@ fun <T> RaftSelect(
     placeholder: String = "",
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     invalid: Boolean = LocalRaftFieldState.current.invalid,
+    label: String? = LocalRaftFieldState.current.label,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerWidth by remember { mutableStateOf(0) }
     val density = LocalDensity.current
+    val trigger = remember { FocusRequester() }
     Box(modifier) {
         RaftSelectTrigger(
             value = value?.let(optionLabel),
             onClick = { expanded = true },
-            modifier = Modifier.onSizeChanged { triggerWidth = it.width },
+            modifier = Modifier.focusRequester(trigger).onSizeChanged { triggerWidth = it.width },
             placeholder = placeholder,
             enabled = enabled,
             invalid = invalid,
+            label = label,
+            expanded = expanded,
+            onCollapse = { expanded = false },
         )
         RaftDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            minWidth = maxOf(220.dp, with(density) { triggerWidth.toDp() }),
+            width = maxOf(220.dp, with(density) { triggerWidth.toDp() }),
             offset = 4.dp,
+            returnFocusTo = trigger,
         ) {
             options.forEach { option ->
                 RaftMenuItem(
@@ -222,7 +255,8 @@ internal fun raftPickerTriggerLook(
  * [hasValue] (the filter is applied) an `info-soft` fill with `foreground` text and no
  * ring or border. A 14dp chevron in `foreground-hint` ends it unless [showIndicator] is
  * false; [leadingIcon] is 14dp. Pressed lays `fill-pressed` over the fill; keyboard focus
- * rings it; [invalid] draws a `danger-strong` inset ring; disabled is `fill-muted`.
+ * rings it; [invalid] draws a `danger-strong` inset ring; disabled is `fill-muted`. It
+ * draws 32dp but takes touches 44dp tall ([raftTouchTarget]); keep 6dp free above and below.
  */
 @Composable
 fun RaftPickerTriggerButton(
@@ -244,13 +278,14 @@ fun RaftPickerTriggerButton(
     val shape = RoundedCornerShape(RaftRadius.Control)
     Row(
         modifier
-            .height(32.dp)
+            .heightIn(min = 32.dp)
+            .raftTouchTarget(enabled, source, onClick)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(look.fill, shape)
             .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
             .border(RaftStroke.Hairline, look.ring, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiThemeColors
@@ -62,7 +63,7 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  * - [icon]: a 20dp slot for who did it (an avatar) or a status pixel.
  * - [description]: more detail in the muted ink.
  * - [actionLabel] / [onAction]: one underlined bold text action ("View", "Undo"),
- *   never a button.
+ *   never a button; it takes touches 44dp round it.
  * - Title only: at least 44 x 112dp, the text centred.
  *
  * Neutral by rule: no intent tint and never yellow. The host (one toast at a time, the
@@ -81,7 +82,7 @@ fun RaftToast(
     val look = raftToastLook(surface, RaftTheme.colors)
     val typography = RaftTheme.typography
     val titleOnly = icon == null && description == null && actionLabel == null
-    CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
+    CompositionLocalProvider(LocalRaftContentColor provides look.ink, LocalRaftSurfaceColor provides look.fill) {
         Row(
             modifier
                 .widthIn(max = 384.dp)
@@ -107,9 +108,13 @@ fun RaftToast(
                 if (description != null) RaftText(description, style = typography.body, color = look.muted)
             }
             if (hasAction) {
+                val source = remember { MutableInteractionSource() }
                 RaftText(
                     actionLabel!!,
-                    Modifier.clickable(remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onAction!!),
+                    // The word draws at its size; touches 44dp round it count ([raftTouchTarget]).
+                    Modifier
+                        .raftTouchTarget(enabled = true, interactionSource = source, onClick = onAction!!)
+                        .clickable(source, indication = null, role = Role.Button, onClick = onAction),
                     style = typography.body.copy(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline),
                     color = look.ink,
                     maxLines = 1,

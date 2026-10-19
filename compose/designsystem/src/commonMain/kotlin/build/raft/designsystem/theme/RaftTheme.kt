@@ -2,6 +2,8 @@ package build.raft.designsystem.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -121,7 +123,7 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
 /**
  * Root of every Raft CMP surface. Resolves light/dark from [state] (and the OS setting
  * under [RaftAppearance.System]), loads the bundled fonts and provides colours,
- * typography, shapes and the content colour.
+ * typography, shapes, the content colour and the text selection colours (`brand-soft`).
  *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.
  */
@@ -144,6 +146,9 @@ fun RaftTheme(
         LocalRaftContentColor provides colors.foreground,
         LocalRaftSurfaceColor provides colors.layerCanvas,
         LocalRaftPulseClock provides rememberRaftPulseClock(),
+        // raft-web `::selection { background-color: var(--brand-soft) }`; the handles take
+        // the caret's ink.
+        LocalTextSelectionColors provides remember(colors) { TextSelectionColors(handleColor = colors.foreground, backgroundColor = colors.brandSoft) },
         content = content,
     )
 }

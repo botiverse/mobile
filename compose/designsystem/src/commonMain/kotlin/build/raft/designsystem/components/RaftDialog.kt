@@ -9,19 +9,25 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -35,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 
@@ -77,7 +84,7 @@ fun RaftDialogSurface(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted) {
+    CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
                 .widthIn(max = size.maxWidth)
@@ -133,8 +140,9 @@ fun RaftDialogSurface(
 }
 
 /**
- * raft-ui 0.8.0 Dialog: [RaftDialogSurface] centred over the scrim, 16dp from the window's
- * sides and never taller than the window less 32dp. It appears and goes without
+ * raft-ui 0.8.0 Dialog: [RaftDialogSurface] centred over the scrim, 16dp inside the
+ * window's safe area (system bars, cutout, and the keyboard while it is up, so a form's
+ * fields stay above it) and never taller than that area less 32dp. It appears and goes without
  * animation. Back, × and Cancel call [onDismissRequest]; so does a tap on the scrim
  * unless [dismissOnClickOutside] is false (pass false for a long form, so a stray tap
  * doesn't lose it). To confirm an action, use the same surface with a coloured confirm
@@ -156,6 +164,7 @@ fun RaftDialog(
     footer: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
+    val dismiss by rememberUpdatedState(onDismissRequest)
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
@@ -163,7 +172,9 @@ fun RaftDialog(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(dismissOnClickOutside) { detectTapGestures { if (dismissOnClickOutside) onDismissRequest() } }
+                .pointerInput(dismissOnClickOutside) { detectTapGestures { if (dismissOnClickOutside) dismiss() } }
+                // Clear of the system bars, the cutout and the keyboard, then 16dp.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(16.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -213,15 +224,16 @@ private fun RaftSheetSurfaceImpl(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground) {
+    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
                 .widthIn(max = 448.dp)
                 .fillMaxWidth()
                 .heightIn(min = 256.dp)
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
-                // `pb-[env(safe-area-inset-bottom)]`: the fill runs under the bar, the content clears it.
-                .then(if (clearNavigationBar) Modifier.navigationBarsPadding() else Modifier),
+                // `pb-[env(safe-area-inset-bottom)]`: the fill runs under the bar (and the
+                // keyboard), the content clears the home indicator and the keyboard.
+                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
@@ -256,7 +268,8 @@ private val RaftSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 
 /**
  * raft-ui 0.8.0 Drawer, bottom sheet: [RaftSheetSurface] at the bottom of the window over
- * the scrim, at most 82% of the window tall, clear of the navigation bar. It slides up
+ * the scrim, at most 82% of the window tall; its content clears the home indicator and
+ * the keyboard (the fill runs under them), and it never goes under the status bar. It slides up
  * from the bottom (240ms, `ease-slide`), the one overlay that moves; it closes without
  * the slide. Back and a tap on the scrim call [onDismissRequest]; keep a button in the
  * sheet too, never only the gesture. Swipe to dismiss and snap points are not ported.
@@ -270,6 +283,7 @@ fun RaftSheet(
     actions: (@Composable ColumnScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
+    val dismiss by rememberUpdatedState(onDismissRequest)
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
@@ -279,7 +293,9 @@ fun RaftSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { onDismissRequest() } },
+                .pointerInput(Unit) { detectTapGestures { dismiss() } }
+                // Never under the status bar or a side cutout; the bottom is the sheet's own.
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             contentAlignment = Alignment.BottomCenter,
         ) {
             RaftSheetSurfaceImpl(

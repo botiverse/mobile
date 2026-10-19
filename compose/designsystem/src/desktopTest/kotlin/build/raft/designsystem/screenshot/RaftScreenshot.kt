@@ -59,6 +59,8 @@ object RaftScreenshot {
         appearance: RaftAppearance,
         maxWidthDp: Int = 1200,
         maxHeightDp: Int = 2400,
+        // Frames rendered before the captured one: a popup lays itself out a frame late.
+        settleFrames: Int = 0,
         content: @Composable () -> Unit,
     ) {
         val framed: @Composable (Modifier) -> Unit = { modifier ->
@@ -88,6 +90,7 @@ object RaftScreenshot {
             ImageComposeScene(width = measured.width, height = measured.height, density = density) {
                 framed(Modifier)
             }.use { scene ->
+                repeat(settleFrames) { scene.render() }
                 val image = scene.render()
                 image.encodeToData(EncodedImageFormat.PNG)?.bytes ?: error("PNG encode failed for $name")
             }

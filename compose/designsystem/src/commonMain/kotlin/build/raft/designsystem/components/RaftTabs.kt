@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -19,15 +22,29 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -78,9 +95,10 @@ fun RaftTabs(
 /**
  * The tab strip of a panel (agent detail, conversation panel tabs; page hand-off §8):
  * [RaftTabs] on `layer-canvas` with 16 / 8dp padding and a 1dp `line-seam` under it,
- * 49dp tall with default tabs. With more tabs than room it scrolls sideways; the padding
- * scrolls with the tabs, so the selected sticker's die-cut edge and the focus ring are
- * never clipped.
+ * 49dp tall with default tabs. With more tabs than room it scrolls sideways: the
+ * selected tab scrolls itself into view, and an edge with more tabs past it fades out
+ * over 24dp. The padding scrolls with the tabs, so the selected sticker's die-cut edge
+ * and the focus ring are never clipped.
  */
 @Composable
 fun RaftTabStrip(
@@ -89,17 +107,61 @@ fun RaftTabStrip(
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
+    val scroll = rememberScrollState()
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
-        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            RaftTabs(
-                Modifier.padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
-                variant = variant,
-                content = content,
-            )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .raftEdgeFade(start = scroll.canScrollBackward, end = scroll.canScrollForward)
+                .horizontalScroll(scroll),
+        ) {
+            CompositionLocalProvider(LocalRaftTabsScrolls provides true) {
+                RaftTabs(
+                    Modifier.padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
+                    variant = variant,
+                    content = content,
+                )
+            }
         }
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
     }
 }
+
+/** How far a scrolling tab strip fades at an edge with more tabs past it. */
+private val RaftEdgeFadeWidth = 24.dp
+
+/** Fades the content out towards the [start] / [end] edge (CSS `mask-image` gradient). */
+private fun Modifier.raftEdgeFade(start: Boolean, end: Boolean): Modifier =
+    if (!start && !end) {
+        this
+    } else {
+        graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val w = RaftEdgeFadeWidth.toPx().coerceAtMost(size.width / 2f)
+                val rtl = layoutDirection == LayoutDirection.Rtl
+                val left = if (rtl) end else start
+                val right = if (rtl) start else end
+                if (left) {
+                    drawRect(
+                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = w),
+                        size = Size(w, size.height),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                if (right) {
+                    drawRect(
+                        Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - w, endX = size.width),
+                        topLeft = Offset(size.width - w, 0f),
+                        size = Size(w, size.height),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+            }
+    }
+
+/** Set by [RaftTabStrip]: its tabs bring themselves into view when selected. */
+private val LocalRaftTabsScrolls = staticCompositionLocalOf { false }
 
 /**
  * One tab of [RaftTabs]: a `text-callout` semibold `foreground-muted` label (Title Case,
@@ -111,6 +173,10 @@ fun RaftTabStrip(
  * - Underline variant: 44dp tall, no padding or fill. [selected] turns the label
  *   `foreground` and draws a 2dp `foreground` line along the tab's bottom.
  * - Keyboard focus draws the focus ring outside it. Disabled: `foreground-disabled`.
+ * - A default tab draws 32dp but takes touches 44dp tall ([raftTouchTarget]). Heights are
+ *   minimums: a large font scale grows the tab instead of clipping its label.
+ * - In a [RaftTabStrip], a tab scrolls itself into view (with room for its ring) when it
+ *   becomes selected.
  */
 @Composable
 fun RaftTab(
@@ -123,11 +189,32 @@ fun RaftTab(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
+    val variant = LocalRaftTabsVariant.current
     val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
-    when (LocalRaftTabsVariant.current) {
-        RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.then(select), icon = icon)
-        RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.then(select), icon)
+    val target = if (variant == RaftTabsVariant.Default) Modifier.raftTouchTarget(enabled, source, onClick) else Modifier
+    val reveal = if (LocalRaftTabsScrolls.current) Modifier.raftBringIntoViewWhen(selected) else Modifier
+    when (variant) {
+        RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.then(reveal).then(target).then(select), icon = icon)
+        RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.then(reveal).then(select), icon)
     }
+}
+
+/**
+ * Scrolls the element into view when [active] turns true (and on first composition if it
+ * is), with 8dp round it so a focus ring or die-cut edge outside it shows too.
+ */
+@Composable
+private fun Modifier.raftBringIntoViewWhen(active: Boolean): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    LaunchedEffect(active, size) {
+        if (active && size != IntSize.Zero) {
+            val room = with(density) { 8.dp.toPx() }
+            requester.bringIntoView(Rect(-room, -room, size.width + room, size.height + room))
+        }
+    }
+    return bringIntoViewRequester(requester).onSizeChanged { size = it }
 }
 
 @Composable
@@ -150,7 +237,7 @@ private fun RaftUnderlineTab(
     val line = colors.foreground
     Row(
         modifier
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .raftFocusRing(focused, 0.dp, colors)
             .drawWithContent {
                 drawContent()
@@ -194,9 +281,10 @@ internal fun RaftStickerItem(
     val typography = RaftTheme.typography
     Row(
         modifier
-            .height(32.dp)
+            // A minimum: a large font scale grows the item instead of clipping its label.
+            .heightIn(min = 32.dp)
             .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
-            .padding(horizontal = 12.dp + RaftStroke.Control),
+            .padding(horizontal = 12.dp + RaftStroke.Control, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -289,7 +377,10 @@ fun RaftToggleGroup(modifier: Modifier = Modifier, content: @Composable RowScope
     RaftTrack(modifier, content)
 }
 
-/** One button of a [RaftToggleGroup]; [pressed] is its on state. */
+/**
+ * One button of a [RaftToggleGroup]; [pressed] is its on state. A toggle button for
+ * accessibility (`Role.Button` with an on / off state, like `aria-pressed`), not a switch.
+ */
 @Composable
 fun RaftToggleGroupItem(
     text: String,
@@ -306,7 +397,7 @@ fun RaftToggleGroupItem(
         pressed,
         enabled,
         source,
-        modifier.toggleable(pressed, source, indication = null, enabled = enabled, role = Role.Switch, onValueChange = onPressedChange),
+        modifier.toggleable(pressed, source, indication = null, enabled = enabled, role = Role.Button, onValueChange = onPressedChange),
         icon = icon,
     )
 }

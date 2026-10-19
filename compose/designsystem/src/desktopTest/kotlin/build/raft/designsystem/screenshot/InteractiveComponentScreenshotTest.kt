@@ -6,11 +6,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
@@ -27,6 +38,7 @@ import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
+import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFormSection
@@ -95,9 +107,9 @@ import kotlin.test.Test
 class InteractiveComponentScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
 
-    private fun capture(name: String, content: @Composable () -> Unit) =
+    private fun capture(name: String, settleFrames: Int = 0, content: @Composable () -> Unit) =
         appearances.forEach { appearance ->
-            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, content = content)
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, settleFrames = settleFrames, content = content)
         }
 
     @Test
@@ -113,6 +125,8 @@ class InteractiveComponentScreenshotTest {
                     RaftTextField("cindy@", {}, invalid = true)
                     StateCell(focused = true) { RaftTextField("cindy@", {}, invalid = true) }
                     RaftTextField("cindy@slock.ai", {}, enabled = false)
+                    Caption("Read-only")
+                    RaftTextField("agt_7f3k29xq", {}, readOnly = true)
                 }
                 Column(Modifier.width(310.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Caption("InputGroup: prefix, focused (the whole group)")
@@ -315,6 +329,16 @@ class InteractiveComponentScreenshotTest {
                         RaftTab("Settings", selected = false, onClick = {})
                     }
                 }
+                Caption("Overflowing strip, 260dp: first tab selected and focused, the end fades")
+                Box(Modifier.width(260.dp)) {
+                    RaftTabStrip {
+                        StateCell(focused = true) { RaftTab("Profile", selected = true, onClick = {}) }
+                        RaftTab("Workspace", selected = false, onClick = {})
+                        RaftTab("Activity", selected = false, onClick = {})
+                        RaftTab("Settings", selected = false, onClick = {})
+                        RaftTab("Billing", selected = false, onClick = {})
+                    }
+                }
                 Caption("Underline: selected, rest, pressed, focused, disabled")
                 RaftTabs(variant = RaftTabsVariant.Underline) {
                     RaftTab("Messages", selected = true, onClick = {})
@@ -481,6 +505,77 @@ class InteractiveComponentScreenshotTest {
                             RaftRadioRow("Acme", selected = false, onClick = {})
                         }
                     }
+                }
+            }
+        }
+
+    /**
+     * A real [RaftDropdownMenu] and an open [RaftSelect] in their popups, in a window much
+     * wider than the menu: the popup hugs its rows (and the select's list its trigger)
+     * instead of taking the window's width.
+     */
+    @Test
+    fun menuPopup() =
+        capture("menu_popup", settleFrames = 2) {
+            // Opened by touch: no row focused, so the frame doesn't depend on the input mode.
+            CompositionLocalProvider(LocalInputModeManager provides TouchMode) {
+            Box(Modifier.size(720.dp, 330.dp)) {
+                Box {
+                    RaftPickerTriggerButton("Sort", {})
+                    RaftDropdownMenu(expanded = true, onDismissRequest = {}) {
+                        RaftMenuItem("Recent Activity", {}, checked = true)
+                        RaftMenuItem("Name", {})
+                        RaftMenuSeparator()
+                        RaftMenuItem("Mark All as Read", {}, shortcut = "⇧⌘A")
+                    }
+                }
+                Box(Modifier.align(Alignment.TopEnd).width(300.dp)) {
+                    RaftSelectOpen()
+                }
+            }
+            }
+        }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private object TouchMode : InputModeManager {
+        override val inputMode: InputMode = InputMode.Touch
+
+        override fun requestInputMode(inputMode: InputMode): Boolean = false
+    }
+
+    @Composable
+    private fun RaftSelectOpen() {
+        // RaftSelect opens on a tap; the fixture opens it straight away.
+        var value by remember { mutableStateOf<String?>("Codex") }
+        Box {
+            RaftSelectTrigger(value, {}, expanded = true)
+            RaftDropdownMenu(expanded = true, onDismissRequest = {}, width = 300.dp, offset = 4.dp) {
+                listOf("Claude Code", "Codex", "Gemini CLI").forEach { option ->
+                    RaftMenuItem(option, { value = option }, checked = option == value)
+                }
+            }
+        }
+    }
+
+    /** 200% font scale: fields, triggers, tabs and choice rows grow instead of clipping. */
+    @Test
+    fun largeFont() =
+        capture("large_font") {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                Column(Modifier.width(420.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RaftField(label = "Name") { RaftTextField("Wug", {}) }
+                    RaftField(label = "Runtime") { RaftSelectTrigger("Codex", {}) }
+                    RaftTabs {
+                        RaftTab("Profile", selected = true, onClick = {})
+                        RaftTab("Tasks", selected = false, onClick = {})
+                    }
+                    RaftTabs(variant = RaftTabsVariant.Underline) {
+                        RaftTab("Messages", selected = true, onClick = {})
+                        RaftTab("Files", selected = false, onClick = {})
+                    }
+                    RaftPickerTriggerButton("Status", {})
+                    RaftCheckboxRow("Make private", checked = true, onCheckedChange = {})
                 }
             }
         }

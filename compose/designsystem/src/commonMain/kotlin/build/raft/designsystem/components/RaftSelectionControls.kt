@@ -28,10 +28,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -236,8 +240,9 @@ private fun RaftRadioBox(selected: Boolean, enabled: Boolean, focused: Boolean, 
  * dark) with the knob slid 20dp to the end (220ms, `ease-slide`). Disabled is grey in
  * both positions. Keyboard focus rings the track.
  *
- * In a settings list put it in the row's trailing slot ([RaftListRow]); the row's title
- * names it. [onCheckedChange] = null makes it only the indicator.
+ * In a settings list put it in the row's trailing slot ([RaftListRow]) and pass the row's
+ * title as [label], which names it for screen readers (inside a [RaftField] the field's
+ * label is the default). [onCheckedChange] = null makes it only the indicator.
  */
 @Composable
 fun RaftSwitch(
@@ -245,6 +250,7 @@ fun RaftSwitch(
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
     enabled: Boolean = LocalRaftFieldState.current.enabled,
+    label: String? = LocalRaftFieldState.current.label,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -269,6 +275,7 @@ fun RaftSwitch(
     Box(
         modifier
             .then(toggle)
+            .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
             .size(50.dp, 30.dp)
             .raftFocusRing(focused, radius, colors)
             .raftDieCutEdge(look.dieCut, radius)
@@ -370,8 +377,10 @@ private fun RaftChoiceRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val labelStyle = typography.subhead.copy(fontWeight = FontWeight.SemiBold)
-    // Centre the 20dp control on the label's first 20dp line: (1lh - 20) / 2 = 0.
-    val controlTop: Dp = ((labelStyle.lineHeight.value - RaftCheckSize.value) / 2f).coerceAtLeast(0f).dp
+    // Centre the 20dp control on the label's first line: (1lh - 20) / 2, which is 0 at the
+    // normal size and grows with the font scale (the line height is in sp).
+    val lineHeight = labelStyle.lineHeight.takeIf { it.isSpecified } ?: labelStyle.fontSize
+    val controlTop: Dp = with(LocalDensity.current) { ((lineHeight.toDp() - RaftCheckSize) / 2).coerceAtLeast(0.dp) }
     Row(
         modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -64,10 +64,20 @@ internal data class RaftFieldBoxLook(
  * input.recipe.ts / input-group.tsx / textarea.tsx: `layer-card` with a 1.5dp `line-strong`
  * border; invalid turns the border `danger-strong` and changes nothing else; disabled is
  * `fill-muted`, a `line-hairline` border and `foreground-disabled` type. Disabled wins
- * over invalid: nobody can fix a disabled field.
+ * over invalid: nobody can fix a disabled field. [readOnly] (page hand-off item 5, the
+ * read-only field) is `fill-muted` with a `line-hairline` border and `foreground-muted`
+ * type: readable, plainly not editable.
  */
-internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUiThemeColors): RaftFieldBoxLook =
-    if (!enabled) {
+internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUiThemeColors, readOnly: Boolean = false): RaftFieldBoxLook =
+    if (enabled && readOnly) {
+        RaftFieldBoxLook(
+            fill = colors.fillMuted,
+            border = colors.lineHairline,
+            text = colors.foregroundMuted,
+            placeholder = colors.foregroundHint,
+            addon = colors.foregroundHint,
+        )
+    } else if (!enabled) {
         RaftFieldBoxLook(
             fill = colors.fillMuted,
             border = colors.lineHairline,
@@ -100,6 +110,9 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  *   [RaftField] with an error it defaults to true.
  * - [enabled] = false: `fill-muted`, `line-hairline` border, `foreground-disabled` text
  *   and placeholder. Disabled wins over invalid.
+ * - [readOnly]: `fill-muted`, `line-hairline` border, `foreground-muted` text; still
+ *   focusable and selectable.
+ * - Inside a [RaftField], screen readers read it by the field's label, and its error.
  *
  * InputGroup: the addons sit inside the border and the focus ring goes round the whole
  * group. [leading] / [trailing] take an 18dp icon in `foreground-hint`
@@ -126,12 +139,13 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors)
+    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val focused = enabled && raftIsFocused(source)
+    val field = LocalRaftFieldState.current
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = modifier.raftFieldSemantics(field.label, invalid, enabled, field.error),
         enabled = enabled,
         readOnly = readOnly,
         textStyle = raftFieldTextStyle(look.text),
@@ -167,12 +181,13 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors)
+    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val focused = enabled && raftIsFocused(source)
+    val field = LocalRaftFieldState.current
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = modifier.raftFieldSemantics(field.label, invalid, enabled, field.error),
         enabled = enabled,
         readOnly = readOnly,
         textStyle = raftFieldTextStyle(look.text),
@@ -213,13 +228,18 @@ fun RaftTextarea(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors)
+    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val focused = enabled && raftIsFocused(source)
+    val field = LocalRaftFieldState.current
     Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = minHeight, max = maxHeight),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight, max = maxHeight)
+                    .raftFieldSemantics(field.label, invalid, enabled, field.error),
             enabled = enabled,
             readOnly = readOnly,
             textStyle = raftFieldTextStyle(look.text),
@@ -309,7 +329,8 @@ private fun RaftInputBox(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(RaftTextFieldDefaults.Height)
+            // A minimum, so text at a large font scale grows the box instead of clipping.
+            .heightIn(min = RaftTextFieldDefaults.Height)
             .raftFieldChrome(look, focused),
         verticalAlignment = Alignment.CenterVertically,
     ) {

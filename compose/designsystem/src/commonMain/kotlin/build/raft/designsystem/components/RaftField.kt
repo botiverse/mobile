@@ -12,7 +12,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -35,12 +38,18 @@ enum class RaftFieldLabelSize {
  * State a [RaftField] passes to the control inside it, as Base UI Field does: the
  * controls in this module ([RaftTextField], [RaftTextarea], [RaftSelectTrigger],
  * [RaftSelect], [RaftCheckbox], [RaftRadio], [RaftSwitch]) default their `invalid` /
- * `enabled` to it.
+ * `enabled` to it. The text fields, the select trigger and the switch are also named by
+ * [label] for screen readers and carry [error] as their error (Base UI wires the label
+ * and the error to the control with `aria-labelledby` / `aria-describedby`).
  */
 @Immutable
 data class RaftFieldState(
     val invalid: Boolean = false,
     val enabled: Boolean = true,
+    val label: String? = null,
+    val error: String? = null,
+    /** Inside a [RaftField]: a select trigger takes the field type to line up with inputs. */
+    val inField: Boolean = false,
 )
 
 /** The enclosing [RaftField]'s state; outside a field: valid and enabled. */
@@ -56,9 +65,11 @@ val LocalRaftFieldState = compositionLocalOf { RaftFieldState() }
  *   optional fields.
  * - [description] (`FieldDescription`): `text-caption` (12/16 medium), `foreground-hint`.
  * - [error] (`FieldError`): shown in place of the description, `text-caption` semibold
- *   `danger-strong`. A non-null [error] makes the field invalid, so the control inside
- *   gets the `danger-strong` border through [LocalRaftFieldState]. Say how to fix it
- *   ("Enter a name"), not what went wrong.
+ *   `danger-strong`, announced politely when it appears. A non-null [error] makes the
+ *   field invalid, so the control inside gets the `danger-strong` border and the error in
+ *   its semantics through [LocalRaftFieldState]. Say how to fix it ("Enter a name"), not
+ *   what went wrong.
+ * - Screen readers read the control by [label] (its content description).
  * - [enabled] = false turns label, description and error `foreground-disabled` and
  *   disables the control. Disabled wins over invalid.
  *
@@ -85,7 +96,9 @@ fun RaftField(
         if (label != null) {
             RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional, required = required)
         }
-        CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled)) {
+        CompositionLocalProvider(
+            LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled, label = label, error = error, inField = true),
+        ) {
             content()
         }
         if (error != null) {
@@ -125,6 +138,23 @@ fun RaftFieldLabel(
     RaftText(annotated, modifier, style = base.copy(fontWeight = FontWeight.SemiBold), color = ink)
 }
 
+/** The default error a control reports when it is invalid but its field gave no message. */
+const val RaftInvalidValueMessage = "Invalid value"
+
+/**
+ * A field control's semantics: named by [label], and [error] (or [RaftInvalidValueMessage])
+ * when [invalid]. Disabled controls report no error: nobody can fix them.
+ */
+internal fun Modifier.raftFieldSemantics(label: String?, invalid: Boolean, enabled: Boolean, error: String?): Modifier =
+    if (label == null && !(invalid && enabled)) {
+        this
+    } else {
+        semantics {
+            if (label != null) contentDescription = label
+            if (invalid && enabled) error(error ?: RaftInvalidValueMessage)
+        }
+    }
+
 /** raft-ui `FieldDescription`: one line of help text under the control. */
 @Composable
 fun RaftFieldDescription(text: String, modifier: Modifier = Modifier, enabled: Boolean = true) {
@@ -137,13 +167,16 @@ fun RaftFieldDescription(text: String, modifier: Modifier = Modifier, enabled: B
     )
 }
 
-/** raft-ui `FieldError`: says how to fix the value; announced as an error. */
+/** raft-ui `FieldError`: says how to fix the value; announced (politely) as an error when it appears. */
 @Composable
 fun RaftFieldError(text: String, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val colors = RaftTheme.colors
     RaftText(
         text,
-        modifier.semantics { error(text) },
+        modifier.semantics {
+            error(text)
+            liveRegion = LiveRegionMode.Polite
+        },
         style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
         color = if (enabled) colors.dangerStrong else colors.foregroundDisabled,
     )
