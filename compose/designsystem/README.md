@@ -22,8 +22,10 @@ Sources of truth:
   cross-checked with the component source
   (`git -C <raft-design> show v0.8.0:packages/ui/src/components/...`). States follow the
   States page: navigation selection is a yellow sticker with an ink edge, content
-  selection `info-soft`, value selection ink plus a check mark, focus the `focus-ring`
-  (none of the components in this PR is selectable or focusable yet).
+  selection `info-soft`, value selection ink plus a check mark, focus the `focus-ring`.
+- Page specs: where the mobile DRI's component-gap hand-off
+  (`handoff/designsystem-component-gaps.md`, measured from the web pages) is more specific
+  than raft-ui, it wins; the differences are listed at the end.
 
 ## Tokens
 
@@ -112,10 +114,40 @@ Other checks:
 | Component | raft-ui component | Status | Notes |
 | --- | --- | --- | --- |
 | `RaftSeparator` | Separator | Done | Horizontal, vertical, with a word |
-| `RaftBadge` | Badge | Done (display) | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not yet clickable (no hover/press overlay) |
+| `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
+| `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
+| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy |
+| `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer |
+| `RaftAvatar`, `RaftAvatarGroup`, `RaftAvatarGroupCount` | Avatar | Done | 7 sizes, agent / human, initials, placeholder, presence light, die-cut edge, stack |
+| `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg |
+| `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse, or still for screenshots / reduced motion |
+| `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action |
+| `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`), pressed, inset focus, disabled, subtitle (AvatarListRow) |
+| `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below |
+| `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
+| `RaftCodeBlock`, `RaftReadOnlyField` | CopyableCode | Done | Read-only command (wraps), the disabled-field value |
+| `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
+| `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw |
 | `RaftText` | — | Done | Text primitive |
-| Everything else | | Not started | Later PRs |
+| Everything else | | Not started | Field, tabs, select, switch, checkbox, toast: later PRs |
+
+### State primitives (`components/RaftStates.kt`)
+
+Internal modifiers every component draws its states with; none takes layout room.
+
+- `raftActiveStickerLook` + `raftSticker`: navigation selection. `brand` fill, 1.5dp
+  `sticker-ink` edge and ink type; the edge is always drawn (transparent at rest).
+- `raftDieCutEdge`: 1.5dp `sticker-edge` outside the box (transparent in light).
+- `raftFocusRing`: 2dp `layer-canvas` gap plus 2dp `line-strong`, outside the box and
+  under the die-cut edge. Keyboard focus only (Compose never focuses a clickable on touch).
+- `raftInsetFocusOutline`: 2dp `foreground` inside the box, for rows touching an edge.
+- `raftPressOverlay` / `raftPressOverlayColor`: `fill-pressed`, `sticker-pressed` or
+  `fill-frame-pressed` over the fill; press never changes the fill or moves anything.
+
+Screenshot fixtures force these states with `LocalRaftPressedPreview`,
+`LocalRaftFocusedPreview` and `LocalRaftSpinnerStillStep`. `avatar_list_row_states_*`
+reproduces the visual-testing case `components.ui.avatar-list-row.states`.
 
 ## raft-ui 0.7.1 vs 0.8.0
 
@@ -138,4 +170,18 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Disabled solid badge keeps its die-cut edge in dark.** badge.tsx (0.7.1 and 0.8.0) removes only
   the inset ink edge when disabled and keeps `ring-sticker-edge`; the Dark mode doc says
   a disabled button is no longer a sticker. The module follows the component source.
-- **No hover.** Touch has no hover; pressed overlays arrive with the clickable components.
+- **No hover.** Touch has no hover; only the pressed overlay is drawn.
+- **Busy button keeps its colour.** button.tsx sets `disabled` while `loading`, which
+  greys it; the Button doc ("keeps the button's width and color") and the States rule
+  (busy: unchanged) win. The busy button ignores taps.
+- **32dp hit area.** raft-ui widens a 32dp button to a 44px target with an overhanging
+  `::after`; Compose foundation has no layout-free equivalent, so leave room around it.
+- **Skeleton line** uses the chip radius (DRI page spec); raft-ui uses the sticker radius.
+- **Code block wraps** by default (the pages' `break-all`); raft-ui CopyableCode keeps
+  one line (`wrap = false`).
+- **ListRow** follows the pages' AvatarListRow too: an optional mono `subtitle` line and a
+  trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
+  second row on. A selected or disabled row hides its badge.
+- **DescriptionList horizontal** switches on the list's own width (640dp), not the window's.
+- **Icons**: components draw a handful of Lucide outlines (`RaftGlyph`, ISC); app icons
+  come through slots.
