@@ -14,8 +14,6 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.optLong
 import build.raft.app.optString
-import build.raft.app.parseSlockJsonObject
-import build.raft.app.toSlockJsonString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -41,10 +39,8 @@ internal class ProcessRealtimeIngressCoordinator(
     private val onRoomsJoined: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
 ) {
     fun start() {
-        events.addListener { raw ->
-            val snapshot = raw.toSlockJsonString()
-            scope.launch { accept(parseSlockJsonObject(snapshot)) }
-        }
+        // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
+        events.addListener { event -> scope.launch { accept(event) } }
         scope.launch {
             authorityFlow.collect { authority -> reconcile(authority) }
         }

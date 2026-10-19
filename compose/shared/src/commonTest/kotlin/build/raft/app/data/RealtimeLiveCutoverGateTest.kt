@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.toKuiklyJson
 import build.raft.app.applySelectedServerTerminalRealtimeTransition
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.ChannelId
@@ -130,7 +129,7 @@ class RealtimeLiveCutoverGateTest {
             }
 
         fixture.auth.replace(session(), AuthSessionEvent.TokensRotated(generation = 2))
-        val parsedWitness = assertNotNull(rawEnvelope.toKuiklyJson().realtimeConnectionWitnessOrNull())
+        val parsedWitness = assertNotNull(rawEnvelope.realtimeConnectionWitnessOrNull())
         assertEquals(first.witness, parsedWitness)
         assertFalse(
             fixture.callbackGate.acceptDomain(
