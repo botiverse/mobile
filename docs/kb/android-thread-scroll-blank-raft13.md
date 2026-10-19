@@ -1,8 +1,8 @@
 # Thread fast-scroll blank rows: the reverseLayout re-anchor case
 
-Owner: Mahua · Verified at: 2026-10-18 · Status: current
+Owner: Mahua · Verified at: 2026-10-19 · Status: current
 
-**Scope.** This article explains the share of fast-scroll blank rows that came from reverse-layout re-anchoring, and the fix for it. It is **not** a general explanation of blank rows during a hard fling: on a build that already contains the fix, a hard fling can still blank out a comparable area through frame production alone. See "Evidence method" for the measurement that separates the two.
+**Scope.** This article explains the share of fast-scroll blank rows that came from reverse-layout re-anchoring, and the fix for it. It is **not** a general explanation of blank rows during a hard fling: on a build that already contains the fix, a hard fling can still blank out a comparable area through frame production alone — **narrowed but not yet explained**; see "The residual blank: what the data shows, and what it does not". See "Evidence method" for the measurement that separates the two.
 
 Symptom fixed in this repo by PR **#3073** (Kuikly release set bump to `2.28.0-raft.13`); renderer fix upstream in KuiklyUI PR **#205**.
 
@@ -15,6 +15,44 @@ On Android, flinging a long message thread to the bottom left a large blank regi
 The thread list runs `LazyColumn(reverseLayout = true)` (shipped behind `mobile_thread_reverse_layout_v0`, default-on). The Kuikly fork's reverse native-scroll path anchors the native scroll offset to the **estimated** total content height. Message rows vary in height (markdown, code blocks, images), so the estimate keeps correcting mid-fling; every correction re-anchored the native offset and re-laid all placed children on the Kuikly thread. During a fling this re-anchor storm plus new-row composition blew the frame budget, so rows already inside the viewport waited multiple frames to paint.
 
 The same mechanism, seen in one screenshot frame, also explained two companion symptoms: the top row clipped by the list's top edge and a "Back to bottom" pill shown while the latest row was already visible — both are what a content block shifted by an over-estimated anchor looks like.
+
+## The residual blank: what the data shows, and what it does not (2026-10-19)
+
+The Scope above says a hard fling can still blank on a build containing the fix, "through frame production alone". That was honest but unnamed, and it is **still unnamed**: a per-frame trace narrows the residual considerably, but the cause is **not** established.
+
+### Observations (device data)
+
+Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_fling_frame` samples over 9 flings.
+
+- `outOfRange` and `overscroll` were **0 throughout**, so the residual is neither over-scrolling nor "queued but never drawn".
+- On one up-fling the content view held **5 rows** against an estimated content height of 9000. The native offset fell ~100 px per frame, and the hole above the viewport grew 63 → 876 → … → **1777 px (89% of a 1993 px viewport)** over about 180 ms, frames 3-12.
+- Then **480 ms with no frame at all** (51.529 → 52.012). When frames resumed, the content height had become 14037 and the viewport was fully covered.
+- In the same window: `jank_frame durationMs=478 route=kuikly_thread operation=thread_first_frame`, preceded by `thread_markdown_preparse scope=visible_overscan durationMs=377` and a markdown row body recompose for a 1536-character message.
+- Two further flings blanked with **no jank reported** (37 consecutive frames, max 698 px; and 567 px). These are a second, separate phenomenon and must not be merged into the fling above.
+
+### What this rules out
+
+**Markdown parsing on the Compose thread is ruled out.** `prepareMarkdownContent` already dispatches through `SlockMarkdownParseDispatcher`, which on Android is `Dispatchers.Default.limitedParallelism(...)` (see `SlockMarkdownParseDispatcher.android.kt`). So `thread_markdown_preparse durationMs=377` is wall-clock time spent *awaiting* background parsing, not time occupying the Compose thread. "Move the parse off the main thread" is therefore not a fix for this — it is already off it.
+
+### What remains open
+
+The 478 ms `jank_frame` is **one frame on the Android UI thread**, and the same window contains a `thread_markdown_body_recompose` for a 1536-character message.
+
+**What the 478 ms is:** `jank_frame` comes from JankStats, not from the FrameMetrics listener (that is a separate log). `SlockPerformanceDiagnostics.kt` reads `frameData.frameDurationUiNanos` and prints `jank_frame`; by API definition `frameDurationUiNanos` is the time this frame spent on the UI thread that owns the window. So the number is a main-thread frame, full stop.
+
+**What `operation=thread_first_frame` is not:** `operation` is an `AtomicReference("idle")` set by `updateOperation(...)`; `jank_frame` prints whatever value it held at the moment of the jank. It records "the most recently set label", **not** what this frame was doing, and not which thread was doing it. **`operation` also has no expiry** — if nothing calls `updateOperation` again, a frame ten seconds later still prints the stale label. A reader cannot tell `operationAgeMs=3` from `operationAgeMs=9400` in the current output.
+
+**So do not read a causal link into the co-occurrence.** "A 478 ms main-thread frame happened while the operation label read `thread_first_frame`" is supported. "`thread_first_frame` occupied the main thread for 478 ms" is not.
+
+**What is separate and still true:** Kuikly's Compose runs on `HRContextQueueHandlerThread` (`SlockKuiklyThreading.kt`), which is **not** the Android main thread. That is a fact about where Compose runs. It does **not** mean the 478 ms was spent there — the 478 ms is a main-thread measurement, and **whether the main thread was doing the work itself or synchronously waiting on the Kuikly thread is not established.**
+
+**Making that last question decidable** is what the next probe addresses: when the main thread stalls ≥150 ms, capture the main-thread stack and the Kuikly-thread stack from a **single `getAllStackTraces()`** call, and mark which one is merely waiting in its looper. Note that a stack sample must be read as busy-or-idle — a stack parked in `MessageQueue.nativePollOnce` means "nothing was dispatched", not "the thread was held".
+
+**Also an inference, not an observation:** that native scrolling kept advancing during the stall. The gap is unsampled; the evidence is only the state before and after it. The current probe has no `gapSinceLastFrameMs`, so the blind spot cannot report its own width yet.
+
+**"Rows could not be placed in time" is well supported. "Composition blocked by X" is not**, for any particular X, on this evidence.
+
+**What this does and does not change.** It confirms the Scope's claim that the residual is layout-independent — the reverse-path fix is still the correct explanation of the ~700 px regression this article is about. It does **not** support reading the fixed-build toggle result as evidence about this residual's size. **As of 2026-10-19 no fix for the residual has landed**, so on any current build expect it to persist.
 
 ## Fix
 
