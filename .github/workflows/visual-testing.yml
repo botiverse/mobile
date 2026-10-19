@@ -186,9 +186,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       - name: Build connected test APKs
         working-directory: ./compose
         run: |
@@ -492,9 +489,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
 

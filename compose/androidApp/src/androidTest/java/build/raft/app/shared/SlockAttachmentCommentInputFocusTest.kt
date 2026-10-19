@@ -20,7 +20,7 @@ class SlockAttachmentCommentInputFocusTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_comment_anchor_visual")
                 .putExtra(
                     "pageData",
@@ -30,7 +30,7 @@ class SlockAttachmentCommentInputFocusTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             Thread.sleep(1_500)
             var tapX = 0f

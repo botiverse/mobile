@@ -3,7 +3,6 @@ agp = "8.13.2"
 kotlin = "2.1.21"
 ksp = "2.1.21-2.0.2"
 composePlugin = "1.8.2"
-kuiklyAndroid = "2.28.0-raft.15-2.1.21"
 coreKtx = "1.10.1"
 media3 = "1.6.1"
 coreSplashscreen = "1.0.1"
@@ -73,11 +72,6 @@ mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
-kuikly-core = { group = "com.tencent.kuikly-open", name = "core", version.ref = "kuiklyAndroid" }
-kuikly-core-annotations = { group = "com.tencent.kuikly-open", name = "core-annotations", version.ref = "kuiklyAndroid" }
-kuikly-compose = { group = "com.tencent.kuikly-open", name = "compose", version.ref = "kuiklyAndroid" }
-kuikly-core-render-android = { group = "com.tencent.kuikly-open", name = "core-render-android", version.ref = "kuiklyAndroid" }
-kuikly-core-ksp = { group = "com.tencent.kuikly-open", name = "core-ksp", version.ref = "kuiklyAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

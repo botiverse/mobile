@@ -1,21 +1,20 @@
 package build.raft.app.shared
 
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
-import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
 import java.util.concurrent.atomic.AtomicInteger
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Exercises the registered production router on Android, with only the final
- * Activity launch/finish effects recorded. No Kuikly page, login session or
+ * Exercises the production CMP host router (SlockCmpActivity.openPage) on Android, with only the
+ * final Activity launch/finish effects recorded. No page content, login session or
  * network fixture is loaded. These cases prove launch-request admission, not
  * real Android task containment, Activity lifecycle delivery or animations.
  */
@@ -98,10 +97,9 @@ class AndroidLoginTransitionRoutingConnectedTest {
         val login = source(taskId, SlockCmpActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
         assertEquals(firstToken, AndroidLoginTransitionRouting.bindLogin(login, firstToken))
 
-        requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
-            login,
+        login.openPage(
             SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
-            JSONObject().put("slockReplaceCurrentPage", true),
+            replaceCurrentPageData(),
         )
         assertEquals(1, login.launches.size)
         assertEquals(
@@ -136,10 +134,9 @@ class AndroidLoginTransitionRoutingConnectedTest {
         val firstToken = requireNotNull(firstIntent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN))
         val login = source(taskId, SlockCmpActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
         assertEquals(firstToken, AndroidLoginTransitionRouting.bindLogin(login, firstToken))
-        requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
-            login,
+        login.openPage(
             SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
-            JSONObject().put("slockReplaceCurrentPage", true),
+            replaceCurrentPageData(),
         )
         assertEquals(1, login.launches.size)
 
@@ -227,9 +224,6 @@ class AndroidLoginTransitionRoutingConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             SlockKuiklyAdapters.init(instrumentation.targetContext.applicationContext)
-            checkNotNull(KuiklyRenderAdapterManager.krRouterAdapter) {
-                "Production adapter initialization did not register its router"
-            }
             try {
                 block()
             } finally {
@@ -259,16 +253,17 @@ class AndroidLoginTransitionRoutingConnectedTest {
             sources += this
         }
 
-    private fun replaceWithLogin(source: Activity) {
-        requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
-            source,
-            SlockCmpActivity.PAGE_LOGIN,
-            JSONObject().put("slockReplaceCurrentPage", true),
-        )
+    // The CMP host routes RouterModule.openPage through SlockCmpActivity.openPage (formerly the
+    // Kuikly router adapter); drive that production member on a recording host.
+    private fun replaceWithLogin(source: RecordingActivity) {
+        source.openPage(SlockCmpActivity.PAGE_LOGIN, replaceCurrentPageData())
     }
 
+    private fun replaceCurrentPageData() =
+        buildJsonObject { put("slockReplaceCurrentPage", JsonPrimitive(true)) }
+
     private fun assertLoginLaunch(intent: Intent) {
-        assertEquals(SlockKuiklyActivity::class.java.name, intent.component?.className)
+        assertEquals(SlockCmpActivity::class.java.name, intent.component?.className)
         assertEquals(SlockCmpActivity.PAGE_LOGIN, intent.getStringExtra(SlockCmpActivity.KEY_PAGE_NAME))
         assertTrue(
             "The accepted launch must carry its native ownership ticket",
@@ -284,7 +279,7 @@ class AndroidLoginTransitionRoutingConnectedTest {
     private class RecordingActivity(
         private val targetContext: Context,
         private val recordedTaskId: Int,
-    ) : Activity() {
+    ) : SlockCmpActivity() {
         val launches = mutableListOf<Intent>()
         var startAttempts = 0
             private set

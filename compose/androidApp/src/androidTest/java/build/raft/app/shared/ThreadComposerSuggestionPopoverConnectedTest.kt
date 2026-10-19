@@ -36,7 +36,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         clearInteractionFailureEvidence(instrumentation)
         instrumentation.confirmImmersiveEducationDismissedForSuggestionTest()
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
@@ -47,7 +47,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             try {
                 scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
                 // Visual pages clear native focus when their window first gains focus, then post
@@ -170,7 +170,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
 
         cases.forEachIndexed { index, case ->
             val intent =
-                Intent(context, SlockKuiklyActivity::class.java)
+                Intent(context, SlockCmpActivity::class.java)
                     .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
                     .putExtra(
                         "pageData",
@@ -181,7 +181,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                     )
                     .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-            ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
                 waitUntil("empty composer should attach before '${case.trigger}'") {
                     scenario.composerText() == ""
                 }
@@ -221,7 +221,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         val device = UiDevice.getInstance(instrumentation)
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
@@ -232,7 +232,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
             instrumentation.waitForIdleSync()
 
@@ -308,7 +308,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
@@ -319,7 +319,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -393,7 +393,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         instrumentation.waitForIdleSync()
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView
@@ -452,7 +452,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
     }
 
     private fun waitForInteractionPanelUnderlayRatio(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation,
         visible: Boolean
     ): Double =
@@ -471,7 +471,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         }
 
     private fun captureInteractionFailureEvidence(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation,
         failure: Throwable
     ) {
@@ -554,7 +554,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
     }
 
     private fun waitForInteractionActionGreenRatio(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation
     ): Double =
         waitForColorRatio(
@@ -568,7 +568,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         }
 
     private fun waitForColorRatio(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation,
         target: Int,
         regionDp: DpRegion,
@@ -638,19 +638,19 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         assertTrue("$label candidate bounds are empty or inverted: $bounds", bounds.left < bounds.right && bounds.top < bounds.bottom)
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.composerText(): String? {
+    private fun ActivityScenario<SlockCmpActivity>.composerText(): String? {
         var value: String? = null
         onActivity { activity -> value = activity.window.decorView.findComposerEditText()?.text?.toString() }
         return value
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.composerHasFocus(): Boolean {
+    private fun ActivityScenario<SlockCmpActivity>.composerHasFocus(): Boolean {
         var focused = false
         onActivity { activity -> focused = activity.window.decorView.findComposerEditText()?.hasFocus() == true }
         return focused
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.composerEditTextBounds(): Rect {
+    private fun ActivityScenario<SlockCmpActivity>.composerEditTextBounds(): Rect {
         var bounds: Rect? = null
         onActivity { activity ->
             val editor = requireNotNull(activity.window.decorView.findComposerEditText())

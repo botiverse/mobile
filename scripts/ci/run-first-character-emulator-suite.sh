@@ -36,7 +36,6 @@ RUNNER_CONNECTED="build.raft.app.connectedtest.test/androidx.test.runner.Android
 RUNNER_SHARED="build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner"
 
 DECLARED_TEST_IDS=(
-  "inactive-host-rendering"
   "login-transition-routing"
   "first-character-baseline"
   "ime-visibility-probe"
@@ -82,12 +81,6 @@ init_test_metadata() {
   TEST_RETRIES["local-image-sampled-decode"]=1
   TEST_OUTPUT["local-image-sampled-decode"]="local-image-sampled-decode-instrumentation.txt"
   TEST_CONDITION["local-image-sampled-decode"]="always"
-
-  TEST_CLASS["inactive-host-rendering"]="build.raft.app.shared.SlockKuiklyInactiveHostRenderingTest"
-  TEST_RUNNER["inactive-host-rendering"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["inactive-host-rendering"]=1
-  TEST_OUTPUT["inactive-host-rendering"]="inactive-host-rendering-instrumentation.txt"
-  TEST_CONDITION["inactive-host-rendering"]="always"
 
   TEST_CLASS["first-character-baseline"]="build.raft.app.shared.SlockComposerFirstCharacterBaselineTest"
   TEST_RUNNER["first-character-baseline"]="$RUNNER_CONNECTED"

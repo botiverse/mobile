@@ -84,9 +84,6 @@ jobs:
           # hosted-macOS jobs use the 6g default.
           heap: 12g
 
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       # Same guard as qa-acceptance-ios.yml: stale KSP incremental caches on a
       # reused runner produce the FIR RAW_FIR->STATUS cast failure.
       - name: KSP incremental cache hygiene

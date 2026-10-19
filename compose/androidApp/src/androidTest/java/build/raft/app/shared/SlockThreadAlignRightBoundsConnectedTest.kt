@@ -32,11 +32,11 @@ class SlockThreadAlignRightBoundsConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_align_right_visual")
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { _ ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { _ ->
             instrumentation.waitForIdleSync()
             Thread.sleep(2_500)
             val screenshot =

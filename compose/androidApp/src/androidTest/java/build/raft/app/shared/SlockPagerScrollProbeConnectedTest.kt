@@ -44,14 +44,14 @@ class SlockPagerScrollProbeConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SLOCK_PAGER_SCROLL_PROBE_PAGE)
                 .putExtra(
                     "pageData",
                     JSONObject().put(PAGER_SCROLL_PROBE_TARGET_PAGE, targetPage).toString()
                 )
         var bitmap: Bitmap? = null
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { _ ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { _ ->
             instrumentation.waitForIdleSync()
             // Let Kuikly render the pager and settle the programmatic scroll.
             Thread.sleep(2_500)

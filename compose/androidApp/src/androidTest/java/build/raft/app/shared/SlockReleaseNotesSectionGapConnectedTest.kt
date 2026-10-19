@@ -60,7 +60,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
         val context = instrumentation.targetContext
         val probeGeneration = "release-notes-section-gap-$fixture-${System.nanoTime()}"
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -71,7 +71,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        return ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        return ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
 
@@ -101,7 +101,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
         error("Unable to receive the section-heading onGloballyPositioned probe")
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.findViewById<android.view.View>(android.R.id.content)

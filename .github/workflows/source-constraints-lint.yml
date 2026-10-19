@@ -37,6 +37,14 @@ on:
       - "scripts/ci/check_source_constraints.py"
       - "scripts/ci/check_string_edge_spaces.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
+      # verify_no_production_visual_pages.py also scans the platform production
+      # source sets and the generated CMP page registries.
+      - "compose/shared/src/androidMain/kotlin/**/*.kt"
+      - "compose/shared/src/iosMain/kotlin/**/*.kt"
+      - "compose/shared/src/visualFixtures/**"
+      - "compose/shared/src/visualFixturesOff/**"
+      - "compose/androidApp/src/main/java/**/*.kt"
+      - "scripts/cmp_generate_page_registry.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:

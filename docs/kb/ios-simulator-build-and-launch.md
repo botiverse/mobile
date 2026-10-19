@@ -76,4 +76,4 @@ The same distinction generalises beyond builds: **availability is not verificati
 ## Related
 
 - [mobile-visual-evidence-ceiling.md](mobile-visual-evidence-ceiling.md) — which carrier supports which visual claim.
-- [kuikly-release-pin-recipe.md](kuikly-release-pin-recipe.md) — the framework this app links against, and how its pin is bumped.
+- [kuikly-release-pin-recipe.md](kuikly-release-pin-recipe.md) — historical: the Kuikly framework the app linked before the Compose Multiplatform switch.

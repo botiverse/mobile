@@ -29,7 +29,7 @@ class SlockTaskListStatusMenuConnectedTest {
         val context = instrumentation.targetContext
         val density = context.resources.displayMetrics.density
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", TasksPanelVisualPage)
                 .putExtra(
                     "pageData",
@@ -40,7 +40,7 @@ class SlockTaskListStatusMenuConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskListStatusTest() }
             instrumentation.waitForIdleSync()
@@ -142,7 +142,7 @@ class SlockTaskListStatusMenuConnectedTest {
         }
     }
 
-    private fun captureActivity(scenario: ActivityScenario<SlockKuiklyActivity>): RootCapture {
+    private fun captureActivity(scenario: ActivityScenario<SlockCmpActivity>): RootCapture {
         var capture: RootCapture? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

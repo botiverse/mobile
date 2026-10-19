@@ -33,12 +33,12 @@ class AndroidAdaptivePaneHostConnectedTest {
                 )
             )
         val intent =
-            Intent(targetContext, SlockKuiklyActivity::class.java)
+            Intent(targetContext, SlockCmpActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra("pageName", SlockCmpActivity.PAGE_LOGIN)
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        val activity = instrumentation.startActivitySync(intent) as SlockKuiklyActivity
+        val activity = instrumentation.startActivitySync(intent) as SlockCmpActivity
         var host: AndroidAdaptivePaneHost? = null
         try {
             instrumentation.runOnMainSync {

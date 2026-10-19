@@ -4,10 +4,10 @@ import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 
-internal fun ActivityScenario<SlockKuiklyActivity>.awaitVisualInputHostReadyForEditorFocus(
+internal fun ActivityScenario<SlockCmpActivity>.awaitVisualInputHostReadyForEditorFocus(
     description: String,
     timeoutMs: Long = 12_000L,
-    inputReady: (SlockKuiklyActivity) -> Boolean,
+    inputReady: (SlockCmpActivity) -> Boolean,
 ) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val deadline = SystemClock.uptimeMillis() + timeoutMs
@@ -32,8 +32,8 @@ internal fun ActivityScenario<SlockKuiklyActivity>.awaitVisualInputHostReadyForE
     )
 }
 
-private fun ActivityScenario<SlockKuiklyActivity>.visualInputHostReadiness(
-    inputReady: (SlockKuiklyActivity) -> Boolean,
+private fun ActivityScenario<SlockCmpActivity>.visualInputHostReadiness(
+    inputReady: (SlockCmpActivity) -> Boolean,
 ): VisualInputHostReadiness {
     var readiness = VisualInputHostReadiness(windowFocused = false, inputReady = false)
     onActivity { activity ->

@@ -19,7 +19,7 @@ class SlockForegroundBannerPointerBarrierConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_foreground_banner_visual")
                 .putExtra(
                     "pageData",
@@ -29,7 +29,7 @@ class SlockForegroundBannerPointerBarrierConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RENDER_SETTLE_MS)
 
@@ -70,7 +70,7 @@ class SlockForegroundBannerPointerBarrierConnectedTest {
         instrumentation.waitForIdleSync()
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

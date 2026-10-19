@@ -38,7 +38,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
-            Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
+            Intent(instrumentation.targetContext, SlockCmpActivity::class.java)
                 .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                 .putExtra(
                     SlockCmpActivity.KEY_PAGE_DATA,
@@ -46,7 +46,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             dismissAndroidCompatibilityDialog(instrumentation)
             waitForInitialFocusedHistory(nonce)
             val initial = fixtureSnapshot(nonce)
@@ -437,7 +437,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
 
     private fun performUpwardGesture(
         instrumentation: Instrumentation,
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         durationMs: Long,
         xFraction: Float = FocusedHistoryGestureXFraction,
     ) {
@@ -481,7 +481,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
 
     private fun performDownwardGesture(
         instrumentation: Instrumentation,
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
     ) {
         var geometry: GestureGeometry? = null
         scenario.onActivity { activity ->

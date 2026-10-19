@@ -19,7 +19,6 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -1787,7 +1786,7 @@ class KmpVisualScreenshotCaptureTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_forward_modal_visual")
                 .putExtra(
                     "pageData",
@@ -1798,7 +1797,7 @@ class KmpVisualScreenshotCaptureTest {
                     ).toString()
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         var before: Bitmap? = null
         var afterSwipe: Bitmap? = null
@@ -4096,7 +4095,7 @@ class KmpVisualScreenshotCaptureTest {
      * reported OK with the image it already produced.
      */
     private fun closeScenarioBounded(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         maxMs: Long = SCENARIO_CLOSE_TIMEOUT_MS
     ) {
         val closed = CountDownLatch(1)
@@ -4122,7 +4121,7 @@ class KmpVisualScreenshotCaptureTest {
 
     /**
      * Finish predecessor fixture activities leaked by an abandoned teardown
-     * (see [closeScenarioBounded]). Since #3043 gave SlockKuiklyActivity a
+     * (see [closeScenarioBounded]). Since #3043 gave SlockCmpActivity a
      * translucent window, a leaked predecessor is only PAUSED — never STOPPED —
      * when the next case launches on top of it: it stays visible underneath,
      * keeps receiving frames, and its churn starves the new case's main thread.
@@ -4160,11 +4159,11 @@ class KmpVisualScreenshotCaptureTest {
         lastReadyTokenObserved = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockCmpActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
@@ -4252,11 +4251,11 @@ class KmpVisualScreenshotCaptureTest {
         currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", pageName)
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it, hideKeyboard = suppressSoftKeyboard) }
@@ -6795,7 +6794,7 @@ class KmpVisualScreenshotCaptureTest {
         // fallback frame, never a failure) so a signal regression can't break
         // the shard.
         private const val REACTION_ATLAS_READY_TOKEN = "thread_reaction_atlas_ready"
-        // Kuikly bridge host tag the token rides (SlockKuiklyActivity ->
+        // Kuikly bridge host tag the token rides (SlockCmpActivity ->
         // SlockAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
         private const val REACTION_ATLAS_LOG_TAG = "SlockKuikly"
         private const val REACTION_ATLAS_TIMEOUT_MS = 20_000L
