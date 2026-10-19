@@ -5,7 +5,6 @@ plugins {
     kotlin("native.cocoapods")
     kotlin("plugin.serialization")
     id("com.android.library")
-    id("com.google.devtools.ksp")
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
@@ -13,7 +12,6 @@ plugins {
     id("com.tencent.kuiklybase.resource.generator")
 }
 
-val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val generatedSlockDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
@@ -137,9 +135,22 @@ kotlin {
                 // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
                 // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
                 api(project(":core"))
-                implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")
+                // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
+                // through the :ui-cmp hosts (SlockCmpRoot). The Kuikly compose fork, Kuikly core
+                // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API
+                // surface lives in the build.raft.app.compat package (TODO(cmp-switch) shims).
+                api(project(":ui-cmp"))
+                implementation(project(":designsystem"))
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.ui)
+                implementation(compose.material3)
+                implementation(compose.components.resources)
+                implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composePlugin.get()}")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+                // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
+                implementation("io.coil-kt.coil3:coil-compose:3.2.0")
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
@@ -172,14 +183,11 @@ kotlin {
         val androidMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
-                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
-                    isChanging = true
-                }
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
+                // TODO(cmp-switch): mermaid-kuikly rendered through Kuikly CanvasView; needs a CMP renderer.
             }
         }
         val androidUnitTest by getting {
@@ -192,7 +200,6 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val androidInstrumentedTest by getting {
@@ -212,13 +219,10 @@ kotlin {
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
-                // The app links one Kotlin framework (this one); CMP pages ship inside it (see export above).
-                api(project(":ui-cmp"))
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val iosX64Test by getting
@@ -257,10 +261,6 @@ sqldelight {
             verifyMigrations.set(true)
         }
     }
-}
-
-ksp {
-    arg(KEY_PAGE_NAME, getPageName())
 }
 
 fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
@@ -349,18 +349,10 @@ gradle.taskGraph.whenReady {
     }
 }
 
-dependencies {
-    compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
-        add("kspAndroid", this)
-        add("kspIosArm64", this)
-        add("kspIosX64", this)
-        add("kspIosSimulatorArm64", this)
-    }
-}
-
 android {
     namespace = "build.raft.app.shared"
-    compileSdk = 34
+    // Upstream Compose 1.8 (CMP 1.8.2) requires compileSdk 35, same as :ui-cmp.
+    compileSdk = 35
     defaultConfig {
         minSdk = 21
         targetSdk = 34
@@ -465,10 +457,6 @@ tasks.matching { task ->
         task.name.startsWith("compileKotlinIos")
 }.configureEach {
     dependsOn(verifyNetworkCurlCaBundle)
-}
-
-fun getPageName(): String {
-    return (project.properties[KEY_PAGE_NAME] as? String) ?: ""
 }
 
 fun getCommonCompilerArgs(): List<String> {
