@@ -1322,6 +1322,7 @@ fun Modal(
         onDismissRequest = { onWillDismiss?.invoke("") },
         properties = slockModalDialogProperties()
     ) {
+        RaftModalDialogWindowEffect()
         SlockInputFocusDismissHost { focusDismissModifier ->
             Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
                 content()
@@ -1340,12 +1341,9 @@ fun Modal(
  * dismissal to [SlockModalDismissBarrier].
  */
 internal fun slockModalDialogProperties(): DialogProperties =
-    DialogProperties(
-        dismissOnClickOutside = false,
-        usePlatformDefaultWidth = false,
-        // TODO(cmp-switch): Kuikly passed scrimColor = Transparent (Slock draws its own barrier);
-        // upstream DialogProperties has no scrim colour in common code. Check Android's window dim.
-    )
+    // Per platform: no framework scrim / window dim (Kuikly passed scrimColor = Transparent),
+    // edge to edge, insets left to the page. See raftModalDialogProperties.
+    raftModalDialogProperties()
 
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
