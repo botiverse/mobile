@@ -313,7 +313,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
 import androidx.compose.material3.Text
@@ -28540,16 +28539,16 @@ private fun ThreadMessageTextSelectionDialog(
                 ) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            SelectionContainer(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = originalText,
-                                    style = messageBodyTextStyle,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .testTag("thread_message_selection_text")
-                                )
-                            }
+                            // task #924: platform text view so the system selection menu
+                            // (Android PROCESS_TEXT, iOS Look Up/Translate/Share) stays intact.
+                            RaftNativeSelectableText(
+                                text = originalText,
+                                style = messageBodyTextStyle,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .testTag("thread_message_selection_text")
+                            )
                         }
                     }
                 }

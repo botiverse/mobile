@@ -344,9 +344,12 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
     """Incident: task #924 (system selection menu replaced by app chrome).
 
     The full-screen Select Text destination must expose the immutable message
-    body through Kuikly's native ``SelectableText`` bridge. Reintroducing a
-    ``SelectionContainer`` or business-owned copy/select controls suppresses
-    platform actions such as Android PROCESS_TEXT and iOS Look Up/Translate.
+    body through ``RaftNativeSelectableText`` -- the CMP ``expect`` composable
+    whose actuals host the platform text view (Android selectable ``TextView``
+    via ``AndroidView``; iOS non-editable selectable ``UITextView`` via
+    ``UIKitView``). Reintroducing a Compose ``SelectionContainer`` or
+    business-owned copy/select controls suppresses platform actions such as
+    Android PROCESS_TEXT and iOS Look Up/Translate/Share.
     """
     match = re.search(
         r"private fun ThreadMessageTextSelectionDialog\(.*?"
@@ -367,10 +370,10 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
     required = {
         "val originalText = message.body": "bind the immutable message body",
         "LazyColumn(": "keep long text externally scrollable",
-        "SelectableText(": "render through the native selectable-text bridge",
+        "RaftNativeSelectableText(": "render through the platform text view (RaftNativeSelectableText)",
         "text = originalText": "pass original message bytes to the native surface",
         '.testTag("thread_message_selection_text")': (
-            "project a stable native resource id for physical UIAutomator admission"
+            "expose a stable resource id for physical UIAutomator admission"
         ),
         "Modal(onWillDismiss = { onDismiss() })": "dispose the surface on dismissal",
     }
@@ -1461,7 +1464,7 @@ private fun ThreadMessageTextSelectionDialog(message: Message, onDismiss: () -> 
             modifier = Modifier
         ) {
             item {
-                SelectableText(
+                RaftNativeSelectableText(
                     text = originalText,
                     modifier = Modifier.testTag("thread_message_selection_text")
                 )
@@ -1491,7 +1494,7 @@ private fun ThreadMessageMenuChrome() = Unit
         ("internal neighbour", good_dialog_internal_neighbour),
     ):
         for token in (
-            "SelectableText(",
+            "RaftNativeSelectableText(",
             "LazyColumn(",
             "val originalText = message.body",
             "text = originalText",
@@ -1511,7 +1514,9 @@ private fun ThreadMessageMenuChrome() = Unit
                     f"under {variant_name}"
                 )
     for bad in (
-        good_dialog.replace("SelectableText(", "SelectionContainer("),
+        good_dialog.replace("RaftNativeSelectableText(", "SelectionContainer {\n Text("),
+        good_dialog.replace("RaftNativeSelectableText(", "SelectableText("),
+        good_dialog.replace("item {", "SelectionContainer { }\n            item {", 1),
         good_dialog.replace('.testTag("thread_message_selection_text")', ""),
         good_dialog.replace(
             "item {",
