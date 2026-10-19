@@ -109,9 +109,11 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   (copies of `androidApp/src/main/res/font`, SIL OFL 1.1, see `THIRD_PARTY_NOTICES.md`),
   loaded with `Font(Res.font.…)`, so every platform measures the same TTFs.
   **iOS:** `compose.ios.resources.sync=false` in compose/gradle.properties applies to this
-  module too, so nothing copies `composeResources` (the fonts) into an iOS app bundle yet.
-  No iOS host links this module today; wiring the iOS shell to it must also set up the
-  resource copy.
+  module too, so the CMP plugin copies nothing into the app bundle. The iOS app links this
+  module through `:ui-cmp` (exported by the `shared` framework), and the Podfile script phase
+  runs `:ui-cmp:syncComposeResourcesForXcodeApp`, which copies these fonts to
+  `<App>.app/compose-resources/composeResources/build.raft.designsystem.resources/`, where the
+  CMP resource reader looks. A module that adds compose resources must be listed in that task.
 - `RaftText` is built on `BasicText`, not Material `Text`, so no Material
   `LocalTextStyle` / `LocalContentColor` can shift colour or line height. Every style
   centres the line box like CSS half-leading (`LineHeightStyle.Alignment.Center`, no trim).
