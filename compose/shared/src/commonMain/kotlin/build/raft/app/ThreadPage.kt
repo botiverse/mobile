@@ -25039,7 +25039,8 @@ internal fun ThreadNewMessageMenuChrome(
                 buttonSize = ThreadNewMessageMenuReactionButtonSize,
                 glyphSize = ThreadNewMessageMenuReactionGlyphSize,
                 horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
-                enabled = availability.reactions
+                enabled = availability.reactions,
+                horizontalArrangement = Arrangement.SpaceBetween
             )
             Box(
                 modifier =
@@ -28585,7 +28586,9 @@ private fun ThreadMessageReactionRow(
     buttonSize: Dp = ThreadMessageMenuReactionButtonSize,
     glyphSize: Dp = 18.dp,
     horizontalPadding: Dp = ThreadMessageMenuReactionPaddingHorizontal,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    // The context menu packs web's `gap-1`; the wider compact menu spreads the buttons.
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
 ) {
     // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
     Row(
@@ -28594,7 +28597,7 @@ private fun ThreadMessageReactionRow(
             .height(rowHeight)
             .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
+        horizontalArrangement = horizontalArrangement
     ) {
         ThreadQuickReactionEmojis.forEach { reaction ->
             Button(

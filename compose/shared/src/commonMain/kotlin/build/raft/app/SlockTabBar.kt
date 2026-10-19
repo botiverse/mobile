@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
@@ -151,11 +152,12 @@ internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
 internal fun slockFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
 
-internal val SlockVerticalTabSectionTextStyle =
-    SlockType.TabLabel.copy(
-        letterSpacing = 1.sp,
-        color = SlockColor.TextBlack.copy(alpha = 0.4f)
-    )
+internal val SlockVerticalTabSectionTextStyle: TextStyle
+    get() =
+        SlockType.TabLabel.copy(
+            letterSpacing = 1.sp,
+            color = SlockColor.TextBlack.copy(alpha = 0.4f)
+        )
 internal val SlockVerticalTabSectionBottomPadding = 4.dp
 
 @Composable
@@ -343,7 +345,7 @@ internal fun SlockAppBottomTabBarHost(
         modifier = hostModifier
             .fillMaxWidth()
             .height(slockSharedBottomTabBarHostHeight(bottomSafeArea))
-            .background(SlockColor.SurfaceWhite)
+            .background(SlockColor.Card)
             .clickable(onClick = {})
     ) {
         SlockBottomTabBar(

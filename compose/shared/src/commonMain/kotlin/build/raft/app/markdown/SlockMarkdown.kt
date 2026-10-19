@@ -2646,8 +2646,9 @@ internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
         textDecorationOffset = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP.sp
     )
 
-private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
-    DefaultMarkdownColors(
+// A getter, not a val: text/line colours follow SlockThemeState.
+private val SlockMarkdownColorsDefault: DefaultMarkdownColors
+    get() = DefaultMarkdownColors(
         text = SlockColor.TextBlack,
         codeText = SlockColor.SurfaceWhite,
         inlineCodeText = SlockColor.TextBlack,

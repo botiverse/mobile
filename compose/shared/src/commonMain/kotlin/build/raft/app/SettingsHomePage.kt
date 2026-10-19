@@ -22195,7 +22195,6 @@ private fun SharedHomeSavedUnsaveButton(
     modifier: Modifier = Modifier
 ) {
     val size = 31.dp
-    val shadowOffset = 3.dp
     val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier =
@@ -22208,20 +22207,14 @@ private fun SharedHomeSavedUnsaveButton(
         Box(
             modifier =
                 Modifier
-                    .size(size + shadowOffset)
+                    .size(size)
+                    .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
-                // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
-                // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
-                SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
-            }
+            // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
+            // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
+            // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
+            SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
         }
     }
 }
