@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    The root stays focusable as a focus sink (clearFocus() from a text field must not
+    bounce focus into the first Compose text field), but it has no focus-state
+    background, so Android would draw its default focus highlight - a translucent
+    gray layer over the whole window - whenever it receives focus outside touch
+    mode (e.g. after a Dialog window closes following hardware/IME key input).
+    Entering touch mode again does not refresh the highlight, so it stuck until
+    the activity was recreated. Disable it explicitly.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/slock_kuikly_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/slock_surface_cream"
     android:focusable="true"
-    android:focusableInTouchMode="true">
+    android:focusableInTouchMode="true"
+    android:defaultFocusHighlightEnabled="false">
 
     <build.raft.app.shared.SlockKuiklyTraceFrameLayout
         android:id="@+id/slock_kuikly_container"
