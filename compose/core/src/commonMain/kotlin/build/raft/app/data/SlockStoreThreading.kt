@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 /**
  * Write confinement for process-wide stores.
@@ -20,15 +21,25 @@ import kotlinx.coroutines.flow.StateFlow
  * coroutine a provider-owned store launches executes one task at a time, so state writes made from
  * those coroutines never race each other, whichever UI issued the intent.
  *
+ * The dispatcher is for store-state mutation only. Work that is not a state write (network,
+ * realtime decode, disk/SQLite I/O, prewarm, reconcile loops) runs on parallel scopes and hops onto
+ * [dispatcher] just for the final write; a blocking call that does reach the store dispatcher (e.g.
+ * a SQLite transaction) is moved off it with [runOffStoreDispatcher] or reported by
+ * [checkNotOnStoreDispatcher].
+ *
  * Stores declare their state with [slockStoreState]; in debug a [violationHandler] is installed
  * (Kuikly pages: the existing `verifyThread` switch; unit tests: a recorder/throw), and any write to
- * such a state from outside [dispatcher] is reported with the store name and thread.
+ * such a state from outside [dispatcher], or any blocking call on it, is reported with the store /
+ * operation name and thread.
  */
 object SlockStoreThreading {
     @OptIn(ExperimentalCoroutinesApi::class)
     val dispatcher: CoroutineDispatcher = SlockStoreConfinedDispatcher(Dispatchers.Default.limitedParallelism(1))
 
-    /** A supervisor scope whose coroutines all run on [dispatcher]. */
+    /**
+     * A supervisor scope whose coroutines all run on [dispatcher]. Only for stores whose coroutines
+     * mutate store state; everything else uses a parallel scope.
+     */
     fun newScope(): CoroutineScope = CoroutineScope(SupervisorJob() + dispatcher)
 
     /** True while the current thread is executing a [dispatcher] task. */
@@ -39,21 +50,64 @@ object SlockStoreThreading {
      * Debug-only write guard. Null (the default, and always in release) disables checking entirely,
      * so production pays one null check per write.
      */
-    var violationHandler: ((SlockStoreWriteViolation) -> Unit)? = null
+    var violationHandler: ((SlockStoreThreadingViolation) -> Unit)? = null
 
     fun checkWrite(store: String) {
         val handler = violationHandler ?: return
         if (!SlockStoreConfinement.isConfined()) {
-            handler(SlockStoreWriteViolation(store = store, thread = SlockStoreConfinement.currentThreadLabel()))
+            handler(
+                SlockStoreThreadingViolation(
+                    kind = SlockStoreThreadingViolation.Kind.WriteOffStoreDispatcher,
+                    subject = store,
+                    thread = SlockStoreConfinement.currentThreadLabel(),
+                )
+            )
         }
     }
+
+    /**
+     * Debug assertion for blocking work (`runBlocking`-backed SQLite transactions, synchronous disk
+     * I/O): reports [operation] when it runs on the store dispatcher, where it would stall every
+     * store write in the process.
+     */
+    fun checkNotOnStoreDispatcher(operation: String) {
+        val handler = violationHandler ?: return
+        if (SlockStoreConfinement.isConfined()) {
+            handler(
+                SlockStoreThreadingViolation(
+                    kind = SlockStoreThreadingViolation.Kind.BlockingCallOnStoreDispatcher,
+                    subject = operation,
+                    thread = SlockStoreConfinement.currentThreadLabel(),
+                )
+            )
+        }
+    }
+
+    /**
+     * Runs [block] off the store dispatcher: on the parallel default pool when called from a store
+     * task, in place otherwise (so callers already off it keep their thread, e.g. an enclosing
+     * SQLite transaction's connection-pinned thread).
+     */
+    suspend fun <T> runOffStoreDispatcher(block: suspend () -> T): T =
+        if (SlockStoreConfinement.isConfined()) withContext(Dispatchers.Default) { block() } else block()
 }
 
-data class SlockStoreWriteViolation(
-    val store: String,
+data class SlockStoreThreadingViolation(
+    val kind: Kind,
+    /** Store name for [Kind.WriteOffStoreDispatcher], operation name for [Kind.BlockingCallOnStoreDispatcher]. */
+    val subject: String,
     val thread: String,
 ) {
-    override fun toString(): String = "store_write_off_dispatcher store=$store thread=$thread"
+    enum class Kind {
+        WriteOffStoreDispatcher,
+        BlockingCallOnStoreDispatcher,
+    }
+
+    override fun toString(): String =
+        when (kind) {
+            Kind.WriteOffStoreDispatcher -> "store_write_off_dispatcher store=$subject thread=$thread"
+            Kind.BlockingCallOnStoreDispatcher -> "blocking_call_on_store_dispatcher operation=$subject thread=$thread"
+        }
 }
 
 /**

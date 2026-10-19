@@ -13,7 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 
 class SlockStoreThreadingTest {
-    private val violations = mutableListOf<SlockStoreWriteViolation>()
+    private val violations = mutableListOf<SlockStoreThreadingViolation>()
 
     @BeforeTest
     fun installGuard() {
@@ -49,7 +49,7 @@ class SlockStoreThreadingTest {
         state.update { "$it, again" }
 
         assertEquals("ui-thread write, again", state.value, "the guard reports; it never drops a write")
-        assertEquals(listOf("SharedHomeStore", "SharedHomeStore"), violations.map { it.store })
+        assertEquals(listOf("SharedHomeStore", "SharedHomeStore"), violations.map { it.subject })
     }
 
     @Test
@@ -60,6 +60,33 @@ class SlockStoreThreadingTest {
         state.value = 1
 
         assertEquals(1, state.value)
+        assertEquals(emptyList(), violations)
+    }
+
+    @Test
+    fun blockingCallsAreReportedOnlyOnTheStoreDispatcher() = runTest {
+        SlockStoreThreading.checkNotOnStoreDispatcher("off.store")
+        withContext(SlockStoreThreading.dispatcher) {
+            SlockStoreThreading.checkNotOnStoreDispatcher("SlockSqlDatabase.transaction")
+        }
+
+        assertEquals(
+            listOf(SlockStoreThreadingViolation.Kind.BlockingCallOnStoreDispatcher to "SlockSqlDatabase.transaction"),
+            violations.map { it.kind to it.subject },
+        )
+    }
+
+    @Test
+    fun runOffStoreDispatcherLeavesTheStoreDispatcherForBlockingWork() = runTest {
+        val confinedInside =
+            withContext(SlockStoreThreading.dispatcher) {
+                SlockStoreThreading.runOffStoreDispatcher {
+                    SlockStoreThreading.checkNotOnStoreDispatcher("blocking")
+                    SlockStoreThreading.isOnStoreDispatcher
+                }
+            }
+
+        assertFalse(confinedInside)
         assertEquals(emptyList(), violations)
     }
 
