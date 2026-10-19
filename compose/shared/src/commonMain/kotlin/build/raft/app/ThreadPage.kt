@@ -313,7 +313,10 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.text.SelectableText
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
+import com.tencent.kuikly.compose.material3.PullToRefreshState
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -20996,7 +20999,18 @@ private fun ThreadMessagesListContent(
                     PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
+            // One state shared by both end items: the two ends are the same spring, and two states
+            // would let a pull at one edge leave the other half-extended.
+            val threadOverscrollState = rememberPullToRefreshState(isRefreshing = false)
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
+            if (threadOverscrollBounceEnabled) {
+                threadListSegments += {
+                    threadOverscrollBounceItem(
+                        state = threadOverscrollState,
+                        scrollState = listState
+                    )
+                }
+            }
             threadListSegments += {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
@@ -21428,6 +21442,27 @@ private fun ThreadMessagesListContent(
                         )
                 )
             }
+            }
+            // task #37 overscroll: give both ends of the message list a stretchy pull before it
+            // snaps back, so a drag at either edge has feedback instead of stopping dead.
+            //
+            // The Kuikly primitive does NOT scroll the list: it expands and releases native content
+            // insets on the ScrollerView (verified by decompiling
+            // com.tencent.kuikly-open:compose-android:2.28.0-raft.9 -- the bytecode calls
+            // ScrollerView.setContentInset(l, t, r, b, ...) and never reads layoutInfo, so it is
+            // edge-based rather than anchor-based and works for a reversed list too).
+            //
+            // Placement: two items bracket threadListSegments, one before the first segment added
+            // and one after the last. The `asReversed()` below flips the whole list for bottom-up
+            // threads, so bracketing the segment list is what leaves one item at each PHYSICAL end.
+            // (A single item would cover only one edge: simulated the ordering before writing this.)
+            if (threadOverscrollBounceEnabled) {
+                threadListSegments += {
+                    threadOverscrollBounceItem(
+                        state = threadOverscrollState,
+                        scrollState = listState
+                    )
+                }
             }
             // Reversed (bottom-up) layout emits the same rows newest-first: physical item 0 is the
             // bottom padding row, the messages count down, the origin card comes last (at the top).
@@ -21927,6 +21962,44 @@ private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
+
+/**
+ * task #37 overscroll: the stretchy pull at each end of the message list.
+ *
+ * Two keys, one per end of `threadListSegments`. The list is emitted with `asReversed()` when the
+ * thread is bottom-up, so a single item would cover only one physical edge -- these two bracket the
+ * segment list so that after the flip one sits at each physical end.
+ */
+/**
+ * task #37 overscroll: whether the message list offers a stretchy pull at its edges.
+ *
+ * Gated on the platform capability rather than applied unconditionally: the effect is produced by
+ * Kuikly's `pullToRefreshItem`, which expands native content insets, and only platforms whose
+ * capability reports true can honour that.
+ */
+internal val threadOverscrollBounceEnabled: Boolean
+    get() = slockPlatformSupportsKuiklyPullToRefreshItem()
+
+/**
+ * task #37 overscroll: the item that supplies the stretch at one end of the list.
+ *
+ * This is a *bounce*, not a refresh. `pullToRefreshItem` is the only primitive that produces the
+ * native inset expansion, so it is used here with an inert `onRefresh` -- reaching the threshold
+ * must not reload the thread. The progress callback is ignored for the same reason: there is no
+ * refresh state to display, and the movement itself is the feedback.
+ */
+private fun LazyListScope.threadOverscrollBounceItem(
+    state: PullToRefreshState,
+    scrollState: LazyListState,
+) {
+    pullToRefreshItem(
+        state = state,
+        scrollState = scrollState,
+        holdRefreshInset = false,
+        onRefresh = {},
+        content = { _, _, _ -> }
+    )
+}
 private val ThreadBottomScrollPaddingHeight = 16.dp
 private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
