@@ -452,7 +452,8 @@ internal fun UiSpinnerVisualContent() {
     // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
     // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
     // content box is one 24px line with the spinner sitting on the baseline (the bottom).
-    // The web capture freezes the spinners with the top-right pixel lit (step 1).
+    // The spinners are pinned to step 1 (top-right pixel lit) so the capture is
+    // deterministic; the web frame depends on its capture timing.
     Box(
         modifier =
             Modifier

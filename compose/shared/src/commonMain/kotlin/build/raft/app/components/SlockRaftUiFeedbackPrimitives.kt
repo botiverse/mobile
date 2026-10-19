@@ -14,6 +14,8 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.animation.core.LinearEasing
 import com.tencent.kuikly.compose.animation.core.RepeatMode
 import com.tencent.kuikly.compose.animation.core.animateFloat
@@ -471,8 +473,7 @@ internal fun SlockSpinner(
     modifier: Modifier = Modifier,
     size: SlockSpinnerSize = SlockSpinnerSize.Sm,
     inverse: Boolean = false,
-    // A fixed step instead of the animation, for still captures (the web case renders
-    // the spinner frozen mid-cycle).
+    // A fixed step instead of the animation, so still captures are deterministic.
     stillStep: Int? = null
 ) {
     if (slockRaftActive()) {
@@ -520,24 +521,28 @@ private fun SlockRaftPixelSpinner(
     stillStep: Int?
 ) {
     val ink = if (inverse) SlockColor.ForegroundInverse else SlockColor.TextBlack
-    val elapsed: State<Float>? =
+    val animatedStep: State<Int>? =
         if (stillStep == null) {
-            rememberInfiniteTransition(label = "slock-spinner").animateFloat(
-                initialValue = 0f,
-                targetValue = SlockSpinnerCycleMillis.toFloat(),
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(durationMillis = SlockSpinnerCycleMillis, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                label = "slock-spinner-elapsed"
-            )
+            val elapsed =
+                rememberInfiniteTransition(label = "slock-spinner").animateFloat(
+                    initialValue = 0f,
+                    targetValue = SlockSpinnerCycleMillis.toFloat(),
+                    animationSpec =
+                        infiniteRepeatable(
+                            animation = tween(durationMillis = SlockSpinnerCycleMillis, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                    label = "slock-spinner-elapsed"
+                )
+            // The elapsed time changes every frame, the step only four times a cycle: draw
+            // observes the derived step alone, so the canvas redraws 4x a second.
+            remember(elapsed) { derivedStateOf { slockSpinnerStepAt(elapsed.value.toInt()) } }
         } else {
             null
         }
     Canvas(modifier = modifier.size(size.extent)) {
-        // Read the animation in the draw phase so a step only redraws the canvas.
-        val step = stillStep ?: slockSpinnerStepAt(elapsed?.value?.toInt() ?: 0)
+        // Read the step in the draw phase so a step change only redraws the canvas.
+        val step = stillStep ?: animatedStep?.value ?: 0
         val lit = slockSpinnerLitCell(step)
         val pixel = size.pixel.toPx()
         val pitch = pixel + size.gap.toPx()

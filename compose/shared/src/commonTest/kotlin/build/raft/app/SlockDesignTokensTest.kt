@@ -176,6 +176,10 @@ class SlockDesignTokensTest {
         assertEquals(listOf(0, 0, 1, 2, 3, 0), listOf(0, 249, 250, 500, 999, 1000).map(::slockSpinnerStepAt))
         assertEquals(listOf(0, 1, 3, 2), (0 until 4).map(::slockSpinnerLitCell))
         assertEquals(0, slockSpinnerLitCell(4))
+        // The canvas redraws only when the derived step changes: four times per 1s cycle.
+        val stepChanges = (1 until 1000).count { slockSpinnerStepAt(it) != slockSpinnerStepAt(it - 1) }
+        assertEquals(3, stepChanges)
+        assertEquals(0, slockSpinnerStepAt(1000))
         assertEquals(0.2f, SlockSpinnerPixelRestAlpha)
     }
 
