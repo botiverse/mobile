@@ -498,6 +498,14 @@ jobs:
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
 
+      # The Gradle run that Xcode's "Copy kmmresource MR bundle" phase starts
+      # does not see the job's SLOCK_VISUAL_FIXTURES env, so without this it
+      # resolved slockVisualFixtures=false, saw different compile inputs and
+      # recompiled + relinked the framework (~15 min, run 39198145843). A
+      # user-home Gradle property reaches every Gradle run in the job.
+      - name: Visual fixtures for every Gradle run in this job
+        run: echo "slockVisualFixtures=true" >> "${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
