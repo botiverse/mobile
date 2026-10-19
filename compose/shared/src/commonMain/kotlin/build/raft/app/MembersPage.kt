@@ -26,6 +26,28 @@ import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.components.SlockRaftCard
+import build.raft.app.components.SlockRaftBadgeChrome
+import build.raft.app.components.SlockRaftFieldMessage
+import build.raft.app.components.SlockSelectTrigger
+import build.raft.app.components.SlockRaftDescriptionDirection
+import build.raft.app.components.SlockRaftDescriptionItem
+import build.raft.app.components.SlockRaftDescriptionList
+import build.raft.app.components.SlockRaftDescriptionValue
+import build.raft.app.components.SlockRaftHairline
+import build.raft.app.components.SlockRaftInsetList
+import build.raft.app.components.SlockRaftListRow
+import build.raft.app.components.SlockRaftSection
+import build.raft.app.components.SlockRaftTag
+import build.raft.app.components.SlockRaftTagAppearance
+import build.raft.app.components.SlockRaftTagTone
+import build.raft.app.components.SlockRaftText
+import build.raft.app.components.SlockRaftUiBanner
+import build.raft.app.components.SlockRaftUiBannerSize
+import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.SlockRaftValueBlock
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentArchiveWorkspaceChoice
@@ -201,6 +223,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.ui.draw.clip
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
@@ -6303,7 +6326,7 @@ private fun MembersDetailContent(
             // Reuse the shared unified dialog (React ConfirmDialog is a plain
             // card: uppercase 18px title + X, no header divider, max-w-sm).
             SlockUnifiedDialog(
-                title = membersLifecycleConfirmTitle(action, member.displayName).slockDisplayUppercase(),
+                title = membersLifecycleConfirmTitle(action, member.displayName),
                 dismissEnabled = lifecycleInFlight != action.actionKey,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
@@ -6551,11 +6574,12 @@ private fun MembersDetailHeader(
                 )
             }
         }
+        // raft panel head: 1dp seam below.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
+                .height(SlockStroke.Thin)
+                .background(SlockColor.BorderSeam)
                 .align(Alignment.BottomCenter)
         )
     }
@@ -6586,8 +6610,7 @@ private fun MembersDetailSummary(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(if (deleted) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
+            .slockRaftCardSurface(fill = if (deleted) SlockColor.FillMuted else SlockColor.Card)
             .padding(SlockSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
@@ -6816,29 +6839,14 @@ private fun MembersLifecycleConfirmation(
 /** Banner row extracted so the archive flow can show it conditionally (web renders it only for the delete choice). */
 @Composable
 private fun MembersLifecycleWarningBanner(destructive: Boolean, text: String) {
-    val accent = if (destructive) SlockColor.AccentRed else SlockColor.AccentOrange
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(accent.copy(alpha = 0.2f))
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        // React Banner icons: destructive → AlertTriangle, warning →
-        // CircleAlert (closest available catalog glyph is Info).
-        SlockLucideIcon(
-            if (destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
-            modifier = Modifier.size(18.dp),
-            color = SlockColor.TextBlackArgb
-        )
-        Text(
-            text = text,
-            style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = SlockColor.TextBlack
-        )
-    }
+    // raft-ui Banner (danger / warning intent). React Banner icons: destructive →
+    // AlertTriangle, warning → CircleAlert (closest available catalog glyph is Info).
+    SlockRaftUiBanner(
+        status = if (destructive) SlockRaftUiBannerStatus.Destructive else SlockRaftUiBannerStatus.Warning,
+        description = text,
+        iconName = if (destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
+        descriptionMaxLines = Int.MAX_VALUE
+    )
 }
 
 // ── task #517: post-archive workspace section (web AgentArchiveSection parity) ──
@@ -6942,7 +6950,7 @@ private fun MembersAgentArchiveSection(
         archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer && !deleting
 
     MembersDetailSection(
-        title = stringResource(MR.strings.member_archive_section_title).slockDisplayUppercase()
+        title = stringResource(MR.strings.member_archive_section_title)
     ) {
         if (archiveState == MembersAgentArchiveUiState.Failed) {
             MembersLifecycleWarningBanner(
@@ -7121,7 +7129,7 @@ private fun MembersAgentIssueReportDialog(
         mutableStateOf(runtimeTranscriptAvailable)
     }
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_title).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_report_issue_title),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
@@ -7135,20 +7143,12 @@ private fun MembersAgentIssueReportDialog(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
             item {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
-                    Text(
-                        text = agentName,
-                        style = SlockType.ButtonBold,
-                        color = SlockColor.TextBlack
+                // Read-only value: the agent the report is about.
+                SlockRaftDescriptionList {
+                    SlockRaftDescriptionItem(
+                        term = stringResource(MR.strings.member_report_issue_agent_label),
+                        value = agentName,
+                        maxLines = 1
                     )
                 }
             }
@@ -7207,10 +7207,9 @@ private fun MembersAgentIssueReportDialog(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(12.dp),
+                            // raft-ui warning Banner: `--warning-soft` wash, hairline ring.
+                            .slockRaftCardSurface(fill = SlockColor.WarningSoft)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
@@ -7225,7 +7224,7 @@ private fun MembersAgentIssueReportDialog(
                         Text(
                             text = stringResource(MR.strings.member_report_issue_disclosure),
                             modifier = Modifier.weight(1f),
-                            style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                            style = SlockType.Body.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine),
                             color = SlockColor.TextBlack
                         )
                     }
@@ -7253,8 +7252,8 @@ private fun MembersAgentIssueReportDialog(
                 item {
                     Text(
                         text = stringResource(MR.strings.member_report_issue_failed, message),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.SemiBold),
+                        color = SlockColor.DangerStrong
                     )
                 }
             }
@@ -7337,18 +7336,7 @@ private fun MembersAgentIssueReportReferenceRow(
     label: String,
     value: String
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.6f)
-        )
-        Text(
-            text = value,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack
-        )
-    }
+    SlockRaftDescriptionItem(term = label, value = value, mono = true, maxLines = Int.MAX_VALUE)
 }
 
 @Composable
@@ -7359,7 +7347,7 @@ private fun MembersAgentIssueReportReceiptDialog(
     onDismiss: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_success_title).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_report_issue_success_title),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -7372,10 +7360,10 @@ private fun MembersAgentIssueReportReceiptDialog(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
+                // raft sticker tile: success fill, sticker radius, 1.5dp sticker-ink edge.
                 modifier = Modifier
                     .size(48.dp)
-                    .background(SlockColor.AccentLime)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .slockRaftControlSurface(fill = SlockColor.Success, border = SlockColor.StickerInk, radius = SlockRadius.Sticker),
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(
@@ -7398,18 +7386,11 @@ private fun MembersAgentIssueReportReceiptDialog(
                 Text(
                     text = stringResource(MR.strings.member_report_issue_success_hint),
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    color = SlockColor.TextMuted,
                     textAlign = TextAlign.Center
                 )
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            SlockRaftCard(contentPadding = 12.dp, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_reference_label))
                 MembersAgentIssueReportReferenceRow(
                     label = stringResource(MR.strings.member_report_issue_report_id),
@@ -7485,7 +7466,7 @@ internal fun MembersRestartResetDialog(
                 item {
                     MembersRestartResetNotice(
                         text = stringResource(MR.strings.member_error_reset_agent, it),
-                        color = SlockColor.AccentOrange
+                        destructive = false
                     )
                 }
             }
@@ -7517,7 +7498,7 @@ internal fun MembersRestartResetDialog(
                 item {
                     MembersRestartResetNotice(
                         text = stringResource(MR.strings.member_dialog_full_reset_warning),
-                        color = SlockColor.AccentOrange
+                        destructive = true
                     )
                 }
             }
@@ -7551,71 +7532,27 @@ private fun MembersRestartResetActionCard(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    // Every card reserves the shadow gutter and keeps the shadow box; only its color
-    // follows selection. Reserving it only on the selected card made that card 4dp
-    // narrower than its siblings and shifted the list whenever the selection changed.
-    val shadowOffset = 4.dp
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(end = shadowOffset, bottom = shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(if (selected) SlockColor.ShadowBlack else Color.Transparent)
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(if (selected) action.restartResetTintColor() else SlockColor.SurfaceWhite)
-                    .border(
-                        if (selected) SlockStroke.Default else SlockStroke.Thin,
-                        if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.32f)
-                    )
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(horizontal = SlockSpacing.Md, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            Text(
-                text = action.restartResetTitle(),
-                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = action.restartResetDescription(),
-                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
-            )
-        }
-    }
+    // Web ResetAgentDialog: a raft-ui RadioGroup of plain rows (radio, 15/20 semibold
+    // label, 13/18 muted description), not bordered panels (task #660).
+    MembersArchiveWorkspaceOption(
+        label = action.restartResetTitle(),
+        description = action.restartResetDescription(),
+        selected = selected,
+        enabled = enabled,
+        onSelect = onClick
+    )
 }
 
 @Composable
-private fun MembersRestartResetNotice(text: String, color: Color) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        verticalAlignment = Alignment.Top
-    ) {
-        SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
-        Text(
-            text = text,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack
-        )
-    }
+private fun MembersRestartResetNotice(text: String, destructive: Boolean) {
+    // raft-ui Banner `density="sm"` with its intent icon.
+    SlockRaftUiBanner(
+        status = if (destructive) SlockRaftUiBannerStatus.Destructive else SlockRaftUiBannerStatus.Warning,
+        description = text,
+        size = SlockRaftUiBannerSize.Small,
+        iconName = SlockLucideIconName.TriangleAlert,
+        descriptionMaxLines = Int.MAX_VALUE
+    )
 }
 
 private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
@@ -7626,10 +7563,10 @@ private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
 @Composable
 private fun MembersAgentLifecycleAction.restartResetTitle(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent).slockDisplayUppercase()
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session).slockDisplayUppercase()
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart).slockDisplayUppercase()
-        else -> localizedLabel().slockDisplayUppercase()
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        else -> localizedLabel()
     }
 
 @Composable
@@ -7655,13 +7592,11 @@ private fun MembersAgentLifecycleAction.restartResetDescription(): String =
 
 private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
     when (this) {
+        // Web: restart and session reset are the orange `warning` confirm (the agent comes
+        // back); the full reset deletes the workspace, so it is the red `danger`.
         MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed
-        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange
-        else -> SlockColor.AccentCyan
+        else -> SlockColor.AccentOrange
     }
-
-private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
-    SlockColor.AppBgLightBlue
 
 @Composable
 private fun MembersAgentTabBar(
@@ -7683,30 +7618,42 @@ private fun MembersAgentTabBar(
             }
         }
     }
+    // raft-ui `Tabs` in a panel strip, as SlockTopTabBar draws it (px-4 py-2, seam
+    // below): the active tab is the yellow sticker, the rest ghost on muted ink; a tab
+    // being dragged to a new slot takes the info wash.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockTopTabBarDefaults.Height)
-            .background(SlockColor.SurfaceWhite)
+            .height(SlockTopTabBarDefaults.Height + SlockSpacing.Md + SlockStroke.Thin)
+            .background(SlockColor.Canvas)
     ) {
         LazyRow(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
                 val tab = tabs[index]
                 val spec = tab.toSlockTabSpec()
                 val selected = tab == selectedTab
                 val dragging = tab == draggedTab
+                val tabShape = RoundedCornerShape(SlockRadius.Control)
                 Row(
                     modifier = Modifier
                         .widthIn(min = spec.width)
-                        .fillMaxHeight()
-                        .background(
+                        .height(SlockTopTabBarDefaults.Height)
+                        .then(
                             when {
-                                dragging -> SlockColor.AccentCyan
-                                selected -> SlockColor.BrandYellow
-                                else -> SlockColor.SurfaceWhite
+                                dragging -> Modifier.background(SlockColor.InfoSoft, tabShape)
+                                selected ->
+                                    Modifier
+                                        .background(SlockColor.Brand, tabShape)
+                                        .border(SlockStroke.Control, SlockColor.StickerInk, tabShape)
+                                else -> Modifier
                             }
                         )
                         .clickable { onSelectedTabChange(tab) }
@@ -7739,27 +7686,30 @@ private fun MembersAgentTabBar(
                                 dragOffsetX += dragAmount.x
                             }
                         }
-                        .padding(horizontal = 10.dp, vertical = SlockSpacing.Xs),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
                 ) {
-                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
+                    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
+                    SlockLucideIcon(
+                        spec.iconName,
+                        modifier = Modifier.size(16.dp),
+                        color = slockArgbHex(contentColor),
+                        strokeWidth = 2f
+                    )
                     Text(
                         text = spec.label,
-                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style =
+                            SlockType.Button
+                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
+                        color = contentColor,
                         maxLines = 1
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .height(SlockTopTabBarDefaults.Height - SlockStroke.Default)
-                        .width(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
-                )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
     }
 }
 
@@ -7819,19 +7769,20 @@ private fun MembersAgentDetailStateNotice(
                 if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
         }
     val resolved = message ?: return
+    // raft-ui PanelNotice-style inline note: a muted-fill card with footnote ink.
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .slockRaftCardSurface(fill = SlockColor.FillMuted),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = resolved,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs)
+            style = SlockType.Body.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine)
+                .withSlockFontWeight(FontWeight.SemiBold),
+            color = SlockColor.TextMuted,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
 }
@@ -7849,8 +7800,8 @@ private fun MembersAgentRuntimeErrorBanner(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+            // raft-ui PanelNotice (warning): `--warning-soft` wash, hairline below.
+            .background(SlockColor.WarningSoft)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = MembersPageInset, vertical = SlockSpacing.Sm),
@@ -7864,8 +7815,8 @@ private fun MembersAgentRuntimeErrorBanner(
             )
             Text(
                 text = if (canViewPrivate) errorText else stringResource(MR.strings.member_state_agent_error),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
+                style = SlockType.Body.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine)
+                    .withSlockFontWeight(FontWeight.SemiBold),
                 color = SlockColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
@@ -7889,7 +7840,7 @@ private fun MembersAgentRuntimeErrorBanner(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
     }
 }
 
@@ -8009,7 +7960,7 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description))
         val descriptionMissing = member.description.isNullOrBlank()
         Text(
             text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
@@ -8069,7 +8020,7 @@ private fun MembersHumanInfoSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info))
         MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
             if (editingRole) {
                 Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
@@ -8216,21 +8167,20 @@ private fun MembersHumanRoleChip(
     label: String,
     backgroundColor: Color
 ) {
-    Box(
-        modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(backgroundColor)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    SlockRaftTag(label = label, tone = membersRoleTagTone(backgroundColor))
 }
+
+/** raft-ui soft Badge role for the brutal role colours (owner orange, admin pink, member lavender). */
+private fun membersRoleTagTone(backgroundColor: Color): SlockRaftTagTone =
+    when (backgroundColor) {
+        SlockColor.AccentOrange -> SlockRaftTagTone.Warning
+        SlockColor.AccentPink -> SlockRaftTagTone.Accent
+        SlockColor.AccentCyan -> SlockRaftTagTone.Information
+        SlockColor.AccentLime -> SlockRaftTagTone.Success
+        SlockColor.BrandYellow -> SlockRaftTagTone.Primary
+        SlockColor.EmptyStateGray -> SlockRaftTagTone.Muted
+        else -> SlockRaftTagTone.Default
+    }
 
 @Composable
 private fun MembersServerRoleEditor(
@@ -8252,30 +8202,14 @@ private fun MembersServerRoleEditor(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
-        Row(
-            modifier = Modifier
-                .widthIn(min = 160.dp)
-                .height(33.dp)
-                .background(badgeBackgroundColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onToggle)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = displayValue,
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
-                modifier = Modifier.weight(1f)
-            )
-            SlockLucideIcon(
-                SlockLucideIconName.ChevronDown,
-                modifier = Modifier.size(14.dp),
-                color = SlockColor.TextBlackArgb,
-                rotationDegrees = if (expanded) 180f else 0f
-            )
-        }
+        // raft-ui SelectTrigger (field chrome); the role colour no longer tints the control.
+        SlockSelectTrigger(
+            label = displayValue,
+            modifier = Modifier.widthIn(min = 160.dp),
+            enabled = enabled,
+            expanded = expanded,
+            onClick = onToggle
+        )
         if (expanded && enabled) {
             SlockRaftUiSelectionPopover(
                 title = stringResource(MR.strings.member_label_role),
@@ -8291,7 +8225,7 @@ private fun MembersServerRoleEditor(
                 label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                 onClick = onSave,
                 enabled = enabled && saveEnabled,
-                backgroundColor = SlockColor.BrandYellow
+                backgroundColor = SlockColor.Attention
             )
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
@@ -8301,12 +8235,7 @@ private fun MembersServerRoleEditor(
             )
         }
         error?.let {
-            Text(
-                text = it,
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.AccentRed
-            )
+            SlockRaftFieldMessage(error = it, hint = null, maxLines = Int.MAX_VALUE)
         }
     }
 }
@@ -8344,26 +8273,13 @@ private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
             MembersAgentServerRoleDisplay.Hidden -> ""
         }
     val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
-    Box(
-        modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(backgroundColor)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    SlockRaftTag(label = label, tone = membersRoleTagTone(backgroundColor))
 }
 
 @Composable
 private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_title_agent_roles).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_title_agent_roles),
         onDismiss = onDismiss,
         // Web RolePermissionHelpDialog: DialogCard max-w-md, rows space-y-3.
         maxWidth = 448.dp
@@ -8392,14 +8308,7 @@ private fun MembersAgentRoleHelpRow(
     summary: String,
     details: String
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.20f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
+    SlockRaftCard(contentPadding = 12.dp, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
@@ -8415,8 +8324,8 @@ private fun MembersAgentRoleHelpRow(
             Text(
                 text = summary,
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack.copy(alpha = 0.60f),
+                    .withSlockFontWeight(FontWeight.SemiBold),
+                color = SlockColor.ForegroundHint,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -8424,7 +8333,7 @@ private fun MembersAgentRoleHelpRow(
         Text(
             text = details,
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 22.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.75f)
+            color = SlockColor.TextMuted
         )
     }
 }
@@ -8447,11 +8356,12 @@ private fun MembersHumanCreatedAgentsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase())
+            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents))
+            // raft section count (`rf-count`): Space Mono 12/16, hint ink.
             Text(
                 text = createdAgents.size.toString(),
-                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.ForegroundHint
             )
         }
         if (createdAgents.isEmpty()) {
@@ -8465,12 +8375,11 @@ private fun MembersHumanCreatedAgentsSection(
                 color = SlockColor.TextMutedGray.copy(alpha = 0.75f)
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                createdAgents.forEach { agent ->
+            // raft-ui inset list: one card, hairlines between rows from the text column.
+            SlockRaftInsetList {
+                createdAgents.forEachIndexed { index, agent ->
                     MembersHumanCreatedAgentRow(
+                        divider = index > 0,
                         agent = agent,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -8489,7 +8398,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions))
         SlockBrutalActionButton(
             label = stringResource(MR.strings.member_action_remove_member),
             leadingIcon = SlockLucideIconName.Trash2,
@@ -8507,6 +8416,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
 @Composable
 private fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
+    divider: Boolean = false,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     fixtureStatusFallbackEnabled: Boolean = false
@@ -8526,55 +8436,38 @@ private fun MembersHumanCreatedAgentRow(
     val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
     val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.25f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MembersAvatar(
-            member = profile,
-            avatarSize = 32.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = profile.displayName,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    // raft-ui ListRow (AvatarListRow): 32dp avatar, 16/24 title, mono runtime meta.
+    SlockRaftListRow(
+        title = profile.displayName,
+        meta = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+            ?: profile.detailRoleLabel,
+        divider = divider,
+        leadingSize = 32.dp,
+        leading = {
+            MembersAvatar(
+                member = profile,
+                avatarSize = 32.dp,
+                statusSize = 0.dp,
+                memberAvatarResolver = memberAvatarResolver,
+                showStatusOverlay = false
             )
-            Text(
-                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
-                    ?: profile.detailRoleLabel,
-                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        // Unknown is not Offline: no dot until something is observed (task #256).
-        observedDisplayState?.let { observed ->
-            SlockStatusIndicator(
-                color = observed.color,
-                size = 10.dp,
-                pulsing = observed.pulsing
-            )
-        }
-    }
+        },
+        trailing =
+            observedDisplayState?.let { observed ->
+                {
+                    // Unknown is not Offline: no dot until something is observed (task #256).
+                    SlockStatusIndicator(
+                        color = observed.color,
+                        size = 10.dp,
+                        pulsing = observed.pulsing
+                    )
+                }
+            }
+    )
 }
 
-private val MembersAgentAvatarPickerCellSize = 40.dp
+// Web AgentProfileEditDialog preset buttons: `size-11` cells.
+private val MembersAgentAvatarPickerCellSize = 44.dp
 private val MembersAgentAvatarPickerAvatarSize = 36.dp
 
 @Composable
@@ -8585,10 +8478,10 @@ private fun MembersAgentAvatarChoiceGrid(
     onClear: () -> Unit,
     onSelect: (String) -> Unit
 ) {
-    // React parity: each cell renders the actual pixel art (or upload icon
-    // for the first cell) inside a 40dp cell with a 2dp border, mirroring
-    // `AgentDetailPanel.tsx`. Active selection gets a pink border
-    // + pink tint background (React `border-palette-pink bg-palette-pink/20`).
+    // Web AgentProfileEditDialog `presetButtonClass`: each cell renders the pixel art
+    // (or the upload icon first) in a 44dp control-radius cell with a 1.5dp edge; the
+    // selected cell is the yellow sticker (ink edge, brand fill), the upload cell keeps
+    // a strong ink edge, the rest a transparent edge.
     val activeCustomAvatar = member.avatarUrl != null
     val activePixelKey = if (activeCustomAvatar) {
         null
@@ -8598,15 +8491,17 @@ private fun MembersAgentAvatarChoiceGrid(
     @OptIn(ExperimentalLayoutApi::class)
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Box(
             modifier = Modifier
                 .size(MembersAgentAvatarPickerCellSize)
-                .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+                .slockRaftControlSurface(
+                    fill = if (activeCustomAvatar) SlockColor.Brand else Color.Transparent,
+                    border = if (activeCustomAvatar) SlockColor.StickerInk else SlockColor.BorderBlack
+                )
+                .clip(RoundedCornerShape(SlockRadius.Control))
                 .clickable(enabled = !uploading) { onUploadClick() },
             contentAlignment = Alignment.Center
         ) {
@@ -8622,8 +8517,8 @@ private fun MembersAgentAvatarChoiceGrid(
             } else {
                 SlockLucideIcon(
                     if (uploading) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Upload,
-                    modifier = Modifier.size(16.dp),
-                    color = "#99000000",
+                    modifier = Modifier.size(18.dp),
+                    color = slockArgbHex(SlockColor.TextMuted),
                     spinning = uploading
                 )
             }
@@ -8656,9 +8551,11 @@ private fun MembersAgentAvatarPickerCell(
     Box(
         modifier = modifier
             .size(MembersAgentAvatarPickerCellSize)
-            .border(SlockStroke.Default, if (active) SlockColor.AccentPink else SlockColor.BorderBlack)
-            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-            .background(if (active) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+            .slockRaftControlSurface(
+                fill = if (active) SlockColor.Brand else Color.Transparent,
+                border = if (active) SlockColor.StickerInk else Color.Transparent
+            )
+            .clip(RoundedCornerShape(SlockRadius.Control))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -8742,10 +8639,12 @@ private fun MembersAgentInfoField(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier = modifier) {
+        // raft-ui DescriptionTerm: footnote 13/18 medium, hint ink, source case.
         Text(
             text = label,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray,
+            style = SlockType.Body.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine, letterSpacing = 0.sp)
+                .withSlockFontWeight(FontWeight.Medium),
+            color = SlockColor.ForegroundHint,
             modifier = Modifier.padding(bottom = MembersInfoLabelGap)
         )
         content()
@@ -8819,7 +8718,7 @@ private fun MembersAgentProfileHeader(
                 Text(
                     text = member.detailHandle,
                     style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextMutedGray,
+                    color = SlockColor.TextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -8842,7 +8741,7 @@ private fun MembersAgentProfileHeader(
                     Text(
                         text = statusLabel,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray,
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -8858,11 +8757,7 @@ private fun MembersAgentProfileHeader(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 MembersDetailSectionDivider()
-                SlockSectionEyebrow(
-                    label = stringResource(MR.strings.member_action_choose_avatar).slockDisplayUppercase(),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
+                SlockSectionEyebrow(label = stringResource(MR.strings.member_action_choose_avatar))
                 MembersAgentAvatarChoiceGrid(
                     member = member,
                     uploading = uploading,
@@ -9232,7 +9127,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_label_display_name).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_label_display_name),
                 showEdit = canEdit && !editingDisplayName,
                 onEditClick = {
                     displayNameEditorAuthority = agentProfileEditAuthority
@@ -9319,7 +9214,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_description).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_section_description),
                 showEdit = canEdit && !editingRole,
                 onEditClick = {
                     roleEditorAuthority = agentProfileEditAuthority
@@ -9550,7 +9445,7 @@ private fun MembersAgentInfoSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info))
         // Role row: React keeps this as a label affordance plus an inline role chip/editor,
         // not the compact two-column metadata row used by Computer/Created/Creator.
         Column(
@@ -10092,7 +9987,7 @@ private fun MembersAgentRuntimeConfigSection(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_runtime_config).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_section_runtime_config),
                 showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                 onEditClick = {
                     runtimeConfigError = null
@@ -10208,8 +10103,8 @@ private fun MembersExternalAgentSetupSection(
         mutableStateOf(MembersExternalHarness.ClaudeCode)
     }
     Column(
-        modifier = modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.AccentCyan.copy(alpha = 0.12f)).padding(12.dp),
+        // raft-ui Card holding the external setup steps (web `Card className="p-3"`).
+        modifier = modifier.fillMaxWidth().slockRaftCardSurface().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         SlockSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
@@ -10476,7 +10371,7 @@ private fun MembersAgentProfileActionsSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions))
         if (primaryAction != null) {
             SlockBrutalActionButton(
                 label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
@@ -10703,10 +10598,12 @@ private fun MembersAgentRuntimeConfigField(
         modifier = Modifier.width(122.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        // raft-ui DescriptionTerm: footnote 13/18 medium, hint ink, source case.
         Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
+            text = label,
+            style = SlockType.Body.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine, letterSpacing = 0.sp)
+                .withSlockFontWeight(FontWeight.Medium),
+            color = SlockColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -10742,11 +10639,11 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 envVarNames.forEach { name ->
+                    // raft-ui outline Badge: mono meta on a hairline chip.
                     Box(
                         modifier = Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+                            .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Chip))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -11186,7 +11083,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
 
     SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -11729,10 +11626,10 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                    .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    // raft-ui warning Banner surface.
+                    .slockRaftCardSurface(fill = SlockColor.WarningSoft)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top
             ) {
                 SlockLucideIcon(
@@ -12040,8 +11937,7 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
+            .slockRaftCardSurface()
             .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
@@ -12084,7 +11980,7 @@ private fun MembersAgentCreatedAgentsSection(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase(),
+                stringResource(MR.strings.member_section_created_agents),
                 modifier = Modifier.weight(1f)
             )
             Text(
@@ -12146,10 +12042,9 @@ private fun MembersAgentCreatedAgentRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            .slockRaftCardSurface()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         MembersAvatar(
@@ -12230,18 +12125,8 @@ private fun MembersAgentChatTabContent(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Text(
-            text = stringResource(MR.strings.member_section_agent_channels_dms).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
-        )
-        Text(
-            text = stringResource(MR.strings.member_section_channels).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
-        )
+        SlockSectionEyebrow(label = stringResource(MR.strings.member_section_agent_channels_dms))
+        SlockSectionEyebrow(label = stringResource(MR.strings.member_section_channels))
         val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
         if (channels.isEmpty()) {
             Text(
@@ -12254,29 +12139,14 @@ private fun MembersAgentChatTabContent(
                 MembersAgentChannelRow(channel)
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SlockStroke.Thin)
-                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
-        )
-        Text(
-            text = stringResource(MR.strings.member_section_private_chats).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
-        )
+        SlockRaftHairline()
+        SlockSectionEyebrow(label = stringResource(MR.strings.member_section_private_chats))
         Text(
             text = stringResource(MR.strings.member_hint_chat_audit_only),
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
             color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
         )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SlockStroke.Thin)
-                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
-        )
+        SlockRaftHairline()
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
             Text(
@@ -12297,8 +12167,7 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-            .background(SlockColor.SurfaceWhite)
+            .slockRaftCardSurface()
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -12328,10 +12197,9 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
                     color = SlockColor.TextMutedGrayArgb
                 )
                 Text(
-                    text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextMutedGray
+                    text = stringResource(MR.strings.member_label_muted),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.ForegroundHint
                 )
             }
         }
@@ -12372,14 +12240,12 @@ private fun MembersAgentDmRow(
                 .membersAgentDmPeerProfile(row, currentServerId)
                 ?.slockAvatarCacheIdentity(currentServerId)
         }
-    // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
-    // with avatar + name + handle + relative time on the top row, body text
-    // on the second row, and an ACTIVITY ONLY tag on the third row.
+    // raft-ui Card with avatar + name + handle + relative time on the top row, body
+    // text on the second row, and the activity-only note on the third row.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-            .background(SlockColor.SurfaceWhite)
+            .slockRaftCardSurface()
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -12432,10 +12298,9 @@ private fun MembersAgentDmRow(
             )
         }
         Text(
-            text = stringResource(MR.strings.member_label_activity_only).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            text = stringResource(MR.strings.member_label_activity_only),
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.ForegroundHint
         )
     }
 }
@@ -12478,8 +12343,7 @@ private fun MembersAgentReminderCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
+            .slockRaftCardSurface()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
@@ -12527,8 +12391,7 @@ private fun MembersAgentReminderCard(
             MembersAgentReminderChip(
                 iconName = SlockLucideIconName.RefreshCw,
                 text = recurrence,
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                background = SlockColor.AccentLavender.copy(alpha = 0.3f),
+                background = SlockColor.FillMuted,
                 textColor = SlockColor.TextBlack
             )
         }
@@ -12537,12 +12400,12 @@ private fun MembersAgentReminderCard(
             MembersAgentReminderChip(
                 iconName = SlockLucideIconName.Link2,
                 text = messageRef,
-                background = SlockColor.SurfaceWhite,
+                background = Color.Transparent,
                 textColor =
                     if (permalink != null) {
                         SlockColor.TextBlack
                     } else {
-                        SlockColor.TextBlack.copy(alpha = 0.7f)
+                        SlockColor.TextMuted
                     },
                 onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
             )
@@ -12564,18 +12427,21 @@ private fun MembersAgentReminderChip(
         } else {
             Modifier
         }
+    // raft-ui Badge (soft on a fill, outline on a transparent chip): chip radius 6dp.
+    val chipShape = RoundedCornerShape(SlockRadius.Chip)
     Row(
         modifier = interactionModifier
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(background)
+            .heightIn(min = 22.dp)
+            .background(background, chipShape)
+            .then(if (background.alpha == 0f) Modifier.border(SlockStroke.Thin, SlockColor.BorderHairline, chipShape) else Modifier)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(11.dp), color = SlockColor.TextBlackArgb)
+        SlockLucideIcon(iconName, modifier = Modifier.size(14.dp), color = slockArgbHex(textColor))
         Text(
             text = text,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -12597,7 +12463,7 @@ private fun MembersAgentWorkspaceTab(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(
-        title = stringResource(MR.strings.member_section_workspace).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_section_workspace),
         modifier = modifier,
         framed = false,
         trailingContent = {
@@ -12801,7 +12667,7 @@ private fun MembersAgentAppsTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).slockDisplayUppercase(), modifier = modifier) {
+    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps), modifier = modifier) {
         Text(
             text = stringResource(MR.strings.member_hint_connected_apps),
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -12963,7 +12829,7 @@ private fun MembersAgentActivityTab(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_activity_diagnostics).slockDisplayUppercase(),
+                stringResource(MR.strings.member_section_activity_diagnostics),
                 modifier = Modifier.weight(1f)
             )
             SlockBrutalActionButton(
@@ -13075,15 +12941,15 @@ private fun MembersAgentActivityLoadNotice(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
+            .background(SlockColor.FillMuted)
             .padding(horizontal = MembersPageInset, vertical = SlockSpacing.Xs),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = message,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                .withSlockFontWeight(FontWeight.SemiBold),
+            color = SlockColor.TextMuted
         )
     }
 }
@@ -13515,8 +13381,7 @@ private fun MembersAgentPermissionsTab(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceCream)
+                    .slockRaftCardSurface(fill = SlockColor.WarningSoft)
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -13540,8 +13405,7 @@ private fun MembersAgentPermissionsTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
+                .slockRaftCardSurface()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -13649,8 +13513,8 @@ private fun PermissionsGroupBox(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
+            .clip(RoundedCornerShape(SlockRadius.Container))
+            .slockRaftCardSurface()
     ) {
         Column(modifier = Modifier.fillMaxWidth().border(width = 0.dp, color = Color.Transparent).padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
@@ -13665,7 +13529,7 @@ private fun PermissionsGroupBox(
             )
         }
         // Hairline divider between header and rows.
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+        SlockRaftHairline()
         group.scopes.forEachIndexed { index, row ->
             Row(
                 modifier = Modifier
@@ -13708,7 +13572,7 @@ private fun PermissionsGroupBox(
                 }
             }
             if (index < group.scopes.lastIndex) {
-                Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+                SlockRaftHairline()
             }
         }
     }
@@ -13721,22 +13585,8 @@ private fun MemberKindBadge(kind: MemberKind) {
     // text-xs font-bold). The header tag is not its own React component, so we don't
     // introduce a generic `SlockBrutalTag` wrapper either — we render the same shape
     // inline so KMP stays aligned with the React source pattern.
-    Box(
-        modifier = Modifier
-            .background(kind.membersAvatarColor)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = kind.name.uppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
-        )
-    }
+    // raft-ui solid Badge (sticker) in the source case.
+    SlockRaftBadgeChrome(label = kind.name, fill = kind.membersAvatarColor)
 }
 
 @Composable
@@ -13798,12 +13648,8 @@ private fun MembersEditableSectionTitleRow(
 
 @Composable
 private fun MembersDetailSectionDivider(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(SlockStroke.Thin)
-            .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
-    )
+    // raft-ui Separator between profile sections.
+    SlockRaftHairline(modifier = modifier)
 }
 
 @Composable
@@ -13832,47 +13678,26 @@ private fun MembersDetailSection(
             MembersDetailSectionTitle(title, modifier = Modifier.weight(1f))
             trailingContent?.invoke()
         }
-        val contentModifier =
-            if (framed) {
-                Modifier
-                    .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md)
-            } else {
-                Modifier.fillMaxWidth()
+        if (framed) {
+            // raft-ui Card: container radius, card layer, hairline, p-4.
+            SlockRaftCard(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                content()
             }
-        Column(
-            modifier = contentModifier,
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            content()
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                content()
+            }
         }
     }
 }
 
 @Composable
 private fun MembersDetailField(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            modifier = Modifier.width(86.dp)
-        )
-        Text(
-            text = value.ifBlank { "—" },
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
+    // raft-ui DescriptionItem (term over details; phones collapse the property list).
+    SlockRaftDescriptionItem(term = label, value = value, maxLines = 3)
 }
 
 @Composable
@@ -14623,11 +14448,11 @@ internal data class MembersAgentGroup(
  */
 @Composable
 private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
+    // raft-ui warning Banner surface.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceCream)
+            .slockRaftCardSurface(fill = SlockColor.WarningSoft)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
