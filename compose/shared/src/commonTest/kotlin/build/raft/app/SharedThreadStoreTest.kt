@@ -9619,7 +9619,12 @@ class SharedThreadStoreTest {
         assertEquals(1, repository.getMessageContextRequests.count { it == parentMessageId })
         store.accept(SharedThreadIntent.FirstContentReady)
         withTimeout(1_000L) {
-            while (!logs.any { it.startsWith("thread_secondary_refresh_result") }) {
+            // The immediate secondary refresh may finish before FirstContentReady and log
+            // `result=pending_first_content`; wait for the applied result (`emitted=`), which is
+            // what the assertion below inspects.
+            while (
+                !logs.any { it.startsWith("thread_secondary_refresh_result") && it.contains("emitted=") }
+            ) {
                 delay(10L)
             }
         }
