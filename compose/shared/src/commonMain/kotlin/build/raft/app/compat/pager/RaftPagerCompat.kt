@@ -227,8 +227,15 @@ abstract class ComposeContainer : Pager() {
 object PagerManager {
     private val pagers = LinkedHashMap<String, Pager>()
 
+    /**
+     * The live page [pagerId]. There is deliberately no fallback to another page: each Activity /
+     * view controller hosts its own pages, so an unknown (e.g. destroyed) id must never be routed
+     * to some other screen's page and bridge.
+     */
     fun getPager(pagerId: String): Pager =
-        pagers[pagerId] ?: pagers.values.lastOrNull() ?: error("No live page (pagerId=$pagerId)")
+        getPagerOrNull(pagerId) ?: error("No live page (pagerId=$pagerId)")
+
+    fun getPagerOrNull(pagerId: String): Pager? = pagers[pagerId]
 
     fun getCurrentPager(): Pager = getPager(BridgeManager.currentPageId)
 
