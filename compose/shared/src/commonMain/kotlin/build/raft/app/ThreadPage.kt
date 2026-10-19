@@ -411,6 +411,8 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMinBeyondBoundsItemCount = 4
+private var ThreadKuiklyScrollTraceLinesLeft = 6000
+
 private const val ThreadComposeFlingProbeLineBudget = 1500
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
@@ -18329,6 +18331,20 @@ private fun ThreadMessagesListContent(
     // gesture or fling is active, to line up with the native thread_fling_frame lines. The
     // Kuikly content size only becomes exact once the last item is visible to Compose
     // (totalContentSize()), so lastItemVisible is printed explicitly. Budgeted per process.
+    // QA-only (task #37, Kuikly 2.28.0-raft.16-diag1): Kuikly's internal scroll / content-size
+    // trace into the same diagnostics JSONL, budgeted per process.
+    DisposableEffect(Unit) {
+        com.tencent.kuikly.compose.gestures.KuiklyScrollTrace.sink = { line ->
+            val left = --ThreadKuiklyScrollTraceLinesLeft
+            if (left >= 0) {
+                diagnosticsLogger("thread_kuikly_scroll $line")
+            } else if (left == -1) {
+                diagnosticsLogger("thread_kuikly_scroll budget_exhausted")
+            }
+        }
+        diagnosticsLogger("thread_kuikly_scroll installed")
+        onDispose { com.tencent.kuikly.compose.gestures.KuiklyScrollTrace.sink = null }
+    }
     LaunchedEffect(rawListState) {
         var linesLeft = ThreadComposeFlingProbeLineBudget
         snapshotFlow {
