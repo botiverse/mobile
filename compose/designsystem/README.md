@@ -153,6 +153,21 @@ Other checks:
 | `RaftText` | — | Done | Text primitive |
 | Tabs drag-reorder, file list row, avatar picker, task card / board lane, toast host | | Not done | Later PRs |
 
+**TODO before migrating a real page:** Dialog and Sheet open / close animation (dialogs
+appear and vanish at once; the sheet slides up but not down) and swipe-to-dismiss on
+the sheet. Both are needed before any production screen moves to these overlays.
+
+**Option card or choice rows.** Both make the whole surface the target and draw the
+radio or checkbox without a handler of its own. `RaftCard(variant = Option, onClick = …)`
+is the larger, framed choice with a title and a description (where an agent runs, a
+plan); `RaftRadioRow` / `RaftCheckboxRow` are the plain list of choices inside a form
+or a dialog (reset-agent options). Pick one per set; don't mix them.
+
+**Field type.** Inputs, input groups and textareas use raft-ui `--field-*` (16/24
+regular, `bodyLarge`). That is not a deviation: the design system's Typography page sets
+field text at 16px because iOS zooms into inputs under 16px. The 15/20 (`text-subhead`)
+of the page hand-off applies to picker triggers and their values, which keep it.
+
 ### State primitives (`components/RaftStates.kt`)
 
 Internal modifiers every component draws its states with; none takes layout room.
@@ -218,14 +233,12 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   checkbox is drawn without a handler. The card never shows the pick itself.
 - **Icons**: components draw a handful of Lucide outlines (`RaftGlyph`, ISC); app icons
   come through slots.
-- **Field type is raft-ui's.** Inputs, input groups and textareas use `--field-*` (16/24
-  regular, `bodyLarge`); the page hand-off measured 15/20 (`text-subhead`) for the
-  control. The select trigger keeps raft-ui's `text-subhead` semibold value, as both say.
 - **Choice rows** (`RaftCheckboxRow`, `RaftRadioRow`) follow the pages' radio list
   (44dp min, 12dp padding and gap, `text-subhead` semibold label, `text-footnote` muted
   description), not raft-ui FieldItem's 8dp gap and footnote label.
 - **Hit areas.** A checkbox, radio or switch is exactly its box (raft-ui overhangs a
-  44 x 36dp `::after`); use the rows, or a list row's trailing slot, for the tap target.
+  44 x 36dp `::after`); the larger target comes from the row around it (a choice row, or
+  a list row's trailing slot), which is how the pages use them.
 - **Menu focus.** Keyboard focus on a menu row is the `brand-soft` highlight (Base UI
   moves the highlight with focus), not a ring. The search row at the popup's edge takes
   the inset outline.
@@ -235,7 +248,7 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Scrim.** `RaftDialog` and `RaftSheet` use the platform dialog window, whose own scrim
   (about 60% black) stands in for `layer-backdrop` (65% light / 60% dark). Dialogs appear
   without animation; the sheet slides up but closes without the slide, and has no swipe
-  to dismiss or snap points.
+  to dismiss or snap points (see the TODO above).
 - **Toast.** Only the surface: no host (stacking, timeout, swipe). The action's underline
   uses the font's default thickness and offset (CSS: 1.5px, 3px). `RaftToastSurface.Popover`
   is the pages' foreground in-app banner (hand-off §11); raft-ui itself puts every toast on
