@@ -94,6 +94,10 @@ RULES: list[tuple[str, str]] = [
     ("com.tencent.kuikly.core.module", f"{COMPAT}.module"),
     ("com.tencent.kuikly.core.views.KeyboardParams", f"{COMPAT}.ui.KeyboardParams"),
     ("com.tencent.kuikly.core.views.TextInputState", f"{COMPAT}.ui.TextInputState"),
+    ("com.tencent.kuikly.core.views.PlayState", f"{COMPAT}.ui.PlayState"),
+    ("com.tencent.kuikly.core.views.VideoPlayControl", f"{COMPAT}.ui.VideoPlayControl"),
+    ("com.tencent.kuikly.core.base.BorderStyle", f"{COMPAT}.ui.BorderStyle"),
+    ("com.tencent.kuikly.core.base.Size", "androidx.compose.ui.geometry.Size"),
     ("com.tencent.kuikly.core.utils.urlParams", f"{COMPAT}.pager.urlParams"),
     # Kuikly's native-view DSL (DeclarativeBaseView, Attr, Event, ViewRef, views.*) has no
     # replacement on purpose: files that build native views are rewritten by hand.
