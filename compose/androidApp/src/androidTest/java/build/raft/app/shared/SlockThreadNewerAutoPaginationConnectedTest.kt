@@ -127,18 +127,18 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 ThreadNewerAutoPaginationVisualFixtureProbe.releaseError(nonce, callNumber = 2),
             )
             waitForReturnedCall(nonce, callNumber = 2)
-            var retryRevealGestureCount = 0
-            while (
-                !hasAccessibilityText(instrumentation, RetryLabel) &&
-                retryRevealGestureCount < MaxTowardNewerApproachGestures
-            ) {
-                performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
-                retryRevealGestureCount += 1
-            }
+            // The Retry row must be fully inside the list viewport and the
+            // Back-to-bottom pill must be gone before it is clicked. A Retry
+            // row that has only scrolled a few pixels into view sits under
+            // the pill, so a tap on its visible strip would jump to latest
+            // instead of retrying the failed page.
+            val revealedRetry = revealUnobstructedRetryRow(instrumentation, scenario)
+            recordEvidence("THREAD_NEWER_RETRY_REVEALED", revealedRetry.toString())
+            val beforeRetry = fixtureSnapshot(nonce)
             assertEquals(
-                "Revealing the failed newer boundary must not manufacture a retry request",
+                "Revealing the failed newer boundary must not manufacture a retry request: $beforeRetry",
                 2,
-                fixtureSnapshot(nonce).afterRequests.size,
+                beforeRetry.afterRequests.size,
             )
             val retryNode = waitForAccessibilityText(instrumentation, RetryLabel)
             assertTrue(
@@ -148,9 +148,9 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             performAccessibilityClick(retryNode, RetryLabel)
             instrumentation.waitForIdleSync()
 
-            val retryRequest = waitForAfterRequestCount(nonce, expectedCount = 3)
+            val retryRequest = waitForRetryRequest(nonce, beforeRetry)
             assertEquals(
-                "Retry must request from the same committed tail after the failed page",
+                "Retry must request from the same committed tail after the failed page: $retryRequest",
                 46L,
                 retryRequest.afterRequests[2].afterSeq,
             )
@@ -250,6 +250,148 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             )
         }
         return requireNotNull(latest)
+    }
+
+    /**
+     * Waits for the request the Retry click produced and proves it was the
+     * retry itself. A tap misrouted to Back-to-bottom reloads the latest
+     * window through the initial (no cursor) request and then pages newer
+     * from that window's tail, so it would otherwise surface only as a wrong
+     * afterSeq.
+     */
+    private fun waitForRetryRequest(
+        nonce: String,
+        beforeRetry: ThreadNewerAutoPaginationFixtureSnapshot,
+    ): ThreadNewerAutoPaginationFixtureSnapshot {
+        var latest: ThreadNewerAutoPaginationFixtureSnapshot? = null
+        try {
+            waitUntil(RequestTimeoutMs, "Retry newer request or a misrouted latest-window reload") {
+                latest = fixtureSnapshotOrNull(nonce)
+                val snapshot = latest ?: return@waitUntil false
+                snapshot.afterRequests.size >= 3 ||
+                    snapshot.initialRequestCount != beforeRetry.initialRequestCount
+            }
+        } catch (failure: AssertionError) {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            throw AssertionError(
+                "${failure.message}; before=$beforeRetry latest=$latest; " +
+                    "accessibility=${accessibilityTreeSummary(instrumentation)}",
+                failure,
+            )
+        }
+        val snapshot = requireNotNull(latest)
+        assertEquals(
+            "Retry click reloaded the latest window (jump-to-latest) instead of retrying the failed page: " +
+                "before=$beforeRetry after=$snapshot",
+            beforeRetry.initialRequestCount,
+            snapshot.initialRequestCount,
+        )
+        assertEquals(
+            "Retry click must issue exactly one newer request: before=$beforeRetry after=$snapshot",
+            3,
+            snapshot.afterRequests.size,
+        )
+        return snapshot
+    }
+
+    /**
+     * Scrolls toward newer until the Retry row is fully inside the list
+     * viewport and the Back-to-bottom pill is no longer in the window.
+     */
+    private fun revealUnobstructedRetryRow(
+        instrumentation: Instrumentation,
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+    ): RetryRevealState {
+        var gestureCount = 0
+        var state = retryRevealState(instrumentation)
+        while (!state.ready && gestureCount < MaxRetryRevealGestures) {
+            performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
+            gestureCount += 1
+            state = retryRevealState(instrumentation)
+        }
+        try {
+            // The pill unmounts on the frame after the list reaches its end,
+            // and a settling fling can still move the row; require the ready
+            // state at the same bounds on consecutive samples.
+            var previous: RetryRevealState? = null
+            var stableSamples = 0
+            waitUntil(AccessibilityTimeoutMs, "stable, fully visible, unobstructed '$RetryLabel' row") {
+                state = retryRevealState(instrumentation)
+                stableSamples =
+                    if (state.ready && previous?.ready == true && previous?.retryBounds == state.retryBounds) {
+                        stableSamples + 1
+                    } else {
+                        0
+                    }
+                previous = state
+                stableSamples >= RetryRevealStableSamplesRequired
+            }
+        } catch (failure: AssertionError) {
+            throw AssertionError(
+                "${failure.message} after $gestureCount reveal gestures: $state; " +
+                    "accessibility=${accessibilityTreeSummary(instrumentation)}",
+                failure,
+            )
+        }
+        return state.copy(gestureCount = gestureCount)
+    }
+
+    private fun retryRevealState(instrumentation: Instrumentation): RetryRevealState {
+        val root = instrumentation.uiAutomation.rootInActiveWindow
+            ?: return RetryRevealState(retryBounds = null, viewportBounds = null, backToBottomBounds = emptyList())
+        val retryNode = root.findAccessibilityNodeInfosByText(RetryLabel).firstOrNull()
+        val backToBottomBounds =
+            root.findAccessibilityNodeInfosByText(BackToBottomLabel)
+                .filter { node -> node.isVisibleToUser }
+                .map { node -> Rect().also(node::getBoundsInScreen) }
+                .filter { bounds -> bounds.width() > 0 && bounds.height() > 0 }
+        if (retryNode == null) {
+            return RetryRevealState(retryBounds = null, viewportBounds = null, backToBottomBounds = backToBottomBounds)
+        }
+        val target = clickableAncestorOrSelf(retryNode) ?: retryNode
+        return RetryRevealState(
+            retryBounds = Rect().also(target::getBoundsInScreen),
+            viewportBounds = viewportBounds(target),
+            backToBottomBounds = backToBottomBounds,
+        )
+    }
+
+    private fun clickableAncestorOrSelf(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(MaxAccessibilityClickAncestorDepth) {
+            val candidate = current ?: return null
+            if (candidate.isClickableForTest()) return candidate
+            current = candidate.parent
+        }
+        return null
+    }
+
+    private fun AccessibilityNodeInfo.isClickableForTest(): Boolean =
+        isClickable || actionList.any { action -> action.id == AccessibilityNodeInfo.ACTION_CLICK }
+
+    /**
+     * Bounds of the container that clips [node]: the nearest scrollable
+     * ancestor, or else the nearest ancestor that extends past the node
+     * vertically (the Kuikly list host does not always report itself as
+     * scrollable). Accessibility bounds are already intersected with that
+     * clip, so a node that touches one of its vertical edges has been cut
+     * by it and is treated as partially scrolled out.
+     */
+    private fun viewportBounds(node: AccessibilityNodeInfo): Rect {
+        val nodeBounds = Rect().also(node::getBoundsInScreen)
+        var current: AccessibilityNodeInfo? = node.parent
+        var outermost: AccessibilityNodeInfo = node
+        var depth = 0
+        while (current != null && depth < MaxAccessibilityTreeDepth) {
+            val bounds = Rect().also(current::getBoundsInScreen)
+            if (current.isScrollable || bounds.top < nodeBounds.top || bounds.bottom > nodeBounds.bottom) {
+                return bounds
+            }
+            outermost = current
+            current = current.parent
+            depth += 1
+        }
+        return Rect().also(outermost::getBoundsInScreen)
     }
 
     private fun waitForReturnedCall(nonce: String, callNumber: Int) {
@@ -365,27 +507,42 @@ class SlockThreadNewerAutoPaginationConnectedTest {
 
     private fun performAccessibilityClick(node: AccessibilityNodeInfo, label: String) {
         var current: AccessibilityNodeInfo? = node
-        var tapBounds: Rect? = null
+        var tapTarget: AccessibilityNodeInfo? = null
         repeat(MaxAccessibilityClickAncestorDepth) {
             val candidate = current ?: return@repeat
-            if (
-                candidate.isClickable ||
-                candidate.actionList.any { action -> action.id == AccessibilityNodeInfo.ACTION_CLICK }
-            ) {
+            if (candidate.isClickableForTest()) {
                 if (candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                     return
                 }
                 val bounds = Rect()
                 candidate.getBoundsInScreen(bounds)
-                if (bounds.width() > 0 && bounds.height() > 0) {
-                    tapBounds = bounds
+                if (tapTarget == null && bounds.width() > 0 && bounds.height() > 0) {
+                    tapTarget = candidate
                 }
             }
             current = candidate.parent
         }
-        val bounds = tapBounds ?: throw AssertionError("No clickable accessibility ancestor for '$label'")
+        val target = tapTarget ?: throw AssertionError("No clickable accessibility ancestor for '$label'")
+        val bounds = Rect().also(target::getBoundsInScreen)
+        // A raw tap goes to whatever is on top at that point. Only fall back
+        // to it when the target is entirely on screen and nothing clickable is
+        // drawn over its centre; otherwise the tap would silently drive a
+        // different control (for example the Back-to-bottom pill).
+        val viewport = viewportBounds(target)
+        if (!isFullyInside(bounds, viewport)) {
+            throw AssertionError(
+                "Refusing to tap '$label': target bounds=$bounds are clipped by viewport=$viewport",
+            )
+        }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val obstruction = clickableNodeDrawnOver(instrumentation, target, bounds.centerX(), bounds.centerY())
+        if (obstruction != null) {
+            throw AssertionError(
+                "Refusing to tap '$label' at (${bounds.centerX()}, ${bounds.centerY()}): target bounds=$bounds " +
+                    "is covered by $obstruction",
+            )
+        }
         val command = "input touchscreen tap ${bounds.centerX()} ${bounds.centerY()}"
         val output =
             ParcelFileDescriptor.AutoCloseInputStream(
@@ -395,6 +552,70 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         instrumentation.waitForIdleSync()
         SystemClock.sleep(AccessibilityTapSettleMs)
     }
+
+    /**
+     * Returns a description of a clickable node that contains ([x], [y]) and
+     * is drawn above [target], or null when the point belongs to [target].
+     * Z-order is resolved at the lowest common ancestor by drawing order,
+     * then child index (later siblings draw on top).
+     */
+    private fun clickableNodeDrawnOver(
+        instrumentation: Instrumentation,
+        target: AccessibilityNodeInfo,
+        x: Int,
+        y: Int,
+    ): String? {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return "<no-root>"
+        val targetPath = pathFromRoot(target)
+        var obstruction: String? = null
+        fun visit(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || obstruction != null || depth > MaxAccessibilityTreeDepth) return
+            val bounds = Rect().also(node::getBoundsInScreen)
+            if (!bounds.contains(x, y)) return
+            if (node.isVisibleToUser && node.isClickableForTest()) {
+                val nodePath = pathFromRoot(node)
+                if (isDrawnAbove(nodePath, targetPath)) {
+                    obstruction =
+                        "node(text=${node.text} description=${node.contentDescription} " +
+                        "class=${node.className} bounds=$bounds)"
+                    return
+                }
+            }
+            for (index in 0 until node.childCount) {
+                visit(node.getChild(index), depth + 1)
+            }
+        }
+        visit(root, 0)
+        return obstruction
+    }
+
+    private fun pathFromRoot(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val path = ArrayDeque<AccessibilityNodeInfo>()
+        var current: AccessibilityNodeInfo? = node
+        while (current != null && path.size <= MaxAccessibilityTreeDepth) {
+            path.addFirst(current)
+            current = current.parent
+        }
+        return path.toList()
+    }
+
+    /** True when [nodePath]'s node is drawn over [targetPath]'s node and is not its ancestor or descendant. */
+    private fun isDrawnAbove(
+        nodePath: List<AccessibilityNodeInfo>,
+        targetPath: List<AccessibilityNodeInfo>,
+    ): Boolean {
+        val shared = nodePath.zip(targetPath).takeWhile { (a, b) -> a == b }.size
+        if (shared == 0 || shared == nodePath.size || shared == targetPath.size) return false
+        val parent = nodePath[shared - 1]
+        val nodeBranch = nodePath[shared]
+        val targetBranch = targetPath[shared]
+        val nodeOrder = nodeBranch.drawingOrder to childIndex(parent, nodeBranch)
+        val targetOrder = targetBranch.drawingOrder to childIndex(parent, targetBranch)
+        return compareValuesBy(nodeOrder, targetOrder, { it.first }, { it.second }) > 0
+    }
+
+    private fun childIndex(parent: AccessibilityNodeInfo, child: AccessibilityNodeInfo): Int =
+        (0 until parent.childCount).firstOrNull { index -> parent.getChild(index) == child } ?: -1
 
     private fun hasAccessibilityText(instrumentation: Instrumentation, text: String): Boolean =
         instrumentation.uiAutomation.rootInActiveWindow
@@ -535,6 +756,23 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         val bounds: Rect,
     )
 
+    private data class RetryRevealState(
+        val retryBounds: Rect?,
+        val viewportBounds: Rect?,
+        val backToBottomBounds: List<Rect>,
+        val gestureCount: Int = 0,
+    ) {
+        val fullyVisible: Boolean
+            get() = retryBounds != null && viewportBounds != null && isFullyInside(retryBounds, viewportBounds)
+
+        val ready: Boolean
+            get() = fullyVisible && backToBottomBounds.isEmpty()
+
+        override fun toString(): String =
+            "RetryRevealState(retry=$retryBounds viewport=$viewportBounds fullyVisible=$fullyVisible " +
+                "backToBottom=$backToBottomBounds gestures=$gestureCount)"
+    }
+
     private data class GestureGeometry(
         val x: Float,
         val startY: Float,
@@ -572,6 +810,21 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val MaxAccessibilitySummaryEntries = 120
         private const val MaxAccessibilitySummaryChars = 8_000
         private const val MaxAccessibilityClickAncestorDepth = 8
+        private const val MaxAccessibilityTreeDepth = 64
+        private const val MaxRetryRevealGestures = 6
+        private const val RetryRevealStableSamplesRequired = 2
         private const val EvidenceStatusCode = 2
     }
 }
+
+/**
+ * Accessibility bounds are intersected with the clipping viewport, so a node
+ * that touches a vertical viewport edge is treated as partially scrolled out.
+ */
+private fun isFullyInside(bounds: Rect, viewport: Rect): Boolean =
+    bounds.width() > 0 &&
+        bounds.height() > 0 &&
+        bounds.top > viewport.top &&
+        bounds.bottom < viewport.bottom &&
+        bounds.left >= viewport.left &&
+        bounds.right <= viewport.right
