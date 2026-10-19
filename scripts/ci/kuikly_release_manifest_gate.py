@@ -662,7 +662,9 @@ def self_test() -> int:
 
     # Transport-retry regression arm: ssl.SSLError mid-readback must be
     # retried (not surfaced as CONFLICT), and sustained failure must end as
-    # RuntimeError, never a raw SSLError.
+    # RuntimeError, never a raw SSLError. This bites if the handling is
+    # REMOVED; reordering the except clauses or folding SSLError into the
+    # tuple stays green (verified by mutation test, per XiShi).
     class _FlakyRegistry(Registry):
         def __init__(self, fails):
             super().__init__(base="https://example.invalid")
