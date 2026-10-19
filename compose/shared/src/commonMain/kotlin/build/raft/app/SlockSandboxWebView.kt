@@ -3,12 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.json.JSONObject
 
 internal data class SlockWebViewNavigationState(
@@ -133,13 +128,43 @@ internal fun SlockSandboxWebView(
     onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
-    // TODO(cmp-switch): TEMPORARY placeholder. The sandbox WebView was a native Kuikly view
-    // (Android SlockSandboxWebViewRenderView, iOS SlockSandboxWebView.m); it must come back as an
-    // expect/actual AndroidView/UIKitView with the same attrs, commands and events (see the
-    // migration assessment §1.6 / §3.9). Until then nothing loads and no callback fires.
-    Box(modifier.background(Color(0xFFF2F2F2)), contentAlignment = Alignment.Center) {
-        BasicText("WebView: $url")
-    }
+    val events = remember { RaftWebViewEvents() }
+    events.onLoadCommit = onLoadCommit
+    events.onLoadSuccess = onLoadSuccess
+    events.onLoadFailure = onLoadFailure
+    events.onNavigationBlocked = onNavigationBlocked
+    events.onUrlChange = onUrlChange
+    events.onNavigationStateChange = onNavigationStateChange
+    events.onHostMessage = onHostMessage
+    val allowedNavigationSchemesValue = allowedNavigationSchemes.toSlockWebViewAllowedNavigationSchemesValue()
+    val config =
+        remember(
+            url,
+            allowScripts,
+            allowNavigation,
+            domStorageEnabled,
+            useWideViewPort,
+            cacheEnabled,
+            ephemeral,
+            injectedJavaScript,
+            allowedNavigationSchemesValue,
+            hostEventsEnabled
+        ) {
+            RaftWebViewConfig(
+                url = url,
+                allowScripts = allowScripts,
+                allowNavigation = allowNavigation,
+                domStorageEnabled = domStorageEnabled,
+                useWideViewPort = useWideViewPort,
+                cacheEnabled = cacheEnabled,
+                ephemeral = ephemeral,
+                injectedJavaScript = injectedJavaScript,
+                allowedNavigationSchemes =
+                    allowedNavigationSchemesValue.split(',').filter { it.isNotEmpty() }.toSet(),
+                hostEventsEnabled = hostEventsEnabled
+            )
+        }
+    RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)
 }
 
 /**
@@ -268,12 +293,6 @@ internal fun SlockWebView(
         onNavigationStateChange = {}
     )
 }
-
-private fun Any?.optStringValue(key: String, fallback: String): String =
-    when (this) {
-        is JSONObject -> this.optString(key, fallback)
-        else -> fallback
-    }
 
 internal fun Set<String>.toSlockWebViewAllowedNavigationSchemesValue(): String =
     asSequence()

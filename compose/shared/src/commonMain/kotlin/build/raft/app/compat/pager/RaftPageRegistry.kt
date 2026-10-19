@@ -25,6 +25,7 @@ import build.raft.app.cmp.host.LocalSlockHost
 import build.raft.app.cmp.host.LocalSlockPageArgs
 import build.raft.app.cmp.host.SlockCmpPageArgs
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.image.raftInstallImageLoader
 import build.raft.app.toKuiklyJson
 import kotlinx.atomicfu.atomic
 
@@ -56,6 +57,7 @@ object RaftPageRegistry {
 
     /** TODO(cmp-switch): hosts call this at startup (not wired yet). */
     fun install() {
+        raftInstallImageLoader()
         SlockCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
     }
 }
@@ -78,6 +80,8 @@ fun RaftPagerHost(
     active: Boolean = true,
 ) {
     val host = LocalSlockHost.current
+    // The Raft Coil loader must be the singleton before any page asks Coil for an image.
+    remember { raftInstallImageLoader() }
     val pager =
         remember(args) {
             factory().also { pager ->
