@@ -42,7 +42,6 @@
 		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
 		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
 		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
-		D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */; };
 		D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */; };
 		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
 		D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
@@ -161,8 +160,6 @@
 		D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKRVideoViewHandler.m; sourceTree = "<group>"; };
 		D43B80212E0F100100C0DE04 /* SlockSandboxWebView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebView.h; sourceTree = "<group>"; };
 		D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebView.m; sourceTree = "<group>"; };
-		D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockLucideIconView.h; sourceTree = "<group>"; };
-		D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockLucideIconView.m; sourceTree = "<group>"; };
 		D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockPixelAvatarView.h; sourceTree = "<group>"; };
 		D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockPixelAvatarView.m; sourceTree = "<group>"; };
 		D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockNativeFloatingTabBarView.h; sourceTree = "<group>"; };
@@ -401,8 +398,6 @@
 				D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */,
 				D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */,
 				D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */,
-				D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */,
-				D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */,
 				D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */,
 				D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */,
 				D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */,
@@ -881,7 +876,6 @@
 				D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */,
 				D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */,
 				D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */,
-				D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */,
 				D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */,
 				D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */,
 				D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */,

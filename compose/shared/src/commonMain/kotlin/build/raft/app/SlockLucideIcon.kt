@@ -1,26 +1,37 @@
 package build.raft.app
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.layout.ContentScale
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import kotlin.math.roundToInt
 
 /*
- * TODO(cmp-switch): TEMPORARY stub. The Lucide icon used to be a native Kuikly view
- * (MakeKuiklyComposeNode + per-platform renderers); the ImageVector port is being done separately.
- * Until it lands, every icon renders as a rounded outline in its colour so layout and tint stay
- * visible. The public API (SlockLucideIcon / SlockLucideIconByName) is unchanged.
+ * Lucide icons rendered with Compose ImageVectors built from the generated path table
+ * (RaftLucideIconPaths.kt, see scripts/generate_lucide_icons.py) via RaftLucideImageVectors.
+ *
+ * Semantics carried over from the old native Kuikly renderers:
+ * - the icon is fitted (aspect preserved, centred) into the modifier's bounds; the stroke width is
+ *   in 24x24 viewBox units so it scales with the icon size;
+ * - `strokeWidth` (> 0) overrides the stroke width of every stroked path (the Android renderer only
+ *   honoured it for `check`, the only icon callers pass a non-default width for);
+ * - a non-blank `fill` switches to the filled variant when one exists (bookmark) and tints the whole
+ *   icon with the fill colour;
+ * - unknown names draw nothing but keep the layout slot.
  */
 
 private const val SlockIconSpinDurationSeconds = 0.9f
@@ -97,7 +108,11 @@ internal fun SlockLucideIconByName(
                 targetValue = 360f,
                 animationSpec =
                     infiniteRepeatable(
-                        animation = tween(durationMillis = (SlockIconSpinDurationSeconds * 1000f).roundToInt())
+                        animation =
+                            tween(
+                                durationMillis = (SlockIconSpinDurationSeconds * 1000f).roundToInt(),
+                                easing = LinearEasing
+                            )
                     ),
                 label = "slock-icon-spin-rotation"
             )
@@ -112,21 +127,37 @@ internal fun SlockLucideIconByName(
         } else {
             rotationDegrees
         }
-    val tint = raftColorFromArgbHex(color)
+    val iconName = remember(name) { SlockLucideIconName.fromWireName(RaftLucideImageVectors.normalizeName(name)) }
     val fillColor = fill?.takeIf { it.isNotBlank() }?.let(::raftColorFromArgbHex)
-    Canvas(
+    val tint = fillColor ?: raftColorFromArgbHex(color)
+    val layerModifier =
         modifier.graphicsLayer {
             rotationZ = appliedRotationDegrees
             translationY = verticalOffsetDp * density
         }
-    ) {
-        // Placeholder glyph: inset rounded square (filled when the icon has a fill colour).
-        val inset = size.minDimension * 0.18f
-        val stroke = (strokeWidth?.takeIf { it > 0f } ?: 2f) * size.minDimension / 24f
-        val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
-        val glyph = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-        val radius = CornerRadius(size.minDimension * 0.15f)
-        if (fillColor != null) drawRoundRect(fillColor, topLeft, glyph, radius)
-        drawRoundRect(tint, topLeft, glyph, radius, style = Stroke(width = stroke))
+    if (iconName == null) {
+        Spacer(layerModifier)
+        return
     }
+    val filled = fillColor != null
+    val strokeOverride = strokeWidth?.takeIf { it > 0f }
+    val tintable =
+        remember(iconName, filled) { RaftLucideImageVectors.isTintable(RaftLucideImageVectors.spec(iconName, filled)) }
+    val vector =
+        if (tintable) {
+            remember(iconName, filled, strokeOverride) {
+                RaftLucideImageVectors.vector(iconName, filled, strokeOverride)
+            }
+        } else {
+            remember(iconName, filled, strokeOverride, tint) {
+                RaftLucideImageVectors.vector(iconName, filled, strokeOverride, currentColor = tint)
+            }
+        }
+    Image(
+        painter = rememberVectorPainter(vector),
+        contentDescription = null,
+        modifier = layerModifier,
+        contentScale = ContentScale.Fit,
+        colorFilter = if (tintable) remember(tint) { ColorFilter.tint(tint) } else null
+    )
 }
