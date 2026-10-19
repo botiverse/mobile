@@ -60,11 +60,11 @@ class Target:
 # Every target renders the same tokens, resolved from the one source set pinned in
 # manifest.json; the raft-ui version is chosen there (paths + sha256), not per target.
 TARGETS = (
-    # Kuikly Compose (the shipping UI in compose/shared).
+    # The app UI in compose/shared (Compose Multiplatform since the CMP switch).
     Target(
         output=REPO / "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt",
         package="build.raft.app.designtokens",
-        color_import="com.tencent.kuikly.compose.ui.graphics.Color",
+        color_import="androidx.compose.ui.graphics.Color",
         visibility="internal ",
     ),
     # Official Compose Multiplatform (the compose/designsystem module).
