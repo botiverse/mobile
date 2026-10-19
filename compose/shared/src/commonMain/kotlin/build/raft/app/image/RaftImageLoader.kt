@@ -13,11 +13,29 @@ import coil3.svg.SvgDecoder
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val RAFT_IMAGE_DISK_CACHE_BYTES = 128L * 1024 * 1024
 private const val RAFT_IMAGE_MEMORY_CACHE_PERCENT = 0.2
 
 private val raftImageLoaderInstalled = atomic(false)
+
+/** The loader [raftBuildImageLoader] built last (the singleton), for [raftClearImageCaches]. */
+private val raftBuiltImageLoader = atomic<ImageLoader?>(null)
+
+/**
+ * Drops every decoded and on-disk image of the previous account: called when the session is
+ * cleared (logout, forced sign-out) or replaced by a different account. Image URLs can be
+ * account-scoped (attachments, avatars), so they must not survive into the next session.
+ */
+suspend fun raftClearImageCaches() {
+    val loader = raftBuiltImageLoader.value ?: return
+    withContext(Dispatchers.Default) {
+        runCatching { loader.memoryCache?.clear() }
+        runCatching { loader.diskCache?.clear() }
+    }
+}
 
 /**
  * Installs the Raft singleton Coil [ImageLoader] (idempotent). Must run before the first image
@@ -37,7 +55,7 @@ fun raftInstallImageLoader() {
 fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
     val memoryCache = MemoryCache.Builder().maxSizePercent(context, RAFT_IMAGE_MEMORY_CACHE_PERCENT).build()
     val diskDirectory = runCatching { raftImageDiskCacheDirectory(context) }.getOrNull()
-    return ImageLoader.Builder(context)
+    val loader = ImageLoader.Builder(context)
         .memoryCache { memoryCache }
         .apply {
             if (diskDirectory != null) {
@@ -52,6 +70,8 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
             add(SvgDecoder.Factory())
         }
         .build()
+    raftBuiltImageLoader.value = loader
+    return loader
 }
 
 /**

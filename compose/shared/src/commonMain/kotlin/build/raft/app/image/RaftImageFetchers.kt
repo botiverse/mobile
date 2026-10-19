@@ -10,6 +10,7 @@ import coil3.Extras
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.decode.DataSource
+import coil3.disk.DiskCache
 import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
@@ -18,6 +19,8 @@ import coil3.getExtra
 import coil3.request.Options
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import build.raft.kuiklybase.datetime.Clock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -107,31 +110,65 @@ private class RaftNetworkImageFetcher(
     override suspend fun fetch(): FetchResult {
         val diskKey = options.diskCacheKey ?: data.cacheKey
         val diskCache = imageLoader.diskCache
+        val expires = raftNetworkImageExpires(data.url)
+        var stale: Pair<DiskCache.Snapshot, RaftImageDiskMetadata>? = null
         if (diskCache != null && options.diskCachePolicy.readEnabled) {
             val snapshot = runCatching { diskCache.openSnapshot(diskKey) }.getOrNull()
             if (snapshot != null) {
-                val mimeType =
-                    runCatching { diskCache.fileSystem.read(snapshot.metadata) { readUtf8() } }
-                        .getOrNull()
-                        ?.takeIf { it.isNotBlank() }
+                val metadata =
+                    RaftImageDiskMetadata.decode(
+                        runCatching { diskCache.fileSystem.read(snapshot.metadata) { readUtf8() } }.getOrNull()
+                    )
+                if (raftImageDiskEntryFresh(metadata, expires, raftImageNowEpochMillis())) {
+                    return SourceFetchResult(
+                        source = ImageSource(snapshot.data, diskCache.fileSystem, diskKey, snapshot),
+                        mimeType = metadata.mimeType,
+                        dataSource = DataSource.DISK,
+                    )
+                }
+                // Expired external entry: fetch again, keep it only as the offline fallback.
+                stale = snapshot to metadata
+            }
+        }
+        val downloaded =
+            try {
+                if (!options.networkCachePolicy.readEnabled) {
+                    error("Network reads disabled for this request")
+                }
+                RaftImageByteFlights.fetch(data.cacheKey, data.url)
+            } catch (failure: Throwable) {
+                val fallback = stale
+                if (failure is CancellationException || fallback == null || diskCache == null) {
+                    stale?.first?.close()
+                    throw failure
+                }
                 return SourceFetchResult(
-                    source = ImageSource(snapshot.data, diskCache.fileSystem, diskKey, snapshot),
-                    mimeType = mimeType,
+                    source = ImageSource(fallback.first.data, diskCache.fileSystem, diskKey, fallback.first),
+                    mimeType = fallback.second.mimeType,
                     dataSource = DataSource.DISK,
                 )
             }
-        }
-        if (!options.networkCachePolicy.readEnabled) {
-            error("Network reads disabled for this request")
-        }
-        val downloaded = RaftImageByteFlights.fetch(data.cacheKey, data.url)
-        val mimeType = downloaded.contentType?.takeIf { it.isNotBlank() } ?: raftImageMimeTypeForPath(data.url)
-        if (diskCache != null && options.diskCachePolicy.writeEnabled) {
+        stale?.first?.close()
+        val sniffedMimeType = raftSniffImageMimeType(downloaded.bytes)
+        val mimeType =
+            downloaded.contentType?.takeIf { it.startsWith("image/", ignoreCase = true) }
+                ?: sniffedMimeType
+                ?: raftImageMimeTypeForPath(data.url)
+        if (sniffedMimeType == null) {
+            // A 2xx body that is not an image (captive portal HTML, proxy error page): never
+            // commit it under the image's key; the decoders still get a chance at the bytes.
+            slockLogWarn(
+                LOG_TAG,
+                "source=network status=non_image_body bytes=${downloaded.bytes.size} ${binaryDownloadUrlDiagnostics(data.url)}"
+            )
+        } else if (diskCache != null && options.diskCachePolicy.writeEnabled) {
             val editor = runCatching { diskCache.openEditor(diskKey) }.getOrNull()
             if (editor != null) {
                 runCatching {
                     diskCache.fileSystem.write(editor.data) { write(downloaded.bytes) }
-                    diskCache.fileSystem.write(editor.metadata) { writeUtf8(mimeType.orEmpty()) }
+                    diskCache.fileSystem.write(editor.metadata) {
+                        writeUtf8(RaftImageDiskMetadata(mimeType, raftImageNowEpochMillis()).encode())
+                    }
                     editor.commit()
                 }.onFailure {
                     runCatching { editor.abort() }
@@ -145,6 +182,8 @@ private class RaftNetworkImageFetcher(
         )
     }
 }
+
+internal fun raftImageNowEpochMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 /** Single flight per content key for network bytes (the Kuikly adapter's `networkByteFlights`). */
 private object RaftImageByteFlights {
