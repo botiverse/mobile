@@ -20904,6 +20904,10 @@ private fun ThreadMessagesListContent(
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
                 )
             }
+            // One state shared by both end items: the two ends are the same spring, and two states
+            // would let a pull at one edge leave the other half-extended. Declared here because
+            // rememberPullToRefreshState is @Composable and LazyListScope is not.
+            val threadOverscrollState = rememberPullToRefreshState(isRefreshing = false)
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
@@ -20999,15 +21003,12 @@ private fun ThreadMessagesListContent(
                     PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
-            // One state shared by both end items: the two ends are the same spring, and two states
-            // would let a pull at one edge leave the other half-extended.
-            val threadOverscrollState = rememberPullToRefreshState(isRefreshing = false)
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
             if (threadOverscrollBounceEnabled) {
                 threadListSegments += {
                     threadOverscrollBounceItem(
                         state = threadOverscrollState,
-                        scrollState = listState
+                        scrollState = listState.raw
                     )
                 }
             }
@@ -21460,7 +21461,7 @@ private fun ThreadMessagesListContent(
                 threadListSegments += {
                     threadOverscrollBounceItem(
                         state = threadOverscrollState,
-                        scrollState = listState
+                        scrollState = listState.raw
                     )
                 }
             }
