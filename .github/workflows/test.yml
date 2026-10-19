@@ -379,7 +379,8 @@ jobs:
       # files; on a hit the compile step is skipped entirely (~3m saved). The
       # unit-test step may still recompile (~1m) because .gradle incremental state
       # is machine-local and intentionally not cached; route B (reproducible jars
-      # -> stable build-cache key) is tracked as a follow-up.
+      # -> stable build-cache key) is tracked as a follow-up. The vendored
+      # markdown sources are :shared srcDirs, so they are part of the key too.
       - name: Compute build input file hash
         id: build-input-hash
         working-directory: compose
@@ -391,6 +392,7 @@ jobs:
             gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties \
             gradle.properties buildSrc \
             build.gradle.kts settings.gradle.kts \
+            ../third_party/kuikly-compose-markdown ../third_party/markdown-parser \
             | git hash-object --stdin)
           echo "hash=$HASH" >> "$GITHUB_OUTPUT"
           echo "build input file hash: $HASH"
