@@ -22308,6 +22308,30 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
         "visibleMessages=$visibleMessages"
 
+/**
+ * task #185 (PR #3147): whether the message long-press menu must be hosted by the shell instead of
+ * drawn in-page.
+ *
+ * A page at the window's left edge is full-width, and its in-page modal can draw the whole menu. A
+ * page inside a narrower pane cannot -- the modal surface clips it, which is the defect this
+ * predicate removes.
+ *
+ * `originMeasured` is not redundant. The origin defaults to zero and is filled in by the first
+ * layout pass, so "not measured yet" and "genuinely at x = 0" are indistinguishable. Before the flag
+ * existed, an unmeasured adaptive page took the in-page branch and could clip the menu once: the
+ * original bug, reduced to a single frame and therefore intermittent -- and intermittent is harder
+ * to diagnose than stable. Unmeasured therefore routes to the shell host, where the cost of being
+ * wrong is one unnecessary host instead of one clipped menu.
+ *
+ * Deleting `!originMeasured ||` collapses this back to the intermittent form; see
+ * `ThreadMenuShellHostPredicateTest`.
+ */
+internal fun threadMenuUsesShellHost(
+    adaptiveDetailPage: Boolean,
+    originMeasured: Boolean,
+    windowOriginX: Float,
+): Boolean = adaptiveDetailPage && (!originMeasured || windowOriginX > 0f)
+
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
 
@@ -28268,7 +28292,11 @@ private fun ThreadMessageActionMenu(
         SlockChildPageOriginRegistry
             .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
     val clippingChildPage =
-        adaptiveDetailPage && (!pageOriginState.measured || pageOriginState.windowOrigin.x > 0f)
+        threadMenuUsesShellHost(
+            adaptiveDetailPage = adaptiveDetailPage,
+            originMeasured = pageOriginState.measured,
+            windowOriginX = pageOriginState.windowOrigin.x
+        )
     if (!clippingChildPage) {
         SlockModalAnchoredPopover(
             anchor = anchor,
