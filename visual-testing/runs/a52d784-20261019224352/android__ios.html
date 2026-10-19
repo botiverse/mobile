@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>a52d784-20261019224352</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-10-19T22:47:57.319Z" data-timestamp="2026-10-19T22:47:57.319Z" title="2026-10-19T22:47:57.319Z">2026-10-19 22:47:57 UTC</time></p>
+    <p class="runMeta"><code>a52d784-20261019224352</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-10-19T23:37:14.121Z" data-timestamp="2026-10-19T23:37:14.121Z" title="2026-10-19T23:37:14.121Z">2026-10-19 23:37:14 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 21</span>
       <span class="pill">Different 44</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 0/99 ready</span>
+      <span class="pill">AI 11/99 ready</span>
       <span class="pill">Matrix 108/128 active</span>
       <span class="pill">Components Parity 90/95 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -132,7 +132,12 @@
       <p><code>RGB 93.8%</code><br/><code>Pixel 99.55%</code><br/><code>Mismatch 0.45%</code><br/><code>Raw 1026×288 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.55% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×96 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Kuikly cross-platform component owner with Slock visual-test infrastructure support</summary>
+    <ul><li>The segmented controls are visually isomorphic: labels, counts, ordering, spacing, selected state, track, yellow selection pill, black border, and corner radii match.</li><li>No missing elements, clipping, alignment errors, or state differences are visible; any glyph-edge variation is limited to minor raster antialiasing.</li><li>Comparison bounds differ: Android is manually cropped to 342×96 component bounds, while iOS remains an uncropped 1170×2532 frame.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No component UI change is required unless strict pixel-level parity is required.</li><li>Normalize both captures to the same viewport and device-pixel ratio, then crop both using the segmented-control bounds.</li><li>For exact rendering parity, verify shared font metrics and weight, count size, gray and yellow color tokens, stroke width, and corner-radius values.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.segmented-control.states.png" data-current-src="ios/components.ui.segmented-control.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -427,7 +432,12 @@
       <p><code>RGB 88.9%</code><br/><code>Pixel 99.48%</code><br/><code>Mismatch 0.52%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.48% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Kuikly visual-test infrastructure and mobile rendering integration</summary>
+    <ul><li>The six badge components are effectively isomorphic: labels, state colors, typography weight/size, rounded shape, row order, alignment, and spacing match within the stated tolerance.</li><li>Android alone shows a thin beige vertical strip at the far-right edge and a faint pink horizontal line near the bottom; neither artifact is visible on iOS.</li><li>Capture bounds differ: Android is cropped to 342×92 component bounds, while iOS remains an uncropped 1170×2532 screen, although the badge block is normalized to the same apparent position and scale.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply the same component-bounds crop to both platform captures before comparison.</li><li>Hide scrollbars, viewport edges, and capture guides in test-rendering mode.</li><li>Mask or exclude the platform and source-size annotations from pixel comparison.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.badge.states.png" data-current-src="ios/components.ui.badge.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2206,7 +2216,12 @@
       <p><code>RGB 94.6%</code><br/><code>Pixel 94.47%</code><br/><code>Mismatch 5.53%</code><br/><code>Raw 1170×1080 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×360 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Cross-platform Thread Files component owner, with Slock test infrastructure support</summary>
+    <ul><li>The first-row PNG thumbnail is populated on Android with yellow artwork, while the same thumbnail bounds are blank white on iOS.</li><li>The comparison bounds are asymmetric: Android is manually cropped to 390×360 component bounds, whereas iOS remains an uncropped 1170×2532 capture and includes a large blank region below the list.</li><li>Within the visible list component, card geometry, text, action controls, disabled state, and the Load more button otherwise appear aligned.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify that iOS resolves the same thumbnail asset and renders it before screenshot capture; add a deterministic fallback for failed image loads.</li><li>Align thumbnail loading lifecycle across platforms or wait for the thumbnail-ready state before capturing.</li><li>Apply matching component-bounds crops to both platforms, or remove the Android-only crop, and compare using normalized dp coordinates.</li><li>Retest after correcting both thumbnail rendering and capture bounds.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.files.list.png" data-current-src="ios/components.thread.files.list.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2265,7 +2280,12 @@
       <p><code>RGB 93.2%</code><br/><code>Pixel 98.52%</code><br/><code>Mismatch 1.48%</code><br/><code>Raw 1170×360 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 98.52% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 390×120 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Kuikly visual-test infrastructure, with the Thread Header component owner if differences remain after normalization.</summary>
+    <ul><li>The thread header and tab bar are effectively isomorphic: typography, spacing, alignment, icon geometry, yellow fills and borders, text truncation, selected Chat state, and divider positions show no material divergence.</li><li>Capture bounds differ: Android is manually cropped to 390×120, while iOS remains an uncropped 1170×2532 view. This leaves different unused canvas below the component but does not indicate a product UI difference.</li><li>No app content appears clipped or missing on either side; any residual mismatch is consistent with raster-scale and antialiasing differences.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply the same logical component bounds and scale to both captures before comparison.</li><li>Rerun against normalized DP output and retain antialiasing tolerance for platform-specific glyph and icon rendering.</li><li>Do not change component styling unless the normalized comparison exposes a layout difference beyond the 1 DP tolerance.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.header.states.png" data-current-src="ios/components.thread.header.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -2678,7 +2698,12 @@
       <p><code>RGB 97.6%</code><br/><code>Pixel 93.59%</code><br/><code>Mismatch 6.41%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Shared thread-comments UI owner, with Slock capture and rendering support</summary>
+    <ul><li>At the normalized display size, iOS text appears marginally heavier and crisper than Android, most noticeably in the Review heading, body copy, Comments title, metadata, anchor chips, and action labels.</li><li>The generated platform badge differs explicitly: Android shows &quot;ANDROID&quot; while iOS shows &quot;IOS&quot;; its content-driven bounds are narrower on iOS.</li><li>Selected and disabled colors, spacing, control sizes, and component bounds otherwise align. No elements are missing, clipped, or cropped.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize both captures to the same DPR, raster dimensions, and full-viewport crop before comparison.</li><li>Use matching font family, weight, size, and line-height tokens on both platforms, or explicitly align any platform overrides.</li><li>Exclude the ANDROID/IOS harness badge from the parity region; if it is product UI, give it a fixed width and consistent styling.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.comment-anchor.png" data-current-src="ios/components.thread.comment-anchor.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3808,7 +3833,12 @@
       <p><code>RGB 86.7%</code><br/><code>Pixel 51.93%</code><br/><code>Mismatch 48.07%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Mobile form/dialog component owner with iOS keyboard and viewport handling support</summary>
+    <ul><li>The upper form is closely aligned, but iOS has the Name field active with a visible caret and an open software keyboard; Android shows no active-field indicator or keyboard.</li><li>The keyboard reduces the iOS dialog's visible height: Runtime, Model, Reasoning, and the 72/3000 counter are not visible, while all are present on Android.</li><li>On iOS, the Cancel and Create Agent controls move upward and overlap the lower portion of the Description textarea, hiding its bottom border and clipping the final &quot;merge.&quot; line; Android shows a fully bounded textarea with actions below it.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize the tested interaction state by blurring the Name field and dismissing the keyboard before comparison, or align autofocus behavior across platforms.</li><li>Make the dialog content vertically scrollable under keyboard insets so Runtime, Model, Reasoning, and the character counter remain accessible.</li><li>Keep the action row below the textarea, or give a sticky footer an opaque background and enough content padding that it cannot cover field content.</li><li>Preserve the textarea's complete rounded bounds and line visibility when the keyboard is open.</li><li>Apply equivalent keyboard-safe-area and viewport-resize rules on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3919,7 +3949,12 @@
       <p><code>RGB 86.8%</code><br/><code>Pixel 51.93%</code><br/><code>Mismatch 48.07%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Mobile dialog/form component team, with iOS input and visual-test infrastructure support</summary>
+    <ul><li>Interaction state differs: the iOS Name field is focused with a visible caret and software keyboard, while Android has neither.</li><li>The iOS dialog is compressed to the space above the keyboard and only exposes content through Description; Android also shows Runtime, Provider, and the Model heading.</li><li>The iOS action row overlaps the Description field: its third line, lower border, and 72/3000 counter are obscured; these remain visible on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Run the comparison with the same state on both platforms: clear focus and dismiss the keyboard, or capture both focused with keyboards handled by a separate scenario.</li><li>Apply iOS keyboard insets to the modal body and action container so the footer never covers form controls.</li><li>Ensure the Description textarea and its character counter remain fully visible above the fixed footer, including when the field is focused.</li><li>Add compact-height scroll behavior that keeps Runtime, Provider, Model, and the footer reachable without overlap.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.claude-dialog.png" data-current-src="ios/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3978,7 +4013,12 @@
       <p><code>RGB 86.8%</code><br/><code>Pixel 51.93%</code><br/><code>Mismatch 48.07%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Cross-platform mobile form and modal-layout team</summary>
+    <ul><li>The iOS Name input is focused, showing an insertion caret and software keyboard; Android is unfocused with no keyboard.</li><li>On iOS, the dialog is compressed to the upper portion of the viewport and its action buttons appear over the Description field, while Android uses a full-height dialog with actions at the bottom.</li><li>The iOS Description textarea shows only two lines and hides the third line, &quot;merge.&quot;, plus the 72/3000 counter visible on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the keyboard and blur the Name field on both platforms before visual comparison, or run matching unfocused and keyboard-open test states.</li><li>Make the dialog body independently scrollable when the keyboard is visible and scroll the focused input above the action area.</li><li>Place Cancel and Create Agent in a non-overlapping footer; never cover the Description textarea or character counter.</li><li>Verify at both 390×844 and 1170×2532 native resolutions with Android and iOS keyboards, checking that Description and all lower fields remain reachable.</li><li>Use equivalent viewport bounds and scaling in the comparison harness to avoid DPR- or crop-related mismatch.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.claude-custom-provider-dialog.png" data-current-src="ios/components.members.create-agent.claude-custom-provider-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4442,7 +4482,12 @@
       <p><code>RGB 98.3%</code><br/><code>Pixel 97.09%</code><br/><code>Mismatch 2.91%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 97.09% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Cross-platform UI rendering and visual-test infrastructure</summary>
+    <ul><li>The Android and iOS app UIs are visually and structurally isomorphic; no missing elements, clipping, color changes, or component-bound differences are visible.</li><li>Spacing, alignment, icon geometry, and typography match, with only negligible rasterization differences along text and icon edges.</li><li>The 2.91% pixel mismatch exceeds the 2% threshold but does not correspond to a visible layout divergence.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize screenshots to the same CSS viewport and device-pixel ratio before pixel comparison.</li><li>Use identical font files and matched text/icon antialiasing settings across platforms.</li><li>Exclude or explicitly mask the platform-identification badge from application UI parity checks.</li><li>No component sizing, spacing, alignment, or color changes are indicated.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.root.page.png" data-current-src="ios/components.settings.root.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4501,7 +4546,12 @@
       <p><code>RGB 97.5%</code><br/><code>Pixel 81.52%</code><br/><code>Mismatch 18.48%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · No corrective owner; mobile UI maintainers should preserve the current layout.</summary>
+    <ul><li>No unintended visual divergence is visible: typography, spacing, alignment, colors, component bounds, state indicators, and viewport-bottom clipping match between Android and iOS.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No visual alignment change is required.</li><li>Do not force platform-specific log-out copy to be identical.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.account.page.png" data-current-src="ios/components.settings.account.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -5217,7 +5267,12 @@
       <p><code>RGB 97.7%</code><br/><code>Pixel 94.54%</code><br/><code>Mismatch 5.46%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Cross-platform mobile frontend owner with profile API/data-layer support</summary>
+    <ul><li>The ends show different application states: Android renders the loaded member profile, while iOS renders a centered error state with “Could not load member,” supporting text, and a Retry button.</li><li>The iOS end omits the entire profile body shown on Android, including avatar, member name, username, description, role and edit control, email, joined date, and created-agents section.</li><li>The header structure differs: Android shows an avatar, the name “artin,” and a message icon; iOS shows a larger bold “Member” title with a “Profile” subtitle and omits the avatar, name, and message action.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reproduce the capture with the same member fixture, authenticated session, route parameters, and API response on both platforms.</li><li>Trace the iOS profile request and error path, including endpoint, member ID, credentials, response parsing, and retry behavior.</li><li>Align loading, success, empty, and error-state transitions so equivalent data produces equivalent states across platforms.</li><li>Use a shared responsive header specification, or explicitly define equivalent header content, typography, spacing, actions, and divider color per platform.</li><li>Normalize both screenshots to the same effective viewport and crop bounds before pixel comparison, and wait for the same deterministic screen state.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/screens.members.human.profile.png" data-current-src="ios/screens.members.human.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

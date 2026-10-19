@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-19 22:47:57 UTC
+Generated: 2026-10-19 23:37:14 UTC
 Latest run: a52d784-20261019224352
 Latest commit: a52d784-20261019224352
 Commit subject: fix(file-preview): select and copy text in Markdown and text previews (#3193)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 99, same 0, pass 0, basic-pass 2, different 89, missing 8
-AI analysis: ready 1 / total 99, pending 98
+AI analysis: ready 19 / total 99, pending 80
 Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
