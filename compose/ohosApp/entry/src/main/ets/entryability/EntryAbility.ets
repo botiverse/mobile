@@ -19,6 +19,7 @@ import { admitSlockOhosPreparedBatch } from '../kuikly/SlockOhosDiagnosticsQueue
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
+import { resolveSlockOhosAppFontFamily } from './SlockOhosFontPreference';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { completeSlockOhosAppLoginCallback } from '../kuikly/SlockOhosAppLogin';
 import { completeSlockOhosMobileOAuthCallback } from '../kuikly/SlockOhosMobileOAuth';
@@ -60,6 +61,26 @@ const SLOCK_FONTS: SlockFontResource[] = [
   { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
   { familyName: 'space_mono_regular', familySrc: $rawfile('fonts/space_mono_regular.ttf') },
   { familyName: 'space_mono_bold', familySrc: $rawfile('fonts/space_mono_bold.ttf') },
+  // Task #179 follow-up: register every bundled family (matches
+  // resources/base/profile/fonts.json) so a selected Appearance face is
+  // resolvable by native ArkUI surfaces too, not only by the Kuikly adapter.
+  { familyName: 'hanken_grotesk_light', familySrc: $rawfile('fonts/hanken_grotesk_light.ttf') },
+  { familyName: 'hanken_grotesk_regular', familySrc: $rawfile('fonts/hanken_grotesk_regular.ttf') },
+  { familyName: 'hanken_grotesk_medium', familySrc: $rawfile('fonts/hanken_grotesk_medium.ttf') },
+  { familyName: 'hanken_grotesk_semibold', familySrc: $rawfile('fonts/hanken_grotesk_semibold.ttf') },
+  { familyName: 'hanken_grotesk_bold', familySrc: $rawfile('fonts/hanken_grotesk_bold.ttf') },
+  { familyName: 'geist_light', familySrc: $rawfile('fonts/geist_light.ttf') },
+  { familyName: 'geist_regular', familySrc: $rawfile('fonts/geist_regular.ttf') },
+  { familyName: 'geist_medium', familySrc: $rawfile('fonts/geist_medium.ttf') },
+  { familyName: 'geist_semibold', familySrc: $rawfile('fonts/geist_semibold.ttf') },
+  { familyName: 'geist_bold', familySrc: $rawfile('fonts/geist_bold.ttf') },
+  { familyName: 'inter_light', familySrc: $rawfile('fonts/inter_light.ttf') },
+  { familyName: 'inter_regular', familySrc: $rawfile('fonts/inter_regular.ttf') },
+  { familyName: 'inter_medium', familySrc: $rawfile('fonts/inter_medium.ttf') },
+  { familyName: 'inter_semibold', familySrc: $rawfile('fonts/inter_semibold.ttf') },
+  { familyName: 'inter_bold', familySrc: $rawfile('fonts/inter_bold.ttf') },
+  { familyName: 'geist_mono_regular', familySrc: $rawfile('fonts/geist_mono_regular.ttf') },
+  { familyName: 'geist_mono_bold', familySrc: $rawfile('fonts/geist_mono_bold.ttf') },
 ];
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
@@ -255,7 +276,14 @@ export default class EntryAbility extends UIAbility {
           hasRegistrationFailure = true;
         }
       });
-      this.context.getApplicationContext().setFont('space_grotesk_regular');
+      // Task #179 follow-up: the app-wide default font follows Settings >
+      // Appearance (read from the app-scope MMKV store, which onCreate has
+      // already initialized). "System" resolves to null: leave the platform
+      // default untouched instead of pinning a bundled face.
+      const appFontFamily = resolveSlockOhosAppFontFamily();
+      if (appFontFamily !== null) {
+        this.context.getApplicationContext().setFont(appFontFamily);
+      }
       EntryAbility.uiFontsRegistered = !hasRegistrationFailure;
     } catch (err) {
       hilog.warn(0x0000, 'testTag', 'Skip UI font registration until UIContext is ready. Cause: %{public}s', JSON.stringify(err) ?? '');

@@ -43,6 +43,7 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_MAX_STREAM_CHUNK_BYTES,
 } from '../main/ets/entryability/SlockOhosPlatformFileReader';
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
+import { slockOhosAppFontFamilyForPreference } from '../main/ets/entryability/SlockOhosFontPreference';
 import {
   isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed,
 } from '../main/ets/entryability/SlockOhosThreadComposerTemporaryFileRetirement';
@@ -489,6 +490,16 @@ function diagnosticWork(
 
 export default function localUnitTest() {
   describe('localUnitTest',() => {
+    it('appFontFamilyFollowsStoredAppearancePreference', 0, () => {
+      expect(slockOhosAppFontFamilyForPreference('hanken_grotesk')).assertEqual('hanken_grotesk_regular');
+      expect(slockOhosAppFontFamilyForPreference('geist_inter')).assertEqual('geist_regular');
+      expect(slockOhosAppFontFamilyForPreference('space_grotesk')).assertEqual('space_grotesk_regular');
+      expect(slockOhosAppFontFamilyForPreference('system') === null).assertTrue();
+      expect(slockOhosAppFontFamilyForPreference(null)).assertEqual('space_grotesk_regular');
+      expect(slockOhosAppFontFamilyForPreference(undefined)).assertEqual('space_grotesk_regular');
+      expect(slockOhosAppFontFamilyForPreference('  Hanken_Grotesk ')).assertEqual('hanken_grotesk_regular');
+      expect(slockOhosAppFontFamilyForPreference('unknown_face')).assertEqual('space_grotesk_regular');
+    });
     it('appLoginIsSeparateFromOAuthAndRejectsAmbiguousCallbacks', 0, () => {
       const preparation = prepareSlockOhosAppLogin();
       expect(preparation.returnUri).assertEqual(SLOCK_OHOS_APP_LOGIN_URI);
