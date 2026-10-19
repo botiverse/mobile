@@ -30,7 +30,7 @@ PATHS = {
     "thread": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
     "uploaded_preview": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerUploadedImagePreview.kt",
     "android": "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt",
-    "ios": "compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m",
+    "ios": "compose/iosApp/iosApp/Host/HRBridgeModule.m",
 }
 
 ERROR_CODE = "attachment_image_compression_failed"

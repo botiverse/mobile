@@ -1,17 +1,21 @@
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <shared/shared.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * HostCapabilities transport for Compose Multiplatform pages (Kotlin `SlockCmpIosBridge`).
+ * HostCapabilities transport of one CMP page (Kotlin `SlockCmpIosBridge`).
  *
- * Forwards each call to a private HRBridgeModule, the same native implementation Kuikly pages use,
- * with the Kuikly module argument shape (KR_PARAM_KEY / KR_CALLBACK_KEY). The module has no Kuikly
- * root view, so presentation-dependent methods resolve the frontmost view controller of the key
- * window (HRBridgeModule's existing fallback).
+ * Forwards each call to the page's own HRBridgeModule with the bridge argument shape
+ * (RaftBridgeParamKey / RaftBridgeCallbackKey). Asynchronous methods run on the main thread;
+ * the synchronous ones (+[HRBridgeModule isSynchronousMethod:]) answer on the calling thread.
+ * [hostController] is the page (RaftPageViewController) the module presents from and navigates.
  */
 @interface SlockCmpBridgeHost : NSObject <SharedSlockCmpIosBridge>
+
+/** The page this bridge belongs to. Weak: the page owns its bridge (through the CMP host). */
+@property (nonatomic, weak, nullable) UIViewController *hostController;
+
 @end
 
 NS_ASSUME_NONNULL_END

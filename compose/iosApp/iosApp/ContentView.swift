@@ -17,7 +17,7 @@ struct ContentView: View {
         // as the root instead of the app shell so the Simulator screenshot
         // captures the fixture. Same pageName+pageData contract as Android.
         if let fixture = ContentView.visualFixtureLaunch() {
-            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
+            RaftPageView(pageName: fixture.pageName, data: fixture.data)
                 .ignoresSafeArea()
                 // task #419: hide the status bar so the capture screenshot has no
                 // clock/wifi/battery overlaying the fixture (the changing clock is
@@ -125,7 +125,7 @@ private struct ShellHostView: View {
                 shellInstanceId: nil
             )
             : destination
-        KuiklyRenderViewPage(
+        RaftPageView(
             pageName: effective.pageName,
             data: ContentView.hostPageData(effective, shellContext: shellContext)
         )

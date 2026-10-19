@@ -1,5 +1,5 @@
 #import <XCTest/XCTest.h>
-#import "../iosApp/KuiklyExpand/Modules/HRBridgeModule.h"
+#import "../iosApp/Host/HRBridgeModule.h"
 
 @interface SlockIosOpenAttachmentTests : XCTestCase
 @end

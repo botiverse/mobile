@@ -1,5 +1,5 @@
-#import "KRRouterHandler.h"
-#import "KuiklyRenderViewController.h"
+#import "RaftPageRouter.h"
+#import "RaftPageViewController.h"
 #import "iosApp-Swift.h"
 #import <objc/runtime.h>
 
@@ -31,7 +31,7 @@ static NSDictionary *SlockRouterIdentityPageData(NSDictionary *pageData) {
     for (NSString *key in blockedKeys) {
         if (sanitized[key] != nil) {
             [sanitized removeObjectForKey:key];
-            NSLog(@"[SlockKuikly][warn] dropped non-identity router payload key=%@", key);
+            NSLog(@"[RaftPageRouter][warn] dropped non-identity router payload key=%@", key);
         }
     }
     return sanitized;
@@ -48,11 +48,7 @@ static BOOL SlockRouterBool(id value) {
     return NO;
 }
 
-@implementation KRRouterHandler
-
-+ (void)load {
-    [KRRouterModule registerRouterHandler:[self new]];
-}
+@implementation RaftPageRouter
 
 - (void)openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData controller:(UIViewController *)controller {
     NSDictionary *sanitizedPageData = SlockRouterIdentityPageData(pageData);
@@ -68,12 +64,11 @@ static BOOL SlockRouterBool(id value) {
         // requests can all target login. The first replacement owns the stack;
         // later requests must preserve that login instance and its input state.
         UIViewController *top = navigationController.topViewController;
-        if ([top isKindOfClass:KuiklyRenderViewController.class] &&
-            ((KuiklyRenderViewController *)top).slockIsLoginPage) {
+        if ([top isKindOfClass:RaftPageViewController.class] &&
+            ((RaftPageViewController *)top).slockIsLoginPage) {
             return;
         }
     }
-    // Kuikly or Compose Multiplatform by page name (SlockCmpRouter allowlist).
     UIViewController *renderViewController = [SlockPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
@@ -105,7 +100,7 @@ static BOOL SlockRouterBool(id value) {
         [controller dismissViewControllerAnimated:YES completion:nil];
         return;
     }
-    NSLog(@"[SlockKuikly][warn] router closePage no-op: missing navigation stack");
+    NSLog(@"[RaftPageRouter][warn] closePage no-op: missing navigation stack");
 }
 
 @end

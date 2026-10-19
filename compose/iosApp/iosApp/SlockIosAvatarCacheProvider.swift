@@ -755,7 +755,37 @@ final class SlockIosAvatarDurableStore: NSObject, SlockAvatarMountedNativeProvid
 
     func image(forRenderModel model: String) -> UIImage? {
         guard let descriptor = parseRenderModel(model) else { return nil }
-        return lock.withLock {
+        return committedRead(descriptor)?.decoded.image
+    }
+
+    /// The committed bytes and content type of one exact render descriptor: the CMP image
+    /// loader's managed avatar read (`RaftIosHostHooks` -> `SlockIosAvatarCacheHost`).
+    func renderData(
+        nativePartitionKey: String,
+        nativeSubjectKey: String,
+        nativeBytesKey: String,
+        commitGeneration: Int64,
+        commitNonce: String,
+        modelRevision: Int64
+    ) -> (data: Data, contentType: String)? {
+        guard commitGeneration > 0, modelRevision > 0,
+              [nativePartitionKey, nativeSubjectKey, nativeBytesKey, commitNonce].allSatisfy(slockIosAvatarIsOpaque)
+        else { return nil }
+        let descriptor = RenderDescriptor(
+            nativePartitionKey: nativePartitionKey,
+            nativeSubjectKey: nativeSubjectKey,
+            nativeBytesKey: nativeBytesKey,
+            commitGeneration: commitGeneration,
+            commitNonce: commitNonce,
+            modelRevision: modelRevision
+        )
+        guard let read = committedRead(descriptor) else { return nil }
+        return (read.data, read.decoded.contentType)
+    }
+
+    /// Render admission for one descriptor: exact committed entry, not held, bytes validated.
+    private func committedRead(_ descriptor: RenderDescriptor) -> (data: Data, decoded: DecodedImage)? {
+        lock.withLock {
             let descriptorSlot = SlockAvatarNativeSlot(
                 nativePartitionKey: descriptor.nativePartitionKey,
                 nativeSubjectKey: descriptor.nativeSubjectKey,
@@ -770,12 +800,12 @@ final class SlockIosAvatarDurableStore: NSObject, SlockAvatarMountedNativeProvid
                     $0.commitGeneration == descriptor.commitGeneration &&
                     $0.commitNonce == descriptor.commitNonce &&
                     $0.modelRevision == descriptor.modelRevision
-            }), let data = validatedData(for: entries[index]), let image = decodeImage(data)?.image else {
+            }), let data = validatedData(for: entries[index]), let decoded = decodeImage(data) else {
                 return nil
             }
             entries[index].lastAccessMillis = nowMillis()
             _ = persistIndex()
-            return image
+            return (data, decoded)
         }
     }
 
@@ -1425,6 +1455,28 @@ final class SlockIosAvatarCacheHost: NSObject {
         default:
             completion(["status": "unsupported"])
         }
+    }
+}
+
+/// Managed avatar reads for the CMP image loader (`RaftIosHostHooks.install(managedImages:)`).
+extension SlockIosAvatarCacheHost: RaftIosManagedImageStore {
+    func readManagedImage(
+        nativePartitionKey: String,
+        nativeSubjectKey: String,
+        nativeBytesKey: String,
+        commitGeneration: Int64,
+        commitNonce: String,
+        modelRevision: Int64
+    ) -> RaftIosManagedImageBytes? {
+        guard let read = store.renderData(
+            nativePartitionKey: nativePartitionKey,
+            nativeSubjectKey: nativeSubjectKey,
+            nativeBytesKey: nativeBytesKey,
+            commitGeneration: commitGeneration,
+            commitNonce: commitNonce,
+            modelRevision: modelRevision
+        ) else { return nil }
+        return RaftIosManagedImageBytes(bytes: read.data, contentType: read.contentType)
     }
 }
 
