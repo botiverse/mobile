@@ -12,11 +12,20 @@ Task #193 moved visual fixture @Pages out of production source sets in phases:
 Production source sets scanned:
 - compose/shared/src/commonMain/kotlin
 - compose/shared/src/androidMain/kotlin
+- compose/shared/src/iosMain/kotlin
 - compose/androidApp/src/main/java
 
 Patterns rejected in production:
 - @Page\\s*\\(\\s*[A-Za-z0-9_]*_VISUAL_PAGE\\b
 - @Page\\s*\\(\\s*"[^"]*_visual"
+
+CMP page registry (since the Kuikly KSP page registry was replaced by
+scripts/cmp_generate_page_registry.py):
+- RaftProductPages.g.kt (commonMain, always compiled) must not register any
+  page name ending in "_visual".
+- The visualFixturesOff stand-in RaftVisualFixturePages.kt must stay an
+  emptyMap(), so builds without -PslockVisualFixtures register no fixture page.
+- Both generated registries must be current (generator --check).
 
 Exit codes:
 0 = no violations found / self-test passed
@@ -28,6 +37,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -37,7 +47,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION_SOURCE_DIRS = (
     "compose/shared/src/commonMain/kotlin",
     "compose/shared/src/androidMain/kotlin",
+    "compose/shared/src/iosMain/kotlin",
     "compose/androidApp/src/main/java",
+)
+
+PAGER_DIR = "kotlin/build/raft/app/compat/pager"
+PRODUCT_REGISTRY = f"compose/shared/src/commonMain/{PAGER_DIR}/RaftProductPages.g.kt"
+FIXTURES_OFF_REGISTRY = f"compose/shared/src/visualFixturesOff/{PAGER_DIR}/RaftVisualFixturePages.kt"
+REGISTRY_GENERATOR = "scripts/cmp_generate_page_registry.py"
+
+REGISTRY_ENTRY = re.compile(r'^\s*"([^"]+)"\s+to\s+\{', re.M)
+EMPTY_FIXTURE_MAP = re.compile(
+    r"raftVisualFixturePageFactories\s*:\s*Map<String,\s*\(\)\s*->\s*Pager>\s*=\s*emptyMap\(\)"
 )
 
 VISUAL_PAGE_PATTERNS = (
@@ -75,6 +96,86 @@ def scan_production_sources(root: Path) -> list[str]:
                         continue
                     violations.extend(find_violations_in_file(rel_path, content))
     return violations
+
+
+def check_page_registries(root: Path) -> list[str]:
+    violations: list[str] = []
+    product = root / PRODUCT_REGISTRY
+    if not product.is_file():
+        raise FileNotFoundError(f"Product page registry is missing: {product}")
+    product_text = product.read_text(encoding="utf-8")
+    for name in REGISTRY_ENTRY.findall(product_text):
+        if name.endswith("_visual"):
+            violations.append(f"{PRODUCT_REGISTRY}: production registry registers visual page {name!r}")
+    fixtures_off = root / FIXTURES_OFF_REGISTRY
+    if not fixtures_off.is_file():
+        raise FileNotFoundError(f"Fixture-off registry stand-in is missing: {fixtures_off}")
+    off_text = fixtures_off.read_text(encoding="utf-8")
+    if not EMPTY_FIXTURE_MAP.search(off_text) or REGISTRY_ENTRY.search(off_text):
+        violations.append(
+            f"{FIXTURES_OFF_REGISTRY}: builds without visual fixtures must register an emptyMap()"
+        )
+    return violations
+
+
+def check_registry_current(root: Path) -> list[str]:
+    result = subprocess.run(
+        [sys.executable, str(root / REGISTRY_GENERATOR), "--check"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return [
+            f"{REGISTRY_GENERATOR} --check: generated page registry is stale; re-run the generator\n"
+            + (result.stdout + result.stderr).strip()
+        ]
+    return []
+
+
+def scan_all(root: Path) -> list[str]:
+    return scan_production_sources(root) + check_page_registries(root) + check_registry_current(root)
+
+
+def _registry_self_test() -> int:
+    product_ok = (
+        'internal val raftProductPageFactories: Map<String, () -> Pager> =\n'
+        '    mapOf(\n        "compose_settings_home" to { a.SettingsPage() },\n    )\n'
+    )
+    off_ok = "internal val raftVisualFixturePageFactories: Map<String, () -> Pager> = emptyMap()\n"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        (root / PRODUCT_REGISTRY).parent.mkdir(parents=True)
+        (root / FIXTURES_OFF_REGISTRY).parent.mkdir(parents=True)
+        (root / PRODUCT_REGISTRY).write_text(product_ok, encoding="utf-8")
+        (root / FIXTURES_OFF_REGISTRY).write_text(off_ok, encoding="utf-8")
+        if check_page_registries(root):
+            print("self-test: clean registries reported violations", file=sys.stderr)
+            return 1
+        (root / PRODUCT_REGISTRY).write_text(
+            product_ok.replace("    )\n", '        "compose_x_visual" to { a.XVisualPage() },\n    )\n'),
+            encoding="utf-8",
+        )
+        if not any("compose_x_visual" in v for v in check_page_registries(root)):
+            print("self-test: visual page in product registry not caught", file=sys.stderr)
+            return 1
+        (root / PRODUCT_REGISTRY).write_text(product_ok, encoding="utf-8")
+        (root / FIXTURES_OFF_REGISTRY).write_text(
+            "internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =\n"
+            '    mapOf("compose_x_visual" to { a.XVisualPage() })\n',
+            encoding="utf-8",
+        )
+        if not check_page_registries(root):
+            print("self-test: non-empty fixture-off registry not caught", file=sys.stderr)
+            return 1
+        (root / FIXTURES_OFF_REGISTRY).unlink()
+        try:
+            check_page_registries(root)
+            print("self-test: missing fixture-off registry did not fail closed", file=sys.stderr)
+            return 1
+        except FileNotFoundError:
+            pass
+    return 0
 
 
 def self_test() -> int:
@@ -136,7 +237,7 @@ class TestPage2
         print(f"self-test: reported false positive on non-visual page: {v_neg}", file=sys.stderr)
         return 1
 
-    # Synthetic directory injection test: ensure each of the 3 production source dirs is actively scanned
+    # Synthetic directory injection test: ensure each of the production source dirs is actively scanned
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_root = Path(tmp_dir)
         for rel_dir in PRODUCTION_SOURCE_DIRS:
@@ -172,8 +273,11 @@ class TestPage2
         except FileNotFoundError:
             pass
 
+    if _registry_self_test() != 0:
+        return 1
+
     # Real scan of repository production sources
-    real_violations = scan_production_sources(REPO_ROOT)
+    real_violations = scan_all(REPO_ROOT)
     if real_violations:
         print(
             "self-test: tree scan found unexpected violations:\n"
@@ -191,7 +295,7 @@ def main() -> int:
         return self_test()
 
     try:
-        violations = scan_production_sources(REPO_ROOT)
+        violations = scan_all(REPO_ROOT)
     except FileNotFoundError as err:
         print(f"ERROR: {err}", file=sys.stderr)
         return 1
