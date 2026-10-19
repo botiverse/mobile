@@ -17,6 +17,7 @@ import build.raft.designsystem.components.raftMenuPosition
 import build.raft.designsystem.components.raftNormalCdf
 import build.raft.designsystem.components.raftPickerTriggerLook
 import build.raft.designsystem.components.raftRadioLook
+import build.raft.designsystem.components.raftRevealScrollTarget
 import build.raft.designsystem.components.raftSelectTriggerLook
 import build.raft.designsystem.components.raftStickerItemLook
 import build.raft.designsystem.components.raftSwitchLook
@@ -156,6 +157,18 @@ class RaftNavigationItemTest {
         val disabled = raftStickerItemLook(active = true, enabled = false, colors = light)
         assertEquals(Color.Transparent, disabled.fill)
         assertEquals(light.foregroundDisabled, disabled.ink)
+    }
+
+    @Test
+    fun aTabStripScrollsOnlyAsFarAsTheSelectedTabNeeds() {
+        // A 200px strip scrolled to 100, content scrolls up to 500; 8px room round the tab.
+        fun target(start: Int, end: Int) = raftRevealScrollTarget(start, end, room = 8, viewport = 200, current = 100, max = 500)
+        assertEquals(100, target(150, 250), "already in view: no scroll")
+        assertEquals(42, target(50, 120), "past the start edge: its start (less the room) at the edge")
+        assertEquals(158, target(250, 350), "past the end edge: its end (plus the room) at the edge")
+        assertEquals(500, target(600, 700), "clamped to the furthest scroll")
+        assertEquals(0, target(4, 60), "never before the start")
+        assertEquals(292, target(300, 600), "wider than the strip: its start shows")
     }
 }
 

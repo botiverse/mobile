@@ -98,6 +98,12 @@ internal object RaftPopupInsets {
  * [minWidth] (240dp for a menu), or exactly [width] (a select's list: its trigger's
  * width), 6dp padding round the [content] rows. [header] sits flush above the padded
  * rows, edge to edge (a [RaftMenuSearchField]). Provides `layer-popover` as the surface.
+ *
+ * Without a [width], the surface sizes itself by `IntrinsicSize.Max`, which asks every
+ * row for its intrinsic width. Content that can't answer that crashes at measure time:
+ * anything built on subcomposition (`SubcomposeLayout`, `BoxWithConstraints`, a
+ * [RaftDescriptionList]) or a lazy list (`LazyColumn`). Put only plain rows in it
+ * (menu items, labels, separators, text), or pass a fixed [width].
  */
 @Composable
 fun RaftMenuSurface(
@@ -299,6 +305,10 @@ fun RaftMenuSearchField(
  * back to [returnFocusTo] (the trigger's `Modifier.focusRequester`).
  *
  * Acting on one thing goes in a menu; picking a value is a [RaftSelect].
+ *
+ * The rows go in a scrolling column inside a [RaftMenuSurface]: never a lazy list (the
+ * rows already scroll), and without a [width] nothing subcomposed either (see
+ * [RaftMenuSurface]).
  */
 @Composable
 fun RaftDropdownMenu(

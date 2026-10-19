@@ -142,12 +142,12 @@ Other checks:
 | `RaftCheckbox`, `RaftCheckboxRow` | Checkbox, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole |
 | `RaftRadio`, `RaftRadioGroup`, `RaftRadioRow` | RadioGroup | Done | Ring with an ink dot; rows with descriptions (reset-agent list) |
 | `RaftSwitch` | Switch | Done | Off, on (brand sticker, die-cut in dark), focused, disabled; the knob slides; `label` names it (pass the row's title) |
-| `RaftTabs`, `RaftTab`, `RaftTabStrip` | Tabs | Done | Default (sticker, 44dp touch target) and underline; the panel strip scrolls without clipping the sticker or ring, scrolls the selected tab into view and fades an edge with more tabs past it. No drag-reorder |
+| `RaftTabs`, `RaftTab`, `RaftTabStrip` | Tabs | Done | Default (sticker, 44dp touch target) and underline; the panel strip scrolls without clipping the sticker or ring, scrolls the selected tab into view (its own scroll only, never the page around it) and fades an edge with more tabs past it. No drag-reorder |
 | `RaftSegmentedControl`, `RaftSegment` | SegmentedControl | Done | `fill-muted` track, sticker segment, counts, full width with weights |
 | `RaftToggleGroup`, `RaftToggleGroupItem` | ToggleGroup | Done | Same item as a segment; a toggle button (on / off), not a switch |
 | `RaftSelectTrigger`, `RaftSelect` | Select | Done | Value / placeholder, pressed, focused, invalid, disabled; field type inside a `RaftField`; read as a drop-down list with its label, value (or placeholder) and expanded state; the list is a dropdown menu exactly as wide as the trigger, and focus returns to the trigger after a keyboard pick |
 | `RaftPickerTriggerButton` | PickerTriggerButton | Done | Rest (seam ring), applied filter (`info-soft`, no border), pressed, focused, invalid, disabled; 44dp touch target |
-| `RaftDropdownMenu`, `RaftMenuSurface`, `RaftMenuItem`, `RaftMenuLabel`, `RaftMenuSeparator`, `RaftMenuSearchField` | DropdownMenu, Select popup | Done | Hugs its rows (`IntrinsicSize.Max`, at least 240dp); highlight `brand-soft`, current value bold + check, shortcut, disabled; the search row (16/24) takes the inset focus outline; keyboard: first row focused on open, arrows, Home / End, type-ahead; kept inside the safe area and above the keyboard |
+| `RaftDropdownMenu`, `RaftMenuSurface`, `RaftMenuItem`, `RaftMenuLabel`, `RaftMenuSeparator`, `RaftMenuSearchField` | DropdownMenu, Select popup | Done | Hugs its rows (`IntrinsicSize.Max`, at least 240dp: so rows must answer intrinsic measurement, no `LazyColumn`, `RaftDescriptionList` or other subcomposed content unless a fixed `width` is passed); highlight `brand-soft`, current value bold + check, shortcut, disabled; the search row (16/24) takes the inset focus outline; keyboard: first row focused on open, arrows, Home / End, type-ahead; kept inside the safe area and above the keyboard |
 | `RaftDialog`, `RaftDialogSurface` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16 |
 | `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
 | `RaftToast` | Toast | Done | HUD surface (title only, icon, action with a 44dp touch target, description) and the pages' foreground banner on the popover surface |
@@ -155,9 +155,20 @@ Other checks:
 | `RaftText` | — | Done | Text primitive |
 | Tabs drag-reorder, file list row, avatar picker, task card / board lane, toast host | | Not done | Later PRs |
 
-**TODO before migrating a real page:** Dialog and Sheet open / close animation (dialogs
-appear and vanish at once; the sheet slides up but not down) and swipe-to-dismiss on
-the sheet. Both are needed before any production screen moves to these overlays.
+**TODO before migrating a real page:**
+
+- Dialog and Sheet open / close animation (dialogs appear and vanish at once; the sheet
+  slides up but not down) and swipe-to-dismiss on the sheet. Both are needed before any
+  production screen moves to these overlays.
+- **Device check: popup insets.** `Popup` / `Dialog` default to `usePlatformInsets = true`,
+  and `RaftDropdownMenu` / `RaftDialog` / `RaftSheet` also subtract `WindowInsets.safeDrawing`
+  themselves, so the insets may be applied twice (a menu flipped above its anchor, or
+  anything open with the keyboard up, sitting too low or too far in). Verify on an Android
+  and an iOS device.
+- **Device check: labelled inputs.** An editable `BasicTextField` carrying the field's
+  label as `contentDescription` (`RaftTextField`, `RaftTextarea` in a `RaftField`): TalkBack
+  may read the description instead of the typed text, or the label twice. Verify with
+  TalkBack and VoiceOver.
 
 **Option card or choice rows.** Both make the whole surface the target and draw the
 radio or checkbox without a handler of its own. `RaftCard(variant = Option, onClick = …)`

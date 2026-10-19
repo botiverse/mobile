@@ -1,9 +1,14 @@
 package build.raft.designsystem
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +35,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
@@ -210,5 +216,71 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
             assertTrue(right <= 220f, "the selected tab ends at ${right}dp, inside the 220dp strip")
+        }
+
+    /**
+     * The strip scrolls only itself: a page scrolled so the strip is off screen stays put
+     * when a tab is selected (a bring-into-view request would scroll the page to it).
+     */
+    @Test
+    fun selectingATabDoesNotScrollThePageAroundTheStrip() =
+        runComposeUiTest {
+            val tabs = listOf("Profile", "Workspace", "Activity", "Settings", "Billing")
+            var selected by mutableStateOf("Profile")
+            val page = ScrollState(0)
+            setContent(
+                themed {
+                    Column(Modifier.size(220.dp, 200.dp).verticalScroll(page)) {
+                        Spacer(Modifier.height(400.dp))
+                        RaftTabStrip {
+                            tabs.forEach { RaftTab(it, selected = it == selected, onClick = { selected = it }) }
+                        }
+                        Spacer(Modifier.height(400.dp))
+                    }
+                },
+            )
+            waitForIdle()
+            assertEquals(0, page.value, "the first composition left the page where it was")
+            selected = "Billing"
+            waitForIdle()
+            assertEquals(0, page.value, "selecting a tab left the page where it was")
+            val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
+            assertTrue(right <= 220f, "the strip itself scrolled: the selected tab ends at ${right}dp, inside the 220dp strip")
+        }
+
+    /** A select opened and closed from the keyboard hands focus back to its trigger. */
+    @Test
+    fun aKeyboardSelectReturnsFocusToItsTrigger() =
+        runComposeUiTest {
+            var value by mutableStateOf<String?>(null)
+            setContent(
+                themed {
+                    val inputModes = LocalInputModeManager.current
+                    SideEffect { inputModes.requestInputMode(InputMode.Keyboard) }
+                    RaftField(label = "Runtime") {
+                        RaftSelect(value, listOf("Claude Code", "Codex"), { value = it }, { it }, placeholder = "Select a runtime")
+                    }
+                },
+            )
+            val trigger = onNode(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList))
+            trigger.requestFocus()
+            trigger.assertIsFocused()
+            // Open with Enter, move to the second row, pick it with Enter.
+            trigger.performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            onNodeWithText("Claude Code").assertIsFocused()
+            onNodeWithText("Claude Code").performKeyInput { pressKey(Key.DirectionDown) }
+            onNodeWithText("Codex").performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            assertEquals("Codex", value)
+            trigger.assertIsFocused()
+            // Open again and close with Escape: focus is back on the trigger too.
+            trigger.performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            onNodeWithText("Claude Code").assertIsFocused()
+            onNodeWithText("Claude Code").performKeyInput { pressKey(Key.Escape) }
+            waitForIdle()
+            onNodeWithText("Claude Code").assertDoesNotExist()
+            trigger.assertIsFocused()
         }
 }
