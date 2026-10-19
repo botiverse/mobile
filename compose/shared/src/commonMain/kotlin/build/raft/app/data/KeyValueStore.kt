@@ -116,8 +116,16 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
         )
         val raw = binding.store.getString(KEY_FONT_PREFERENCE_STORAGE_KEY)
         val parsed = FontPreference.fromStorageKey(raw)
-        "font_preference_coldstart scope=${binding.scope} raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
-    }.getOrElse { error -> "font_preference_coldstart store_unavailable=${error.message}" }
+        // ShenKuo: a bare `raw=<absent>` merges "the key genuinely is not there" with "I asked the
+        // wrong place", which are the two cases this diagnostic exists to separate. Carry the store
+        // identity and the exact key with the value.
+        "font_preference_coldstart store=${binding.store::class.simpleName} scope=${binding.scope}" +
+            " namespace=${SlockLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
+            " raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
+    }.getOrElse { error ->
+        "font_preference_coldstart store=<unavailable> namespace=${SlockLocalPreferenceStore.KuiklyNamespace}" +
+            " key=$KEY_FONT_PREFERENCE_STORAGE_KEY raw=<unreadable> error=${error.message}"
+    }
 
 /** Storage key of the font face inside the `slockLocal` app-scope store. */
 internal const val KEY_FONT_PREFERENCE_STORAGE_KEY = "appearance:font_preference"
