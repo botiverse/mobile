@@ -192,6 +192,13 @@ Other checks:
   themselves, so the insets may be applied twice (a menu flipped above its anchor, or
   anything open with the keyboard up, sitting too low or too far in). Verify on an Android
   and an iOS device.
+- **Device check: menu height cap.** `raftMenuHeightCap` and `raftMenuPosition` assume the
+  popup's constraints and window size are the whole window and subtract the
+  `safeDrawing` insets (bars, keyboard) themselves. On Android, `PopupLayout` may already
+  measure against the visible display frame (without the status bar and the IME), so a
+  long menu could be capped too short, or placed too low, by the insets counted twice.
+  Open a long menu with the keyboard up on an Android and an iOS device before changing
+  the math.
 - **Device check: labelled inputs.** An editable `BasicTextField` carrying the field's
   label as `contentDescription` (`RaftTextField`, `RaftTextarea` in a `RaftField`): TalkBack
   may read the description instead of the typed text, or the label twice. Verify with

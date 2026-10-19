@@ -22,10 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -172,6 +170,13 @@ private fun Modifier.raftEdgeFade(fill: Color, start: () -> Boolean, end: () -> 
 private class RaftTabStripScroll(val scroll: ScrollState) {
     /** The scrolled row of tabs (with its padding). */
     var content: LayoutCoordinates? = null
+
+    /**
+     * Whether any tab has revealed itself yet. Only the strip's very first reveal (the
+     * tab selected when it is composed) jumps; every later one animates, including the
+     * first selection of a tab that was not selected at first.
+     */
+    var revealedOnce: Boolean = false
 }
 
 /** Set by [RaftTabStrip]: its tabs scroll themselves into view when selected. */
@@ -216,7 +221,8 @@ fun RaftTab(
 
 /**
  * Scrolls [strip] so the element shows, with 8dp round it for a focus ring or die-cut
- * edge, when [active] turns true: at once on first composition, animated after that.
+ * edge, when [active] turns true: at once for the strip's first reveal (the tab selected
+ * when it is composed), animated after that ([RaftTabStripScroll.revealedOnce]).
  * It moves the strip's own [ScrollState] and nothing else (a bring-into-view request
  * would also scroll every scrolling parent, so the page would jump), and only when the
  * selection changes, not when the tab's size does.
@@ -224,7 +230,6 @@ fun RaftTab(
 @Composable
 private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll): Modifier {
     val tab = remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var revealed by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     LaunchedEffect(active) {
@@ -247,9 +252,9 @@ private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripS
                 max = scroll.maxValue,
             )
         if (target != scroll.value) {
-            if (revealed) scroll.animateScrollTo(target) else scroll.scrollTo(target)
+            if (strip.revealedOnce) scroll.animateScrollTo(target) else scroll.scrollTo(target)
         }
-        revealed = true
+        strip.revealedOnce = true
     }
     return onPlaced { tab.value = it }
 }

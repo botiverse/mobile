@@ -260,6 +260,43 @@ class RaftInteractiveSemanticsTest {
             assertTrue(right <= 220f, "the strip itself scrolled: the selected tab ends at ${right}dp, inside the 220dp strip")
         }
 
+    /**
+     * Only the strip's first reveal jumps: a tab that was not selected at first composition
+     * animates into view the first time it is selected (still off screen one frame later),
+     * and ends up in view.
+     */
+    @Test
+    fun aTabSelectedLaterAnimatesIntoView() =
+        runComposeUiTest {
+            val tabs = listOf("Profile", "Workspace", "Activity", "Settings", "Billing")
+            var selected by mutableStateOf("Profile")
+            setContent(
+                themed {
+                    Box(Modifier.width(220.dp)) {
+                        RaftTabStrip {
+                            tabs.forEach { RaftTab(it, selected = it == selected, onClick = { selected = it }) }
+                        }
+                    }
+                },
+            )
+            waitForIdle()
+            // Unclipped: boundsInRoot is cut to the strip's viewport.
+            fun billingRight() =
+                onNodeWithText("Billing").fetchSemanticsNode().let { it.positionInRoot.x + it.size.width } / density.density
+            val before = billingRight()
+            assertTrue(before > 220f, "Billing starts past the 220dp strip (${before}dp)")
+            mainClock.autoAdvance = false
+            selected = "Billing"
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeByFrame()
+            val midway = billingRight()
+            assertTrue(midway > 220f, "two frames in, the strip is still animating (Billing ends at ${midway}dp), not jumped")
+            mainClock.autoAdvance = true
+            waitForIdle()
+            val after = billingRight()
+            assertTrue(after <= 220f, "the animation ends with Billing inside the strip (${after}dp)")
+        }
+
     /** A select opened and closed from the keyboard hands focus back to its trigger. */
     @Test
     fun aKeyboardSelectReturnsFocusToItsTrigger() =

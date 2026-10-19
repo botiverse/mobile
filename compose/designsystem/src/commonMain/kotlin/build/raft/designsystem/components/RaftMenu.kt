@@ -525,6 +525,13 @@ internal fun raftMenuMaxSurfaceHeight(windowHeight: Int, windowMargin: Int, inse
  * taller than [raftMenuMaxSurfaceHeight] of the window it is measured against. The popup
  * is measured against the whole window, keyboard and bars included; capped, a long menu
  * scrolls its rows instead of running under the keyboard.
+ *
+ * Assumption, unverified on devices: this (and [raftMenuPosition]) takes the popup's
+ * constraints / window size to be the whole window and subtracts the `safeDrawing` insets
+ * itself. On Android, `PopupLayout` may already measure against the visible display frame
+ * (without the status bar and the IME), so the insets could be subtracted twice and a long
+ * menu capped too short or placed too low. Check on an Android and an iOS device before
+ * changing the math (README, TODO "Device check: popup insets").
  */
 internal fun Modifier.raftMenuHeightCap(windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Modifier =
     layout { measurable, constraints ->
