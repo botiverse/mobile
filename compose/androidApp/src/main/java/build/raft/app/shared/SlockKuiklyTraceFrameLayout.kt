@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import android.os.Trace
 import android.util.AttributeSet
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 
 internal class SlockKuiklyTraceFrameLayout @JvmOverloads constructor(
@@ -13,6 +14,25 @@ internal class SlockKuiklyTraceFrameLayout @JvmOverloads constructor(
         attrs: AttributeSet? = null,
         defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
+
+    // task #37/#39: per-frame list geometry while scrolling. A pre-draw listener fires on every
+    // frame the window draws; this container's own dispatchDraw does not re-run when only a
+    // hardware-accelerated child list redraws, so it cannot drive the probe.
+    private val flingFrameProbe =
+        ViewTreeObserver.OnPreDrawListener {
+            SlockFlingFrameProbe.onPreDraw(this)
+            true
+        }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnPreDrawListener(flingFrameProbe)
+    }
+
+    override fun onDetachedFromWindow() {
+        viewTreeObserver.removeOnPreDrawListener(flingFrameProbe)
+        super.onDetachedFromWindow()
+    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val startedAt = SystemClock.elapsedRealtimeNanos()
