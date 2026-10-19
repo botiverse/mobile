@@ -573,6 +573,5 @@ outer `.idea/`.
 - External `botiverse/slock` checkout (`SLOCK_SOURCE_REPO`) — upstream
   TypeScript server reference; record the exact source SHA used for any
   contract decision.
-- `.agents/skills/kuikly-sdk-upgrade/SKILL.md` — Kuikly version management
 - `compose/buildSrc/` — current Kuikly version definitions
 - `gradle/libs.versions.toml` — outer project version catalog

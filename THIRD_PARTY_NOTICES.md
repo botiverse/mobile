@@ -14,7 +14,6 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 ## Git submodules (not vendored; referenced by URL)
 | Path | Repository | License |
 |---|---|---|
-| .agents/skills/kuikly-ui-framework/references/KuiklyUI | Tencent-TDS/KuiklyUI | KuiklyUI license |
 
 ## Build-time dependencies — Maven (Android / KMP)
 | Component | Version | License |

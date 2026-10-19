@@ -541,49 +541,22 @@ or helper scripts as a workaround for branch protection.
   members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or
   caption-sized action text for ordinary page actions.
 
-## Kuikly References And Skills
+## Kuikly Status
 
-- Workspace-level Kuikly guidance lives under `.agents/`:
-  - `.agents/skills/kuikly-*` contains the vendored skills from
-    `Tencent-TDS/KuiklyUI-AI`.
-  - `.agents/skills/slock-*` contains Slock-specific workflow guidance
-    (currently `slock-android-adb-audit`, `slock-android-packaging`,
-    `slock-launch-contract`).
-  - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
-    the Kuikly Compose / Kuikly DSL rules.
-  - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
-- For Kuikly, shared shell, navigation, assets, native bridge, or
-  recomposition work, read the relevant workspace skill/rule first instead of
-  relying on Android-native assumptions.
-- The local Tencent KuiklyUI upstream reference lives at
-  `.agents/skills/kuikly-ui-framework/references/KuiklyUI/`. Keep KuiklyUI
-  reference/demo/source lookup there instead of adding another copy under
-  `third_party/`.
-- Useful KuiklyUI reference paths:
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/demo/src/commonMain/kotlin/com/tencent/kuikly/demo/pages/compose/`
-    for Compose DSL demos such as popups, gestures, Canvas, dialogs, lazy lists,
-    and text/input behavior.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/androidApp/` for the
-    Android host shell.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
-    render/runtime implementation details.
-- Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
-  unless explicitly asked; for Slock product fixes, change Slock shared/app code.
-- Cross-platform visual states must not rely on parent/view opacity when the
-  intended result is a specific token color. Kuikly Compose emits
-  `Modifier.alpha(...)` as an `opacity` prop; Android applies that through
-  `View.alpha`, while other Kuikly renderers apply it through their own native
-  opacity primitive. The final subtree blending can differ, especially for disabled buttons/icons on light
-  backgrounds. Prefer explicit ARGB colors such as
-  `AccentPink.copy(alpha = 0.3f)` and matching icon colors (`#4D000000`) for
-  disabled/pressed states instead of wrapping the whole component in
-  `Modifier.alpha(0.3f)`.
-- To refresh the `.agents/` Kuikly AI skill/rule bundle from upstream, run:
-
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-scripts/sync_kuikly_ai_skills.sh
-```
+- Mobile is migrating from Kuikly to JetBrains Compose Multiplatform (1.15 ships
+  on Compose; see `compose/designsystem` for the new design-system module).
+  The vendored Kuikly AI skills, rules and the KuiklyUI reference tree were
+  removed; do not re-add them. New UI goes into Compose Multiplatform, not
+  Kuikly.
+- `.agents/skills/slock-*` contains Slock-specific workflow guidance
+  (currently `slock-android-adb-audit`, `slock-android-packaging`,
+  `slock-launch-contract`).
+- While Kuikly pages remain: cross-platform visual states must not rely on
+  parent/view opacity when the intended result is a specific token color.
+  Kuikly Compose emits `Modifier.alpha(...)` as an `opacity` prop that each
+  renderer blends differently. Prefer explicit ARGB colors for
+  disabled/pressed states instead of wrapping a component in
+  `Modifier.alpha(...)`.
 
 ## KuiklyUI Release
 
@@ -598,9 +571,6 @@ scripts/sync_kuikly_ai_skills.sh
 - Fork development and publication happen in the KuiklyUI repository. To
   upgrade Mobile, publish a complete immutable successor first, then update
   the closure, exact Gradle versions, and CocoaPods lock together.
-- The `.agents/skills/kuikly-ui-framework/references/KuiklyUI` tree remains a
-  vendor reference for API and implementation research; it is not a build
-  input or consumer fallback.
 
 ## HarmonyOS (OHOS) Status
 
