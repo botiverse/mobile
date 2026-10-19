@@ -673,6 +673,15 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
+        // Task #521: publish the stored font face before the first composition (same as
+        // SlockApplication on Android). Without it the first frames use the default face and
+        // only switch when a settings snapshot loads, or never on a slow cold start.
+        _ = KeyValueStoreKt.slockRestoreStoredFontPreferenceOnColdStart()
+        SlockIosDiagnosticsRecord(
+            "info",
+            "font_preference",
+            KeyValueStoreKt.slockReadStoredFontPreferenceForDiagnostics()
+        )
         SlockIosInstallThreadComposerTemporaryFileRetirement()
         let curlCaPath = slockCurlCaBundlePath()
         let curlBootstrap = SlockIosNetworkTransportBootstrapKt
