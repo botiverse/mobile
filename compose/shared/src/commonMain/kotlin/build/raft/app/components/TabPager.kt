@@ -236,7 +236,8 @@ fun TabPager(
                 modifier = Modifier.fillMaxSize(),
                 userScrollEnabled = gesturePolicy.swipeEnabled,
                 key = { page -> page },
-                keepItemAlive = keepItemAlive,
+                // Kuikly keepItemAlive kept every page composed.
+                beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
             ) { page ->
                 // currentPage, not settledPage: the latter is frozen on the
                 // iOS port (round-4 evidence), which would leave every

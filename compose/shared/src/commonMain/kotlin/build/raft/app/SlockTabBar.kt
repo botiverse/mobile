@@ -8,8 +8,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import build.raft.app.compat.ui.MakeKuiklyComposeNode
-import build.raft.app.compat.ui.setEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,9 +36,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.event.Event
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import kotlinx.serialization.Serializable
@@ -445,87 +440,14 @@ private fun SlockNativeFloatingTabBar(
     bottomSafeArea: Dp,
     modifier: Modifier = Modifier
 ) {
-    MakeKuiklyComposeNode<SlockNativeFloatingTabBarView>(
-        factory = { SlockNativeFloatingTabBarView() },
-        modifier = modifier.setEvent("select") { payload ->
-            val key =
-                (payload as? JSONObject)?.optString("key")
-                    ?: (payload as? Map<*, *>)?.get("key")?.toString()
-                    ?: ""
-            if (key.isNotBlank()) {
-                onSelect(key)
-            }
-        },
-        viewInit = {
-            getViewAttr().run {
-                keys(items.tabJoin { it.key })
-                labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName.wireName })
-                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
-                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
-                bottomSafeArea(bottomSafeArea.value)
-            }
-        },
-        viewUpdate = { view ->
-            view.getViewAttr().run {
-                keys(items.tabJoin { it.key })
-                labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName.wireName })
-                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
-                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
-                bottomSafeArea(bottomSafeArea.value)
-            }
-        }
+    // TODO(cmp-switch): the native floating tab bars (iOS liquid glass / Android floating) were
+    // Kuikly native views; render the shared Compose floating dock until a CMP interop exists.
+    SlockFloatingDockTabBar(
+        items = items,
+        onSelect = onSelect,
+        modifier = modifier,
+        bottomSafeArea = bottomSafeArea
     )
-}
-
-private fun List<SlockBottomTabItemPayload>.tabJoin(value: (SlockBottomTabItemPayload) -> String): String =
-    joinToString("\u001F") { value(it).replace("\u001F", " ") }
-
-private class SlockNativeFloatingTabBarView : DeclarativeBaseView<SlockNativeFloatingTabBarAttr, SlockNativeFloatingTabBarEvent>() {
-    override fun createAttr(): SlockNativeFloatingTabBarAttr = SlockNativeFloatingTabBarAttr()
-
-    override fun createEvent(): SlockNativeFloatingTabBarEvent = SlockNativeFloatingTabBarEvent()
-
-    override fun viewName(): String = VIEW_NAME
-
-    companion object {
-        const val VIEW_NAME = "SlockNativeFloatingTabBarView"
-    }
-}
-
-private class SlockNativeFloatingTabBarEvent : Event()
-
-private class SlockNativeFloatingTabBarAttr : Attr() {
-    fun keys(value: String): SlockNativeFloatingTabBarAttr {
-        "keysText" with value
-        return this
-    }
-
-    fun labels(value: String): SlockNativeFloatingTabBarAttr {
-        "labelsText" with value
-        return this
-    }
-
-    fun icons(value: String): SlockNativeFloatingTabBarAttr {
-        "iconsText" with value
-        return this
-    }
-
-    fun enabled(value: String): SlockNativeFloatingTabBarAttr {
-        "enabledText" with value
-        return this
-    }
-
-    fun selectedKey(value: String): SlockNativeFloatingTabBarAttr {
-        "selectedKey" with value
-        return this
-    }
-
-    fun bottomSafeArea(value: Float): SlockNativeFloatingTabBarAttr {
-        "bottomSafeArea" with value
-        return this
-    }
 }
 
 @Composable

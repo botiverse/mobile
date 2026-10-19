@@ -3,161 +3,13 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
-import build.raft.app.compat.ui.MakeKuiklyComposeNode
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.event.Event
+import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.json.JSONObject
-
-internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebViewAttr, SlockSandboxWebViewEvent>() {
-    private var appliedUrl: String? = null
-    private var appliedAllowScripts: Boolean? = null
-    private var appliedAllowNavigation: Boolean? = null
-    private var appliedDomStorageEnabled: Boolean? = null
-    private var appliedUseWideViewPort: Boolean? = null
-    private var appliedCacheEnabled: Boolean? = null
-    private var appliedEphemeral: Boolean? = null
-    private var appliedInjectedJavaScript: String? = null
-    private var appliedAllowedNavigationSchemes: String? = null
-    private var appliedHostEventsEnabled: Boolean? = null
-    private var boundController: SlockWebViewController? = null
-
-    override fun createAttr(): SlockSandboxWebViewAttr = SlockSandboxWebViewAttr()
-
-    override fun createEvent(): SlockSandboxWebViewEvent = SlockSandboxWebViewEvent()
-
-    override fun viewName(): String = VIEW_NAME
-
-    fun applyWebViewAttrs(
-        url: String,
-        allowScripts: Boolean,
-        allowNavigation: Boolean,
-        domStorageEnabled: Boolean,
-        useWideViewPort: Boolean = false,
-        cacheEnabled: Boolean,
-        ephemeral: Boolean,
-        injectedJavaScript: String,
-        allowedNavigationSchemes: String,
-        hostEventsEnabled: Boolean = false,
-        force: Boolean = false
-    ) {
-        if (
-            !force &&
-            appliedUrl == url &&
-            appliedAllowScripts == allowScripts &&
-            appliedAllowNavigation == allowNavigation &&
-            appliedDomStorageEnabled == domStorageEnabled &&
-            appliedUseWideViewPort == useWideViewPort &&
-            appliedCacheEnabled == cacheEnabled &&
-            appliedEphemeral == ephemeral &&
-            appliedInjectedJavaScript == injectedJavaScript &&
-            appliedAllowedNavigationSchemes == allowedNavigationSchemes &&
-            appliedHostEventsEnabled == hostEventsEnabled
-        ) {
-            return
-        }
-        appliedUrl = url
-        appliedAllowScripts = allowScripts
-        appliedAllowNavigation = allowNavigation
-        appliedDomStorageEnabled = domStorageEnabled
-        appliedUseWideViewPort = useWideViewPort
-        appliedCacheEnabled = cacheEnabled
-        appliedEphemeral = ephemeral
-        appliedInjectedJavaScript = injectedJavaScript
-        appliedAllowedNavigationSchemes = allowedNavigationSchemes
-        appliedHostEventsEnabled = hostEventsEnabled
-        getViewAttr().run {
-            allowScripts(allowScripts)
-            allowNavigation(allowNavigation)
-            domStorageEnabled(domStorageEnabled)
-            useWideViewPort(useWideViewPort)
-            cacheEnabled(cacheEnabled)
-            ephemeral(ephemeral)
-            injectedJavaScript(injectedJavaScript)
-            allowedNavigationSchemes(allowedNavigationSchemes)
-            hostEventsEnabled(hostEventsEnabled)
-            src(url)
-        }
-    }
-
-    fun bindController(controller: SlockWebViewController) {
-        if (boundController === controller) return
-        boundController?.unbindCommandDispatcher(this)
-        boundController = controller
-        controller.bindCommandDispatcher(this) { command ->
-            callRenderViewMethod(METHOD_NAVIGATION_COMMAND, command)
-        }
-    }
-
-    override fun didRemoveFromParentView() {
-        boundController?.unbindCommandDispatcher(this)
-        boundController = null
-        super.didRemoveFromParentView()
-    }
-
-    companion object {
-        const val VIEW_NAME = "SlockSandboxWebView"
-        private const val METHOD_NAVIGATION_COMMAND = "navigationCommand"
-    }
-}
-
-internal class SlockSandboxWebViewAttr : Attr() {
-    fun src(value: String): SlockSandboxWebViewAttr {
-        "src" with value
-        return this
-    }
-
-    fun allowScripts(value: Boolean): SlockSandboxWebViewAttr {
-        "allowScripts" with value
-        return this
-    }
-
-    fun allowNavigation(value: Boolean): SlockSandboxWebViewAttr {
-        "allowNavigation" with value
-        return this
-    }
-
-    fun domStorageEnabled(value: Boolean): SlockSandboxWebViewAttr {
-        "domStorageEnabled" with value
-        return this
-    }
-
-    /**
-     * task #188: lets the WebView honour `width=` in the page's viewport meta. Android ignores it
-     * otherwise, so a desktop-width viewport injection has no effect there.
-     */
-    fun useWideViewPort(value: Boolean): SlockSandboxWebViewAttr {
-        "useWideViewPort" with value
-        return this
-    }
-
-    fun cacheEnabled(value: Boolean): SlockSandboxWebViewAttr {
-        "cacheEnabled" with value
-        return this
-    }
-
-    fun ephemeral(value: Boolean): SlockSandboxWebViewAttr {
-        "ephemeral" with value
-        return this
-    }
-
-    fun injectedJavaScript(value: String): SlockSandboxWebViewAttr {
-        "injectedJavaScript" with value
-        return this
-    }
-
-    fun allowedNavigationSchemes(value: String): SlockSandboxWebViewAttr {
-        "allowedNavigationSchemes" with value
-        return this
-    }
-
-    fun hostEventsEnabled(value: Boolean): SlockSandboxWebViewAttr {
-        "hostEventsEnabled" with value
-        return this
-    }
-
-}
 
 internal data class SlockWebViewNavigationState(
     val url: String = "",
@@ -257,75 +109,6 @@ internal class SlockWebViewController {
 @Composable
 internal fun rememberSlockWebViewController(): SlockWebViewController = remember { SlockWebViewController() }
 
-internal class SlockSandboxWebViewEvent : Event() {
-    fun loadCommit(handler: () -> Unit) {
-        register(EVENT_LOAD_COMMIT) {
-            handler()
-        }
-    }
-
-    fun loadSuccess(handler: () -> Unit) {
-        register(EVENT_LOAD_SUCCESS) {
-            handler()
-        }
-    }
-
-    fun loadFailure(handler: (String) -> Unit) {
-        register(EVENT_LOAD_FAILURE) { params ->
-            handler(params.optStringValue("reason", "unknown"))
-        }
-    }
-
-    fun navigationBlocked(handler: (String) -> Unit) {
-        register(EVENT_NAVIGATION_BLOCKED) { params ->
-            handler(params.optStringValue("url", ""))
-        }
-    }
-
-    fun urlChange(handler: (String) -> Unit) {
-        register(EVENT_URL_CHANGE) { params ->
-            handler(params.optStringValue("url", ""))
-        }
-    }
-
-    fun navigationStateChange(handler: (SlockWebViewNavigationState) -> Unit) {
-        register(EVENT_NAVIGATION_STATE_CHANGE) { params ->
-            handler(SlockWebViewNavigationState.decode(params))
-        }
-    }
-
-    fun hostMessage(handler: (String, JSONObject) -> Unit) {
-        register(EVENT_HOST_MESSAGE) { params ->
-            val raw = params.optStringValue("message", "")
-            if (raw.isBlank()) return@register
-            val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@register
-            val kind = parsed.optString("kind", "").trim()
-            val payload = parsed.optJSONObject("payload") ?: return@register
-            val acceptedKind = when (kind) {
-                "ready", "close", "auth-required", "integration-unavailable" -> kind
-                "feedback:ready" -> "ready"
-                "feedback:close" -> "close"
-                "feedback:auth-required" -> "auth-required"
-                "feedback:integration-unavailable" -> "integration-unavailable"
-                FeedbackDiagnosticsBridge.START_KIND -> FeedbackDiagnosticsBridge.START_KIND
-                FeedbackDiagnosticsBridge.CANCEL_KIND -> FeedbackDiagnosticsBridge.CANCEL_KIND
-                else -> null
-            } ?: return@register
-            handler(acceptedKind, payload)
-        }
-    }
-
-    companion object {
-        const val EVENT_LOAD_COMMIT = "loadCommit"
-        const val EVENT_LOAD_SUCCESS = "loadSuccess"
-        const val EVENT_LOAD_FAILURE = "loadFailure"
-        const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
-        const val EVENT_URL_CHANGE = "urlChange"
-        const val EVENT_NAVIGATION_STATE_CHANGE = "navigationStateChange"
-        const val EVENT_HOST_MESSAGE = "hostMessage"
-    }
-}
-
 @Composable
 @NonRestartableComposable
 internal fun SlockSandboxWebView(
@@ -350,77 +133,13 @@ internal fun SlockSandboxWebView(
     onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
-    val allowedNavigationSchemesValue = allowedNavigationSchemes.toSlockWebViewAllowedNavigationSchemesValue()
-    val updateAttrs =
-        remember(
-            url,
-            allowScripts,
-            allowNavigation,
-            domStorageEnabled,
-            useWideViewPort,
-            cacheEnabled,
-            ephemeral,
-            injectedJavaScript,
-            allowedNavigationSchemesValue,
-            hostEventsEnabled
-        ) {
-            { view: SlockSandboxWebViewNode ->
-                view.applyWebViewAttrs(
-                    url = url,
-                    allowScripts = allowScripts,
-                    allowNavigation = allowNavigation,
-                    domStorageEnabled = domStorageEnabled,
-                    useWideViewPort = useWideViewPort,
-                    cacheEnabled = cacheEnabled,
-                    ephemeral = ephemeral,
-                    injectedJavaScript = injectedJavaScript,
-                    allowedNavigationSchemes = allowedNavigationSchemesValue,
-                    hostEventsEnabled = hostEventsEnabled
-                )
-            }
-        }
-    MakeKuiklyComposeNode<SlockSandboxWebViewNode>(
-        factory = { SlockSandboxWebViewNode() },
-        modifier = modifier,
-        viewInit = {
-            event {
-                loadCommit(onLoadCommit)
-                loadSuccess(onLoadSuccess)
-                loadFailure(onLoadFailure)
-                navigationBlocked(onNavigationBlocked)
-                urlChange(onUrlChange)
-                navigationStateChange(onNavigationStateChange)
-                hostMessage(onHostMessage)
-            }
-            applyWebViewAttrs(
-                url = url,
-                allowScripts = allowScripts,
-                allowNavigation = allowNavigation,
-                domStorageEnabled = domStorageEnabled,
-                useWideViewPort = useWideViewPort,
-                cacheEnabled = cacheEnabled,
-                ephemeral = ephemeral,
-                injectedJavaScript = injectedJavaScript,
-                allowedNavigationSchemes = allowedNavigationSchemesValue,
-                hostEventsEnabled = hostEventsEnabled,
-                force = true
-            )
-            bindController(controller)
-        },
-        viewUpdate = { view ->
-            view.event {
-                loadCommit(onLoadCommit)
-                loadSuccess(onLoadSuccess)
-                loadFailure(onLoadFailure)
-                navigationBlocked(onNavigationBlocked)
-                urlChange(onUrlChange)
-                navigationStateChange(onNavigationStateChange)
-                hostMessage(onHostMessage)
-            }
-            updateAttrs(view)
-            view.bindController(controller)
-        }
-    )
+    // TODO(cmp-switch): TEMPORARY placeholder. The sandbox WebView was a native Kuikly view
+    // (Android SlockSandboxWebViewRenderView, iOS SlockSandboxWebView.m); it must come back as an
+    // expect/actual AndroidView/UIKitView with the same attrs, commands and events (see the
+    // migration assessment §1.6 / §3.9). Until then nothing loads and no callback fires.
+    Box(modifier.background(Color(0xFFF2F2F2)), contentAlignment = Alignment.Center) {
+        BasicText("WebView: $url")
+    }
 }
 
 /**

@@ -48,7 +48,6 @@ import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.components.SlockRaftMetrics
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
-import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.PlatformFile
@@ -21001,7 +21000,6 @@ private fun ThreadMessagesListContent(
                 verticalArrangement = Arrangement.Bottom,
                 contentPadding =
                     PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
-                beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
             threadListSegments += {

@@ -2327,7 +2327,6 @@ private fun SlockStructuralHomeShellContent(
                                         }
                                     },
                             verticalArrangement = Arrangement.spacedBy(2.dp),
-                            beyondBoundsItemCount = homeBeyondBoundsItemCount
                         ) {
                             if (pullToRefreshEnabled) {
                                 slockRaftPullToRefreshItem(
@@ -5062,7 +5061,6 @@ private fun HomeServerDrawerPanel(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
                 ) {
                     items(rows.size, key = { index -> rows[index].key }) { index ->
                         when (val row = rows[index]) {
@@ -5182,7 +5180,6 @@ internal fun HomeServerDrawerHostedPanel(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    beyondBoundsItemCount = 2
                 ) {
                     sections.forEach { hostedSection ->
                         val section = hostedSection.header
@@ -5657,7 +5654,6 @@ internal fun ServerSwitcherPanel(
                 LazyColumn(
                     state = listState,
                     modifier = serverLazyListModifier,
-                    beyondBoundsItemCount = homeServerSwitcherBeyondBoundsItemCount(order.size),
                     userScrollEnabled = draggedId == null
                 ) {
                     items(order.size, key = { index -> "server-${order[index]}" }) { index ->

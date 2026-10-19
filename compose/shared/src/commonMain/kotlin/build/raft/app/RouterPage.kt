@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
-import build.raft.app.base.bridgeModule
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow

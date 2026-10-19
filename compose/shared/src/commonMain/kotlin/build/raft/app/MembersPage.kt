@@ -4948,7 +4948,6 @@ internal fun MembersListContent(
                 .fillMaxSize()
                 .padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (showPullToRefreshItem) {
                 slockRaftPullToRefreshItem(
@@ -5965,7 +5964,6 @@ private fun MembersDetailContent(
                             state = agentTabListStates.getValue(pageTab),
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                         ) {
                             if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
@@ -6145,7 +6143,6 @@ private fun MembersDetailContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
                     item(key = "member-detail-${member.id.value}-human-content") {
                         MembersHumanDetailSections(
@@ -12669,7 +12666,6 @@ private fun MembersWorkspaceTreeView(
             .fillMaxWidth()
             .heightIn(min = 280.dp, max = 560.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
     ) {
         items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
             val row = rows[index]
@@ -13047,7 +13043,6 @@ private fun MembersAgentActivityTab(
                         scrollDown = NestedScrollMode.SELF_FIRST
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
-                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
                     MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)

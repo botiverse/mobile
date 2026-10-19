@@ -17,7 +17,6 @@ import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
-import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage

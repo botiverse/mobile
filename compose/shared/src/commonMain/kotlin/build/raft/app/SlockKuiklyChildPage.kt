@@ -10,7 +10,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.compat.ui.MakeKuiklyComposeNode
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import build.raft.app.cmp.host.SlockCmpPageArgs
+import build.raft.app.compat.pager.RaftPageRegistry
+import build.raft.app.compat.pager.RaftPagerHost
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,207 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.event.Event
-import com.tencent.kuikly.core.base.event.didAppear
-import com.tencent.kuikly.core.base.event.didDisappear
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.compat.pager.IPagerEventObserver
 
 const val SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE = "compose_child_page_host_smoke"
 private const val SLOCK_CHILD_PAGE_SMOKE_ONE_PAGE = "compose_child_page_smoke_one"
 private const val SLOCK_CHILD_PAGE_SMOKE_TWO_PAGE = "compose_child_page_smoke_two"
-
-internal class SlockKuiklyChildPageView :
-    DeclarativeBaseView<SlockKuiklyChildPageAttr, SlockKuiklyChildPageEvent>(),
-    IPagerEventObserver {
-    private var appliedPageName: String? = null
-    private var appliedPageData: String? = null
-    private var appliedGlassStyle: String? = null
-    private var active = true
-    private var viewAppeared = false
-    private var childLifecycleVisible = false
-    private var parentAttachmentGeneration = 0L
-    private var parentAppearanceDelivered = false
-
-    override fun createAttr(): SlockKuiklyChildPageAttr = SlockKuiklyChildPageAttr()
-
-    override fun createEvent(): SlockKuiklyChildPageEvent = SlockKuiklyChildPageEvent()
-
-    override fun viewName(): String = VIEW_NAME
-
-    override fun willInit() {
-        super.willInit()
-        event {
-            didAppear {
-                this@SlockKuiklyChildPageView.viewAppeared = true
-                this@SlockKuiklyChildPageView.syncChildLifecycleVisibility()
-            }
-            didDisappear {
-                this@SlockKuiklyChildPageView.viewAppeared = false
-                this@SlockKuiklyChildPageView.syncChildLifecycleVisibility()
-            }
-        }
-    }
-
-    override fun didMoveToParentView() {
-        super.didMoveToParentView()
-        val parentPager = getPager()
-        val attachmentGeneration = ++parentAttachmentGeneration
-        parentPager.addPagerEventObserver(this)
-        if (parentPager.isAppeared) {
-            viewAppeared = true
-            onPagerEvent("viewDidAppear", JSONObject())
-        }
-        syncChildLifecycleVisibility()
-        // Pager snapshots observers before setting isAppeared. A child attached during
-        // that dispatch misses both the event and the immediate state read above.
-        parentPager.addNextTickTask {
-            if (attachmentGeneration != parentAttachmentGeneration || parentPager.isWillDestroy() ||
-                parentAppearanceDelivered || !parentPager.isAppeared
-            ) {
-                return@addNextTickTask
-            }
-            viewAppeared = true
-            onPagerEvent("viewDidAppear", JSONObject())
-            syncChildLifecycleVisibility()
-        }
-    }
-
-    override fun didRemoveFromParentView() {
-        parentAttachmentGeneration++
-        parentAppearanceDelivered = false
-        viewAppeared = false
-        syncChildLifecycleVisibility()
-        super.didRemoveFromParentView()
-        getPager().removePagerEventObserver(this)
-    }
-
-    fun applyChildPageAttrs(
-        pageName: String,
-        pageData: String,
-        glassStyle: String?,
-        force: Boolean = false
-    ) {
-        if (!force && appliedPageName == pageName && appliedPageData == pageData && appliedGlassStyle == glassStyle) {
-            return
-        }
-        appliedPageName = pageName
-        appliedPageData = pageData
-        appliedGlassStyle = glassStyle
-        getViewAttr().run {
-            pageName(pageName)
-            pageData(pageData)
-            glassStyle(glassStyle)
-        }
-    }
-
-    fun updateActive(next: Boolean) {
-        if (active == next) return
-        active = next
-        getViewAttr().active(next)
-        syncChildLifecycleVisibility()
-    }
-
-    override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
-        when (pagerEvent) {
-            "viewDidAppear" -> parentAppearanceDelivered = true
-            "viewDidDisappear" -> parentAppearanceDelivered = false
-        }
-        val pagerAppeared = slockChildLifecyclePagerAppearState(pagerEvent)
-        if (pagerAppeared != null) {
-            viewAppeared = pagerAppeared
-            syncChildLifecycleVisibility()
-            return
-        }
-        sendPagerEvent(pagerEvent, eventData)
-    }
-
-    private fun syncChildLifecycleVisibility() {
-        val shouldBeVisible = slockChildLifecycleShouldBeVisible(viewAppeared = viewAppeared, active = active)
-        // task #309: a child can log `child_tab_render active=true` (the compose `active`
-        // attr) yet never appear on screen when the parent Pager's `didAppear`/
-        // `viewDidAppear` was not delivered to this host — `viewAppeared` stays false and
-        // `shouldBeVisible` is false even though the attr flipped. Log the full triple so a
-        // real-device repro can tell "rendered but not visible" (viewAppeared=false) apart
-        // from "visible but not painted" (shouldBeVisible=true).
-        slockLogInfo(
-            "SlockKuiklyChildPage",
-            "child_visible viewAppeared=$viewAppeared active=$active " +
-                "shouldBeVisible=$shouldBeVisible"
-        )
-        val events =
-            slockChildLifecycleEvents(
-                previouslyVisible = childLifecycleVisible,
-                shouldBeVisible = shouldBeVisible
-            )
-        if (events.isEmpty()) {
-            return
-        }
-        childLifecycleVisible = shouldBeVisible
-        events.forEach { sendPagerEvent(it) }
-    }
-
-    private fun sendPagerEvent(event: String, data: JSONObject? = null) {
-        val params =
-            JSONObject().apply {
-                put("event", event)
-                put("data", data ?: JSONObject())
-            }
-        callRenderViewMethod("sendEvent", params.toString())
-    }
-
-    companion object {
-        const val VIEW_NAME = "SlockKuiklyPageView"
-    }
-}
-
-internal class SlockKuiklyChildPageAttr : Attr() {
-    fun pageName(value: String): SlockKuiklyChildPageAttr {
-        "pageName" with value
-        return this
-    }
-
-    fun pageData(value: String): SlockKuiklyChildPageAttr {
-        "pageData" with value
-        return this
-    }
-
-    fun glassStyle(value: String?): SlockKuiklyChildPageAttr {
-        if (value == null) {
-            "glassStyle" with ""
-        } else {
-            "glassStyle" with value
-        }
-        return this
-    }
-
-    fun active(value: Boolean): SlockKuiklyChildPageAttr {
-        "active" with value
-        return this
-    }
-
-}
-
-internal class SlockKuiklyChildPageEvent : Event() {
-    fun loadSuccess(handler: () -> Unit) {
-        register(EVENT_LOAD_SUCCESS) {
-            handler()
-        }
-    }
-
-    fun loadFailure(handler: () -> Unit) {
-        register(EVENT_LOAD_FAILURE) {
-            handler()
-        }
-    }
-
-    companion object {
-        const val EVENT_LOAD_SUCCESS = "loadSuccess"
-        const val EVENT_LOAD_FAILURE = "loadFailure"
-    }
-}
 
 @Composable
 internal fun SlockKuiklyChildPage(
@@ -278,37 +86,33 @@ internal fun SlockKuiklyChildPage(
     DisposableEffect(originKey) {
         onDispose { SlockChildPageOriginRegistry.forget(originKey) }
     }
-    MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
-        factory = { SlockKuiklyChildPageView() },
-        modifier =
-            modifier.onGloballyPositioned { coordinates ->
-                val measured = coordinates.positionInRoot()
-                childPageOriginState.updateOrigin(measured)
-                // task #180: pairs with the page's `page_post originKey=` line, so a key mismatch is
-                // visible in one capture instead of costing another device round.
-                slockTraceToPlatformLog(
-                    "SlockShellOverlay",
-                    "host_measure originKey=$originKey origin=$measured windowOrigin=" +
-                        "${childPageOriginState.windowOrigin}"
-                )
-            },
-        viewInit = {
-            applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle, force = true)
-            updateActive(active)
-            event {
-                loadSuccess(onLoadSuccess)
-                loadFailure(onLoadFailure)
-            }
-        },
-        viewUpdate = { view ->
-            view.applyChildPageAttrs(pageName = pageName, pageData = pageDataText, glassStyle = glassStyle)
-            view.updateActive(active)
-            view.event {
-                loadSuccess(onLoadSuccess)
-                loadFailure(onLoadFailure)
-            }
+    // CMP: the child page is composed inline (it was a nested native Kuikly render view).
+    // TODO(cmp-switch): glassStyle (iOS native glass chrome) is not rendered.
+    val factory = RaftPageRegistry.factory(pageName)
+    val childArgs =
+        remember(pageName, pageDataText) {
+            SlockCmpPageArgs.fromJsonText(pageName, pageDataText)
         }
-    )
+    LaunchedEffect(pageName, pageDataText, factory != null) {
+        if (factory != null) onLoadSuccess() else onLoadFailure()
+    }
+    Box(
+        modifier.onGloballyPositioned { coordinates ->
+            val measured = coordinates.positionInRoot()
+            childPageOriginState.updateOrigin(measured)
+            // task #180: pairs with the page's `page_post originKey=` line, so a key mismatch is
+            // visible in one capture instead of costing another device round.
+            slockTraceToPlatformLog(
+                "SlockShellOverlay",
+                "host_measure originKey=$originKey origin=$measured windowOrigin=" +
+                    "${childPageOriginState.windowOrigin}"
+            )
+        }
+    ) {
+        if (factory != null) {
+            RaftPagerHost(factory = factory, args = childArgs, active = active)
+        }
+    }
 }
 
 /**

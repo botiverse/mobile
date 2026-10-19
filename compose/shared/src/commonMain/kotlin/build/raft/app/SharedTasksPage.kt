@@ -802,7 +802,6 @@ private fun SharedTasksLoadedBodyContent(
                                         bottom = bottomContentPadding
                                     ),
                                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                                beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(visibleContent.filteredTasks.size)
                             ) {
                                 listColumns.forEach { column ->
                                     item(key = "list-header-${column.status.name}") {
@@ -1312,7 +1311,6 @@ private fun SharedTasksBoardColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = bottomContentPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(tasks.size)
                 ) {
                     items(tasks.size, key = { i -> "board-task-${tasks[i].id.value}" }) { index ->
                         val task = tasks[index]

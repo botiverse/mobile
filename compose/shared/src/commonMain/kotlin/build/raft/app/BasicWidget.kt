@@ -2,7 +2,9 @@
 
 package build.raft.app
 
+import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,10 +21,7 @@ import androidx.compose.runtime.withFrameNanos
 import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import coil3.compose.AsyncImagePainter
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
-import build.raft.app.compat.ui.RefFunc
 import build.raft.app.compat.ui.keyboardHeightChange
-import build.raft.app.compat.ui.nativeRef
-import build.raft.app.compat.ui.setProp
 import coil3.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -101,14 +100,9 @@ import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.tencent.kuikly.core.base.BorderStyle
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.base.event.EventHandlerFn
+import build.raft.app.compat.ui.BorderStyle
 import build.raft.app.compat.module.RouterModule
-import com.tencent.kuikly.core.views.AutoHeightTextAreaView
 import build.raft.app.compat.ui.KeyboardParams
-import com.tencent.kuikly.core.views.ModalView
 import build.raft.app.compat.ui.TextInputState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -656,11 +650,8 @@ fun LazyListScope.Hover(
     listState: LazyListState,
     content: @Composable LazyItemScope.() -> Unit
 ) {
-    stickyHeaderWithMarginTop(
-        key = key,
-        hoverMarginTop = hoverMarginTop,
-        listState = listState
-    ) {
+    // TODO(cmp-switch): Kuikly stickyHeaderWithMarginTop pinned below hoverMarginTop.
+    stickyHeader(key = key) {
         Box(modifier = modifier) {
             content()
         }
@@ -669,28 +660,15 @@ fun LazyListScope.Hover(
 
 fun Modifier.borderRadius(radius: Dp) = clip(RoundedCornerShape(radius))
 
-internal fun Modifier.slockSquareCorners(): Modifier =
-    setProp(SlockSquareCornerBorderRadiusProp, SlockSquareCornerBorderRadiusValue)
-        .setProp(SlockSquareCornerClipPathProp, "")
+/** Kuikly native views needed an explicit 0 radius; Compose corners are square by default. */
+internal fun Modifier.slockSquareCorners(): Modifier = this
 
 /**
- * Register-driven corner rounding on the same Kuikly borderRadius prop path as
- * [slockSquareCorners]. At [radius] == 0.dp this emits the exact same
- * "0.0,0.0,0.0,0.0" string as [slockSquareCorners], so brutal callers (whose
- * theme corner radius is [SlockRadius.None]) render byte-identically; the elegant
- * register passes its rounded radius and the same prop path rounds the corners.
- * Kept on the prop mechanism (not clip(RoundedCornerShape)) so migrating a
- * component from [slockSquareCorners] to this is a no-op in the brutal default.
+ * Register-driven corner rounding: square (no clip) at [radius] == 0.dp, which is what brutal
+ * callers (theme radius [SlockRadius.None]) get; the elegant register clips to [radius].
  */
-internal fun Modifier.slockThemedCorners(radius: Dp): Modifier {
-    val r = radius.value
-    return setProp(SlockSquareCornerBorderRadiusProp, "$r,$r,$r,$r")
-        .setProp(SlockSquareCornerClipPathProp, "")
-}
-
-private const val SlockSquareCornerBorderRadiusProp = "borderRadius"
-private const val SlockSquareCornerBorderRadiusValue = "0.0,0.0,0.0,0.0"
-private const val SlockSquareCornerClipPathProp = "clipPath"
+internal fun Modifier.slockThemedCorners(radius: Dp): Modifier =
+    if (radius.value <= 0f) this else clip(RoundedCornerShape(radius))
 
 fun Color.changeAlpha(alpha: Float) = this.copy(alpha = alpha)
 
@@ -1328,9 +1306,8 @@ internal fun Modifier.slockButtonAccessibility(
 @Composable
 fun Modal(
     modifier: Modifier = Modifier,
-    ref: RefFunc<ModalView>? = null,
     /* 物理键触发时调用该事件（目前仅支持鸿蒙平台） */
-    onWillDismiss: EventHandlerFn? = null,
+    onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
     Dialog(
@@ -1358,13 +1335,13 @@ internal fun slockModalDialogProperties(): DialogProperties =
     DialogProperties(
         dismissOnClickOutside = false,
         usePlatformDefaultWidth = false,
-        scrimColor = Color.Transparent
+        // TODO(cmp-switch): Kuikly passed scrimColor = Transparent (Slock draws its own barrier);
+        // upstream DialogProperties has no scrim colour in common code. Check Android's window dim.
     )
 
+/** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
-fun Modifier.dragEnable(enable: Boolean): Modifier {
-    return this.setProp("dragEnable", enable)
-}
+fun Modifier.dragEnable(enable: Boolean): Modifier = this
 
 @Composable
 internal fun Button(
@@ -1564,15 +1541,14 @@ internal sealed class SlockTextFieldNativeEditingStateReadResult {
     data object Unavailable : SlockTextFieldNativeEditingStateReadResult()
 }
 
-private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTextAreaView? =
-    when (this) {
-        is AutoHeightTextAreaView -> this
-        is ViewContainer<*, *> ->
-            templateChildren().firstNotNullOfOrNull { child ->
-                child.findSlockNativeTextEditor()
-            }
-        else -> null
-    }
+internal fun TextFieldValue.toSlockTextInputState(): TextInputState =
+    TextInputState(
+        text = text,
+        selectionStart = selection.start,
+        selectionEnd = selection.end,
+        compositionStart = composition?.start ?: TextInputState.NO_COMPOSITION,
+        compositionEnd = composition?.end ?: TextInputState.NO_COMPOSITION,
+    )
 
 /**
  * Reads the native editor's current text/selection/composition state at an action boundary.
@@ -1701,9 +1677,8 @@ internal fun TextField(
     }
 
     val updatedModifier = modifier
-        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        // TODO(cmp-switch): systemNewlineAction / imeActionRequested were native-editor props
+        // (Enter = IME action vs newline). Express them with keyboardOptions + onKeyEvent.
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1822,9 +1797,8 @@ internal fun TextField(
     }
 
     val updatedModifier = modifier
-        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        // TODO(cmp-switch): systemNewlineAction / imeActionRequested were native-editor props
+        // (Enter = IME action vs newline). Express them with keyboardOptions + onKeyEvent.
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1848,34 +1822,20 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-        .then(
-            if (nativeEditingStateReader != null) {
-                Modifier.nativeRef {
-                    val nativeEditorRoot = this
-                    nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                        // CoreTextField splits non-prop/event modifiers onto its outer Box. Resolve
-                        // the actual AutoHeightTextAreaView at read time; calling the Box silently
-                        // drops getTextInputState because that native view has no such method.
-                        val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
-                        if (nativeEditor == null) {
-                            callback(SlockTextFieldNativeEditorRead(state = null))
-                        } else {
-                            val editorRef = nativeEditor.nativeRef
-                            nativeEditor.getTextInputState({ state ->
-                                callback(
-                                    SlockTextFieldNativeEditorRead(
-                                        state = state,
-                                        editorNativeRef = editorRef,
-                                    )
-                                )
-                            })
-                        }
-                    }
-                }
-            } else {
-                Modifier
+    // CMP: the editing state lives in Compose, so the "native" read is the current value.
+    val currentValueForReader by rememberUpdatedState(value)
+    if (nativeEditingStateReader != null) {
+        SideEffect {
+            nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
+                callback(
+                    SlockTextFieldNativeEditorRead(
+                        state = currentValueForReader.toSlockTextInputState(),
+                        editorNativeRef = -1,
+                    )
+                )
             }
-        )
+        }
+    }
     val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
     BasicTextField(
         modifier = updatedModifier,
@@ -1915,33 +1875,6 @@ internal fun TextField(
     }
 }
 
-private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
-private const val SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP = "numberOfLines"
-
-// Android claims the single-line declaration to make the IME render an action key, and a
-// multi-line field suppresses that key entirely. The native view decides the mode exactly once,
-// and numberOfLines is what triggers that decision — so this prop must be attached ahead of
-// SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP in the modifier chain, not after it.
-private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
-
-@Composable
-fun Modifier.dtReport(enable: Boolean): Modifier {
-    var ref1 = remember { 0 }
-    var ref2 = remember { 9 }
-    return this.setProp("dragEnable", enable)
-        .nativeRef {
-            println("<top>.dtReport1")
-            ref1 = this.nativeRef
-        }.nativeRef {
-            println("<top>.dtReport2")
-            ref2 = this.nativeRef
-
-        }.clickable {
-            println("<top>.clickable1 ref1=${ref1} ${ref2}")
-        }.clickable {
-            println("<top>.clickable2 ref1=${ref1} ${ref2}")
-        }
-}
 
 fun Modifier.appearPercentage(
     onPercentageChanged: (Float) -> Unit
