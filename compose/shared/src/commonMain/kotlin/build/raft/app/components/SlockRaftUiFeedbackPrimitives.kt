@@ -13,6 +13,14 @@ import build.raft.app.SlockType
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import com.tencent.kuikly.compose.animation.core.LinearEasing
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
+import com.tencent.kuikly.compose.ui.geometry.CornerRadius
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -66,6 +74,40 @@ internal enum class SlockSkeletonVariant {
 }
 
 internal const val SlockSpinnerActiveSweepAngle = 46f
+
+/**
+ * raft-ui Spinner sizes: a 2x2 grid of [pixel] squares [gap] apart
+ * (`--spinner-pixel` / `--spinner-gap`). [brutalDiameter] is the legacy arc's box.
+ */
+internal enum class SlockSpinnerSize(val pixel: Dp, val gap: Dp, val brutalDiameter: Dp) {
+    Xs(4.dp, 1.5.dp, 10.dp),
+    Sm(5.dp, 2.dp, 16.dp),
+    Md(6.dp, 2.dp, 20.dp),
+    Lg(8.dp, 3.dp, 32.dp);
+
+    /** Edge of the grid: two pixels and the gap between them. */
+    val extent: Dp get() = pixel * 2 + gap
+}
+
+/** raft-ui `raft-spinner-pixel` cycle: 1s, in four `steps(1)` quarters. */
+internal const val SlockSpinnerCycleMillis = 1000
+internal const val SlockSpinnerStepMillis = SlockSpinnerCycleMillis / 4
+
+/** Lit pixel opacity and the resting opacity of the other three (`opacity-20`). */
+internal const val SlockSpinnerPixelRestAlpha = 0.2f
+
+/**
+ * Grid cell (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right, the DOM order) lit at
+ * [step]. raft-ui delays the children 0 / 0.25 / 0.75 / 0.5s, so the light walks clockwise:
+ * top-left, top-right, bottom-right, bottom-left.
+ */
+internal fun slockSpinnerLitCell(step: Int): Int = SlockSpinnerClockwiseCells[((step % 4) + 4) % 4]
+
+/** Animation step at [elapsedMillis] into the cycle. */
+internal fun slockSpinnerStepAt(elapsedMillis: Int): Int =
+    ((elapsedMillis % SlockSpinnerCycleMillis + SlockSpinnerCycleMillis) % SlockSpinnerCycleMillis) / SlockSpinnerStepMillis
+
+private val SlockSpinnerClockwiseCells = intArrayOf(0, 1, 3, 2)
 
 @Composable
 internal fun SlockAttentionDot(
@@ -427,12 +469,19 @@ internal fun SlockSkeletonRow(
 @Composable
 internal fun SlockSpinner(
     modifier: Modifier = Modifier,
-    size: Dp = 20.dp,
-    inverse: Boolean = false
+    size: SlockSpinnerSize = SlockSpinnerSize.Sm,
+    inverse: Boolean = false,
+    // A fixed step instead of the animation, for still captures (the web case renders
+    // the spinner frozen mid-cycle).
+    stillStep: Int? = null
 ) {
+    if (slockRaftActive()) {
+        SlockRaftPixelSpinner(modifier = modifier, size = size, inverse = inverse, stillStep = stillStep)
+        return
+    }
     val track = if (inverse) SlockColor.SurfaceWhite.copy(alpha = 0.40f) else SlockColor.TextBlack.copy(alpha = 0.20f)
     val active = if (inverse) SlockColor.SurfaceWhite else SlockColor.TextBlack
-    Canvas(modifier = modifier.size(size)) {
+    Canvas(modifier = modifier.size(size.brutalDiameter)) {
         val stroke = 2.dp.toPx()
         val inset = stroke / 2f
         val arcSize = Size(width = this.size.width - stroke, height = this.size.height - stroke)
@@ -454,5 +503,52 @@ internal fun SlockSpinner(
             size = arcSize,
             style = Stroke(width = stroke)
         )
+    }
+}
+
+/**
+ * raft-ui 0.7 Spinner: four [SlockSpinnerSize.pixel] squares (1dp radius) in a 2x2 grid,
+ * drawn in the current ink (`--foreground`, or `--foreground-inverse` for `inverse`). Each
+ * rests at 20% and one at a time is lit at full ink for a quarter of a 1s cycle, stepping
+ * (no fade) clockwise from the top-left.
+ */
+@Composable
+private fun SlockRaftPixelSpinner(
+    modifier: Modifier,
+    size: SlockSpinnerSize,
+    inverse: Boolean,
+    stillStep: Int?
+) {
+    val ink = if (inverse) SlockColor.ForegroundInverse else SlockColor.TextBlack
+    val elapsed: State<Float>? =
+        if (stillStep == null) {
+            rememberInfiniteTransition(label = "slock-spinner").animateFloat(
+                initialValue = 0f,
+                targetValue = SlockSpinnerCycleMillis.toFloat(),
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = SlockSpinnerCycleMillis, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                label = "slock-spinner-elapsed"
+            )
+        } else {
+            null
+        }
+    Canvas(modifier = modifier.size(size.extent)) {
+        // Read the animation in the draw phase so a step only redraws the canvas.
+        val step = stillStep ?: slockSpinnerStepAt(elapsed?.value?.toInt() ?: 0)
+        val lit = slockSpinnerLitCell(step)
+        val pixel = size.pixel.toPx()
+        val pitch = pixel + size.gap.toPx()
+        val radius = CornerRadius(1.dp.toPx())
+        for (cell in 0 until 4) {
+            drawRoundRect(
+                color = if (cell == lit) ink else ink.copy(alpha = ink.alpha * SlockSpinnerPixelRestAlpha),
+                topLeft = Offset((cell % 2) * pitch, (cell / 2) * pitch),
+                size = Size(pixel, pixel),
+                cornerRadius = radius
+            )
+        }
     }
 }

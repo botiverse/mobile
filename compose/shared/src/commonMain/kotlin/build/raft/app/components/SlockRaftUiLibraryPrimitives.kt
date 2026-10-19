@@ -248,7 +248,7 @@ internal fun SlockRaftUiStatusDot(
 @Composable
 internal fun SlockRaftUiSpinner(
     modifier: Modifier = Modifier,
-    size: Dp = 20.dp,
+    size: SlockSpinnerSize = SlockSpinnerSize.Sm,
     inverse: Boolean = false
 ) {
     SlockSpinner(modifier = modifier, size = size, inverse = inverse)

@@ -31,6 +31,7 @@ import build.raft.app.components.SlockRaftUiSegmentedItem
 import build.raft.app.components.SlockRaftUiSelectTrigger
 import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.SlockRaftUiSpinner
+import build.raft.app.components.SlockSpinnerSize
 import build.raft.app.components.SlockRaftUiStatusDot
 import build.raft.app.components.SlockRaftUiTextarea
 import build.raft.app.components.SlockRaftUiMenuRow
@@ -280,7 +281,7 @@ internal fun RaftUiCheckboxStatusVisualContent() {
                     SlockRaftUiTextSans("Failed")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockRaftUiSpinner(size = 20.dp)
+                    SlockRaftUiSpinner(size = SlockSpinnerSize.Md)
                     SlockRaftUiTextSans("Syncing")
                 }
             }
