@@ -173,6 +173,9 @@ internal fun resolveSlockImagePreviewRenderIdentity(
     )
 }
 
+/** Decode bound of the dimensions-only read in the image preview (render identity). */
+internal const val RaftImagePreviewIdentityDecodeEdgePx = 64
+
 private class SlockImagePreviewIdentityHolder(
     var identity: SlockImagePreviewRenderIdentity
 )
@@ -321,7 +324,10 @@ internal fun SlockAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
-            val activeBitmap = rememberAsyncImageBitmap(activeSource)
+            // Only the decoded dimensions are read (render identity), so decode a small,
+            // subsampled copy instead of the full-resolution image per thumbnail.
+            // TODO(cmp-switch): read the dimensions from the image header without decoding.
+            val activeBitmap = rememberAsyncImageBitmap(activeSource, maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx)
             val currentSource = activeSource.orEmpty()
             val activeSucceeded = imageState is AsyncImagePainter.State.Success
             val identityHolder = remember(activeSource) {
@@ -1528,7 +1534,8 @@ internal fun raftResolvedKeyboardOptions(
 /**
  * CMP port of the Android host's hardware-Enter routing (SlockKuiklyActivity
  * handleSlockTextFieldEnterKey): when the field's IME action is Send, Enter sends on key-up and
- * Shift+Enter inserts a newline (multi-line fields only). Compose would otherwise insert a newline
+ * Shift+Enter inserts a newline (multi-line fields only); which of the two is decided on key-down
+ * ([RaftHardwareEnterRouter]). Compose would otherwise insert a newline
  * for every hardware Enter on a multi-line field.
  *
  * TODO(cmp-switch): `systemNewlineAction` (an "Insert newline" item in the Android text
@@ -1536,31 +1543,73 @@ internal fun raftResolvedKeyboardOptions(
  * TODO(cmp-switch): verify on iOS that the soft-keyboard Send key on a multi-line field fires
  * KeyboardActions.onSend instead of inserting "\n".
  */
+@Composable
 internal fun Modifier.raftImeEnterAction(
     singleLine: Boolean,
     keyboardOptions: KeyboardOptions,
     keyboardActions: KeyboardActions,
 ): Modifier {
+    val router = remember { RaftHardwareEnterRouter() }
     if (keyboardOptions.imeAction != ImeAction.Send) return this
     val onSend = keyboardActions.onSend ?: return this
     return onPreviewKeyEvent { event ->
         if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
-        if (event.isShiftPressed) {
-            // Multi-line: let the field insert the newline. Single-line: swallow (no send).
-            return@onPreviewKeyEvent singleLine
-        }
-        when (event.type) {
-            KeyEventType.KeyDown -> true
-            KeyEventType.KeyUp -> {
-                onSend(RaftSendKeyboardActionScope)
-                true
+        val phase =
+            when (event.type) {
+                KeyEventType.KeyDown -> RaftHardwareEnterRouter.Phase.Down
+                KeyEventType.KeyUp -> RaftHardwareEnterRouter.Phase.Up
+                else -> return@onPreviewKeyEvent false
             }
-            else -> false
+        router.onEnter(phase, shiftPressed = event.isShiftPressed, singleLine = singleLine) {
+            onSend(RaftHardwareEnterKeyboardActionScope)
         }
     }
 }
 
-private object RaftSendKeyboardActionScope : KeyboardActionScope {
+/**
+ * Per-field hardware Enter decision for [raftImeEnterAction]. Send vs newline is decided on the
+ * key-down (by the Shift state at that moment) and the key-up only carries it out, so releasing
+ * Shift a moment before Enter still inserts the newline instead of sending, and a key-up whose
+ * key-down this field did not see (focus moved mid-press) does nothing.
+ */
+internal class RaftHardwareEnterRouter {
+    enum class Phase { Down, Up }
+
+    private enum class Decision { Send, Newline }
+
+    private var pending: Decision? = null
+
+    /** Returns true when the event is consumed (the field must not handle it). */
+    fun onEnter(phase: Phase, shiftPressed: Boolean, singleLine: Boolean, send: () -> Unit): Boolean =
+        when (phase) {
+            Phase.Down -> {
+                val decision = if (shiftPressed) Decision.Newline else Decision.Send
+                pending = decision
+                // Newline: a multi-line field inserts it; a single-line field swallows (no send).
+                decision == Decision.Send || singleLine
+            }
+            Phase.Up -> {
+                val decision = pending
+                pending = null
+                when (decision) {
+                    Decision.Send -> {
+                        send()
+                        true
+                    }
+                    Decision.Newline -> singleLine
+                    null -> false
+                }
+            }
+        }
+}
+
+/**
+ * Receiver of the `onSend` call [raftImeEnterAction] makes for a hardware Enter. Callers compare
+ * against it to tell a hardware Enter (which must not send while the IME is composing: Enter
+ * commits the conversion) from the soft keyboard's Send key (which always sends, committing any
+ * open composition).
+ */
+internal object RaftHardwareEnterKeyboardActionScope : KeyboardActionScope {
     override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
 }
 
@@ -1610,6 +1659,29 @@ internal fun TextFieldValue.toSlockTextInputState(): TextInputState =
         compositionStart = composition?.start ?: TextInputState.NO_COMPOSITION,
         compositionEnd = composition?.end ?: TextInputState.NO_COMPOSITION,
     )
+
+/**
+ * The most recent [TextFieldValue] a field has seen, for action-boundary reads (Send).
+ *
+ * The composed `value` lags an IME edit by a frame: Compose delivers the edit to `onValueChange`,
+ * the caller stores it, and only the next recomposition passes it back. A Send fired inside that
+ * window must still see the edit, so the `onValueChange` wrapper records it ([recordEdit]) before
+ * calling the caller. Every committed composition records the caller's value ([recordComposed]),
+ * so programmatic changes (clear after send, draft restore) and edits the caller rejected win
+ * again once composed.
+ */
+internal class RaftLiveTextFieldValue(initial: TextFieldValue) {
+    var value: TextFieldValue = initial
+        private set
+
+    fun recordEdit(next: TextFieldValue) {
+        value = next
+    }
+
+    fun recordComposed(composed: TextFieldValue) {
+        value = composed
+    }
+}
 
 /**
  * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
@@ -1916,14 +1988,25 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-    // CMP: the editing state lives in Compose, so the "native" read is the current value.
-    val currentValueForReader by rememberUpdatedState(value)
+    // CMP: the editing state lives in Compose, so the "native" read is the live value: the most
+    // recent value seen by the field, including an IME edit delivered to onValueChange that the
+    // caller has not recomposed with yet (an IME commit and Send within one frame), see
+    // RaftLiveTextFieldValue.
+    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
+    SideEffect { liveValueForReader.recordComposed(value) }
+    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
+        remember(liveValueForReader) {
+            { next ->
+                liveValueForReader.recordEdit(next)
+                currentOnValueChange(next)
+            }
+        }
     if (nativeEditingStateReader != null) {
         SideEffect {
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
                 callback(
                     SlockTextFieldNativeEditorRead(
-                        state = currentValueForReader.toSlockTextInputState().raftWithFinishedComposition(),
+                        state = liveValueForReader.value.toSlockTextInputState().raftWithFinishedComposition(),
                         editorNativeRef = -1,
                     )
                 )
@@ -1934,7 +2017,7 @@ internal fun TextField(
     BasicTextField(
         modifier = updatedModifier,
         value = value,
-        onValueChange = currentOnValueChange,
+        onValueChange = onValueChangeRecordingLive,
         textStyle = resolvedTextStyle,
         singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,

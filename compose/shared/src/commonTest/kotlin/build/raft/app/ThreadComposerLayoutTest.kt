@@ -1135,6 +1135,25 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun onlyHardwareEnterDefersToImeComposition() {
+        // Gboard keeps the Latin word in composition: the soft Send key must still send.
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = false, composition = TextRange(0, 5)))
+        assertTrue(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = TextRange(0, 5)))
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = null))
+        assertEquals(
+            ThreadComposerEnterAction.Send,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.None,
+                panelState = ThreadComposerSuggestionPanelState.Hidden,
+                memberCount = 0,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = threadComposerEnterDeferredByComposition(false, TextRange(0, 5)),
+            )
+        )
+    }
+
+    @Test
     fun composerAttachmentRowsUseReactImageAndFileWidths() {
         val rows =
             composerAttachmentRows(

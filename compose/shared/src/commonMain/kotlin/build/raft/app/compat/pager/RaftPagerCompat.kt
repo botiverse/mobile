@@ -179,6 +179,11 @@ abstract class Pager : IPagerId {
         return module as T
     }
 
+    /** Page destroyed: its modules drop every pending and future native callback. */
+    internal fun detachModules() {
+        modules.values.forEach { it.detach() }
+    }
+
     private fun builtInModule(moduleName: String): Module? =
         when (moduleName) {
             RouterModule.MODULE_NAME -> RouterModule()
@@ -222,8 +227,15 @@ abstract class ComposeContainer : Pager() {
 object PagerManager {
     private val pagers = LinkedHashMap<String, Pager>()
 
+    /**
+     * The live page [pagerId]. There is deliberately no fallback to another page: each Activity /
+     * view controller hosts its own pages, so an unknown (e.g. destroyed) id must never be routed
+     * to some other screen's page and bridge.
+     */
     fun getPager(pagerId: String): Pager =
-        pagers[pagerId] ?: pagers.values.lastOrNull() ?: error("No live page (pagerId=$pagerId)")
+        getPagerOrNull(pagerId) ?: error("No live page (pagerId=$pagerId)")
+
+    fun getPagerOrNull(pagerId: String): Pager? = pagers[pagerId]
 
     fun getCurrentPager(): Pager = getPager(BridgeManager.currentPageId)
 
@@ -235,6 +247,7 @@ object PagerManager {
     }
 
     internal fun unregister(pager: Pager) {
+        pager.detachModules()
         pagers.remove(pager.pagerId)
         if (BridgeManager.currentPageId == pager.pagerId) {
             BridgeManager.currentPageId = pagers.keys.lastOrNull().orEmpty()

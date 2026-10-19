@@ -26,6 +26,7 @@ import platform.Foundation.NSLog
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIColor
 import platform.darwin.NSObjectProtocol
 
@@ -123,6 +124,17 @@ private class RaftIosVideoController(
                 error = null,
             )
         if (!configured) NSLog("[RaftMedia] audio session configuration failed")
+        // Playback must not continue in the background (the Playback category would allow it):
+        // pause when the app enters the background, like Android does on ON_STOP. The applied
+        // play control is unchanged, so returning to the app does not auto-resume.
+        observers +=
+            NSNotificationCenter.defaultCenter.addObserverForName(
+                UIApplicationDidEnterBackgroundNotification,
+                null,
+                NSOperationQueue.mainQueue,
+            ) { _ ->
+                if (!released && player.rate > 0f) pause()
+            }
         if (item != null) {
             val center = NSNotificationCenter.defaultCenter
             observers +=

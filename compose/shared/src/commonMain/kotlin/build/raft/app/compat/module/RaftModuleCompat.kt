@@ -42,12 +42,26 @@ abstract class Module {
 
     private val liveCallbacks = HashSet<CallbackRef>()
 
+    /** Set once the owning page is destroyed: native results arriving later are dropped. */
+    private var detached = false
+
     abstract fun moduleName(): String
 
     internal fun attach(pager: Pager) {
         this.pager = pager
         this.pagerId = pager.pagerId
         this.pageData = pager.pageData
+    }
+
+    /**
+     * The owning page was destroyed ([build.raft.app.compat.pager.PagerManager.unregister]): drop
+     * every pending callback so a late native result never runs a destroyed page's callback
+     * (which could e.g. openPage / closePage on a finished Activity). Calls made afterwards are
+     * still sent (fire-and-forget cleanup), but their callbacks never run.
+     */
+    internal fun detach() {
+        detached = true
+        liveCallbacks.clear()
     }
 
     class ReturnValue(val callbackRef: CallbackRef?, val returnValue: Any? = null) {
@@ -72,10 +86,10 @@ abstract class Module {
             slockLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
         }
         val ref: CallbackRef? = callback?.let { "cb-${callbackSequence.incrementAndGet()}" }
-        if (ref != null) liveCallbacks.add(ref)
+        if (ref != null && !detached) liveCallbacks.add(ref)
         transport.call(methodName, param?.toString().orEmpty(), if (callback == null) null else { result ->
             moduleCallbackScope.launch {
-                if (ref == null || ref !in liveCallbacks) return@launch
+                if (ref == null || detached || ref !in liveCallbacks) return@launch
                 if (!keepCallbackAlive) liveCallbacks.remove(ref)
                 callback(result?.let { text -> runCatching { JSONObject(text) }.getOrNull() })
             }

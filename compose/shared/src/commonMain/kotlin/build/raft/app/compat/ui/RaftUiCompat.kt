@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,11 +23,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll as composeNestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Velocity
 import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.size.Precision
+import coil3.size.Scale
 import coil3.size.Size
 import build.raft.app.image.raftInstallImageLoader
 import kotlinx.coroutines.CoroutineScope
@@ -53,11 +58,33 @@ fun raftColorFromArgbHex(value: String): Color {
 
 // ---- Back handling ----------------------------------------------------------------------------
 
-/** Kuikly `BackHandler`, on CMP's multiplatform back handler. */
+/**
+ * Whether the enclosing page is the active one. Kept-alive inactive pages (hidden app-shell tabs,
+ * `SlockKuiklyChildPage` with `active = false`) stay composed, so without this their back
+ * handlers would stay registered and, being registered after the shell's, would win: Back would
+ * close a menu on an invisible tab. Provided by `RaftPagerHost` via [RaftProvidePageActive].
+ */
+val LocalRaftPageActive = compositionLocalOf { true }
+
+/** Provides [LocalRaftPageActive] for [content]: active only if [active] and every ancestor page is. */
+@Composable
+fun RaftProvidePageActive(active: Boolean, content: @Composable () -> Unit) {
+    val parentActive = LocalRaftPageActive.current
+    CompositionLocalProvider(LocalRaftPageActive provides (parentActive && active), content = content)
+}
+
+/** A back handler's effective `enabled`: the caller's flag AND the enclosing page being active. */
+@Composable
+fun raftBackHandlerEnabled(enabled: Boolean): Boolean = enabled && LocalRaftPageActive.current
+
+/**
+ * Kuikly `BackHandler`, on CMP's multiplatform back handler. Disabled while the enclosing page is
+ * inactive ([LocalRaftPageActive]).
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {
-    ComposeBackHandler(enabled = enabled, onBack = onBack)
+    ComposeBackHandler(enabled = raftBackHandlerEnabled(enabled), onBack = onBack)
 }
 
 // ---- Coroutines --------------------------------------------------------------------------------
@@ -166,21 +193,63 @@ fun Modifier.setProp(key: String, value: Any): Modifier = this
  * Kuikly `rememberAsyncImageBitmap`: the decoded bitmap for [model] (URL, `assets://` path,
  * managed avatar model, inline SVG, local path), or null while loading / on failure. Loaded
  * through the Raft singleton Coil loader (`raftBuildImageLoader`: NetworkKMM fetcher, bundled
- * assets, SVG). Decoded at the original size, like the Kuikly helper (callers draw sub-rects of
- * atlases from it).
+ * assets, SVG).
+ *
+ * Decoded with its longer edge bounded by the window's long edge (aspect ratio kept), like the
+ * Kuikly Android adapter that downsampled to the screen: a camera photo must never be decoded at
+ * full resolution just to be shown on a phone. Use [rememberAsyncImageBitmap] with an explicit
+ * `maxDecodeEdgePx` for smaller targets.
  */
 @Composable
-fun rememberAsyncImageBitmap(model: String?): ImageBitmap? {
+fun rememberAsyncImageBitmap(model: String?): ImageBitmap? =
+    rememberAsyncImageBitmap(model, maxDecodeEdgePx = rememberRaftWindowLongEdgePx())
+
+/**
+ * [rememberAsyncImageBitmap] with the decoded longer edge bounded by [maxDecodeEdgePx]
+ * ([RAFT_IMAGE_DECODE_ORIGINAL] decodes at the original size: only for bundled atlases whose
+ * pixel coordinates matter, never for user content).
+ */
+@Composable
+fun rememberAsyncImageBitmap(model: String?, maxDecodeEdgePx: Int): ImageBitmap? {
     val source = model?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val context = LocalPlatformContext.current
-    var bitmap by remember(source) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(source) {
+    val decodeSize = raftImageDecodeSize(maxDecodeEdgePx)
+    var bitmap by remember(source, decodeSize) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(source, decodeSize) {
         raftInstallImageLoader()
-        val request = ImageRequest.Builder(context).data(source).size(Size.ORIGINAL).build()
+        val request =
+            ImageRequest.Builder(context)
+                .data(source)
+                .size(decodeSize)
+                .scale(Scale.FIT)
+                .precision(Precision.INEXACT)
+                .build()
         val result = SingletonImageLoader.get(context).execute(request)
         bitmap = (result as? SuccessResult)?.image?.toRaftImageBitmap()
     }
     return bitmap
+}
+
+/** Pass as `maxDecodeEdgePx` to decode at the original size (bundled atlases only). */
+const val RAFT_IMAGE_DECODE_ORIGINAL: Int = Int.MAX_VALUE
+
+/** Fallback decode bound when the window size is not known yet (a large phone's long edge). */
+internal const val RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX: Int = 2400
+
+/** Coil decode size for a long-edge bound: a square box, so FIT bounds the longer edge. */
+internal fun raftImageDecodeSize(maxDecodeEdgePx: Int): Size =
+    when {
+        maxDecodeEdgePx == RAFT_IMAGE_DECODE_ORIGINAL -> Size.ORIGINAL
+        maxDecodeEdgePx <= 0 -> Size(RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX, RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX)
+        else -> Size(maxDecodeEdgePx, maxDecodeEdgePx)
+    }
+
+/** The window's longer edge in px (the default decode bound), or a phone-sized fallback. */
+@Composable
+fun rememberRaftWindowLongEdgePx(): Int {
+    val container = LocalWindowInfo.current.containerSize
+    val longEdge = maxOf(container.width, container.height)
+    return if (longEdge > 0) longEdge else RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX
 }
 
 internal expect fun coil3.Image.toRaftImageBitmap(): ImageBitmap
@@ -191,7 +260,9 @@ class DrawableResource(val path: String)
 /** Kuikly `imageResource`: async-loaded; a 1x1 transparent bitmap until it is available. */
 @Composable
 fun imageResource(resource: DrawableResource): ImageBitmap =
-    rememberAsyncImageBitmap(resource.path) ?: remember { ImageBitmap(1, 1) }
+    // Bundled atlases: callers draw sub-rects in source pixel coordinates.
+    rememberAsyncImageBitmap(resource.path, maxDecodeEdgePx = RAFT_IMAGE_DECODE_ORIGINAL)
+        ?: remember { ImageBitmap(1, 1) }
 
 /** Kuikly `@InternalResourceApi` marker. */
 @RequiresOptIn

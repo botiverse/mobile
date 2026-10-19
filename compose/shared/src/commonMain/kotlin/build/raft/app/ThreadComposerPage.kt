@@ -814,6 +814,17 @@ internal fun threadComposerSuggestionSelectedIndexAfterMove(
     }
 }
 
+/**
+ * Only a hardware Enter defers to an open IME composition (Enter commits the conversion). The soft
+ * keyboard's Send key always acts: Gboard keeps the Latin word being typed in composition, so
+ * gating it would make Send a no-op; the Send snapshot reader commits the composition instead
+ * (raftWithFinishedComposition).
+ */
+internal fun threadComposerEnterDeferredByComposition(
+    fromHardwareEnter: Boolean,
+    composition: TextRange?,
+): Boolean = fromHardwareEnter && composition != null
+
 internal fun threadComposerEnterAction(
     trigger: KuiklyComposerSuggestionTrigger,
     panelState: ThreadComposerSuggestionPanelState,
@@ -2477,7 +2488,7 @@ internal fun ThreadComposerContentLeaf(
         }
     }
 
-    fun handleKeyboardSend() {
+    fun handleKeyboardSend(fromHardwareEnter: Boolean) {
         when (
             threadComposerEnterAction(
                 trigger = suggestionTrigger,
@@ -2485,7 +2496,7 @@ internal fun ThreadComposerContentLeaf(
                 memberCount = filteredMemberSuggestions.size,
                 channelCount = filteredChannelSuggestions.size,
                 canSend = canSend,
-                isImeComposing = fieldValue.composition != null
+                isImeComposing = threadComposerEnterDeferredByComposition(fromHardwareEnter, fieldValue.composition)
             )
         ) {
             ThreadComposerEnterAction.AcceptMemberSuggestion ->
@@ -2506,7 +2517,7 @@ internal fun ThreadComposerContentLeaf(
     }
     val composerKeyboardActions =
         if (composerUsesImeAction) {
-            KeyboardActions(onSend = { handleKeyboardSend() })
+            KeyboardActions(onSend = { handleKeyboardSend(fromHardwareEnter = this === RaftHardwareEnterKeyboardActionScope) })
         } else {
             KeyboardActions.Default
         }

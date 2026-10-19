@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
+import build.raft.app.image.raftClearImageCaches
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -1540,6 +1541,7 @@ class SharedAuthDataSource(
             }
             sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
+            clearAccountImageCaches(source = "logout")
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1548,6 +1550,7 @@ class SharedAuthDataSource(
         val capture = captureAvatarOwnerRetirement(sessionStore.readSession())
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
+        clearAccountImageCaches(source)
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1556,13 +1559,21 @@ class SharedAuthDataSource(
         isCurrent: () -> Boolean = { true },
     ): Boolean {
         val previous = sessionStore.readSession()
+        val accountChanged = previous != null && previous.user.id.trim() != session.user.id.trim()
         val capture =
             previous
-                ?.takeIf { it.user.id.trim() != session.user.id.trim() }
+                ?.takeIf { accountChanged }
                 ?.let(::captureAvatarOwnerRetirement)
         if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
+        if (accountChanged) clearAccountImageCaches(source)
         return true
+    }
+
+    /** The Coil image memory + disk caches hold the previous account's images; drop them. */
+    private suspend fun clearAccountImageCaches(source: String) {
+        runCatchingPreservingCancellation { raftClearImageCaches() }
+            .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =
