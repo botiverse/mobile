@@ -1,3 +1,4 @@
+import build.raft.ci.registerNoKuiklyGuard
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /*
@@ -77,66 +78,5 @@ android {
     }
 }
 
-val verifyCoreHasNoKuikly by tasks.registering {
-    description = "Fails if :core sources or (transitive) dependencies reference Tencent Kuikly."
-    group = "verification"
-    val sourceDir = layout.projectDirectory.dir("src")
-    // Android compile/runtime classpaths cover common + android dependencies; the per-target klib and
-    // shared-metadata configurations cover the iOS/native graph, which can differ (native-only variants).
-    val checkedConfigurations =
-        listOf(
-            "debugCompileClasspath",
-            "debugRuntimeClasspath",
-            "iosArm64CompileKlibraries",
-            "iosX64CompileKlibraries",
-            "iosSimulatorArm64CompileKlibraries",
-            "metadataCommonMainCompileClasspath",
-            "metadataIosMainCompileClasspath",
-        )
-    // Resolved module coordinates (not artifacts) are the dependency input: a version bump or a new
-    // transitive module reruns the check; an unchanged graph and unchanged sources leave it up to date.
-    val resolvedModules =
-        provider {
-            checkedConfigurations.flatMap { name ->
-                configurations.getByName(name).incoming.resolutionResult.allComponents
-                    .mapNotNull { component -> component.moduleVersion }
-                    .map { module -> "$name: ${module.group}:${module.name}:${module.version}" }
-            }.sorted()
-        }
-    inputs.dir(sourceDir).withPropertyName("sources").withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.property("resolvedModules", resolvedModules)
-    val marker = layout.buildDirectory.file("verifyCoreHasNoKuikly/passed.txt")
-    outputs.file(marker).withPropertyName("marker")
-    doLast {
-        val pattern = Regex("""\bcom\.tencent\.kuikly\.""")
-        val sourceViolations =
-            sourceDir.asFile.walkTopDown()
-                .filter { it.isFile && it.extension == "kt" }
-                .flatMap { file ->
-                    file.readLines().mapIndexedNotNull { index, line ->
-                        if (pattern.containsMatchIn(line)) "${file.relativeTo(projectDir)}:${index + 1}: ${line.trim()}" else null
-                    }
-                }
-                .toList()
-        val modules = resolvedModules.get()
-        val dependencyViolations =
-            modules.filter { entry ->
-                val group = entry.substringAfter(": ").substringBefore(':')
-                group == "com.tencent.kuikly-open" || group.startsWith("com.tencent.kuikly-open.")
-            }
-        check(sourceViolations.isEmpty() && dependencyViolations.isEmpty()) {
-            ":core must not depend on Kuikly.\n" + (sourceViolations + dependencyViolations).joinToString("\n")
-        }
-        marker.get().asFile.apply {
-            parentFile.mkdirs()
-            writeText("checked ${modules.size} resolved modules across ${checkedConfigurations.size} configurations\n")
-        }
-    }
-}
-
-tasks.named("check").configure { dependsOn(verifyCoreHasNoKuikly) }
-
-tasks.matching { it.name == "preBuild" || it.name.startsWith("compileKotlin") }.configureEach {
-    dependsOn(verifyCoreHasNoKuikly)
-}
-
+// Fails the build if :core sources or its (transitive) Android/iOS dependency graph reference Kuikly.
+registerNoKuiklyGuard("verifyCoreHasNoKuikly")
