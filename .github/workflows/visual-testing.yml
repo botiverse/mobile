@@ -495,6 +495,24 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
+      # Every Gradle run in this job (the framework sync below and the one
+      # Xcode's "Copy kmmresource MR bundle" phase starts) must agree on these.
+      # - Heap: with the fixture pages compiled in, the K/N debug framework link
+      #   exhausts the 4g heap from gradle.properties on the 7 GB hosted runner
+      #   (GC-thrashed ~46 min, then OutOfMemoryError); 6g links in ~12 min.
+      # - slockVisualFixtures: the Xcode phase otherwise saw different compile
+      #   inputs and recompiled + relinked the framework (~20 min extra).
+      # The user-home gradle.properties overrides the project one.
+      - name: Configure Gradle for the K/N framework link
+        run: |
+          props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+          mkdir -p "$(dirname "$props")"
+          {
+            echo "org.gradle.jvmargs=-Xmx6g -Xss4m -Dfile.encoding=UTF-8"
+            echo "slockVisualFixtures=true"
+          } >> "$props"
+          cat "$props"
+
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
