@@ -56,9 +56,33 @@ fun interface SlockCmpRouteOverride {
     fun cmpEnabled(page: SlockCmpPage): Boolean?
 }
 
+/**
+ * Pages implemented outside this module (CMP switch: :shared's former Kuikly pages, rendered
+ * through `RaftPageRegistry`). :ui-cmp cannot depend on :shared, so :shared installs itself here.
+ * Returns the page body for [pageName], or null when the provider has no such page.
+ */
+fun interface RaftPageProvider {
+    fun content(pageName: String): (@Composable () -> Unit)?
+}
+
 object SlockCmpRouter {
     @Volatile
     private var debugPagesEnabled: Boolean = false
+
+    @Volatile
+    private var pageProvider: RaftPageProvider? = null
+
+    /**
+     * TODO(cmp-switch): installs the :shared page registry. Rendering only: [rendersOnCmp] still
+     * answers from the allowlist until the hosts switch every page over.
+     */
+    fun installPageProvider(provider: RaftPageProvider) {
+        pageProvider = provider
+    }
+
+    /** Body of [pageName] from the installed [RaftPageProvider], if any. */
+    fun providedContent(pageName: String): (@Composable () -> Unit)? =
+        runCatching { pageProvider?.content(pageName) }.getOrNull()
 
     @Volatile
     private var routeOverride: SlockCmpRouteOverride? = null

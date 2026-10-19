@@ -43,10 +43,11 @@ fun SlockCmpRoot(
             }
             Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
                 val page = SlockCmpRouter.page(args.pageName)
-                if (page != null) {
-                    page.content()
-                } else {
-                    UnknownCmpPage(args.pageName)
+                val provided = if (page == null) SlockCmpRouter.providedContent(args.pageName) else null
+                when {
+                    page != null -> page.content()
+                    provided != null -> provided()
+                    else -> UnknownCmpPage(args.pageName)
                 }
             }
         }
