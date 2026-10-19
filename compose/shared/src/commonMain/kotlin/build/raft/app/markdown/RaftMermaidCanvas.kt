@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -63,17 +64,18 @@ internal fun RaftMermaidCanvas(
     val textMeasurer = rememberTextMeasurer()
     val texts = remember(scene, textMeasurer, textStyle) { raftMermaidMeasureTexts(scene, textMeasurer, textStyle) }
     val description = scene.accessibilityTitle ?: scene.accessibilityDescription
+    val drawScale = raftMermaidInlineScale(scene.width.toFloat(), scene.height.toFloat(), scale, LocalDensity.current.density)
     Canvas(
         modifier =
             modifier
-                .width((scene.width * scale).dp)
-                .height((scene.height * scale).dp)
+                .width((scene.width * drawScale).dp)
+                .height((scene.height * drawScale).dp)
                 .then(
                     if (description.isNullOrBlank()) Modifier
                     else Modifier.semantics { contentDescription = description }
                 )
     ) {
-        val unit = density * scale
+        val unit = density * drawScale
         if (unit <= 0f) return@Canvas
         scale(scale = unit, pivot = Offset.Zero) {
             scene.commands.forEachIndexed { index, command ->
@@ -81,6 +83,23 @@ internal fun RaftMermaidCanvas(
             }
         }
     }
+}
+
+/**
+ * Largest inline size (px, per side) a diagram may take. Compose packs a node's constraints into
+ * one Long: both sides up to 2^15-1 px are always representable, larger ones only if the other
+ * side is small, and an unrepresentable size throws during layout. A huge diagram (or a large
+ * zoom) is scaled down to fit instead.
+ */
+internal const val RaftMermaidMaxInlineSidePx: Float = 32_000f
+
+/** [scale] clamped so the inline diagram stays within [RaftMermaidMaxInlineSidePx] on both sides. */
+internal fun raftMermaidInlineScale(sceneWidth: Float, sceneHeight: Float, scale: Float, density: Float): Float {
+    if (!scale.isFinite() || scale <= 0f || !density.isFinite() || density <= 0f) return 0f
+    val longestSide = maxOf(sceneWidth, sceneHeight)
+    if (!longestSide.isFinite() || longestSide <= 0f) return 0f
+    val maxScale = RaftMermaidMaxInlineSidePx / (longestSide * density)
+    return minOf(scale, maxScale)
 }
 
 /** One measured layout per [DrawText] command (null for every other command), index-aligned. */
