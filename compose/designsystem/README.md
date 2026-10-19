@@ -134,9 +134,24 @@ Other checks:
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
 | `RaftCodeBlock`, `RaftReadOnlyField` | CopyableCode | Done | Read-only command (wraps), the disabled-field value |
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
+| `RaftTextField` | Input, InputGroup | Done | Placeholder, value, focus ring on any focus (tap included), invalid, disabled; icon and text addons (`/` prefix, suffix) ring the whole group |
+| `RaftTextarea`, `RaftTextareaCounter` | Textarea | Done | Grows to `maxHeight`; counter turns bold red past the limit or when invalid |
+| `RaftField`, `RaftFieldLabel`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FormSection | Done | Label (required `*`, "(optional)", sm / md), help or error line; a field's error makes its control invalid through `LocalRaftFieldState` |
+| `RaftCheckbox`, `RaftCheckboxRow` | Checkbox, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole |
+| `RaftRadio`, `RaftRadioGroup`, `RaftRadioRow` | RadioGroup | Done | Ring with an ink dot; rows with descriptions (reset-agent list) |
+| `RaftSwitch` | Switch | Done | Off, on (brand sticker, die-cut in dark), focused, disabled; the knob slides |
+| `RaftTabs`, `RaftTab`, `RaftTabStrip` | Tabs | Done | Default (sticker) and underline; the panel strip scrolls without clipping the sticker. No drag-reorder |
+| `RaftSegmentedControl`, `RaftSegment` | SegmentedControl | Done | `fill-muted` track, sticker segment, counts, full width with weights |
+| `RaftToggleGroup`, `RaftToggleGroupItem` | ToggleGroup | Done | Same item as a segment, toggle semantics |
+| `RaftSelectTrigger`, `RaftSelect` | Select | Done | Value / placeholder, pressed, focused, invalid, disabled; the list is a dropdown menu |
+| `RaftPickerTriggerButton` | PickerTriggerButton | Done | Rest (seam ring), applied filter (`info-soft`, no border), pressed, focused, invalid, disabled |
+| `RaftDropdownMenu`, `RaftMenuSurface`, `RaftMenuItem`, `RaftMenuLabel`, `RaftMenuSeparator`, `RaftMenuSearchField` | DropdownMenu, Select popup | Done | Highlight `brand-soft`, current value bold + check, shortcut, disabled; the search row takes the inset focus outline |
+| `RaftDialog`, `RaftDialogSurface` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16 |
+| `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
+| `RaftToast` | Toast | Done | HUD surface (title only, icon, action, description) and the pages' foreground banner on the popover surface |
 | `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw |
 | `RaftText` | — | Done | Text primitive |
-| Everything else | | Not started | Field, tabs, select, switch, checkbox, toast: later PRs |
+| Tabs drag-reorder, file list row, avatar picker, task card / board lane, toast host | | Not done | Later PRs |
 
 ### State primitives (`components/RaftStates.kt`)
 
@@ -150,10 +165,16 @@ Internal modifiers every component draws its states with; none takes layout room
 - `raftInsetFocusOutline`: 2dp `foreground` inside the box, for rows touching an edge.
 - `raftPressOverlay` / `raftPressOverlayColor`: `fill-pressed`, `sticker-pressed` or
   `fill-frame-pressed` over the fill; press never changes the fill or moves anything.
+- `raftFloatShadow` / `raftOverlaySurface`: `shadow-float` drawn as a stack of rounded
+  rects that add up to the CSS Gaussian (no platform blur, so Android below API 31 matches),
+  plus the `line-seam` ring and fill of every overlay (menus, dialogs, sheets, toasts).
 
 Screenshot fixtures force these states with `LocalRaftPressedPreview`,
 `LocalRaftFocusedPreview` and `LocalRaftSpinnerStillStep`. `avatar_list_row_states_*`
-reproduces the visual-testing case `components.ui.avatar-list-row.states`.
+reproduces the visual-testing case `components.ui.avatar-list-row.states`; the
+interactive fixtures name their case ids in `InteractiveComponentScreenshotTest`. A real
+tap (not a forced state) is checked by `RaftInteractionTest`: tapping an input draws the
+focus ring, and a checkbox row toggles from its label.
 
 ## raft-ui 0.7.1 vs 0.8.0
 
@@ -164,7 +185,7 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   are the same in both versions.
 - Docs only: Typography adds "Why message text is 16px" (see Body size below); Alignment
   adds "A control and its label" (centre a checkbox, radio or switch on the first line of
-  its label; relevant to later PRs); Spacing gives the hover toolbar 28px buttons; the
+  its label; the choice rows do); Spacing gives the hover toolbar 28px buttons; the
   rest renames "workspace" to "server" in copy.
 
 ## Differences from raft-ui and its docs
@@ -197,3 +218,27 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   checkbox is drawn without a handler. The card never shows the pick itself.
 - **Icons**: components draw a handful of Lucide outlines (`RaftGlyph`, ISC); app icons
   come through slots.
+- **Field type is raft-ui's.** Inputs, input groups and textareas use `--field-*` (16/24
+  regular, `bodyLarge`); the page hand-off measured 15/20 (`text-subhead`) for the
+  control. The select trigger keeps raft-ui's `text-subhead` semibold value, as both say.
+- **Choice rows** (`RaftCheckboxRow`, `RaftRadioRow`) follow the pages' radio list
+  (44dp min, 12dp padding and gap, `text-subhead` semibold label, `text-footnote` muted
+  description), not raft-ui FieldItem's 8dp gap and footnote label.
+- **Hit areas.** A checkbox, radio or switch is exactly its box (raft-ui overhangs a
+  44 x 36dp `::after`); use the rows, or a list row's trailing slot, for the tap target.
+- **Menu focus.** Keyboard focus on a menu row is the `brand-soft` highlight (Base UI
+  moves the highlight with focus), not a ring. The search row at the popup's edge takes
+  the inset outline.
+- **Popups.** `RaftDropdownMenu` is a platform popup with transparent room round the
+  surface for its shadow (16dp sides, 8dp top, 24dp bottom); a tap in that room dismisses
+  like a tap outside. Collision handling is the simple flip / clamp of `raftMenuPosition`.
+- **Scrim.** `RaftDialog` and `RaftSheet` use the platform dialog window, whose own scrim
+  (about 60% black) stands in for `layer-backdrop` (65% light / 60% dark). Dialogs appear
+  without animation; the sheet slides up but closes without the slide, and has no swipe
+  to dismiss or snap points.
+- **Toast.** Only the surface: no host (stacking, timeout, swipe). The action's underline
+  uses the font's default thickness and offset (CSS: 1.5px, 3px). `RaftToastSurface.Popover`
+  is the pages' foreground in-app banner (hand-off §11); raft-ui itself puts every toast on
+  the HUD.
+- **Focus-ring gap** is `layer-canvas` everywhere (white in light, as raft's
+  `--focus-ring`), even on a track or popover of another colour, as CSS draws it.
