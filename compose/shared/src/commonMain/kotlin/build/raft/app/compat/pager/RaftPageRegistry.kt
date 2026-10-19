@@ -15,6 +15,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import build.raft.app.compat.ui.RaftProvidePageActive
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -165,6 +166,9 @@ fun RaftPagerHost(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalSlockPageArgs provides args,
     ) {
-        (pager as? ComposeContainer)?.composedContent?.invoke()
+        // Back handlers of an inactive (kept-alive, hidden) page must not fire.
+        RaftProvidePageActive(active) {
+            (pager as? ComposeContainer)?.composedContent?.invoke()
+        }
     }
 }

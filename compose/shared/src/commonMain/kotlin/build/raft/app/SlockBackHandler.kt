@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.compat.ui.BackHandler
+import build.raft.app.compat.ui.raftBackHandlerEnabled
 
 @Composable
 internal fun SlockBackHandler(
@@ -13,7 +14,8 @@ internal fun SlockBackHandler(
     onLifecycleLog: ((String) -> Unit)? = null,
     onBack: () -> Unit
 ) {
-    if (!enabled) return
+    // Inactive kept-alive pages (hidden shell tabs) must not register: see LocalRaftPageActive.
+    if (!raftBackHandlerEnabled(enabled)) return
 
     val currentOnBack by rememberUpdatedState(onBack)
     val currentOnLifecycleLog by rememberUpdatedState(onLifecycleLog)

@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,11 +58,33 @@ fun raftColorFromArgbHex(value: String): Color {
 
 // ---- Back handling ----------------------------------------------------------------------------
 
-/** Kuikly `BackHandler`, on CMP's multiplatform back handler. */
+/**
+ * Whether the enclosing page is the active one. Kept-alive inactive pages (hidden app-shell tabs,
+ * `SlockKuiklyChildPage` with `active = false`) stay composed, so without this their back
+ * handlers would stay registered and, being registered after the shell's, would win: Back would
+ * close a menu on an invisible tab. Provided by `RaftPagerHost` via [RaftProvidePageActive].
+ */
+val LocalRaftPageActive = compositionLocalOf { true }
+
+/** Provides [LocalRaftPageActive] for [content]: active only if [active] and every ancestor page is. */
+@Composable
+fun RaftProvidePageActive(active: Boolean, content: @Composable () -> Unit) {
+    val parentActive = LocalRaftPageActive.current
+    CompositionLocalProvider(LocalRaftPageActive provides (parentActive && active), content = content)
+}
+
+/** A back handler's effective `enabled`: the caller's flag AND the enclosing page being active. */
+@Composable
+fun raftBackHandlerEnabled(enabled: Boolean): Boolean = enabled && LocalRaftPageActive.current
+
+/**
+ * Kuikly `BackHandler`, on CMP's multiplatform back handler. Disabled while the enclosing page is
+ * inactive ([LocalRaftPageActive]).
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {
-    ComposeBackHandler(enabled = enabled, onBack = onBack)
+    ComposeBackHandler(enabled = raftBackHandlerEnabled(enabled), onBack = onBack)
 }
 
 // ---- Coroutines --------------------------------------------------------------------------------
