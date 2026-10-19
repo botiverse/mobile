@@ -13,7 +13,6 @@ docs/member-agent-app-logins-parity-spec-2026-06-24.md
 docs/mobile-file-preview-mp4-text-spec-2026-06-26-update.md
 docs/mobile-killed-app-push-android-server-contract-2026-07-01.md
 docs/mobile-killed-app-push-ios-server-contract-2026-07-01.md
-docs/mobile-killed-app-push-ohos-server-contract-2026-07-01.md
 docs/mobile-native-push-notification-analysis-2026-06-25.md
 docs/mobile-native-push-server-requirements-2026-07-02.md
 docs/mobile-webview-server-contract-2026-07-02.md

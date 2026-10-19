@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """Static contract: mermaid consumer stays confined to platform actuals.
 
-Incident-born gate (task #373 / PR #2497): PR-B copied the mermaid Kuikly
-actual onto OHOS, producing three source-identical
-SlockMermaidDiagramBlock.{android,ios,ohos}.kt files. Nothing previously
-failed a PR if one plane drifted. This check moves that failure to every PR.
+Incident-born gate (task #373 / PR #2497): the mermaid Kuikly actual is
+copied per platform, producing source-identical
+SlockMermaidDiagramBlock.{android,ios}.kt files. Nothing previously failed a
+PR if one plane drifted. This check moves that failure to every PR. (The
+former OHOS plane was removed from main when OHOS froze at 1.14.x.)
 
-This asserts SOURCE identity of the three .kt actuals, not KBA vs 2.1.21
-ABI/binary identity (those compilers are not interchangeable).
+This asserts SOURCE identity of the .kt actuals, not ABI/binary identity.
 
 Assertions:
-  1. The three platform actuals are byte-identical (or an explicit
+  1. The platform actuals are byte-identical (or an explicit
      DIVERGENCE_ALLOWLIST entry records the exact unified-diff SHA-256 and
      a reason; mutating an allowlisted fork without updating the digest RED).
   2. commonMain / commonTest have zero `import build.raft.mermaid` lines.
-  3. In compose/shared/build.ohos.gradle.kts, mermaid GAVs appear only in
-     ohosArm64Main / ohosArm64Test and the version must end with `-ohos`.
 
 Usage:
   check_mermaid_plane_confinement.py            enforce against the repo
@@ -41,21 +39,14 @@ ACTUAL_RELATIVE = {
         "compose/shared/src/iosMain/kotlin/build/raft/app/markdown/"
         "SlockMermaidDiagramBlock.ios.kt"
     ),
-    "ohos": Path(
-        "compose/shared/src/ohosArm64Main/kotlin/build/raft/app/markdown/"
-        "SlockMermaidDiagramBlock.ohos.kt"
-    ),
 }
 
 COMMON_MAIN_ROOT = Path("compose/shared/src/commonMain/kotlin")
 COMMON_TEST_ROOT = Path("compose/shared/src/commonTest/kotlin")
-OHOS_GRADLE = Path("compose/shared/build.ohos.gradle.kts")
 
-ALLOWED_OHOS_SOURCE_SETS = frozenset({"ohosArm64Main", "ohosArm64Test"})
-
-# Empty: the three actuals must be source-byte-identical.
+# Empty: the actuals must be source-byte-identical.
 # To admit a platform-specific fork, add:
-#   ("android", "ohos"): {
+#   ("android", "ios"): {
 #       "reason": "non-empty reason; platform-specific behavior required",
 #       "diff_sha256": "<sha256 of unified diff left -> right>",
 #   }
@@ -63,8 +54,6 @@ ALLOWED_OHOS_SOURCE_SETS = frozenset({"ohosArm64Main", "ohosArm64Test"})
 DIVERGENCE_ALLOWLIST: dict[tuple[str, str], dict[str, str]] = {}
 
 IMPORT_RE = re.compile(r"^\s*import\s+(build\.raft\.mermaid(?:\.[A-Za-z0-9_]+)*)")
-SOURCE_SET_RE = re.compile(r"^\s*val\s+(\w+)\s+by\s+(getting|creating)\b")
-MERMAID_GAV_RE = re.compile(r'"build\.raft\.mermaid:([^"]+)"')
 
 
 def _fail(header: str, details: list[str]) -> int:
@@ -106,7 +95,7 @@ def check_actual_identity(base: Path) -> list[str]:
         return missing
 
     violations: list[str] = []
-    planes = ("android", "ios", "ohos")
+    planes = tuple(ACTUAL_RELATIVE)
     for i, left in enumerate(planes):
         for right in planes[i + 1 :]:
             if bodies[left] == bodies[right]:
@@ -184,113 +173,10 @@ def check_common_imports(base: Path) -> list[str]:
     return violations
 
 
-def strip_line_comment(line: str) -> str:
-    in_string = False
-    quote = ""
-    escaped = False
-    chars: list[str] = []
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if in_string:
-            chars.append(ch)
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == quote:
-                in_string = False
-            i += 1
-            continue
-        if ch in ("'", '"'):
-            in_string = True
-            quote = ch
-            chars.append(ch)
-            i += 1
-            continue
-        if ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
-            break
-        chars.append(ch)
-        i += 1
-    return "".join(chars)
-
-
-def parse_ohos_mermaid_gavs(text: str) -> list[tuple[int, str, str, str]]:
-    """Return (lineno, source_set_or_empty, artifact, version) for mermaid GAVs."""
-    depth = 0
-    stack: list[tuple[int, str]] = []
-    pending: str | None = None
-    found: list[tuple[int, str, str, str]] = []
-
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        line = strip_line_comment(raw)
-        m = SOURCE_SET_RE.match(line)
-        if m:
-            pending = m.group(1)
-
-        in_string = False
-        quote = ""
-        escaped = False
-        for ch in line:
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == quote:
-                    in_string = False
-                continue
-            if ch in ("'", '"'):
-                in_string = True
-                quote = ch
-                continue
-            if ch == "{":
-                depth += 1
-                if pending:
-                    stack.append((depth, pending))
-                    pending = None
-            elif ch == "}":
-                if stack and stack[-1][0] == depth:
-                    stack.pop()
-                depth -= 1
-
-        if pending and "{" not in line:
-            pending = None
-
-        current = stack[-1][1] if stack else ""
-        for gav in MERMAID_GAV_RE.findall(line):
-            artifact, _, version = gav.partition(":")
-            found.append((lineno, current, artifact, version))
-    return found
-
-
-def check_ohos_gradle(base: Path) -> list[str]:
-    path = base / OHOS_GRADLE
-    if not path.is_file():
-        return [f"required OHOS gradle file missing: {OHOS_GRADLE}"]
-    text = path.read_text(encoding="utf-8", errors="replace")
-    violations: list[str] = []
-    for lineno, source_set, artifact, version in parse_ohos_mermaid_gavs(text):
-        coord = f"build.raft.mermaid:{artifact}:{version}"
-        if source_set not in ALLOWED_OHOS_SOURCE_SETS:
-            where = source_set or "<file scope>"
-            violations.append(
-                f"{OHOS_GRADLE}:{lineno}: mermaid GAV {coord} in {where}; "
-                f"only {sorted(ALLOWED_OHOS_SOURCE_SETS)} may declare mermaid"
-            )
-        if not version.endswith("-ohos"):
-            violations.append(
-                f"{OHOS_GRADLE}:{lineno}: mermaid GAV {coord} is missing the "
-                f"-ohos version suffix"
-            )
-    return violations
-
-
 def enforce(base: Path) -> int:
     violations: list[str] = []
     violations.extend(check_actual_identity(base))
     violations.extend(check_common_imports(base))
-    violations.extend(check_ohos_gradle(base))
     if violations:
         return _fail("right-cause confinement broken:", violations)
     return _pass()
@@ -335,40 +221,6 @@ class PortableMarkdownTest {
 }
 """
 
-CLEAN_OHOS_GRADLE = """
-kotlin {
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation("com.tencent.kuikly-open:core:1.0")
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
-        }
-        val androidMain by getting {
-            dependencies {
-                api("com.tencent.kuikly-open:core-render-android:1.0")
-            }
-        }
-        val ohosArm64Main by getting {
-            dependencies {
-                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2-ohos")
-            }
-        }
-        val ohosArm64Test by getting {
-            dependencies {
-                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")
-            }
-        }
-    }
-}
-"""
-
-
 def _write_clean_tree(base: Path) -> None:
     for rel in ACTUAL_RELATIVE.values():
         path = base / rel
@@ -382,9 +234,6 @@ def _write_clean_tree(base: Path) -> None:
     (base / COMMON_TEST_ROOT / "PortableMarkdownTest.kt").write_text(
         CLEAN_COMMON_TEST, encoding="utf-8"
     )
-    gradle = base / OHOS_GRADLE
-    gradle.parent.mkdir(parents=True, exist_ok=True)
-    gradle.write_text(CLEAN_OHOS_GRADLE, encoding="utf-8")
 
 
 def self_test() -> int:
@@ -423,17 +272,17 @@ def self_test() -> int:
         if expect_pass(base, "clean tree") != 0:
             return 1
 
-        # Arm: OHOS actual rolled back to fallback stub -> FAIL (identity).
+        # Arm: iOS actual rolled back to fallback stub -> FAIL (identity).
         stub = (
             "package build.raft.app.markdown\n"
             "internal actual fun SlockMermaidDiagramBlock("
             "code: String, style: com.tencent.kuikly.compose.ui.text.TextStyle, "
             "fallback: () -> Unit) { fallback() }\n"
         )
-        (base / ACTUAL_RELATIVE["ohos"]).write_text(stub, encoding="utf-8")
-        if expect_fail(base, "OHOS actual stub divergence") != 0:
+        (base / ACTUAL_RELATIVE["ios"]).write_text(stub, encoding="utf-8")
+        if expect_fail(base, "iOS actual stub divergence") != 0:
             return 1
-        (base / ACTUAL_RELATIVE["ohos"]).write_text(CLEAN_ACTUAL, encoding="utf-8")
+        (base / ACTUAL_RELATIVE["ios"]).write_text(CLEAN_ACTUAL, encoding="utf-8")
 
         # Arm: mermaid import in commonMain -> FAIL.
         polluted = CLEAN_COMMON_MAIN.replace(
@@ -459,32 +308,6 @@ def self_test() -> int:
         if expect_fail(base, "commonTest mermaid import") != 0:
             return 1
         common_test.write_text(CLEAN_COMMON_TEST, encoding="utf-8")
-
-        # Arm: mermaid GAV in OHOS commonMain -> FAIL.
-        gradle = base / OHOS_GRADLE
-        gradle.write_text(
-            CLEAN_OHOS_GRADLE.replace(
-                'implementation("com.tencent.kuikly-open:core:1.0")',
-                'implementation("com.tencent.kuikly-open:core:1.0")\n'
-                '                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")',
-            ),
-            encoding="utf-8",
-        )
-        if expect_fail(base, "mermaid GAV in OHOS commonMain") != 0:
-            return 1
-
-        # Arm: mermaid GAV on ohosArm64Main without -ohos suffix -> FAIL.
-        gradle.write_text(
-            CLEAN_OHOS_GRADLE.replace(
-                'implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")',
-                'implementation("build.raft.mermaid:mermaid-core:0.1.2")',
-                1,
-            ),
-            encoding="utf-8",
-        )
-        if expect_fail(base, "OHOS mermaid GAV missing -ohos suffix") != 0:
-            return 1
-        gradle.write_text(CLEAN_OHOS_GRADLE, encoding="utf-8")
 
         if expect_pass(base, "restored clean tree") != 0:
             return 1

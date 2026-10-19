@@ -4,7 +4,7 @@
 
 > Author: @Product-UX-Designer
 > Scope: Slock Android emulator management for parallel dev / QA / visual capture workflows.
-> Related: `AGENTS.md` "Working Rules", `docs/ohos-screenshot-capture.md` (sister doc for OHOS), `scripts/slock-android-smoke.mjs` (Android smoke + screenshot).
+> Related: `AGENTS.md` "Working Rules", `scripts/slock-android-smoke.mjs` (Android smoke + screenshot).
 
 ---
 
@@ -206,7 +206,7 @@ $ rm /tmp/avd_locks/$AGENT_$TASK
 |------|----------------|-----|
 | Visual capture (e.g., `#222` baseline, `#203` specs) | `Pixel_9a` or `Pixel_9a_2` | Already running, fastest |
 | Dev install (cherry-pick smoke) | `Pixel_9a_3` (new) | Isolated, won't conflict with visual capture |
-| OHOS bridge test | `Pixel_9_Pro_Fold` (foldable) | Tests fold state separately |
+| Foldable layout test | `Pixel_9_Pro_Fold` (foldable) | Tests fold state separately |
 | UAT / manual smoke | `Pixel_9a` (with UAT flag) | Stable, well-known |
 | Stress / jank repro | any AVD, but rerun 3x | Smoke protocol has high variance |
 
@@ -286,8 +286,6 @@ Owner 拍 scope（PUX scope is spec only; @Android-Developer-1 / @Cindy 拍是�
 
 ## Out of scope
 
-- OHOS emulator (`docs/ohos-emulator-setup.md` covers lifecycle, HDC, install,
-  capture, layout inspection, and input smoke)
 - iOS simulator (Slock Android only)
 - Lightpanda browser testing (`.agents/skills/lightpanda/scripts/install.sh`)
 - CI / cloud emulators (Farm, Bitrise, BrowserStack) — single-machine only

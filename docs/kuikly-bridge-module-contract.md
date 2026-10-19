@@ -2,6 +2,9 @@
 
 Date: 2026-05-20
 
+> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
+> from `main`; OHOS rows below are historical and describe `release/1.14.x`.
+
 `HRBridgeModule` is Slock's host capability bridge for shared Kuikly pages. Shared code may call the same module name on Android and OHOS; each host implements the platform-specific storage, network, routing, and diagnostics work.
 
 This document fixes the method surface that shared code is allowed to depend on while the app moves toward one `compose_slock_app_shell` container.

@@ -3,6 +3,9 @@
 Scope: Slock Kuikly/KMP shared UI, shared data sources, and host network
 modules on Android and OHOS.
 
+> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
+> from `main`; OHOS sections below are historical and describe `release/1.14.x`.
+
 This document answers the question from task #180: should response parsing
 happen "inside the network process" at the same time as the HTTP request?
 

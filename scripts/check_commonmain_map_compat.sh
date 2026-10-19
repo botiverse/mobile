@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fail fast when commonMain calls Map default methods without the Native-safe
 # same-name extension import. Android/JVM resolves the Java member without an
-# import, while OHOS/iOS only see the extension and otherwise fail to compile.
+# import, while iOS (Kotlin/Native) only sees the extension and otherwise fails to compile.
 set -euo pipefail
 
 source_root="compose/shared/src/commonMain/kotlin"
