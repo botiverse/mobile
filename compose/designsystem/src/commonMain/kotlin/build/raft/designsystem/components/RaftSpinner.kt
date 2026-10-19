@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -58,6 +59,12 @@ fun raftSpinnerLitCell(step: Int): Int = ClockwiseCells[((step % 4) + 4) % 4]
 private val ClockwiseCells = intArrayOf(0, 1, 3, 2)
 
 /**
+ * Freezes every [RaftSpinner] in the subtree that has no `stillStep` of its own on this
+ * step: screenshot fixtures of components that hold a spinner (a busy button).
+ */
+internal val LocalRaftSpinnerStillStep = staticCompositionLocalOf<Int?> { null }
+
+/**
  * raft-ui 0.8.0 Spinner: four square pixels (1dp radius) in a 2x2 grid, in the current
  * ink ([LocalRaftContentColor], CSS `text-current`) or `--foreground-inverse`. Three rest
  * at 20%; one at a time is lit at full ink for a quarter of a 1s cycle, stepping (no fade)
@@ -81,8 +88,9 @@ fun RaftSpinner(
             variant == RaftSpinnerVariant.Inverse -> RaftTheme.colors.foregroundInverse
             else -> LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
         }
+    val still = stillStep ?: LocalRaftSpinnerStillStep.current
     var animatedStep by remember { mutableIntStateOf(0) }
-    if (stillStep == null) {
+    if (still == null) {
         LaunchedEffect(Unit) {
             // Sleep between steps instead of waiting on every frame, so the frame clock
             // is only woken 4 times a second.
@@ -93,7 +101,7 @@ fun RaftSpinner(
         }
     }
     Canvas(modifier.size(size.extent).semantics { this.contentDescription = contentDescription }) {
-        val lit = raftSpinnerLitCell(stillStep ?: animatedStep)
+        val lit = raftSpinnerLitCell(still ?: animatedStep)
         val pixel = size.pixel.toPx()
         val pitch = pixel + size.gap.toPx()
         val radius = CornerRadius(RaftRadius.Pixel.toPx())
