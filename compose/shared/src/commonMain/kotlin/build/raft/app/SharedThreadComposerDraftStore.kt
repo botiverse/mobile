@@ -9,8 +9,8 @@ import build.raft.app.data.MviStoreRuntime
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.ReentrantLock
 import kotlinx.atomicfu.locks.reentrantLock

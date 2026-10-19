@@ -10,11 +10,11 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 
 // Stable visual fixtures for the two-step forward flow.
 @Page("compose_thread_forward_modal_visual", supportInLocal = true)

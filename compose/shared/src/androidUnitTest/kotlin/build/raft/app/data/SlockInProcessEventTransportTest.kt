@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.optString
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject as KuiklyJSONObject
+import build.raft.app.compat.json.JSONObject as KuiklyJSONObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

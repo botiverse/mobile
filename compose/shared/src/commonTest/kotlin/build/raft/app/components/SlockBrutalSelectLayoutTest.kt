@@ -3,9 +3,9 @@ package build.raft.app.components
 import build.raft.app.SlockFloatingOverlayLayout
 import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.positionContent
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

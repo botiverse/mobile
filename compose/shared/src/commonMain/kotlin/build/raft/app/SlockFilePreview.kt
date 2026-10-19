@@ -56,71 +56,70 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.layout.aspectRatio
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.extension.nativeRef
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.coil3.rememberAsyncImageBitmap
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
-import com.tencent.kuikly.compose.material3.LinearProgressIndicator
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
-import com.tencent.kuikly.compose.ui.graphics.StrokeCap
-import com.tencent.kuikly.compose.ui.graphics.drawscope.DrawScope
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import build.raft.app.compat.ui.nativeRef
+import androidx.compose.foundation.lazy.LazyColumn
+import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.compat.ui.MakeKuiklyComposeNode
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
 import com.tencent.kuikly.core.base.DeclarativeBaseView
 import com.tencent.kuikly.core.base.ViewRef
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.kuikly.core.views.VideoPlayControl
 import com.tencent.tmm.kmmresource.compose.localized
@@ -5289,8 +5288,8 @@ private fun SlockFilePreviewBorderlessIconButton(
     onClick: () -> Unit,
     enabled: Boolean,
     iconColor: String = SlockColor.TextBlackArgb,
-    size: com.tencent.kuikly.compose.ui.unit.Dp = SlockSize.IconButton,
-    iconSize: com.tencent.kuikly.compose.ui.unit.Dp = 22.dp,
+    size: androidx.compose.ui.unit.Dp = SlockSize.IconButton,
+    iconSize: androidx.compose.ui.unit.Dp = 22.dp,
     modifier: Modifier = Modifier,
 ) {
     Button(
@@ -5332,8 +5331,8 @@ internal fun slockFilePreviewPencilOptionsExpandedAfterToolSelection(
 
 internal fun slockFilePreviewEditorControlsHeight(
     secondaryControlsVisible: Boolean,
-    bottomPadding: com.tencent.kuikly.compose.ui.unit.Dp,
-): com.tencent.kuikly.compose.ui.unit.Dp =
+    bottomPadding: androidx.compose.ui.unit.Dp,
+): androidx.compose.ui.unit.Dp =
     6.dp +
         bottomPadding +
         SlockSize.IconButton +
@@ -5341,9 +5340,9 @@ internal fun slockFilePreviewEditorControlsHeight(
 
 internal fun slockFilePreviewEditorBottomPadding(
     keyboardInsetDp: Float,
-    bottomSafeArea: com.tencent.kuikly.compose.ui.unit.Dp,
+    bottomSafeArea: androidx.compose.ui.unit.Dp,
     keyboardInsetExcludesBottomSafeArea: Boolean,
-): com.tencent.kuikly.compose.ui.unit.Dp {
+): androidx.compose.ui.unit.Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
     val safeAreaInset =
         if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) {
@@ -9623,7 +9622,7 @@ internal fun SlockFilePreviewPageScaffold(
     iconName: SlockLucideIconName,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
+    contentPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Md,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     overflowMenuItems: List<SlockRaftUiMenuItem> = emptyList(),
     onOverflowMenuSelect: (String) -> Unit = {},
@@ -10227,8 +10226,8 @@ internal fun SlockFilePreviewImagePanel(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String? = null,
-    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
-    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default,
+    backgroundColor: androidx.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
+    borderWidth: androidx.compose.ui.unit.Dp = SlockStroke.Default,
     zoomable: Boolean = true
 ) {
     SlockAspectFitImagePreviewSurface(

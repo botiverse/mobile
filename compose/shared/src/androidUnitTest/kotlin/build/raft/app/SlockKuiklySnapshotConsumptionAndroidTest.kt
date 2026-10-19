@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.configureSlockComposeSnapshotConsumption
-import com.tencent.kuikly.compose.ComposeContainer
+import build.raft.app.compat.pager.ComposeContainer
 import kotlin.test.Test
 import kotlin.test.assertTrue
 

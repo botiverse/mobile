@@ -9,19 +9,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEvent
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
-import com.tencent.kuikly.compose.ui.input.pointer.PointerId
-import com.tencent.kuikly.compose.ui.input.pointer.PointerInputChange
-import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.node.PointerInputModifierNode
-import com.tencent.kuikly.compose.ui.platform.ViewConfiguration
-import com.tencent.kuikly.compose.ui.unit.Density
-import com.tencent.kuikly.compose.ui.unit.DpSize
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.platform.ViewConfiguration
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import java.lang.reflect.Proxy
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -463,8 +463,8 @@ class SlockLiveRootAnchorLifecycleTest {
         private val coroutineContext: CoroutineContext = EmptyCoroutineContext
     ) {
         private val endApplyChangesListeners = mutableListOf<Function0<*>>()
-        private val layoutNodeClass = Class.forName("com.tencent.kuikly.compose.ui.node.LayoutNode")
-        private val ownerClass = Class.forName("com.tencent.kuikly.compose.ui.node.Owner")
+        private val layoutNodeClass = Class.forName("androidx.compose.ui.node.LayoutNode")
+        private val ownerClass = Class.forName("androidx.compose.ui.node.Owner")
         private val owner =
             Proxy.newProxyInstance(ownerClass.classLoader, arrayOf(ownerClass)) { _, method, args ->
                 when (method.name) {

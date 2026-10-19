@@ -14,8 +14,8 @@ import build.raft.app.data.SlockDatetimeFoundationOwner
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.slockTimeContextRefreshDelayMillis
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Pager
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

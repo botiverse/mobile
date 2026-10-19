@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import com.tencent.kuikly.compose.BackHandler
+import build.raft.app.compat.ui.BackHandler
 
 @Composable
 internal fun SlockBackHandler(

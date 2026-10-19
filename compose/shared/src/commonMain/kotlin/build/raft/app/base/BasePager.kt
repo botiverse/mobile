@@ -14,14 +14,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.ComposeContainer
+import build.raft.app.compat.pager.ComposeContainer
 import com.tencent.kuikly.compose.setContent as setKuiklyContent
-import com.tencent.kuikly.core.module.Module
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IModuleCreator
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.core.reactive.handler.*
-
+import build.raft.app.compat.module.Module
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.compat.pager.Pager
 internal abstract class BasePager : ComposeContainer() {
     private var nightModel: Boolean? by observable(null)
     protected var slockPageVisibleResumeTick by mutableStateOf(0)

@@ -4,7 +4,7 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import com.tencent.kmm.network.export.NetworkAppIdentity
 import com.tencent.kmm.network.export.NetworkUserAgent
 import kotlin.test.Test

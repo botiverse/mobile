@@ -2,8 +2,8 @@ package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 interface MarkdownDimens {
     val dividerThickness: Dp

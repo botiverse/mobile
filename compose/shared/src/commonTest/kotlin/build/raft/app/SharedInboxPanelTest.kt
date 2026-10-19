@@ -41,7 +41,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
 import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

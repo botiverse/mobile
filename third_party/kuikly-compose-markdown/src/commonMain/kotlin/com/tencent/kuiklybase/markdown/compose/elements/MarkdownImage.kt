@@ -1,9 +1,9 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.foundation.Image
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Modifier
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
 import com.tencent.kuiklybase.markdown.compose.LocalImageLinkHandler

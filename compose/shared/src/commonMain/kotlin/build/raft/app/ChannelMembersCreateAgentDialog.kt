@@ -7,7 +7,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.SlockBrutalActionButton
-import com.tencent.kuikly.compose.material3.Text
+import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
 
 /** Reuses the canonical create form and retains a created agent when joining fails. */

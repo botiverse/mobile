@@ -119,7 +119,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart

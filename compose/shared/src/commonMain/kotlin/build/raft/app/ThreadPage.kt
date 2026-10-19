@@ -253,8 +253,8 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -270,104 +270,103 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.tween
-import com.tencent.kuikly.compose.coil3.AsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
-import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
-import com.tencent.kuikly.compose.foundation.gestures.scrollBy
-import com.tencent.kuikly.compose.foundation.hoverable
-import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
-import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
-import com.tencent.kuikly.compose.foundation.interaction.collectIsPressedAsState
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
-import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.LazyRow
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.text.SelectableText
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.resources.imageResource
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.drawWithContent
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.input.pointer.PointerInputScope
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.testTag
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
-import com.tencent.kuikly.compose.ui.unit.toIntSize
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.manager.PagerManager
-import com.tencent.kuikly.core.module.PerformanceModule
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import coil3.compose.AsyncImagePainter
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import build.raft.app.compat.ui.SelectableText
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
+import androidx.compose.material3.Text
+import build.raft.app.compat.ui.imageResource
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.toIntSize
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.compat.module.PerformanceModule
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONArray
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -5603,7 +5602,7 @@ private fun ThreadMessageVisualCard(
     timestampLabel: String = message.timestampLabel,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
+    outerPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(
@@ -24047,7 +24046,7 @@ private data class ThreadMessageCardData(
     val longMessageCollapseEnabled: Boolean,
     val longMessageExpanded: Boolean,
     val longPressGestureInstanceKey: Any,
-    val outerPadding: com.tencent.kuikly.compose.ui.unit.Dp,
+    val outerPadding: androidx.compose.ui.unit.Dp,
 )
 
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
@@ -24156,7 +24155,7 @@ fun ThreadMessageCard(
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
     onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
-    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
+    outerPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Sm
 )
  {
     ThreadMessageCardContent(
@@ -25613,7 +25612,7 @@ private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 color = SlockColor.TextMutedGray,
-                fontStyle = com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
             )
         } else {
             SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
@@ -30973,15 +30972,15 @@ const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
 private const val ThreadForwardBundleLocalOffsetMinutesKey = "localOffsetMinutes"
 
 internal fun ThreadForwardBundleRoute.toThreadForwardBundlePageData():
-    com.tencent.kuikly.core.nvi.serialization.json.JSONObject =
-    com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+    build.raft.app.compat.json.JSONObject =
+    build.raft.app.compat.json.JSONObject().apply {
         put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
         put("serverId", serverId.value)
         put("channelId", channelId.value)
         put("messageId", messageId.value)
     }
 
-internal fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+internal fun build.raft.app.compat.json.JSONObject
     .threadForwardBundleTimeCapabilitiesOrNull(): SlockTimeCapabilities? {
     val fallbackOffsetMinutes =
         optString(ThreadForwardBundleLocalOffsetMinutesKey)
@@ -32147,7 +32146,7 @@ private fun ThreadAddMemberModal(
                     }
                 }
             )
-            val candidateRows: com.tencent.kuikly.compose.foundation.lazy.LazyListScope.() -> Unit = {
+            val candidateRows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                 if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         selectedCandidates.forEach { member ->
@@ -33186,7 +33185,7 @@ private fun ThreadStateActionMessage(
 // "unassigned" sentinel always first and never filtered, humans before agents,
 // search matches the visible display name.
 @Composable
-@OptIn(com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
     assigneeOptions: List<MemberProfile>,

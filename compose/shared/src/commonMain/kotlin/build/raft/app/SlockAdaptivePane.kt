@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 
 /**
  * Host-owned window context. It deliberately contains layout facts only: route and child-pager

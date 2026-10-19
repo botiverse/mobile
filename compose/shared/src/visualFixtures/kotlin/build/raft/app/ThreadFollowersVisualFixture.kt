@@ -3,11 +3,10 @@ package build.raft.app
 import androidx.compose.runtime.*
 import build.raft.app.base.BasePager
 import build.raft.app.data.*
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.*
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 /** Real header, popover, toast and store; only the repository uses deterministic fixture data. */

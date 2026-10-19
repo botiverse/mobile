@@ -48,8 +48,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class StandaloneSettingsEnvironment(

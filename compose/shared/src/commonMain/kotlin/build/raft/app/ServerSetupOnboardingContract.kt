@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.StoredAuthSession
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString

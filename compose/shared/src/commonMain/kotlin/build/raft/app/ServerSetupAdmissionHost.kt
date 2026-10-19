@@ -21,10 +21,10 @@ import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException

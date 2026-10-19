@@ -3,8 +3,8 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.runCatchingPreservingCancellation
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

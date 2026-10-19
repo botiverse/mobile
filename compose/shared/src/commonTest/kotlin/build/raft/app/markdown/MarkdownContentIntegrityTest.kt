@@ -1,9 +1,9 @@
 package build.raft.app.markdown
 
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
@@ -254,7 +254,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertBold) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.fontWeight == com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold &&
+                        it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Bold SpanStyle missing or bounded incorrectly for ${case.source}; spans=${annotated.spanStyles}",
@@ -263,7 +263,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertItalic) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.fontStyle == com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic &&
+                        it.item.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Italic SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
@@ -272,7 +272,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertStrikethrough) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.textDecoration == com.tencent.kuikly.compose.ui.text.style.TextDecoration.LineThrough &&
+                        it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.LineThrough &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Strikethrough SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",

@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.foundation.lazy.LazyListItemInfo
-import com.tencent.kuikly.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

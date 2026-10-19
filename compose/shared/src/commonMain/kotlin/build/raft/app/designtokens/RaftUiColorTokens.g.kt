@@ -8,7 +8,7 @@
 
 package build.raft.app.designtokens
 
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 
 /** Theme-invariant Web colours: raw ramps, brand colours and the Tailwind palette. */
 internal object RaftUiPalette {

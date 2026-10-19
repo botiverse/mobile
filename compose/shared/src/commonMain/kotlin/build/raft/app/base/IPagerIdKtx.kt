@@ -1,7 +1,7 @@
 package build.raft.app.base
 
-import com.tencent.kuikly.core.base.IPagerId
-import com.tencent.kuikly.core.base.pagerId
+import build.raft.app.compat.pager.IPagerId
+import build.raft.app.compat.pager.pagerId
 
 /**
  * 老的方式:，需要显式传递 pagerId
@@ -19,5 +19,5 @@ internal val IPagerId.bridgeModule: BridgeModule by pagerId {
 }
 
 internal fun IPagerId.setTimeout(delay: Int, callback: () -> Unit): String {
-    return com.tencent.kuikly.core.timer.setTimeout(pagerId, delay, callback)
+    return build.raft.app.compat.pager.setTimeout(pagerId, delay, callback)
 }

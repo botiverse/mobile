@@ -1,8 +1,8 @@
 package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Immutable
-import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.text.AnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import org.intellij.markdown.ast.ASTNode
 

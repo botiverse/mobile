@@ -158,7 +158,7 @@ class SettingsComputersWebViewTest {
         assertNull(settingsComputerRouteIdentity("", "machine-42"))
         assertNull(
             settingsComputerRouteIdentityFromPageData(
-                com.tencent.kuikly.core.nvi.serialization.json.JSONObject()
+                build.raft.app.compat.json.JSONObject()
                     .put(SLOCK_SHELL_SERVER_ID, "server-1"),
             ),
         )

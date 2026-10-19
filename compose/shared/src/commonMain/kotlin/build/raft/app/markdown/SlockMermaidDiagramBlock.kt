@@ -1,7 +1,7 @@
 package build.raft.app.markdown
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextStyle
 
 /**
  * Native Kuikly Compose component that renders a Mermaid diagram block.

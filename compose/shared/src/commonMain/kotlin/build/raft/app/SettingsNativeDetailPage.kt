@@ -2,10 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SlockShellStoreScope
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 
 const val SETTINGS_NATIVE_DETAIL_PAGE = "compose_settings_native_detail"
 

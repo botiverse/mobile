@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 internal fun slockForwardPickerActionBottomPadding(bottomSafeArea: Dp): Dp =
     12.dp + if (bottomSafeArea > 0.dp) bottomSafeArea else 0.dp

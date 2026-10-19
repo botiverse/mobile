@@ -3,10 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import build.raft.app.base.Utils
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : build.raft.app.base.BasePager() {

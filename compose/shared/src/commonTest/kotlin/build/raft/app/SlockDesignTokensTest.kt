@@ -7,11 +7,11 @@ import build.raft.app.components.SlockSpinnerSize
 import build.raft.app.components.slockSpinnerLitCell
 import build.raft.app.components.slockSpinnerStepAt
 import build.raft.app.data.FontPreference
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontListFontFamily
+import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.compat.ui.KuiklyFont
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

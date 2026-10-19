@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.externalShareOpaqueTokenOrNull
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 
 internal const val ExternalShareLaunchIntent = "open_share_to_raft"
 internal const val ExternalShareLaunchIntentKey = "intent"

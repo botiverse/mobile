@@ -3,16 +3,15 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import build.raft.app.base.BasePager
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
-import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
 
 const val SLOCK_PAGER_SCROLL_PROBE_PAGE = "compose_pager_scroll_probe"
 

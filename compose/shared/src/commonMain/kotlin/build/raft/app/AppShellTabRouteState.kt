@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListState
 
 internal data class AppShellLazyListPosition(
     val firstVisibleItemIndex: Int = 0,

@@ -1,7 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.SlockColor
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

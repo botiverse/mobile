@@ -35,8 +35,8 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.runBlocking

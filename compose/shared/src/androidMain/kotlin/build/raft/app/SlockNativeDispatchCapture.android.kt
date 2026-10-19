@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.input.pointer.nativeDispatchCapture
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.ui.nativeDispatchCapture
 
 internal actual fun Modifier.slockNativeDispatchCapture(): Modifier =
     nativeDispatchCapture()

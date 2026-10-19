@@ -178,7 +178,7 @@ class ThreadOfflineLastKnownTipTest {
     @Test
     fun onlyThisServersTransportConnectedEventCountsAsARealtimeRecovery() {
         fun event(action: String, serverId: String?) =
-            com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+            build.raft.app.compat.json.JSONObject().apply {
                 put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction, action)
                 if (serverId != null) put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyServerId, serverId)
             }.toJsonObject()

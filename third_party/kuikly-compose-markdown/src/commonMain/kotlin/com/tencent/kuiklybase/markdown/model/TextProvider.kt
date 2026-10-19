@@ -1,19 +1,19 @@
 package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.TextLayoutResult
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.TextUnit
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 
 /**
  * 自定义文本组件，一般用于字号缩放和修改默认字体
@@ -86,7 +86,7 @@ class NoOpTextProvider : TextProvider {
         onTextLayout: ((TextLayoutResult) -> Unit)?,
         style: TextStyle
     ) {
-        com.tencent.kuikly.compose.material3.Text(
+        androidx.compose.material3.Text(
             text = text,
             modifier = modifier,
             color = color,
@@ -128,7 +128,7 @@ class NoOpTextProvider : TextProvider {
         onTextLayout: (TextLayoutResult) -> Unit,
         style: TextStyle
     ) {
-        com.tencent.kuikly.compose.material3.Text(
+        androidx.compose.material3.Text(
             text = text,
             modifier = modifier,
             color = color,

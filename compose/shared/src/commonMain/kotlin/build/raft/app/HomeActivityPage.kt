@@ -3,9 +3,8 @@ package build.raft.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.json.JSONObject
 
 @Page(HOME_ACTIVITY_PAGE, supportInLocal = true)
 internal class ComposeHomeActivityPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeActivity) {

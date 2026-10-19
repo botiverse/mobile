@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.ContentScale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

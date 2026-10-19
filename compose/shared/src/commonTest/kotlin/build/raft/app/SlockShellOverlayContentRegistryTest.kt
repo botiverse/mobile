@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Size
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

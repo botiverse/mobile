@@ -1,8 +1,8 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.TextStyle
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
