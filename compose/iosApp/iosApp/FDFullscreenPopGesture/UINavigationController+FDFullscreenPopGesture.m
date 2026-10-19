@@ -343,10 +343,12 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
             ? (RaftPageViewController *)viewController
             : nil;
     if (renderViewController) {
-        // Every pushed page can be returned from. The admission policy
-        // still requires a navigation stack above root; text-input and native
-        // horizontal-scroll conflicts are rejected by the gesture delegate.
-        renderViewController.fd_interactivePopAllowsFullScreen = YES;
+        // Every pushed page can be returned from, but only from the leading edge strip:
+        // CMP content has no UIScrollView, so the delegate cannot see a Compose horizontal
+        // scroller consuming a right drag and full-screen admission would steal it.
+        // TODO(cmp-switch): restore full-screen admission once shared code reports
+        // horizontal-scroll consumption to the host.
+        renderViewController.fd_interactivePopAllowsFullScreen = NO;
     }
     [self fd_setConversationForwardGestureEnabled:
         renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];

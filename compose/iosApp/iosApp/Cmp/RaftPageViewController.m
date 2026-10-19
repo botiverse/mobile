@@ -110,10 +110,14 @@ static NSString *RaftPageWindowId(UIWindow *window) {
         _pageName = [pageName copy] ?: @"";
         _pageData = [[self p_mergeHostContextIntoPageData:pageData] copy];
         _slockAdaptivePanePublisher = [[SlockIosAdaptivePanePublisher alloc] init];
-        // Pages draw their own top bar; every pushed page can be swiped back from anywhere
-        // (the FD push swizzle reads both).
+        // Pages draw their own top bar; every pushed page can be swiped back from the leading
+        // edge strip (the FD push swizzle reads both).
+        // TODO(cmp-switch): full-screen back swipe (fd_interactivePopAllowsFullScreen = YES)
+        // can return once shared code reports horizontal-scroll consumption to the host. The FD
+        // delegate only yields to UIScrollView, and a CMP page has none, so a right drag on a
+        // Compose horizontal scroller (pager, chip row) at its start would pop the page.
         self.fd_prefersNavigationBarHidden = YES;
-        self.fd_interactivePopAllowsFullScreen = YES;
+        self.fd_interactivePopAllowsFullScreen = NO;
     }
     return self;
 }
