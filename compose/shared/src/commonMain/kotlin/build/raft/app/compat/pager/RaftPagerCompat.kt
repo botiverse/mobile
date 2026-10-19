@@ -179,6 +179,11 @@ abstract class Pager : IPagerId {
         return module as T
     }
 
+    /** Page destroyed: its modules drop every pending and future native callback. */
+    internal fun detachModules() {
+        modules.values.forEach { it.detach() }
+    }
+
     private fun builtInModule(moduleName: String): Module? =
         when (moduleName) {
             RouterModule.MODULE_NAME -> RouterModule()
@@ -235,6 +240,7 @@ object PagerManager {
     }
 
     internal fun unregister(pager: Pager) {
+        pager.detachModules()
         pagers.remove(pager.pagerId)
         if (BridgeManager.currentPageId == pager.pagerId) {
             BridgeManager.currentPageId = pagers.keys.lastOrNull().orEmpty()
