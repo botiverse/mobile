@@ -495,23 +495,8 @@ jobs:
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
 
-      # Every Gradle run in this job (the framework sync below and the one
-      # Xcode's "Copy kmmresource MR bundle" phase starts) must agree on these.
-      # - Heap: with the fixture pages compiled in, the K/N debug framework link
-      #   exhausts the 4g heap from gradle.properties on the 7 GB hosted runner
-      #   (GC-thrashed ~46 min, then OutOfMemoryError); 6g links in ~12 min.
-      # - slockVisualFixtures: the Xcode phase otherwise saw different compile
-      #   inputs and recompiled + relinked the framework (~20 min extra).
-      # The user-home gradle.properties overrides the project one.
-      - name: Configure Gradle for the K/N framework link
-        run: |
-          props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
-          mkdir -p "$(dirname "$props")"
-          {
-            echo "org.gradle.jvmargs=-Xmx6g -Xss4m -Dfile.encoding=UTF-8"
-            echo "slockVisualFixtures=true"
-          } >> "$props"
-          cat "$props"
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
 
       - name: Generate shared framework placeholder
         working-directory: compose
@@ -537,10 +522,11 @@ jobs:
             --console=plain \
             --stacktrace
 
-      # Generic simulator destination with -sdk iphonesimulator: building needs
-      # no booted device, so it can neither fall back to a device build nor
-      # fail with "Unable to find a device" when CoreSimulator is still busy
-      # booting N shards. Simulators are booted after the build.
+      # Concrete destination (any available iPhone UDID, not booted): avoids
+      # "Unable to find a device" while CoreSimulator boots N shards, and — unlike
+      # "generic/platform=iOS Simulator" — keeps Xcode's MR-bundle phase from
+      # recompiling the framework (see scripts/ci/ios_build_sim_udid.sh).
+      # Simulators are booted after the build.
       - name: Build iOS app for simulator
         working-directory: compose/iosApp
         run: |
@@ -550,13 +536,14 @@ jobs:
           # phase behind the Pods compile spew, hiding the real cause of build
           # breaks — capture the whole log and grep the errors out on failure.
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          udid=$(bash "$GITHUB_WORKSPACE/scripts/ci/ios_build_sim_udid.sh")
+          echo "build destination UDID=$udid"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,id=$udid" \
             -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
             ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
