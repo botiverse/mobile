@@ -1,9 +1,11 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.DialogProperties
 
+@OptIn(ExperimentalComposeUiApi::class)
 internal actual fun raftModalDialogProperties(): DialogProperties =
     DialogProperties(
         dismissOnClickOutside = false,
