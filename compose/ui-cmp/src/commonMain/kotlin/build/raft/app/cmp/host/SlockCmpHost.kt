@@ -30,7 +30,17 @@ class SlockCmpHost(
     val navigator: SlockCmpNavigator,
     val bridgeTransport: HostBridgeTransport? = null,
     val events: RaftHostEvents = RaftHostEvents(),
+    val childPageLoads: RaftChildPageLoadListener? = null,
 )
+
+/**
+ * Page -> native host report that an embedded child page (`SlockKuiklyChildPage`) finished loading:
+ * the CMP counterpart of the Kuikly child render view's load-complete callback. Hosts use it for
+ * render readiness (connected tests wait on it before sampling pixels). Called on the main thread.
+ */
+fun interface RaftChildPageLoadListener {
+    fun onChildPageLoadComplete(pageName: String, pageDataText: String, succeeded: Boolean)
+}
 
 /**
  * Native host -> page events (the Kuikly `sendEvent(event, data)` channel: window insets, adaptive

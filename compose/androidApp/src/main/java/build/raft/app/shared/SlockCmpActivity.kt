@@ -84,6 +84,7 @@ import build.raft.app.cmp.SlockCmpRoot
 import build.raft.app.RaftWebViewFileChooserHost
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftChildPageLoadListener
 import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.SlockCmpHost
 import build.raft.app.cmp.host.SlockCmpNavigator
@@ -1026,6 +1027,7 @@ internal open class SlockCmpActivity :
                 navigator = this,
                 bridgeTransport = transport,
                 events = hostEvents,
+                childPageLoads = RaftChildPageLoadListener(::onCmpChildPageLoadComplete),
             )
         val composeView =
             ComposeView(this).apply {
@@ -1046,6 +1048,12 @@ internal open class SlockCmpActivity :
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
         }
         SlockAndroidLocalDiagnostics.reportAppFullLaunch()
+    }
+
+    /** Child page load: render readiness for the embedded page (see [renderReadinessSnapshot]). */
+    private fun onCmpChildPageLoadComplete(pageName: String, pageDataText: String, succeeded: Boolean) {
+        renderReadinessChildLoads[pageName] =
+            SlockKuiklyLoadReadiness(succeeded = succeeded, completedAtMillis = SystemClock.elapsedRealtime())
     }
 
     private fun observeCmpFirstFrame(view: View) {

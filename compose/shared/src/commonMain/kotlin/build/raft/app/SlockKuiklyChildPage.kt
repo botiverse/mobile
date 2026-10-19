@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.LaunchedEffect
+import build.raft.app.cmp.host.LocalSlockHost
 import build.raft.app.cmp.host.SlockCmpPageArgs
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPagerHost
@@ -94,8 +95,10 @@ internal fun SlockKuiklyChildPage(
         remember(pageName, pageDataText) {
             SlockCmpPageArgs.fromJsonText(pageName, pageDataText)
         }
+    val childPageLoads = LocalSlockHost.current.childPageLoads
     LaunchedEffect(pageName, pageDataText, factory != null) {
         if (factory != null) onLoadSuccess() else onLoadFailure()
+        childPageLoads?.onChildPageLoadComplete(pageName, pageDataText, succeeded = factory != null)
     }
     Box(
         modifier.onGloballyPositioned { coordinates ->
