@@ -71,6 +71,93 @@ object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
 }
 
+/**
+ * Task #521: publish the stored font face to [SlockFontFaceState] as soon as the app-scope store is
+ * available, i.e. before the first composition.
+ *
+ * `SlockFontFaceState.preference` is process-scoped state that starts at [FontPreference.Default].
+ * Its other restore point lives in `SharedSettingsStore.withLocalMobilePreferences()`, which only
+ * runs when a settings snapshot loads. On a cold start the first frames are composed before any
+ * snapshot resolves, so the UI rendered the default face and only swapped once unrelated settings
+ * data arrived — on a slow start it appeared to never swap at all (observed on Android and OHOS:
+ * MMKV held `geist_inter` while shared reverted to Space Grotesk).
+ *
+ * Call this after the app-scope key-value stores are installed and before shared UI is composed.
+ * Safe to call more than once: the snapshot path re-applies the same value and [apply] no-ops when
+ * the preference is unchanged.
+ *
+ * @return the preference published, or null when the store was not readable.
+ */
+fun slockRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
+    runCatching {
+        val binding = SlockSharedKeyValueStoreProvider.create(
+            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+            storageName = "local preference"
+        )
+        KeyValueFontPreferenceStore(binding.store).readFontPreferenceSync()
+    }.getOrNull()?.also { stored ->
+        build.raft.app.SlockFontFaceState.apply(stored)
+    }
+
+/**
+ * Task #521 diagnostic: what the cold-start restore actually reads. Codex raised a competing
+ * hypothesis that the restore may be reading a default because the value is not reachable from
+ * this store/instance at all — in which case restoring earlier would fix nothing. One cold start
+ * with this line settles which hypothesis holds.
+ *
+ * Returns the RAW stored string (or null when absent/unreadable) plus the parsed face, so a device
+ * log distinguishes "key missing", "key present but unparsed", and "key present and parsed".
+ */
+fun slockReadStoredFontPreferenceForDiagnostics(): String =
+    runCatching {
+        val binding = SlockSharedKeyValueStoreProvider.create(
+            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+            storageName = "local preference"
+        )
+        val raw = binding.store.getString(KEY_FONT_PREFERENCE_STORAGE_KEY)
+        val parsed = FontPreference.fromStorageKey(raw)
+        // ShenKuo: a bare `raw=<absent>` merges "the key genuinely is not there" with "I asked the
+        // wrong place", which are the two cases this diagnostic exists to separate. Carry the store
+        // identity and the exact key with the value.
+        //
+        // storeId is the object identity, not the class: the class is invariant across two handles,
+        // so it cannot discriminate them. Read the comparison in ONE direction only (Ark): this
+        // tracks the WRAPPER object, not the underlying MMKV. Same storeId => definitely the same
+        // object => definitely the same MMKV. Different storeId => only that the wrappers differ;
+        // two wrappers over one MMKV also differ, so a different storeId alone does NOT prove two
+        // underlying stores. To claim that the values must diverge too (same key, one reads a value
+        // and the other reads absent).
+        "font_preference_coldstart store=${binding.store::class.simpleName}" +
+            " storeId=${slockStoreIdentity(binding.store)} scope=${binding.scope}" +
+            " namespace=${SlockLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
+            " raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
+    }.getOrElse { error ->
+        "font_preference_coldstart store=<unavailable> namespace=${SlockLocalPreferenceStore.KuiklyNamespace}" +
+            " key=$KEY_FONT_PREFERENCE_STORAGE_KEY raw=<unreadable> error=${error.message}"
+    }
+
+/**
+ * Stable per-instance identity for diagnostics: distinguishes two store handles that share a class.
+ * Repeated calls for the SAME object keep returning the SAME value, so two call sites can be
+ * compared within one process.
+ *
+ * **The comparison is sound in one direction only** — see the note at the call site: this is the
+ * wrapper's identity, not the underlying MMKV's.
+ */
+private val slockStoreIdentities = mutableListOf<Pair<Any, Int>>()
+
+internal fun slockStoreIdentity(store: Any): String {
+    // Identity comparison, not equals(): a store wrapper with value equality (or two equal-content
+    // handles) must still read as two distinct instances here, which is the whole point.
+    slockStoreIdentities.firstOrNull { (known, _) -> known === store }?.let { return it.second.toString() }
+    val next = slockStoreIdentities.size
+    slockStoreIdentities += store to next
+    return next.toString()
+}
+
+/** Storage key of the font face inside the `slockLocal` app-scope store. */
+internal const val KEY_FONT_PREFERENCE_STORAGE_KEY = "appearance:font_preference"
+
 fun SharedPreferenceStore.getBoolean(key: String, defaultValue: Boolean = false): Boolean =
     when (getString(key)) {
         "true" -> true
