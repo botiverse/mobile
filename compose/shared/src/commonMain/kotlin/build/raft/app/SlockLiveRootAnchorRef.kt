@@ -244,6 +244,13 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
     var origin: Offset by mutableStateOf(origin)
         internal set
 
+    /**
+     * False until the host has measured this page at least once. Before that, [origin] is the
+     * default zero and cannot be told apart from a page that really sits at the window's left edge.
+     */
+    var measured: Boolean by mutableStateOf(false)
+        private set
+
     var parentOrigin: SlockChildPageOriginState? = null
         internal set
 
@@ -253,6 +260,7 @@ internal class SlockChildPageOriginState(origin: Offset = Offset.Zero) {
 
     internal fun updateOrigin(next: Offset) {
         if (next != origin) origin = next
+        if (!measured) measured = true
     }
 
     internal fun linkParentOrigin(next: SlockChildPageOriginState?) {
