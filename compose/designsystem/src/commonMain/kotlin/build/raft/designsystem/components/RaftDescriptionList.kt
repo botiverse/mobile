@@ -155,9 +155,9 @@ fun RaftDescriptionValue(text: String?, modifier: Modifier = Modifier, mono: Boo
     val typography = RaftTheme.typography
     val colors = RaftTheme.colors
     if (text.isNullOrEmpty()) {
-        RaftText("—", modifier = modifier, style = typography.body, color = colors.foregroundHint)
+        RaftText("—", modifier = modifier, style = typography.callout, color = colors.foregroundHint)
     } else {
-        RaftText(text, modifier = modifier, style = if (mono) typography.monoMeta else typography.body, color = colors.foreground)
+        RaftText(text, modifier = modifier, style = if (mono) typography.monoMeta else typography.callout, color = colors.foreground)
     }
 }
 

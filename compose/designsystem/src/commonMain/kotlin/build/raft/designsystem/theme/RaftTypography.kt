@@ -49,46 +49,49 @@ fun rememberRaftFonts(): RaftFonts {
     }
 }
 
-/** Mobile content size (compose/shared `SlockTextSize`): body copy, messages, composer. */
-object RaftTextSize {
-    val Content = 14.sp
-    val ContentLineHeight = 20.sp
-
-    /** Single-line list rows keep the tighter line height buttons use. */
-    val ListItemLineHeight = 18.sp
-}
-
 /**
- * The raft-ui type scale (styles.css `--text-*`: size / line-height / weight / tracking)
- * plus the mobile roles from compose/shared `SlockType`.
- *
- * Mobile difference: [body] is the 14/20 content size (`SlockTextSize.Content`, raft
- * `text-callout`), not raft-ui's 16/24 `text-body`, which is [bodyLarge] here.
+ * The raft-ui type scale, 1:1 with styles.css `--text-*` (size / line-height / weight /
+ * tracking) and the Typography page of raft-design 0.8.0. Each style carries the token's
+ * default weight (the bold styles set 700, `text-caption` 500, `text-label` 600, the rest
+ * 400); pick another by purpose with `.copy(fontWeight = …)` per the page's "Weights by
+ * use": 500 menu items and description-list terms, 600 names in list rows, card titles,
+ * field labels, tabs and badges, 700 titles, senders, buttons, group headings and the
+ * selected tab, row or menu item.
  *
  * Every style centres the line box the way CSS half-leading does
- * ([LineHeightStyle.Alignment.Center], no trim), so a 16sp line box puts the glyphs
+ * ([LineHeightStyle.Alignment.Center], no trim), so a 24sp line box puts the glyphs
  * where the web puts them.
  */
 @Immutable
 data class RaftTypography(
+    /** `text-hero` 40/44 700, -0.03em: the service name on Login with Raft. */
     val hero: TextStyle,
+    /** `text-display` 34/40 700, -0.02em: the create-server title, large page titles. */
     val display: TextStyle,
+    /** `text-title` 22/28 700, -0.01em: sign-in and setup-step titles. */
     val title: TextStyle,
+    /** `text-headline` 17/22 700: top bar, panel, dialog and sheet titles. */
     val headline: TextStyle,
-    val bodyLarge: TextStyle,
-    val subhead: TextStyle,
+    /** `text-body` 16/24: message text; list and task titles at 600. */
     val body: TextStyle,
+    /** `text-subhead` 15/20: buttons (700), names, radio labels, dialog body text. */
+    val subhead: TextStyle,
+    /** `text-callout` 14/20: previews, menu items (500), banners, excerpts, list values. */
+    val callout: TextStyle,
+    /** `text-footnote` 13/18: group headings (700), field labels (600), 32dp buttons. */
     val footnote: TextStyle,
+    /** `text-caption` 12/16 500: subtitles, status chips, help text, badges. */
     val caption: TextStyle,
+    /** `text-label` 11/13 600: tab bar labels, labeled rail. */
     val label: TextStyle,
+    /** `text-mono-meta` 12/16 Space Mono: IDs, times, counts, shortcuts. */
     val monoMeta: TextStyle,
+    /** `text-mono-code` 13/20 Space Mono: code and commands. */
     val monoCode: TextStyle,
-    // Mobile roles (SlockType).
-    val pageTitle: TextStyle,
-    val sectionLabel: TextStyle,
-    val button: TextStyle,
-    val listItem: TextStyle,
-    val tabLabel: TextStyle,
+    /** `--field-*` 16/24 400: Input, Textarea, a field Select trigger and its options. */
+    val field: TextStyle,
+    /** `--card-title-*` 16/24 600: CardTitle. */
+    val cardTitle: TextStyle,
 ) {
     companion object {
         /** CSS half-leading: extra line height split above and below, nothing trimmed. */
@@ -109,19 +112,16 @@ data class RaftTypography(
                 display = sans(34, 40, FontWeight.Bold, (-0.02).em),
                 title = sans(22, 28, FontWeight.Bold, (-0.01).em),
                 headline = sans(17, 22, FontWeight.Bold),
-                bodyLarge = sans(16, 24, FontWeight.Normal),
+                body = sans(16, 24, FontWeight.Normal),
                 subhead = sans(15, 20, FontWeight.Normal),
-                body = sans(14, 20, FontWeight.Normal),
+                callout = sans(14, 20, FontWeight.Normal),
                 footnote = sans(13, 18, FontWeight.Normal),
                 caption = sans(12, 16, FontWeight.Medium),
                 label = sans(11, 13, FontWeight.SemiBold),
                 monoMeta = mono(12, 16),
                 monoCode = mono(13, 20),
-                pageTitle = sans(20, 24, FontWeight.SemiBold),
-                sectionLabel = sans(12, 16, FontWeight.SemiBold),
-                button = sans(14, 18, FontWeight.Medium),
-                listItem = sans(14, 18, FontWeight.Medium),
-                tabLabel = sans(10, 12, FontWeight.Bold),
+                field = sans(16, 24, FontWeight.Normal),
+                cardTitle = sans(16, 24, FontWeight.SemiBold),
             )
         }
 

@@ -229,7 +229,7 @@ fun RaftAvatar(
 }
 
 private fun raftAvatarInitialsStyle(size: RaftAvatarSize, typography: RaftTypography): TextStyle =
-    typography.body.copy(
+    typography.callout.copy(
         fontSize = size.initialsSize,
         // `leading-none`.
         lineHeight = size.initialsSize,

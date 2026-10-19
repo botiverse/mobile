@@ -35,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -240,7 +241,7 @@ private fun RaftSheetSurfaceImpl(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 RaftText(title, Modifier.semantics { heading() }, style = typography.headline, color = colors.foreground)
-                if (description != null) RaftText(description, style = typography.body, color = colors.foregroundMuted)
+                if (description != null) RaftText(description, style = typography.callout, color = colors.foregroundMuted)
             }
             if (content != null) {
                 Column(
@@ -306,7 +307,7 @@ fun RaftSheet(
                         .graphicsLayer { translationY = size.height * slide.value }
                         .pointerInput(Unit) { detectTapGestures { } }
                         .layout { measurable, constraints ->
-                            val placeable = measurable.measure(constraints.copy(maxHeight = (constraints.maxHeight * 0.82f).toInt()))
+                            val placeable = measurable.measure(raftSheetConstraints(constraints))
                             layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                         },
                 description = description,
@@ -329,4 +330,16 @@ internal fun Modifier.raftBleed(end: Dp = 0.dp, vertical: Dp = 0.dp): Modifier =
         layout((placeable.width - e).coerceAtLeast(0), (placeable.height - 2 * v).coerceAtLeast(0)) {
             placeable.place(0, -v)
         }
+    }
+
+/**
+ * A sheet's constraints: at most 82% of the window's height, but never below the
+ * incoming minimum (a caller's `heightIn(min = …)` on a short window) and unchanged when
+ * the height is unbounded.
+ */
+internal fun raftSheetConstraints(constraints: Constraints): Constraints =
+    if (!constraints.hasBoundedHeight) {
+        constraints
+    } else {
+        constraints.copy(maxHeight = (constraints.maxHeight * 0.82f).toInt().coerceAtLeast(constraints.minHeight))
     }

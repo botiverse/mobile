@@ -82,7 +82,8 @@ internal fun raftSelectTriggerLook(
  * after the 16dp chevron (inside the edge), 8dp gap. The [value] is `text-subhead`
  * semibold `foreground`; with no value the [placeholder] ("Select a role") is medium
  * `foreground-hint`. Inside a [RaftField] the text takes the field type (16/24) so it
- * lines up with the inputs. Pressed lays `fill-pressed` over it; keyboard focus rings it;
+ * lines up with the inputs (`font-field` 400 for value and placeholder; the list's options
+ * take the same type). Pressed lays `fill-pressed` over it; keyboard focus rings it;
  * [invalid] turns the edge `danger-strong`; disabled greys it. [leadingIcon] is 16dp.
  *
  * Screen readers hear a drop-down list named by the field's label (or [label]) with the
@@ -110,7 +111,7 @@ fun RaftSelectTrigger(
     val focused = enabled && raftIsFocused(source)
     val shape = RoundedCornerShape(RaftRadius.Control)
     val field = LocalRaftFieldState.current
-    val base = if (field.inField) RaftTheme.typography.bodyLarge else RaftTheme.typography.subhead
+    val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
     val shown = value ?: placeholder
     Row(
         modifier
@@ -143,7 +144,8 @@ fun RaftSelectTrigger(
         RaftText(
             shown,
             Modifier.weight(1f),
-            style = base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
+            // In a field the value and placeholder keep `font-field` (400), like an input's.
+            style = if (field.inField) base else base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
             color = look.ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -174,6 +176,7 @@ fun <T> RaftSelect(
     var triggerWidth by remember { mutableStateOf(0) }
     val density = LocalDensity.current
     val trigger = remember { FocusRequester() }
+    val inField = LocalRaftFieldState.current.inField
     Box(modifier) {
         RaftSelectTrigger(
             value = value?.let(optionLabel),
@@ -193,15 +196,17 @@ fun <T> RaftSelect(
             offset = 4.dp,
             returnFocusTo = trigger,
         ) {
-            options.forEach { option ->
-                RaftMenuItem(
-                    text = optionLabel(option),
-                    checked = option == value,
-                    onClick = {
-                        expanded = false
-                        onValueChange(option)
-                    },
-                )
+            CompositionLocalProvider(LocalRaftMenuFieldType provides inField) {
+                options.forEach { option ->
+                    RaftMenuItem(
+                        text = optionLabel(option),
+                        checked = option == value,
+                        onClick = {
+                            expanded = false
+                            onValueChange(option)
+                        },
+                    )
+                }
             }
         }
     }

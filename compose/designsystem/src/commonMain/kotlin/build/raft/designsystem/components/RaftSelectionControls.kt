@@ -34,9 +34,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -379,8 +381,7 @@ private fun RaftChoiceRow(
     val labelStyle = typography.subhead.copy(fontWeight = FontWeight.SemiBold)
     // Centre the 20dp control on the label's first line: (1lh - 20) / 2, which is 0 at the
     // normal size and grows with the font scale (the line height is in sp).
-    val lineHeight = labelStyle.lineHeight.takeIf { it.isSpecified } ?: labelStyle.fontSize
-    val controlTop: Dp = with(LocalDensity.current) { ((lineHeight.toDp() - RaftCheckSize) / 2).coerceAtLeast(0.dp) }
+    val controlTop: Dp = ((raftLineHeightDp(labelStyle.lineHeight, labelStyle.fontSize, LocalDensity.current) - RaftCheckSize) / 2).coerceAtLeast(0.dp)
     Row(
         modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -395,3 +396,18 @@ private fun RaftChoiceRow(
         }
     }
 }
+
+/**
+ * A text style's line height in dp: [lineHeight] in sp, or in em of [fontSize]; with no
+ * line height, the font size. Any unit it can't resolve (unspecified, or em of an em font
+ * size) falls back to [RaftCheckSize], which centres nothing (the control sits at the top).
+ */
+internal fun raftLineHeightDp(lineHeight: TextUnit, fontSize: TextUnit, density: Density): Dp =
+    with(density) {
+        when {
+            lineHeight.isSp -> lineHeight.toDp()
+            lineHeight.isEm && fontSize.isSp -> fontSize.toDp() * lineHeight.value
+            lineHeight.isUnspecified && fontSize.isSp -> fontSize.toDp()
+            else -> RaftCheckSize
+        }
+    }

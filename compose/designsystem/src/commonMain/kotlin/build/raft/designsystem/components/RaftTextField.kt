@@ -294,9 +294,9 @@ fun RaftTextareaCounter(count: Int, limit: Int, modifier: Modifier = Modifier, i
 /** The counter turns red past the limit (not at it) or inside an invalid field. */
 internal fun raftCounterAlarm(count: Int, limit: Int, invalid: Boolean): Boolean = count > limit || invalid
 
-/** `text-field font-field`: raft-ui `--field-*`, 16/24 regular ([RaftTypography.bodyLarge]). */
+/** `text-field font-field`: raft-ui `--field-*`, 16/24 regular ([RaftTypography.field]). */
 @Composable
-private fun raftFieldTextStyle(color: Color): TextStyle = RaftTheme.typography.bodyLarge.copy(color = color)
+private fun raftFieldTextStyle(color: Color): TextStyle = RaftTheme.typography.field.copy(color = color)
 
 /** The field box: focus ring outside, fill, and the 1.5dp border inside. */
 @Composable

@@ -1,8 +1,7 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -27,23 +26,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
@@ -52,6 +49,8 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiThemeColors
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 
 // Navigation selection (States > Selected: navigation): the selected tab, segment or
 // pressed toggle is the yellow active sticker (RaftStates.kt) in every one of these.
@@ -99,6 +98,9 @@ fun RaftTabs(
  * selected tab scrolls itself into view, and an edge with more tabs past it fades out
  * over 24dp. The padding scrolls with the tabs, so the selected sticker's die-cut edge
  * and the focus ring are never clipped.
+ *
+ * Only the strip's own horizontal scroll moves to show the selected tab: a scrolling
+ * page around the strip stays where it is.
  */
 @Composable
 fun RaftTabStrip(
@@ -108,16 +110,20 @@ fun RaftTabStrip(
 ) {
     val colors = RaftTheme.colors
     val scroll = rememberScrollState()
+    val strip = remember(scroll) { RaftTabStripScroll(scroll) }
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .raftEdgeFade(start = scroll.canScrollBackward, end = scroll.canScrollForward)
+                // Read in the draw phase: reaching an edge redraws, the modifiers stay.
+                .raftEdgeFade(colors.layerCanvas, start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
                 .horizontalScroll(scroll),
         ) {
-            CompositionLocalProvider(LocalRaftTabsScrolls provides true) {
+            CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
                 RaftTabs(
-                    Modifier.padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
+                    Modifier
+                        .onPlaced { strip.content = it }
+                        .padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
                     variant = variant,
                     content = content,
                 )
@@ -130,38 +136,46 @@ fun RaftTabStrip(
 /** How far a scrolling tab strip fades at an edge with more tabs past it. */
 private val RaftEdgeFadeWidth = 24.dp
 
-/** Fades the content out towards the [start] / [end] edge (CSS `mask-image` gradient). */
-private fun Modifier.raftEdgeFade(start: Boolean, end: Boolean): Modifier =
-    if (!start && !end) {
-        this
-    } else {
-        graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                val w = RaftEdgeFadeWidth.toPx().coerceAtMost(size.width / 2f)
-                val rtl = layoutDirection == LayoutDirection.Rtl
-                val left = if (rtl) end else start
-                val right = if (rtl) start else end
-                if (left) {
-                    drawRect(
-                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = w),
-                        size = Size(w, size.height),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
-                if (right) {
-                    drawRect(
-                        Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - w, endX = size.width),
-                        topLeft = Offset(size.width - w, 0f),
-                        size = Size(w, size.height),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
-            }
+/**
+ * Fades the content out towards the start / end edge while [start] / [end] say so (CSS
+ * `mask-image` gradient), by drawing a [fill] gradient over it: the strip is all [fill],
+ * so that looks the same as the mask, and with no offscreen layer nothing clips the
+ * focus ring that a tab draws outside the strip (an underline tab's ring runs 4dp above
+ * and below it). The draw step is always attached; only the fade's width changes (0 at
+ * an edge with nothing past it), read in the draw phase.
+ */
+private fun Modifier.raftEdgeFade(fill: Color, start: () -> Boolean, end: () -> Boolean): Modifier =
+    drawWithContent {
+        drawContent()
+        val full = RaftEdgeFadeWidth.toPx().coerceAtMost(size.width / 2f)
+        val rtl = layoutDirection == LayoutDirection.Rtl
+        val startWidth = if (start()) full else 0f
+        val endWidth = if (end()) full else 0f
+        val left = if (rtl) endWidth else startWidth
+        val right = if (rtl) startWidth else endWidth
+        if (left > 0f) {
+            drawRect(
+                Brush.horizontalGradient(listOf(fill, fill.copy(alpha = 0f)), startX = 0f, endX = left),
+                size = Size(left, size.height),
+            )
+        }
+        if (right > 0f) {
+            drawRect(
+                Brush.horizontalGradient(listOf(fill.copy(alpha = 0f), fill), startX = size.width - right, endX = size.width),
+                topLeft = Offset(size.width - right, 0f),
+                size = Size(right, size.height),
+            )
+        }
     }
 
-/** Set by [RaftTabStrip]: its tabs bring themselves into view when selected. */
-private val LocalRaftTabsScrolls = staticCompositionLocalOf { false }
+/** A [RaftTabStrip]'s scroll, for its tabs to scroll themselves into view. */
+private class RaftTabStripScroll(val scroll: ScrollState) {
+    /** The scrolled row of tabs (with its padding). */
+    var content: LayoutCoordinates? = null
+}
+
+/** Set by [RaftTabStrip]: its tabs scroll themselves into view when selected. */
+private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScroll?> { null }
 
 /**
  * One tab of [RaftTabs]: a `text-callout` semibold `foreground-muted` label (Title Case,
@@ -175,8 +189,8 @@ private val LocalRaftTabsScrolls = staticCompositionLocalOf { false }
  * - Keyboard focus draws the focus ring outside it. Disabled: `foreground-disabled`.
  * - A default tab draws 32dp but takes touches 44dp tall ([raftTouchTarget]). Heights are
  *   minimums: a large font scale grows the tab instead of clipping its label.
- * - In a [RaftTabStrip], a tab scrolls itself into view (with room for its ring) when it
- *   becomes selected.
+ * - In a [RaftTabStrip], a tab scrolls the strip (only the strip) to show itself, with
+ *   room for its ring, when it becomes selected.
  */
 @Composable
 fun RaftTab(
@@ -192,7 +206,8 @@ fun RaftTab(
     val variant = LocalRaftTabsVariant.current
     val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
     val target = if (variant == RaftTabsVariant.Default) Modifier.raftTouchTarget(enabled, source, onClick) else Modifier
-    val reveal = if (LocalRaftTabsScrolls.current) Modifier.raftBringIntoViewWhen(selected) else Modifier
+    val strip = LocalRaftTabStripScroll.current
+    val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip) else Modifier
     when (variant) {
         RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.then(reveal).then(target).then(select), icon = icon)
         RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.then(reveal).then(select), icon)
@@ -200,21 +215,61 @@ fun RaftTab(
 }
 
 /**
- * Scrolls the element into view when [active] turns true (and on first composition if it
- * is), with 8dp round it so a focus ring or die-cut edge outside it shows too.
+ * Scrolls [strip] so the element shows, with 8dp round it for a focus ring or die-cut
+ * edge, when [active] turns true: at once on first composition, animated after that.
+ * It moves the strip's own [ScrollState] and nothing else (a bring-into-view request
+ * would also scroll every scrolling parent, so the page would jump), and only when the
+ * selection changes, not when the tab's size does.
  */
 @Composable
-private fun Modifier.raftBringIntoViewWhen(active: Boolean): Modifier {
-    val requester = remember { BringIntoViewRequester() }
-    var size by remember { mutableStateOf(IntSize.Zero) }
+private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll): Modifier {
+    val tab = remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var revealed by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    LaunchedEffect(active, size) {
-        if (active && size != IntSize.Zero) {
-            val room = with(density) { 8.dp.toPx() }
-            requester.bringIntoView(Rect(-room, -room, size.width + room, size.height + room))
+    val layoutDirection = LocalLayoutDirection.current
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
+        val coordinates = snapshotFlow { tab.value }.filterNotNull().first()
+        val content = strip.content ?: return@LaunchedEffect
+        if (!coordinates.isAttached || !content.isAttached) return@LaunchedEffect
+        val left = content.localPositionOf(coordinates, Offset.Zero).x.toInt()
+        val right = left + coordinates.size.width
+        // The scroll value runs from the start edge: from the right in right-to-left.
+        val fromStart = if (layoutDirection == LayoutDirection.Rtl) content.size.width - right else left
+        val scroll = strip.scroll
+        val target =
+            raftRevealScrollTarget(
+                start = fromStart,
+                end = fromStart + coordinates.size.width,
+                room = with(density) { 8.dp.roundToPx() },
+                viewport = scroll.viewportSize,
+                current = scroll.value,
+                max = scroll.maxValue,
+            )
+        if (target != scroll.value) {
+            if (revealed) scroll.animateScrollTo(target) else scroll.scrollTo(target)
         }
+        revealed = true
     }
-    return bringIntoViewRequester(requester).onSizeChanged { size = it }
+    return onPlaced { tab.value = it }
+}
+
+/**
+ * The scroll value that shows the span [start]..[end] (px from the content's start) with
+ * [room] round it in a [viewport] scrolled to [current]: [current] if it already shows,
+ * else the least scroll that shows it (its start edge first if it is wider than the
+ * viewport), within 0..[max].
+ */
+internal fun raftRevealScrollTarget(start: Int, end: Int, room: Int, viewport: Int, current: Int, max: Int): Int {
+    val from = start - room
+    val to = end + room
+    val target =
+        when {
+            from < current || to - from > viewport -> from
+            to > current + viewport -> to - viewport
+            else -> current
+        }
+    return target.coerceIn(0, maxOf(0, max))
 }
 
 @Composable
@@ -252,7 +307,7 @@ private fun RaftUnderlineTab(
     ) {
         CompositionLocalProvider(LocalRaftContentColor provides ink) {
             if (icon != null) Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
-            RaftText(text, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = ink, maxLines = 1, softWrap = false)
+            RaftText(text, style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold), color = ink, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -292,7 +347,7 @@ internal fun RaftStickerItem(
             if (icon != null) Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
             RaftText(
                 text,
-                style = typography.body.copy(fontWeight = if (active && enabled) FontWeight.Bold else FontWeight.SemiBold),
+                style = typography.callout.copy(fontWeight = if (active && enabled) FontWeight.Bold else FontWeight.SemiBold),
                 color = look.ink,
                 maxLines = 1,
                 softWrap = false,
