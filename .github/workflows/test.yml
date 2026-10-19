@@ -406,8 +406,9 @@ jobs:
         working-directory: compose
         run: |
           HASH=$(git ls-files -s \
-            core/src shared/src androidApp/src \
+            core/src shared/src androidApp/src designsystem/src ui-cmp/src \
             core/build.gradle.kts shared/build.gradle.kts androidApp/build.gradle.kts \
+            designsystem/build.gradle.kts ui-cmp/build.gradle.kts \
             gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties \
             gradle.properties buildSrc \
             build.gradle.kts settings.gradle.kts \
@@ -421,6 +422,8 @@ jobs:
         with:
           path: |
             compose/core/build
+            compose/designsystem/build
+            compose/ui-cmp/build
             compose/shared/build
             compose/androidApp/build
           key: build-output-${{ steps.build-input-hash.outputs.hash }}
@@ -444,6 +447,8 @@ jobs:
         with:
           path: |
             compose/core/build
+            compose/designsystem/build
+            compose/ui-cmp/build
             compose/shared/build
             compose/androidApp/build
           key: build-output-${{ steps.build-input-hash.outputs.hash }}
@@ -495,7 +500,7 @@ jobs:
       # screenshot goldens in verify mode (compose/designsystem/README.md).
       - name: Run core + shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :core:testDebugUnitTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :core:testDebugUnitTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :ui-cmp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
 
       - name: Upload design system screenshot diffs
         if: failure()
@@ -545,6 +550,8 @@ jobs:
           path: |
             compose/core/build/reports/tests/testDebugUnitTest/
             compose/core/build/test-results/testDebugUnitTest/
+            compose/ui-cmp/build/reports/tests/testDebugUnitTest/
+            compose/ui-cmp/build/test-results/testDebugUnitTest/
             compose/shared/build/reports/tests/testDebugUnitTest/
             compose/shared/build/test-results/testDebugUnitTest/
             compose/androidApp/build/reports/tests/testDebugUnitTest/
@@ -947,6 +954,7 @@ jobs:
             :shared:compileKotlinIosX64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
             :designsystem:compileKotlinIosSimulatorArm64 \
+            :ui-cmp:compileKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain \
             --stacktrace

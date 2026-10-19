@@ -27,6 +27,8 @@ DEFAULT_ROOTS = (
     Path("compose/core/src/commonMain/kotlin"),
     Path("compose/core/src/androidMain/kotlin"),
     Path("compose/core/src/iosMain/kotlin"),
+    Path("compose/ui-cmp/src/commonMain/kotlin"),
+    Path("compose/ui-cmp/src/iosMain/kotlin"),
     Path("compose/shared/src/commonMain/kotlin"),
     Path("compose/shared/src/androidMain/kotlin"),
     Path("compose/shared/src/iosMain/kotlin"),
