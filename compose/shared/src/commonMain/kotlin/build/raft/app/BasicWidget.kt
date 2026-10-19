@@ -1552,7 +1552,7 @@ internal fun Modifier.raftImeEnterAction(
         when (event.type) {
             KeyEventType.KeyDown -> true
             KeyEventType.KeyUp -> {
-                onSend(RaftSendKeyboardActionScope)
+                onSend(RaftHardwareEnterKeyboardActionScope)
                 true
             }
             else -> false
@@ -1560,7 +1560,13 @@ internal fun Modifier.raftImeEnterAction(
     }
 }
 
-private object RaftSendKeyboardActionScope : KeyboardActionScope {
+/**
+ * Receiver of the `onSend` call [raftImeEnterAction] makes for a hardware Enter. Callers compare
+ * against it to tell a hardware Enter (which must not send while the IME is composing: Enter
+ * commits the conversion) from the soft keyboard's Send key (which always sends, committing any
+ * open composition).
+ */
+internal object RaftHardwareEnterKeyboardActionScope : KeyboardActionScope {
     override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
 }
 
