@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.coil3.rememberAsyncImageBitmap
 import com.tencent.kuikly.compose.extension.RefFunc
@@ -188,6 +189,14 @@ internal fun SlockImagePreviewRenderSlot(
     }
 }
 
+private fun AsyncImagePainter.State.slockImagePreviewDiagnosticsPhase(): String =
+    when (this) {
+        is AsyncImagePainter.State.Empty -> "empty"
+        is AsyncImagePainter.State.Loading -> "loading"
+        is AsyncImagePainter.State.Success -> "success"
+        is AsyncImagePainter.State.Error -> "error"
+    }
+
 internal fun slockImagePreviewLoadingPresentation(
     activeSource: String?,
     fallbackSource: String?,
@@ -289,6 +298,19 @@ internal fun SlockAspectFitImagePreviewSurface(
                 lastPresentableSource = departed
             }
         }
+    }
+    // task #402: image previews never carried painter telemetry, so the 9ea07421 "flash white then
+    // reappear" report couldn't be attributed. Mirror the avatar line shape: hashed source, model
+    // kind, painter phase, and whether an underlay frame was pinned while the new source loaded.
+    LaunchedEffect(activeSource, imageState, lastSucceededSource, lastPresentableSource) {
+        slockLogInfo(
+            "SlockImagePreview",
+            "image_preview_painter " +
+                "source=${activeSource.slockAvatarDiagnosticsHash()} " +
+                "model=${if (activeSource != null && parseSlockAvatarMountedRenderModel(activeSource.orEmpty()) != null) "managed" else "url"} " +
+                "painter=${imageState.slockImagePreviewDiagnosticsPhase()} " +
+                "underlay=${if (lastSucceededSource != null || lastPresentableSource != null) "yes" else "none"}"
+        )
     }
     Box(
         modifier = modifier
