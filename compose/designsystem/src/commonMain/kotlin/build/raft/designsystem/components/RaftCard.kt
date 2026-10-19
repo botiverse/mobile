@@ -99,9 +99,9 @@ internal fun raftCardLook(variant: RaftCardVariant, colors: RaftUiThemeColors): 
 private fun raftCardTitleStyle(variant: RaftCardVariant, typography: RaftTypography): TextStyle =
     when (variant) {
         // `text-callout font-semibold`: a field label, so it can't outrank the label above.
-        RaftCardVariant.Option -> typography.body.copy(fontWeight = FontWeight.SemiBold)
+        RaftCardVariant.Option -> typography.callout.copy(fontWeight = FontWeight.SemiBold)
         // `--card-title-*`: 16/24 600.
-        else -> typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+        else -> typography.cardTitle
     }
 
 /**
@@ -258,7 +258,7 @@ private fun RaftCardHeader(
             if (description != null) {
                 RaftText(
                     description,
-                    style = if (variant == RaftCardVariant.Option) typography.footnote else typography.body,
+                    style = if (variant == RaftCardVariant.Option) typography.footnote else typography.callout,
                     color = colors.foregroundMuted,
                 )
             }

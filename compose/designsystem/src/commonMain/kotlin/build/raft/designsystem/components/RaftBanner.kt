@@ -112,7 +112,7 @@ fun RaftBanner(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val metrics = raftBannerMetrics(size)
-    val text = if (size == RaftBannerSize.Sm) typography.footnote else typography.body
+    val text = if (size == RaftBannerSize.Sm) typography.footnote else typography.callout
     val shape = RoundedCornerShape(RaftRadius.Container)
     val glyph = status.glyph.takeIf { showIcon }
     Row(
@@ -195,7 +195,7 @@ fun RaftPanelNotice(
         RaftText(
             message,
             modifier = Modifier.weight(1f),
-            style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
             color = colors.foreground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

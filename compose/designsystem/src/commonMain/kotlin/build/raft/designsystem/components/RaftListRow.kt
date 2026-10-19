@@ -217,7 +217,7 @@ fun RaftListRow(
                     RaftText(
                         title,
                         modifier = Modifier.weight(1f),
-                        style = typography.bodyLarge.copy(fontWeight = inks.titleWeight),
+                        style = typography.body.copy(fontWeight = inks.titleWeight),
                         color = inks.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -239,7 +239,7 @@ fun RaftListRow(
                             RaftText(
                                 description,
                                 modifier = Modifier.weight(1f),
-                                style = typography.body,
+                                style = typography.callout,
                                 color = inks.ink2,
                                 maxLines = if (wrapDescription) Int.MAX_VALUE else 1,
                                 overflow = TextOverflow.Ellipsis,

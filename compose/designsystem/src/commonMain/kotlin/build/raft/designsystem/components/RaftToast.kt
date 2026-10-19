@@ -99,13 +99,13 @@ fun RaftToast(
             Column(if (hasAction) Modifier.weight(1f, fill = false) else Modifier) {
                 RaftText(
                     title,
-                    style = typography.body,
+                    style = typography.callout,
                     color = look.ink,
                     maxLines = if (description == null) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = if (titleOnly) TextAlign.Center else null,
                 )
-                if (description != null) RaftText(description, style = typography.body, color = look.muted)
+                if (description != null) RaftText(description, style = typography.callout, color = look.muted)
             }
             if (hasAction) {
                 val source = remember { MutableInteractionSource() }
@@ -115,7 +115,7 @@ fun RaftToast(
                     Modifier
                         .raftTouchTarget(enabled = true, interactionSource = source, onClick = onAction!!)
                         .clickable(source, indication = null, role = Role.Button, onClick = onAction),
-                    style = typography.body.copy(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline),
+                    style = typography.callout.copy(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline),
                     color = look.ink,
                     maxLines = 1,
                 )

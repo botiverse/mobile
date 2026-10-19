@@ -129,6 +129,9 @@ fun RaftMenuSurface(
     }
 }
 
+/** Set by a [RaftSelect] inside a [RaftField]: its options take the field type (16/24). */
+internal val LocalRaftMenuFieldType = staticCompositionLocalOf { false }
+
 /**
  * One row of a menu or a select list: 36dp minimum, control radius, 10dp padding, 10dp
  * gap, `text-callout` medium `foreground` (Title Case: "Mark as Read").
@@ -198,7 +201,14 @@ fun RaftMenuItem(
         RaftText(
             text,
             Modifier.weight(1f),
-            style = RaftTheme.typography.body.copy(fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium),
+            // A field Select's options share the field type (select.tsx `chrome: field`:
+            // `text-field font-field` on the item text, so the chosen one stays 400).
+            style =
+                if (LocalRaftMenuFieldType.current) {
+                    RaftTheme.typography.field
+                } else {
+                    RaftTheme.typography.callout.copy(fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium)
+                },
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -257,7 +267,7 @@ fun RaftMenuSearchField(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val style = RaftTheme.typography.bodyLarge.copy(color = colors.foreground)
+    val style = RaftTheme.typography.field.copy(color = colors.foreground)
     Column(modifier.fillMaxWidth()) {
         BasicTextField(
             value = value,

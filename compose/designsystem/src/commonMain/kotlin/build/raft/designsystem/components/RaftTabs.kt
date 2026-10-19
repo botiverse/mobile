@@ -307,7 +307,7 @@ private fun RaftUnderlineTab(
     ) {
         CompositionLocalProvider(LocalRaftContentColor provides ink) {
             if (icon != null) Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
-            RaftText(text, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = ink, maxLines = 1, softWrap = false)
+            RaftText(text, style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold), color = ink, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -347,7 +347,7 @@ internal fun RaftStickerItem(
             if (icon != null) Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
             RaftText(
                 text,
-                style = typography.body.copy(fontWeight = if (active && enabled) FontWeight.Bold else FontWeight.SemiBold),
+                style = typography.callout.copy(fontWeight = if (active && enabled) FontWeight.Bold else FontWeight.SemiBold),
                 color = look.ink,
                 maxLines = 1,
                 softWrap = false,

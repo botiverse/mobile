@@ -33,7 +33,7 @@ Sources of truth:
 | --- | --- | --- |
 | Colours | `tokens/RaftUiColorTokens.g.kt` | Generated. `RaftUiPalette` (mode-invariant) and `RaftUiThemeColors.RaftLight` / `.RaftDark` |
 | Radii, strokes, spacing, sizes, elevation | `tokens/RaftDimensions.kt` | Hand-written, ported from compose/shared `SlockDesignTokens.kt` |
-| Type scale | `theme/RaftTypography.kt` | raft-ui `--text-*` plus the mobile roles from `SlockType` |
+| Type scale | `theme/RaftTypography.kt` | raft-ui `--text-*` and `--field-*` / `--card-title-*`, 1:1 with the Typography page (see Typography below) |
 
 The colours come from the same generator and vendored CSS as the Kuikly tokens in
 compose/shared, so both stay in lockstep:
@@ -45,6 +45,33 @@ python3 tools/design-tokens/gen_tokens.py --self-test
 ```
 
 See `tools/design-tokens/README.md` for bumping raft-ui.
+
+### Typography
+
+`RaftTypography` is raft-design's type scale and nothing else: one style per token, with
+the size, line height, tracking and default weight of raft-ui 0.8.0 `styles.css` (the
+[Typography](https://raft-design.botiverse.build/foundations/typography.md) page). Message
+text is `body`, 16/24, as on the web; there are no mobile-only roles.
+
+| Style | Token | Size / line | Weight | Tracking | Use for |
+| --- | --- | --- | --- | --- | --- |
+| `hero` | `text-hero` | 40 / 44 | 700 | -0.03em | Service name on Login with Raft |
+| `display` | `text-display` | 34 / 40 | 700 | -0.02em | Create-server title, large page titles |
+| `title` | `text-title` | 22 / 28 | 700 | -0.01em | Sign-in and setup-step titles |
+| `headline` | `text-headline` | 17 / 22 | 700 | 0 | Top bar, panel, dialog and sheet titles |
+| `body` | `text-body` | 16 / 24 | 400 | 0 | Message text; list and task titles at 600; xl buttons at 700 |
+| `subhead` | `text-subhead` | 15 / 20 | 400 | 0 | Buttons (44dp) at 700, names, radio labels, dialog descriptions |
+| `callout` | `text-callout` | 14 / 20 | 400 | 0 | Previews, menu items (500, selected 700), banners, toasts, tabs (600, selected 700), description-list values |
+| `footnote` | `text-footnote` | 13 / 18 | 400 | 0 | Field labels (600), description-list terms (500), group headings (700), 32dp buttons (700) |
+| `caption` | `text-caption` | 12 / 16 | 500 | 0 | Subtitles, help text, badges (600, solid 700), menu group labels (700) |
+| `label` | `text-label` | 11 / 13 | 600 | 0 | Tab bar and labeled-rail labels |
+| `monoMeta` | `text-mono-meta` | 12 / 16 | 400 (Space Mono) | 0 | IDs, times, counts, shortcuts |
+| `monoCode` | `text-mono-code` | 13 / 20 | 400 (Space Mono) | 0 | Code and commands |
+| `field` | `--field-*` | 16 / 24 | 400 | 0 | Input, textarea, menu search row, a field Select's trigger and options |
+| `cardTitle` | `--card-title-*` | 16 / 24 | 600 | 0 | Card titles |
+
+Pick other weights by purpose with `.copy(fontWeight = ...)` (page "Weights by use").
+`RaftText` defaults to `body`.
 
 ## Theme
 
@@ -177,11 +204,12 @@ plan); `RaftRadioRow` / `RaftCheckboxRow` are the plain list of choices inside a
 or a dialog (reset-agent options). Pick one per set; don't mix them.
 
 **Field type.** Inputs, input groups, textareas and the menu's search row use raft-ui
-`--field-*` (16/24 regular, `bodyLarge`). That is not a deviation: the design system's
+`--field-*` (16/24 regular, `RaftTypography.field`). That is not a deviation: the design system's
 Typography page sets field text at 16px because iOS zooms into inputs under 16px. The
-15/20 (`text-subhead`) of the page hand-off applies to picker triggers and their values,
-which keep it, except a select trigger inside a `RaftField`, which takes 16/24 to line up
-with the inputs beside it.
+15/20 (`text-subhead`) of the page hand-off applies to select triggers and their values,
+which keep it, except a select inside a `RaftField` (select.tsx `chrome: field`): its
+trigger and its options take the field type, 16/24 at 400, to line up with the inputs
+beside it, so a value doesn't change size when the list opens.
 
 **Large text.** Control heights are minimums (`heightIn`): at a 200% font scale the input,
 select trigger, tabs, picker trigger and choice rows grow instead of clipping
@@ -232,17 +260,20 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - No change to `foundation.css`, `tokens.json`, `styles.css`, `fonts.css`, or to the
   Badge, Separator and Spinner sources. The generated colours and the three components
   are the same in both versions.
-- Docs only: Typography adds "Why message text is 16px" (see Body size below); Alignment
+- Docs only: Typography adds "Why message text is 16px" (the module follows it: `body` is 16/24); Alignment
   adds "A control and its label" (centre a checkbox, radio or switch on the first line of
   its label; the choice rows do); Spacing gives the hover toolbar 28px buttons; the
   rest renames "workspace" to "server" in copy.
 
 ## Differences from raft-ui and its docs
 
-- **Body size.** Mobile content text is 14/20 (`SlockTextSize.Content`, raft `text-callout`,
-  shipped in 1.14.1 per artin 2026-10-18), so `RaftTypography.body` is 14/20; raft-ui
-  `text-body` (16/24) is `bodyLarge`. The 0.8.0 Typography doc argues for 16px message
-  text and calls 14/20 the Small setting; this is a product decision for the mobile DRI.
+- **Typography page vs component recipes.** Where the Typography page's "Sizes by use"
+  and a raft-ui component recipe disagree, the recipe wins for that component: menu and
+  select group labels are `text-caption` bold (dropdown-menu.tsx, select.tsx), not the
+  page's footnote group heading; the sheet description is `text-callout` (drawer.recipe.ts),
+  where the page gives dialog descriptions `text-subhead` (the centred dialog keeps
+  subhead); an option card's title is `text-callout` semibold (card.recipe.ts), not the
+  16/24 card title; tabs are `text-callout` (tabs.tsx; the page sets only their weight).
 - **Disabled solid badge keeps its die-cut edge in dark.** badge.tsx (0.7.1 and 0.8.0) removes only
   the inset ink edge when disabled and keeps `ring-sticker-edge`; the Dark mode doc says
   a disabled button is no longer a sticker. The module follows the component source.

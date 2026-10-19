@@ -241,7 +241,7 @@ private fun RaftSheetSurfaceImpl(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 RaftText(title, Modifier.semantics { heading() }, style = typography.headline, color = colors.foreground)
-                if (description != null) RaftText(description, style = typography.body, color = colors.foregroundMuted)
+                if (description != null) RaftText(description, style = typography.callout, color = colors.foregroundMuted)
             }
             if (content != null) {
                 Column(

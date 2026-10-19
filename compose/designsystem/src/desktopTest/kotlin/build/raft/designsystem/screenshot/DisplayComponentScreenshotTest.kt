@@ -654,7 +654,7 @@ class DisplayComponentScreenshotTest {
         ) {
             RaftText(
                 label,
-                style = RaftTheme.typography.body.copy(
+                style = RaftTheme.typography.callout.copy(
                     fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold,
                 ),
                 color = look.ink,

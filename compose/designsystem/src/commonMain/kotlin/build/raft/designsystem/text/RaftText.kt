@@ -18,7 +18,7 @@ import build.raft.designsystem.theme.RaftTheme
  * no `LocalTextStyle` / `LocalContentColor` from a Material theme can shift its colour
  * or line height. Colour resolves as [color], else `style.color`, else
  * [LocalRaftContentColor] (CSS `currentColor`); [style] defaults to [RaftTheme]'s
- * `body` (14/20).
+ * `body` (`text-body`, 16/24).
  */
 @Composable
 fun RaftText(

@@ -175,13 +175,12 @@ internal fun raftButtonMetrics(size: RaftButtonSize, variant: RaftButtonVariant)
 
 private fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant, typography: RaftTypography): TextStyle {
     // raft `text-footnote` (md), `text-subhead` (lg, and md on the frame), `text-body` (xl).
-    // xl keeps raft's 16/24 (`bodyLarge`): it is a control label, not mobile body copy.
     val base =
         when {
             size == RaftButtonSize.Md && variant == RaftButtonVariant.OnFrame -> typography.subhead
             size == RaftButtonSize.Md -> typography.footnote
             size == RaftButtonSize.Lg -> typography.subhead
-            else -> typography.bodyLarge
+            else -> typography.body
         }
     return base.copy(fontWeight = FontWeight.Bold)
 }
