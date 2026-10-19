@@ -267,7 +267,7 @@ private fun SlockRaftSelectionPopover(
                     value = search,
                     onValueChange = {},
                     placeholder = searchPlaceholder,
-                    placeholderColor = SlockColor.ForegroundPlaceholder,
+                    placeholderColor = SlockColor.ForegroundHint,
                     autoFocus = false,
                     maxLines = 1,
                     textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
@@ -316,7 +316,7 @@ private fun SlockRaftSelectionOptionRow(
                     SlockLucideIcon(
                         it,
                         modifier = Modifier.size(16.dp),
-                        color = slockArgbHex(if (rowEnabled) SlockColor.ForegroundIcon else SlockColor.ForegroundDisabled)
+                        color = slockArgbHex(if (rowEnabled) SlockColor.TextMuted else SlockColor.ForegroundDisabled)
                     )
                 }
             }
@@ -343,7 +343,7 @@ private fun SlockRaftSelectionOptionRow(
     }
 }
 
-/** raft-ui `Separator` (1dp `--line-muted`). [inset] mirrors a menu's `-mx-1.5 my-1.5`. */
+/** raft-ui `Separator` (1dp `--line-hairline`). [inset] mirrors a menu's `-mx-1.5 my-1.5`. */
 @Composable
 internal fun SlockRaftSeparator(modifier: Modifier = Modifier, verticalSpacing: Dp = 0.dp) {
     Box(
@@ -352,7 +352,7 @@ internal fun SlockRaftSeparator(modifier: Modifier = Modifier, verticalSpacing: 
                 .padding(vertical = verticalSpacing)
                 .fillMaxWidth()
                 .height(SlockStroke.Thin)
-                .background(SlockColor.LineMuted)
+                .background(SlockColor.BorderHairline)
     )
 }
 
@@ -429,7 +429,7 @@ internal fun SlockMenuItemRow(
                     SlockLucideIcon(
                         it,
                         modifier = Modifier.size(16.dp),
-                        color = slockArgbHex(if (enabled) SlockColor.ForegroundIcon else SlockColor.ForegroundDisabled)
+                        color = slockArgbHex(if (enabled) SlockColor.TextMuted else SlockColor.ForegroundDisabled)
                     )
                 }
                 Text(
@@ -559,7 +559,7 @@ internal fun SlockSelectTrigger(
  * raft-ui 0.6.0 `SelectTrigger` (outline button chrome on the field axis): 44dp, control
  * radius, 1.5dp `--line-strong` edge on the card layer, 14/12dp side padding, subhead
  * 15/20 semibold value (placeholder medium hint ink), 16dp hint chevron. Disabled is the
- * opaque `--fill-muted` / `--line-muted` pair. No shadow.
+ * opaque `--fill-muted` / `--line-hairline` pair. No shadow.
  */
 @Composable
 internal fun SlockRaftSelectTrigger(
@@ -584,7 +584,7 @@ internal fun SlockRaftSelectTrigger(
                 .fillMaxWidth()
                 .height(height)
                 .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
-                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.LineMuted, shape)
+                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.BorderHairline, shape)
                 .clickable(enabled = enabled) { onClick() }
                 .padding(start = 14.dp, end = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

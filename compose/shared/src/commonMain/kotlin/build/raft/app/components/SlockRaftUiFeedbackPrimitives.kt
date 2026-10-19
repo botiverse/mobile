@@ -74,11 +74,11 @@ internal fun SlockAttentionDot(
     color: Color = SlockColor.AccentPink
 ) {
     if (slockRaftActive()) {
-        // raft attention pixel: 9px pink (`bg-accent`) square, 2px radius, 1.5px sticker-ink
+        // raft attention pixel: 9px pink (`bg-attention`) square, 2px radius, 1.5px sticker-ink
         // edge; the legacy 10dp default lands on the 9px DS pixel, smaller sizes keep a 1px edge.
         val pixel = if (size == 10.dp) SlockRaftMetrics.StatusSize else size
         SlockStatusIndicator(
-            color = if (color == SlockColor.AccentPink) SlockColor.Accent else color,
+            color = if (color == SlockColor.AccentPink) SlockColor.Attention else color,
             modifier = modifier,
             size = pixel,
             shape = SlockStatusIndicatorShape.Square,

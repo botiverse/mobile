@@ -581,7 +581,7 @@ private fun SlockRaftActionSheetRow(
                 SlockLucideIcon(
                     model.icon,
                     modifier = Modifier.size(18.dp),
-                    color = slockArgbHex(if (model.destructive) SlockColor.DangerStrong else SlockColor.ForegroundIcon)
+                    color = slockArgbHex(if (model.destructive) SlockColor.DangerStrong else SlockColor.TextMuted)
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -803,12 +803,12 @@ private fun SlockBrutalInputFieldFrame(
     if (theme.isAmbient) {
         // raft-ui Input / Textarea: control radius 8, 1.5dp `--line-strong` (`--line-field`)
         // edge on the card layer, no shadow. Invalid swaps the edge to `--danger-strong`
-        // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-muted` pair.
+        // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-hairline` pair.
         // Read-only fields keep the resting look, like web `<Input readOnly>`.
         val shape = RoundedCornerShape(SlockRadius.Control)
         val raftBorderColor =
             when {
-                !enabled -> SlockColor.LineMuted
+                !enabled -> SlockColor.BorderHairline
                 borderColor == SlockColor.BorderBlack -> SlockColor.LineField
                 borderColor == SlockColor.AccentRed -> SlockColor.DangerStrong
                 else -> borderColor
@@ -932,7 +932,7 @@ internal fun SlockBrutalInputField(
             horizontalPadding
         }
     val resolvedPlaceholderColor =
-        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor
+        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundHint else placeholderColor
     SlockBrutalInputFieldFrame(
         modifier = modifier,
         enabled = enabled,
@@ -1071,7 +1071,7 @@ internal fun SlockBrutalInputField(
             horizontalPadding
         }
     val resolvedPlaceholderColor =
-        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor
+        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundHint else placeholderColor
     SlockBrutalInputFieldFrame(
         modifier = modifier,
         enabled = enabled,
@@ -1246,9 +1246,9 @@ internal fun SlockBrutalReadOnlyValueField(
     val raft = slockRaftActive()
     val shape = if (raft) RoundedCornerShape(SlockRadius.Control) else RectangleShape
     // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
-    // 1.5dp `--line-muted` edge, muted ink) at the 44dp field height.
+    // 1.5dp `--line-hairline` edge, muted ink) at the 44dp field height.
     val resolvedBackground = if (raft && backgroundColor == SlockReadOnlyFieldLegacyBackground) SlockColor.FillMuted else backgroundColor
-    val resolvedBorder = if (raft && borderColor == SlockColor.BorderBlack.copy(alpha = 0.30f)) SlockColor.LineMuted else borderColor
+    val resolvedBorder = if (raft && borderColor == SlockColor.BorderBlack.copy(alpha = 0.30f)) SlockColor.BorderHairline else borderColor
     val resolvedTextColor = if (raft && textColor == SlockColor.TextMutedGray) SlockColor.TextMuted else textColor
     Box(
         modifier =
@@ -1297,7 +1297,7 @@ internal fun SlockBrutalSearchField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
                 placeholder = placeholder,
-                placeholderColor = SlockColor.ForegroundPlaceholder,
+                placeholderColor = SlockColor.ForegroundHint,
                 autoFocus = false,
                 onFocus = {
                     focused = true
@@ -1402,7 +1402,7 @@ internal fun SlockBrutalSearchField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
                 placeholder = placeholder,
-                placeholderColor = SlockColor.ForegroundPlaceholder,
+                placeholderColor = SlockColor.ForegroundHint,
                 autoFocus = false,
                 onFocus = {
                     focused = true
@@ -1496,7 +1496,7 @@ private fun slockRaftSearchTextStyle(textStyle: TextStyle, enabled: Boolean): Te
 /**
  * raft-ui InputGroup with an inline-start search addon: 44dp, control radius, 1.5dp
  * `--line-strong` edge on the card layer, no shadow; the 18dp addon icon and the clear
- * affordance use the hint ink. Disabled is the opaque `--fill-muted` / `--line-muted` pair.
+ * affordance use the hint ink. Disabled is the opaque `--fill-muted` / `--line-hairline` pair.
  */
 @Composable
 private fun SlockRaftSearchFieldFrame(
@@ -1515,7 +1515,7 @@ private fun SlockRaftSearchFieldFrame(
                 .fillMaxWidth()
                 .height(SlockRaftMetrics.FieldHeight)
                 .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
-                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.LineMuted, shape)
+                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.BorderHairline, shape)
                 .padding(horizontal = SlockRaftMetrics.FieldPaddingHorizontal),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1584,7 +1584,7 @@ internal fun SlockBrutalActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
-    // react bg-brutal-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
+    // react bg-palette-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
     disabledBackgroundColor: Color = Color(0xFFE6E3E0),
     // Same react rule as the fill above: .btn-brutal-sm:disabled is the WHOLE
     // element at opacity-40, so every part composites over white - border black
@@ -1698,7 +1698,7 @@ private val SlockBrutalActionButtonLegacyMinWidth = 82.dp
  *    button with a 1.5dp `--line-strong` edge, or ghost;
  *  - press lays `--sticker-pressed` / `--fill-pressed` over the fill (no offset, no
  *    shadow: controls never cast one);
- *  - disabled is opaque: `--fill-muted` fill, `--line-muted` edge, `--foreground-disabled` ink.
+ *  - disabled is opaque: `--fill-muted` fill, `--line-hairline` edge, `--foreground-disabled` ink.
  * A [minHeight] below 38dp picks `md`, up to 52dp `lg`, beyond that `xl`.
  */
 @Composable
@@ -1763,7 +1763,7 @@ private fun SlockRaftActionButton(
             pressed -> slockRaftOverlay(chrome.pressedOverlay, chrome.fill)
             else -> chrome.fill
         }
-    val border = if (enabled) chrome.border else SlockColor.LineMuted
+    val border = if (enabled) chrome.border else SlockColor.BorderHairline
     val content = if (enabled) chrome.content else SlockColor.ForegroundDisabled
     val shape = RoundedCornerShape(SlockRadius.Control)
     SlockAnchorButton(
@@ -1913,7 +1913,7 @@ private fun SegmentedControlItem(
 /**
  * One raft-ui segmented / tab item (`segmented-control` item, `tabs` default tab): 32dp,
  * control radius, 1.5dp edge that is transparent at rest and sticker ink when checked,
- * checked fill = the yellow `--primary` sticker with bold ink type, pressed = fill wash.
+ * checked fill = the yellow `--brand` sticker with bold ink type, pressed = fill wash.
  */
 @Composable
 internal fun SlockRaftSegmentedItem(
@@ -1928,7 +1928,7 @@ internal fun SlockRaftSegmentedItem(
     val shape = RoundedCornerShape(SlockRadius.Control)
     val fill =
         when {
-            selected -> if (pressed) slockRaftOverlay(SlockColor.StickerPressed, SlockColor.Primary) else SlockColor.Primary
+            selected -> if (pressed) slockRaftOverlay(SlockColor.StickerPressed, SlockColor.Brand) else SlockColor.Brand
             pressed && enabled -> SlockColor.FillPressed
             else -> Color.Transparent
         }
@@ -2362,7 +2362,7 @@ private fun SlockRaftIconButton(
         when {
             chrome.kind == SlockRaftButtonKind.Ghost -> Color.Transparent
             enabled -> chrome.border
-            else -> SlockColor.LineMuted
+            else -> SlockColor.BorderHairline
         }
     val resolvedIconColor =
         when {

@@ -21,7 +21,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const dump = JSON.parse(execFileSync("python3", [join(here, "gen_tokens.py"), "--dump-json"], { encoding: "utf8", maxBuffer: 1 << 26 }));
-// raft-ui 0.6.0: one "raft" family; the root carries `.light` or `.dark`.
+// raft-ui 0.7.1: one "raft" family; the root carries `.light` or `.dark`.
 const roots = {
   raftLight: { cls: "light" },
   raftDark: { cls: "dark" },

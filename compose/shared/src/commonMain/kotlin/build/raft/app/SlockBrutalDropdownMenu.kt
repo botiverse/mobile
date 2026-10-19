@@ -321,7 +321,7 @@ private fun SlockRaftDropdownMenuSurface(
     }
 }
 
-/** raft-ui menu separator: a full-bleed 1dp `--line-muted` hairline with `my-1.5`. */
+/** raft-ui menu separator: a full-bleed 1dp `--line-hairline` hairline with `my-1.5`. */
 @Composable
 private fun SlockRaftMenuSeparator() {
     Box(
@@ -329,7 +329,7 @@ private fun SlockRaftMenuSeparator() {
             .padding(vertical = SlockRaftMetrics.MenuSeparatorInset)
             .fillMaxWidth()
             .height(SlockStroke.Thin)
-            .background(SlockColor.LineMuted)
+            .background(SlockColor.BorderHairline)
     )
 }
 
@@ -340,7 +340,7 @@ private fun SlockBrutalDropdownMenuRow(
     iconSize: Dp = SlockRaftMetrics.MenuIconSize,
     onClick: () -> Unit
 ) {
-    // Press feedback mirrors web MenuItem `hover:bg-soft-signal/30` (artin,
+    // Press feedback mirrors web MenuItem `hover:bg-palette-yellow/30` (artin,
     // #proj-uiux task #7): the row washes brand yellow while the finger is
     // down. Destructive rows keep their red wash.
     var pressed by remember(item.id) { mutableStateOf(false) }
@@ -390,7 +390,7 @@ private fun SlockBrutalDropdownMenuRow(
         // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
         SlockColor.AccentRed.copy(alpha = 0.08f)
     } else if (pressed && item.enabled) {
-        SlockColor.SoftSignal.copy(alpha = 0.30f) // react-parity: intentional bg-soft-signal/30 wash
+        SlockColor.SoftSignal.copy(alpha = 0.30f) // react-parity: intentional bg-palette-yellow/30 wash
     } else {
         SlockColor.SurfaceWhite
     }
@@ -477,7 +477,7 @@ private fun SlockBrutalDropdownMenuRow(
 
 /**
  * raft-ui menu item: min 36dp, control radius, px-2.5, 10dp gap, callout 14/20 medium;
- * pressed/highlighted = `--primary-soft`; 16dp icons in icon ink; destructive items take
+ * pressed/highlighted = `--brand-soft`; 16dp icons in icon ink; destructive items take
  * the `--danger-strong` ink (no red wash); shortcut / trailing text is mono 12/16 hint.
  */
 @Composable
@@ -498,14 +498,14 @@ private fun SlockRaftDropdownMenuRow(
         when {
             !item.enabled -> SlockColor.ForegroundDisabled
             item.destructive -> SlockColor.DangerStrong
-            else -> SlockColor.ForegroundIcon
+            else -> SlockColor.TextMuted
         }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(rowHeight)
             .background(
-                if (pressed && item.enabled) SlockColor.PrimarySoft else Color.Transparent,
+                if (pressed && item.enabled) SlockColor.BrandSoft else Color.Transparent,
                 RoundedCornerShape(SlockRadius.Control)
             )
             .then(gestureModifier)

@@ -19,7 +19,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 
 /**
  * raft-ui 0.6.0 chrome shared by the mobile primitives (dist/index.mjs recipes +
- * foundation.css). Lines: hairline (1dp `--line-muted`) inside content, seam (1dp
+ * foundation.css). Lines: hairline (1dp `--line-hairline`) inside content, seam (1dp
  * `--line-seam`) around overlays, control ink (1.5dp `--line-strong`) on controls.
  * Radii: sticker 4 / chip 6 / control 8 / container 10 / dialog 16. Controls cast no
  * shadow; only overlays float.
@@ -62,7 +62,7 @@ internal object SlockRaftMetrics {
     val MenuLabelPaddingBottom = 4.dp
     /** Status / attention pixel (`size-[9px]`). */
     val StatusSize = 9.dp
-    /** Approximates `--theme-shadow-float` (0 12px 32px -12px ink/32) on Kuikly's elevation shadow. */
+    /** Approximates `--elevation-float` (0 12px 32px -12px ink/32) on Kuikly's elevation shadow. */
     val OverlayElevation = 6.dp
 }
 
@@ -107,9 +107,9 @@ internal fun slockRaftButtonChrome(backgroundColor: Color): SlockRaftButtonChrom
         when (backgroundColor) {
             SlockColor.BrandYellow,
             SlockColor.SoftSignal,
-            SlockColor.Primary,
+            SlockColor.Brand,
             SlockColor.AccentPink,
-            SlockColor.Accent -> SlockColor.Accent
+            SlockColor.Attention -> SlockColor.Attention
             SlockColor.AccentRed,
             SlockColor.Danger -> SlockColor.Danger
             SlockColor.AccentOrange,
@@ -182,7 +182,7 @@ internal fun Modifier.slockRaftCardSurface(
     val shape = RoundedCornerShape(radius)
     return this
         .background(fill, shape)
-        .border(SlockStroke.Thin, SlockColor.LineMuted, shape)
+        .border(SlockStroke.Thin, SlockColor.BorderHairline, shape)
 }
 
 /** raft control chrome: control radius, [fill], 1.5dp [border]. */

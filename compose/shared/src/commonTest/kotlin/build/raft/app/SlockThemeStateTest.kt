@@ -33,7 +33,7 @@ class SlockThemeStateTest {
         assertEquals(RaftUiThemeColors.RaftDark.layerCanvas, SlockColor.Canvas)
         assertEquals(slockArgbHex(RaftUiThemeColors.RaftDark.foreground), SlockColor.TextBlackArgb)
         // Fixed brand colours do not follow the theme.
-        assertEquals(RaftUiPalette.brutalYellow, SlockColor.BrandYellow)
+        assertEquals(RaftUiPalette.paletteYellow, SlockColor.BrandYellow)
     }
 
     @Test
@@ -48,10 +48,10 @@ class SlockThemeStateTest {
     @Test
     fun argbHexMatchesTheLiteralFormat() {
         assertEquals("#FFFFFFFF", slockArgbHex(RaftUiPalette.white))
-        // Source Yellow is raft-ui's `--primary-400` (#FFD440). 0.6.0 re-derives the legacy
-        // `--color-brutal-yellow-400` from a rounded oklch that lands one step off (#FFD441),
-        // so the brand literal is checked against the primary token.
-        assertEquals(SlockColor.BrandYellowArgb, slockArgbHex(SlockColor.Primary))
+        // Source Yellow is raft-ui's `--brand-400` (#FFD440). raft-ui re-derives the
+        // `--palette-yellow-400` ramp from a rounded oklch that lands one step off (#FFD441),
+        // so the brand literal is checked against the brand token.
+        assertEquals(SlockColor.BrandYellowArgb, slockArgbHex(SlockColor.Brand))
     }
 
 }

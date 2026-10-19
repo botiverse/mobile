@@ -15,7 +15,7 @@ class ThreadMessageFocusHighlightTest {
             threadMessageFocusHighlightColor(0.5f)
         )
         assertEquals(
-            SlockColor.Panel,
+            SlockColor.Canvas,
             threadMessageFocusHighlightColor(0f)
         )
     }
@@ -27,7 +27,7 @@ class ThreadMessageFocusHighlightTest {
             threadMessageFocusHighlightColor(2f)
         )
         assertEquals(
-            SlockColor.Panel,
+            SlockColor.Canvas,
             threadMessageFocusHighlightColor(-1f)
         )
     }

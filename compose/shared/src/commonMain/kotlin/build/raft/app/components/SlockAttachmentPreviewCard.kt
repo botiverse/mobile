@@ -48,7 +48,7 @@ internal fun SlockAttachmentPreviewCard(
                 .size(SlockAttachmentPreviewCardWidth, SlockAttachmentPreviewCardHeight)
                 .slockSquareCorners()
                 .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.15f))
-                // react-parity: AttachmentChip loading uses bg-soft-signal/30.
+                // react-parity: AttachmentChip loading uses bg-palette-yellow/30.
                 .background(if (loading) SlockColor.BrandYellow.copy(alpha = 0.3f) else SlockColor.SurfaceWhite)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 10.dp, vertical = SlockSpacing.Sm)

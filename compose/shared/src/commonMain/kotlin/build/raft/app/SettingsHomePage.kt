@@ -8440,7 +8440,7 @@ private fun SharedSettingsSectionContent(
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         payload.sections.forEach { section ->
@@ -8525,7 +8525,7 @@ private fun SharedSettingsServerContent(
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showProfileCard) {
@@ -8914,7 +8914,7 @@ private fun SettingsConnectedAppsContentContent(
     }
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
@@ -9147,7 +9147,7 @@ private fun SettingsConnectedAppsMetric(
     Column(
         modifier =
             modifier
-                .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
+                .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                 .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -9201,7 +9201,7 @@ private fun SettingsLanguageRegionContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
@@ -9503,7 +9503,7 @@ private fun SettingsAppearanceContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -9706,7 +9706,7 @@ private fun SettingsAppearanceFontSizeCard(
 private fun SettingsAppearancePreview(fontSizeKey: String) {
     val bodyStyle = slockMessageBodyTextStyle(fontSizeKey)
     Column(
-        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
@@ -9759,7 +9759,7 @@ private fun SettingsMobileContent(
             else -> null
         }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
@@ -10820,7 +10820,7 @@ private fun SettingsNotificationsContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
@@ -11111,7 +11111,7 @@ private fun SettingsNotificationPermissionBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .slockRaftCardSurface(fill = if (permissionGranted) SlockColor.SuccessSoft else SlockColor.PrimarySoft)
+                .slockRaftCardSurface(fill = if (permissionGranted) SlockColor.SuccessSoft else SlockColor.BrandSoft)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -12160,7 +12160,7 @@ private fun SettingsConnectedAppInfoRow(
     iconName: SlockLucideIconName
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control).padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -12986,7 +12986,7 @@ private fun SettingsServerAgreementCard(
 private fun SettingsAgreementPreview(bodyMarkdown: TextFieldValue) {
     val previewBody = bodyMarkdown.text
     Column(
-        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
@@ -13387,8 +13387,8 @@ private fun SettingsServerSelectRow(
                 Modifier
                     .fillMaxWidth()
                     .slockRaftControlSurface(
-                        fill = if (selected) SlockColor.PrimarySoft else SlockColor.Card,
-                        border = if (selected) SlockColor.BorderBlack else SlockColor.LineMuted,
+                        fill = if (selected) SlockColor.BrandSoft else SlockColor.Card,
+                        border = if (selected) SlockColor.BorderBlack else SlockColor.BorderHairline,
                         radius = SlockRadius.Container,
                         borderWidth = if (selected) SlockStroke.Control else SlockStroke.Thin
                     )
@@ -13920,8 +13920,8 @@ private fun SettingsApiEnvironmentPresetRow(
             Modifier
                 .fillMaxWidth()
                 .slockRaftControlSurface(
-                    fill = if (selected) SlockColor.PrimarySoft else SlockColor.Card,
-                    border = if (selected) SlockColor.BorderBlack else SlockColor.LineMuted,
+                    fill = if (selected) SlockColor.BrandSoft else SlockColor.Card,
+                    border = if (selected) SlockColor.BorderBlack else SlockColor.BorderHairline,
                     radius = SlockRadius.Container,
                     borderWidth = if (selected) SlockStroke.Control else SlockStroke.Thin
                 )
@@ -14875,7 +14875,7 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().dismissInputFocusOnScrollableChrome(),
@@ -15366,7 +15366,7 @@ private fun SettingsHandsFeedbackConversationRow(
                 Modifier
                     .widthIn(max = 560.dp)
                     .slockRaftCardSurface(fill = when (entry.kind) {
-                            SettingsHandsFeedbackEntryKind.User -> SlockColor.PrimarySoft
+                            SettingsHandsFeedbackEntryKind.User -> SlockColor.BrandSoft
                             SettingsHandsFeedbackEntryKind.Hands -> SlockColor.Card
                             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
                             SettingsHandsFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
@@ -15431,7 +15431,7 @@ internal fun SettingsDetailShell(
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         SlockTopPageHeader(
             title = title,
             subtitle = subtitle,
@@ -15462,7 +15462,7 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
             onClick = onBack,
             modifier = Modifier.size(28.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp), color = slockArgbHex(SlockColor.ForegroundIcon))
+            SlockLucideIcon(SlockLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp), color = slockArgbHex(SlockColor.TextMuted))
         }
     }
 }
@@ -15479,7 +15479,7 @@ private fun SettingsSharedPlaceholder(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            modifier = Modifier.size(52.dp).background(SlockColor.Primary, RoundedCornerShape(SlockRadius.Sticker)).border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
+            modifier = Modifier.size(52.dp).background(SlockColor.Brand, RoundedCornerShape(SlockRadius.Sticker)).border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
             contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
         ) {
             SlockLucideIcon(iconName, modifier = Modifier.size(26.dp))
@@ -18798,7 +18798,7 @@ private fun SharedMembersScreen(
 
     when (val current = state) {
         SharedMembersUiState.Loading ->
-            Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+            Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
                 MembersPageHeader(title = membersTitle)
                 SlockCenteredLoading()
         }
@@ -21979,7 +21979,7 @@ private fun SharedHomeSavedSelectedSurface(
                 .heightIn(min = 122.dp)
                 .slockRaftControlSurface(
                     fill = SlockColor.Card,
-                    border = if (selected) SlockColor.BorderBlack else SlockColor.LineMuted,
+                    border = if (selected) SlockColor.BorderBlack else SlockColor.BorderHairline,
                     radius = SlockRadius.Container,
                     borderWidth = if (selected) SlockStroke.Control else SlockStroke.Thin
                 )
@@ -25096,7 +25096,7 @@ private fun MembersPageErrorContent(
     onRetry: (() -> Unit)?
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.Panel),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         MembersPageHeader(title = stringResource(MR.strings.tab_members))
@@ -25148,7 +25148,7 @@ internal fun BottomTabBarSmokeContent() {
     val shellScope = rememberSlockAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -25252,7 +25252,7 @@ internal fun BottomTabBarVisualContent() {
     // render the bar flush at the window origin at exactly 390dp — explicit width
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         SlockBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
@@ -25472,8 +25472,8 @@ private fun SettingsServerDangerModalVisualContent() {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var modalSlug by remember { mutableStateOf("") }
     val serverSlug = snapshot.profile.slug
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
-        Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
             Row(
                 modifier =
                     Modifier
@@ -25518,7 +25518,7 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
         modifier =
             Modifier
                 .width(350.dp)
-                .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
+                .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -26297,7 +26297,7 @@ internal fun HomeActivityHitTargetVisualContent() {
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .slockRaftCardSurface(fill = SlockColor.Primary)
+                        .slockRaftCardSurface(fill = SlockColor.Brand)
                         .padding(4.dp),
                 style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
                 color = SlockColor.TextBlack
@@ -27040,7 +27040,7 @@ internal fun SettingsHomeContent(
         } else {
             Modifier
         }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         SlockMainTabPageHeader(
             surface = SlockMainTabHeaderSurface.Settings,
             title = payload.title,
@@ -27130,7 +27130,7 @@ private fun SlockSlackNavMoreMenu(
                         .slockDialogContentPointerBarrier()
             ) {
                 // raft-ui menu popup: `p-1.5` inset, rows flush (no inter-row gap), the
-                // current destination on the `--primary-soft` highlight at control radius.
+                // current destination on the `--brand-soft` highlight at control radius.
                 Column(
                     modifier =
                         Modifier
@@ -27144,7 +27144,7 @@ private fun SlockSlackNavMoreMenu(
                                 Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        if (destination == selected) SlockColor.PrimarySoft else Color.Transparent,
+                                        if (destination == selected) SlockColor.BrandSoft else Color.Transparent,
                                         RoundedCornerShape(SlockRadius.Control)
                                     )
                         ) {

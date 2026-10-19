@@ -75,8 +75,8 @@ internal val SlockBrutalTone.raftFill: Color
         when (this) {
             SlockBrutalTone.White -> SlockColor.StickerPaper
             SlockBrutalTone.Black -> SlockColor.TextBlack
-            SlockBrutalTone.Yellow -> SlockColor.Primary
-            SlockBrutalTone.Pink -> SlockColor.Accent
+            SlockBrutalTone.Yellow -> SlockColor.Brand
+            SlockBrutalTone.Pink -> SlockColor.Attention
             SlockBrutalTone.Cyan -> SlockColor.Info
             SlockBrutalTone.Lavender -> SlockColor.AccentLavender
             SlockBrutalTone.Orange -> SlockColor.Warning

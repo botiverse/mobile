@@ -55,7 +55,7 @@ internal fun SlockSwitchButton(
 
 /**
  * raft-ui 0.6.0 Switch: a 50x30 pill with a 1.5dp `--line-strong` edge on `--fill-muted`
- * and 2.5dp inset; checked = the yellow `--primary` sticker with a sticker-ink edge.
+ * and 2.5dp inset; checked = the yellow `--brand` sticker with a sticker-ink edge.
  * The 22dp (+1.5dp ring) round thumb is the card layer ringed in `--line-strong` (checked: sticker paper
  * ringed in sticker ink). Disabled greys both to `--fill-muted` / `--foreground-disabled`.
  */
@@ -67,7 +67,7 @@ private fun SlockRaftSwitch(
 ) {
     val trackShape = RoundedCornerShape(15.dp)
     val thumbShape = RoundedCornerShape(12.5.dp)
-    val trackFill = if (checked && enabled) SlockColor.Primary else SlockColor.FillMuted
+    val trackFill = if (checked && enabled) SlockColor.Brand else SlockColor.FillMuted
     val trackEdge =
         when {
             !enabled -> SlockColor.ForegroundDisabled

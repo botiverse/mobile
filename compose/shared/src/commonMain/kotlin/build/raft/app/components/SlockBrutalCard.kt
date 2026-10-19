@@ -60,7 +60,7 @@ internal fun SlockBrutalCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui 0.6.0 Card (`variant="default"`): container radius 10dp, `--layer-card` fill,
-    // 1dp `--line-muted` hairline, no shadow (content surfaces never lift). The brutal
+    // 1dp `--line-hairline` hairline, no shadow (content surfaces never lift). The brutal
     // register below keeps its offset-box shadow.
     val theme = LocalSlockTheme.current
     if (theme.isAmbient) {

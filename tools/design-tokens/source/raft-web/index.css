@@ -1,7 +1,7 @@
-@import "raft-ui/fonts.css";
+@import "@botiverse/raft-ui/fonts.css";
 
 @import "tailwindcss";
-@import "raft-ui/styles.css";
+@import "@botiverse/raft-ui/styles.css";
 @import "./components/mermaid/mermaid.css";
 
 
@@ -16,7 +16,7 @@
  * wrapping ownership, and accessibility content remain unchanged.
  *
  * #7347 dropped this block while switching the file's top to
- * `@import "raft-ui/fonts.css"`; the visual suite caught it — its font
+ * `@import "@botiverse/raft-ui/fonts.css"`; the visual suite caught it — its font
  * contract requires this woff2 to be requested, and `Raft Quote Glyphs` is
  * probed by name. Restored verbatim from 7a1558117:packages/web/src/index.css.
  */
@@ -43,7 +43,7 @@
  */
 @source "./components";
 @source "./pages";
-@source "../node_modules/raft-ui/dist";
+@source "../node_modules/@botiverse/raft-ui/dist";
 
 @theme {
   /* Match the two Shiki themes, including plaintext/loading fallbacks. */
@@ -139,12 +139,13 @@
     color: var(--foreground);
   }
 
-  /* #root is pinned to the visual viewport via --vv-height / --vv-offset-top
-     CSS variables set by trackVisualViewport() in main.tsx. The variables
-     are only set when the software keyboard is up — otherwise we fall back
-     to 100dvh, the dynamic viewport unit, which on iOS PWA standalone is
-     the *real* visible height (the previous use of visualViewport.height
-     reported a smaller value on real iPhones, leaving a cream gap below).
+  /* #root is pinned to the visual viewport by trackVisualViewport() in
+     main.tsx, which writes #root's own inline height / top — only while the
+     software keyboard is up. Otherwise the rule below applies: 100dvh, the
+     dynamic viewport unit, which on iOS PWA standalone is the *real* visible
+     height (visualViewport.height reported a smaller value on real iPhones,
+     leaving a cream gap below). Never custom properties on :root for this:
+     every element inherits them, so each change restyled the whole document.
      Two iOS-specific cases this handles:
        (1) Mobile Safari translating position:fixed content upward when a
            focused input needs to reach the visual viewport above the keyboard
@@ -153,19 +154,19 @@
            the visible webview — handled by 100dvh as the fallback. */
   #root {
     /* Task #15: fixed box + 100dvh for the no-keyboard path (PWA/safe-area).
-       When the soft keyboard is up, trackVisualViewport() sets --vv-height /
-       --vv-offset-top so the shell shrinks to the visual viewport (#5888/#725)
+       When the soft keyboard is up, trackVisualViewport() sets an inline
+       height / top so the shell shrinks to the visual viewport (#5888/#725)
        without reintroducing always-on JS pinning (which left a PWA bottom gap). */
     position: fixed;
-    top: var(--vv-offset-top, 0px);
+    top: 0;
     left: 0;
     right: 0;
-    /* Default: 100dvh for address/tool bar. Keyboard-up override via --vv-height. */
-    height: var(--vv-height, 100dvh);
+    /* Default: 100dvh for address/tool bar. Keyboard-up override: inline height. */
+    height: 100dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background-color: var(--layer-canvas-muted);
+    background-color: var(--layer-sidebar);
   }
 
   *:focus-visible {
@@ -764,7 +765,7 @@
 @layer base {
   /* Raft Design System: a text selection is the yellow-soft highlight. */
   ::selection {
-    background-color: var(--primary-soft);
+    background-color: var(--brand-soft);
   }
 }
 

@@ -23,7 +23,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
  * `AgentDetailPanel.tsx` RUNTIME CONFIG block (Runtime/Model/Reasoning/Mode chips).
  *
  * Color palette is hardcoded per chip kind to mirror the React palette
- * (`bg-brutal-cyan` / `bg-brutal-lavender` / `bg-brutal-yellow` / `bg-brutal-orange`).
+ * (`bg-palette-cyan` / `bg-palette-lavender` / `bg-palette-yellow` / `bg-palette-orange`).
  * No caller-controlled color is exposed — runtime chip semantics are fixed
  * (Runtime → cyan, Model → lavender, Reasoning → yellow, Mode → orange), so we
  * don't want callers picking arbitrary colors that could break the visual contract.

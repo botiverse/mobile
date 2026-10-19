@@ -151,7 +151,7 @@ internal fun SlockTopTabBar(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockTopTabBarDefaults.Height + SlockSpacing.Md + SlockStroke.Thin)
-            .background(SlockColor.Panel)
+            .background(SlockColor.Canvas)
     ) {
         LazyRow(
             modifier = Modifier
@@ -171,7 +171,7 @@ internal fun SlockTopTabBar(
                         .then(
                             if (selected) {
                                 Modifier
-                                    .background(SlockColor.Primary, shape)
+                                    .background(SlockColor.Brand, shape)
                                     .border(SlockStroke.Control, SlockColor.StickerInk, shape)
                             } else {
                                 Modifier
