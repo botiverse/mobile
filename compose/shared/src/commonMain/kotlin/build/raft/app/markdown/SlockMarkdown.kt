@@ -3099,4 +3099,3 @@ private fun SlockRichTextTextDecorationToken?.toComposeTextDecoration(): TextDec
     }
 
 private fun Float?.orZero(): Float = this ?: 0f
-

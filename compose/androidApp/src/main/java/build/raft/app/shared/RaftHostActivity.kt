@@ -76,4 +76,3 @@ internal interface RaftHostActivity : LifecycleOwner {
         witness: RealtimeConnectionWitnessToken,
     )
 }
-
