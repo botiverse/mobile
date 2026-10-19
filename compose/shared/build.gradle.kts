@@ -191,6 +191,12 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
                 // TODO(cmp-switch): mermaid-kuikly rendered through Kuikly CanvasView; needs a CMP renderer.
+                // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
+                // VideoView adapter that lived in androidApp).
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.androidx.media3.ui)
+                implementation(libs.androidx.core.ktx)
+                implementation(libs.androidx.activity.compose)
             }
         }
         val androidUnitTest by getting {
