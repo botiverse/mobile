@@ -40,9 +40,9 @@ The 478 ms `jank_frame` carries the operation label `thread_first_frame`, and th
 
 That recompose happens **during composition** is read from the source, not measured: the marker is emitted from a `remember{}` block in `ThreadPage.kt` (~line 7284) whose own comment states `remember{}` runs during composition, unlike the `LaunchedEffect` below it which fires after.
 
-**Which thread that is has not been verified, and cannot be settled by reading code.** In Kuikly on Android, Compose runs on Kuikly's Kotlin thread, and whether that thread is the same one as the Android UI thread (the thread before RenderThread) depends on the execution mode. So this section deliberately says "Compose thread", not "UI thread".
+**The Compose thread is not the Android UI thread — the app's own source says so.** `SlockKuiklyThreading.kt` calls it "Kuikly's Android context thread (`HRContextQueueHandlerThread`)" and notes that Kuikly runs Compose layout placement on that context thread, with an 8 MB stack sized for exactly that recursion. So this section says "Compose thread", not "UI thread", and the distinction is not pedantic: the 478 ms was spent on Kuikly's context thread, while `jank_frame` reports on the thread owning the ViewRootImpl.
 
-Worse, **the two numbers in the sentence above may not even describe the same thread**:
+Which means **the two numbers in the sentence above may not even describe the same thread**:
 
 - `jank_frame` comes from FrameMetrics. In `SlockPerformanceDiagnostics.kt`, `install(window)` makes **no thread assertion**, and the listener is registered as `window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))` — so the callback runs on a **dedicated HandlerThread**. FrameMetrics describes frames of the thread that **owns the ViewRootImpl**, not of the callback thread.
 - `operation=thread_first_frame` is a **Kuikly-side marker**.
