@@ -17,7 +17,7 @@
 > thing. Nothing here has been superseded.
 
 A **discriminator** is anything you use to tell two states apart: a test, a log line, a metric, a
-toggle, a measurement. Five ways they fail, all of which produce a confident wrong answer rather than
+toggle, a measurement. Six ways they fail, all of which produce a confident wrong answer rather than
 an error.
 
 ## 1. It never varies
@@ -84,7 +84,38 @@ there in the copy I happened to ask*.
 480px of it. The criterion described what the code should *do*, not what the user must *experience*.
 Full treatment in `numeric-criteria-that-pass-while-the-feature-is-broken.md`.
 
-## The question that catches all five
+## 6. Two measurements of different things, sitting in one window
+
+The most convincing form, because both numbers are real and correctly measured — they are just not
+about the same subject.
+
+Observed on this repo: a frame of **478 ms** sat in the same diagnostic line as a tag
+`operation=thread_first_frame`. Read together they form a clean causal sentence: *the first-frame path
+took 478 ms.* Neither half supports that sentence on its own:
+
+- the **478 ms** comes from JankStats (`SlockPerformanceDiagnostics.kt:51`,
+  `frameData.frameDurationUiNanos`), and by API definition that is time spent on the **UI thread** of
+  the window — so the duration is genuinely about the main thread;
+- **`operation=` is an `AtomicReference`** set by `updateOperation` (`:125`) and merely read at the
+  moment a jank frame is logged (`:79`). It reports *the last operation that was set*, not what the
+  measured interval was spent doing, and not which thread was doing it.
+
+So the honest reading is: **the main thread had a 478 ms frame, and the operation label happened to be
+`thread_first_frame` when it was recorded.** Whether the main thread was doing that work itself or
+blocking on another thread is a separate question, unresolved as of 2026-10-19.
+
+(Note this correction: an earlier draft attributed the 478 ms to a `FrameMetrics` listener registered
+on its own `Handler` at `:327` and argued the callback thread is not the measured thread. That
+listener emits a *different* log line. `jank_frame` is JankStats, and its duration is UI-thread time.
+The general rule below survived the correction; the specific reasoning did not, which is exactly why
+examples need pinning to `file:line`.)
+
+**The tell is the same as form 4, pointed the other way.** Form 4 is *asking the wrong object*; this is
+*two right objects read as one*. It is invisible precisely because nothing is wrong with either
+measurement.
+
+## The question that catches all six
+
 
 Before trusting a signal, ask: **what would this report if the thing I am testing for were true, and
 what would it report if it were false?** If the two answers are the same — or if you cannot say what
