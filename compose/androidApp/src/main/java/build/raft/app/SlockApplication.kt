@@ -8,6 +8,8 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVNetworkRecoveryKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
+import build.raft.app.data.slockReadStoredFontPreferenceForDiagnostics
+import build.raft.app.data.slockRestoreStoredFontPreferenceOnColdStart
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
@@ -92,6 +94,17 @@ class SlockApplication : Application() {
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
+        // Task #521: publish the stored font face before the first composition. Without this the
+        // first frames render SlockFontFaceState's default and only correct once a settings
+        // snapshot loads (or never, on a slow cold start).
+        slockRestoreStoredFontPreferenceOnColdStart()
+        // Task #521 diagnostic (Codex): one cold start settles whether the store exposes the value
+        // to this process at all, versus the restore merely happening too late.
+        SlockAndroidLocalDiagnostics.recordLog(
+            level = "INFO",
+            tag = "font_preference",
+            message = slockReadStoredFontPreferenceForDiagnostics()
+        )
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidThreadComposerTemporaryFileRetirement(this)
         installAndroidExternalShareInbox(this)
