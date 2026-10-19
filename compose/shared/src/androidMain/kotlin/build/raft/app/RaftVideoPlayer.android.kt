@@ -11,13 +11,18 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -45,7 +50,20 @@ internal actual fun RaftVideoPlayer(
     val stateCallback by rememberUpdatedState(onPlayStateChanged)
     val timeCallback by rememberUpdatedState(onPlayTimeChanged)
     val firstFrameCallback by rememberUpdatedState(onFirstFrame)
+    val lifecycleOwner = LocalLifecycleOwner.current
     key(source) {
+        val viewHolder = remember { RaftAndroidVideoViewHolder() }
+        DisposableEffect(lifecycleOwner, viewHolder) {
+            // Playback must not continue once the host is in the background (the Activity is
+            // stopped). ON_STOP rather than ON_PAUSE: a visible multi-window / PiP-adjacent Activity
+            // is paused but on screen and keeps playing, as Android's media guidance recommends.
+            val observer =
+                LifecycleEventObserver { _, event ->
+                    if (raftVideoPausesOnLifecycleEvent(event)) viewHolder.view?.pauseForHostBackground()
+                }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
         AndroidView(
             factory = { context ->
                 RaftAndroidVideoView(
@@ -60,7 +78,7 @@ internal actual fun RaftVideoPlayer(
 
                             override fun onFirstFrame() = firstFrameCallback()
                         },
-                )
+                ).also { viewHolder.view = it }
             },
             modifier = modifier,
             update = { view ->
@@ -69,10 +87,20 @@ internal actual fun RaftVideoPlayer(
                 view.applyPlayControl(playControl)
                 if (seekRequestId != null) view.applySeekRequest(seekRequestId, seekTimeMs.toLong())
             },
-            onRelease = { view -> view.stop() },
+            onRelease = { view ->
+                if (viewHolder.view === view) viewHolder.view = null
+                view.stop()
+            },
         )
     }
 }
+
+private class RaftAndroidVideoViewHolder {
+    var view: RaftAndroidVideoView? = null
+}
+
+/** The host lifecycle events that pause playback: the app went to the background. */
+internal fun raftVideoPausesOnLifecycleEvent(event: Lifecycle.Event): Boolean = event == Lifecycle.Event.ON_STOP
 
 /**
  * Media3 (ExoPlayer) backed video view, ported from the Kuikly-era `SlockKRVideoViewAdapter`
@@ -205,6 +233,16 @@ internal class RaftAndroidVideoView(
 
     private fun pause() {
         if (stopped) return
+        player.pause()
+    }
+
+    /**
+     * The host Activity was stopped (app in background): pause without changing the applied
+     * play control, so returning to the app does not auto-resume; the PAUSED state is reported
+     * through the player listener as usual.
+     */
+    fun pauseForHostBackground() {
+        if (stopped || !player.playWhenReady) return
         player.pause()
     }
 
