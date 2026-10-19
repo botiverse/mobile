@@ -6,21 +6,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlin.math.roundToInt
-import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
-import platform.Foundation.NSKeyValueObservingOptionNew
-import platform.Foundation.NSKeyValueObservingProtocol
+import platform.Foundation.NSTimer
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLErrorCancelled
 import platform.Foundation.NSURLErrorDomain
 import platform.Foundation.NSURLRequest
 import platform.Foundation.NSURLRequestReloadIgnoringLocalCacheData
 import platform.Foundation.NSURLRequestUseProtocolCachePolicy
-import platform.Foundation.addObserver
-import platform.Foundation.removeObserver
 import platform.UIKit.UIColor
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
@@ -73,7 +69,8 @@ internal class RaftIosSandboxWebViewContainer(events: RaftWebViewEvents) : UIVie
     }
 }
 
-private val RaftIosObservedKeyPaths = listOf("estimatedProgress", "title", "canGoBack", "canGoForward", "loading", "URL")
+/** Poll interval standing in for the `.m` KVO on estimatedProgress/title/canGoBack/canGoForward/loading/URL. */
+private const val RaftIosNavigationStatePollSeconds = 0.25
 
 private const val RaftIosHostBridgeScript =
     "(function(){var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.raftHostPort;if(!h)return;" +
@@ -111,13 +108,12 @@ internal class RaftIosSandboxWebView(
     private var lastNavigationStateKey = ""
     private var lastSuccessfulURL = ""
     private var lastLoadFailureKey = ""
-    private var observing = false
+    private var stateTimer: NSTimer? = null
     private var disposed = false
     private var configured = false
     private var boundController: SlockWebViewController? = null
 
     private val delegate = RaftIosWebViewDelegate(this)
-    private val observer = RaftIosWebViewObserver(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
 
     init {
@@ -245,20 +241,22 @@ internal class RaftIosSandboxWebView(
         loadCurrentSrc()
     }
 
+    /**
+     * TODO(cmp-switch): Kotlin/Native cannot override the NSObject KVO category method
+     * (`observeValueForKeyPath:`), so the `.m` key-value observation is replaced by a light poll
+     * while a WebView is attached; [notifyNavigationState] de-duplicates unchanged states.
+     */
     private fun startObserving(target: WKWebView) {
-        if (observing) return
-        RaftIosObservedKeyPaths.forEach { keyPath ->
-            target.addObserver(observer, forKeyPath = keyPath, options = NSKeyValueObservingOptionNew, context = null)
-        }
-        observing = true
+        stopObserving(target)
+        stateTimer =
+            NSTimer.scheduledTimerWithTimeInterval(RaftIosNavigationStatePollSeconds, repeats = true) { _ ->
+                onObservedChange(target)
+            }
     }
 
-    private fun stopObserving(target: WKWebView) {
-        if (!observing) return
-        RaftIosObservedKeyPaths.forEach { keyPath ->
-            runCatching { target.removeObserver(observer, forKeyPath = keyPath) }
-        }
-        observing = false
+    private fun stopObserving(@Suppress("UNUSED_PARAMETER") target: WKWebView) {
+        stateTimer?.invalidate()
+        stateTimer = null
     }
 
     internal fun onObservedChange(source: Any?) {
@@ -599,20 +597,6 @@ private class RaftIosWebViewDelegate(
     ): WKWebView? {
         owner.createWindowBlocked(webView, forNavigationAction)
         return null
-    }
-}
-
-private class RaftIosWebViewObserver(
-    private val owner: RaftIosSandboxWebView,
-) : NSObject(), NSKeyValueObservingProtocol {
-    override fun observeValueForKeyPath(
-        keyPath: String?,
-        ofObject: Any?,
-        change: Map<Any?, *>?,
-        context: COpaquePointer?
-    ) {
-        if (keyPath !in RaftIosObservedKeyPaths) return
-        owner.onObservedChange(ofObject)
     }
 }
 
