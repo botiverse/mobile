@@ -15,32 +15,80 @@ namespace {
 // The shared UI encodes font weight in familyName. The OHOS host maps those
 // family names to rawfile paths and lets the Kuikly renderer load the bytes.
 // The returned path remains valid until the next call on the same thread.
+//
+// The table covers every bundled family, not only the Space set: Settings >
+// Appearance (task #179) can select Hanken Grotesk, Geist+Inter, or Space
+// Grotesk, with Geist Mono / Space Mono as the mono role. The PascalCase
+// names are what the shared KuiklyFont serialization emits (see
+// SlockDesignTokens.fontFamilyFor); the snake_case aliases match the rawfile
+// base names under resources/resfile/fonts/. Unknown names still return
+// nullptr so Kuikly falls back to the platform face — which is also how the
+// "System" option resolves (shared emits FontFamily.Default/Monospace then).
 static constexpr unsigned int kSlockFontLogDomain = 0xA001;
 static constexpr unsigned int kSlockKuiklyLogDomain = 0xA002;
 
-static constexpr const char *kSlockFontFamilies[] = {
-    "space_grotesk",
-    "space_grotesk_variable",
-    "space_grotesk_regular",
-    "space_grotesk_light",
-    "space_grotesk_medium",
-    "space_grotesk_semibold",
-    "space_grotesk_bold",
-    "Space Grotesk",
-    "SpaceGrotesk-Variable",
-    "SpaceGrotesk-Regular",
-    "SpaceGrotesk-Light",
-    "SpaceGrotesk-Medium",
-    "SpaceGrotesk-SemiBold",
-    "SpaceGrotesk-Bold",
-    "space_mono_regular",
-    "space_mono_bold",
-    "SpaceMono-Regular",
-    "SpaceMono-Bold",
+struct SlockFontMapping {
+    const char *familyName;
+    const char *fileName;
 };
 
-static constexpr size_t kSlockFontFamiliesCount =
-    sizeof(kSlockFontFamilies) / sizeof(kSlockFontFamilies[0]);
+static constexpr SlockFontMapping kSlockFontTable[] = {
+    {"Space Grotesk", "space_grotesk"},
+    {"space_grotesk", "space_grotesk"},
+    {"SpaceGrotesk-Variable", "space_grotesk_variable"},
+    {"space_grotesk_variable", "space_grotesk_variable"},
+    {"SpaceGrotesk-Regular", "space_grotesk_regular"},
+    {"space_grotesk_regular", "space_grotesk_regular"},
+    {"SpaceGrotesk-Light", "space_grotesk_light"},
+    {"space_grotesk_light", "space_grotesk_light"},
+    {"SpaceGrotesk-Medium", "space_grotesk_medium"},
+    {"space_grotesk_medium", "space_grotesk_medium"},
+    {"SpaceGrotesk-SemiBold", "space_grotesk_semibold"},
+    {"space_grotesk_semibold", "space_grotesk_semibold"},
+    {"SpaceGrotesk-Bold", "space_grotesk_bold"},
+    {"space_grotesk_bold", "space_grotesk_bold"},
+    {"SpaceMono-Regular", "space_mono_regular"},
+    {"space_mono_regular", "space_mono_regular"},
+    {"SpaceMono-Bold", "space_mono_bold"},
+    {"space_mono_bold", "space_mono_bold"},
+    {"HankenGrotesk-Light", "hanken_grotesk_light"},
+    {"hanken_grotesk_light", "hanken_grotesk_light"},
+    {"HankenGrotesk-Regular", "hanken_grotesk_regular"},
+    {"hanken_grotesk_regular", "hanken_grotesk_regular"},
+    {"HankenGrotesk-Medium", "hanken_grotesk_medium"},
+    {"hanken_grotesk_medium", "hanken_grotesk_medium"},
+    {"HankenGrotesk-SemiBold", "hanken_grotesk_semibold"},
+    {"hanken_grotesk_semibold", "hanken_grotesk_semibold"},
+    {"HankenGrotesk-Bold", "hanken_grotesk_bold"},
+    {"hanken_grotesk_bold", "hanken_grotesk_bold"},
+    {"Geist-Light", "geist_light"},
+    {"geist_light", "geist_light"},
+    {"Geist-Regular", "geist_regular"},
+    {"geist_regular", "geist_regular"},
+    {"Geist-Medium", "geist_medium"},
+    {"geist_medium", "geist_medium"},
+    {"Geist-SemiBold", "geist_semibold"},
+    {"geist_semibold", "geist_semibold"},
+    {"Geist-Bold", "geist_bold"},
+    {"geist_bold", "geist_bold"},
+    {"Inter-Light", "inter_light"},
+    {"inter_light", "inter_light"},
+    {"Inter-Regular", "inter_regular"},
+    {"inter_regular", "inter_regular"},
+    {"Inter-Medium", "inter_medium"},
+    {"inter_medium", "inter_medium"},
+    {"Inter-SemiBold", "inter_semibold"},
+    {"inter_semibold", "inter_semibold"},
+    {"Inter-Bold", "inter_bold"},
+    {"inter_bold", "inter_bold"},
+    {"GeistMono-Regular", "geist_mono_regular"},
+    {"geist_mono_regular", "geist_mono_regular"},
+    {"GeistMono-Bold", "geist_mono_bold"},
+    {"geist_mono_bold", "geist_mono_bold"},
+};
+
+static constexpr size_t kSlockFontMappingCount =
+    sizeof(kSlockFontTable) / sizeof(kSlockFontTable[0]);
 
 static char *SlockFontAdapter(const char *fontFamily,
                               char ** /*fontBuffer*/,
@@ -51,33 +99,11 @@ static char *SlockFontAdapter(const char *fontFamily,
     }
 
     const char *fileName = nullptr;
-    if (std::strcmp(fontFamily, "Space Grotesk") == 0 ||
-        std::strcmp(fontFamily, "space_grotesk") == 0) {
-        fileName = "space_grotesk";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Variable") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_variable") == 0) {
-        fileName = "space_grotesk_variable";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Regular") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_regular") == 0) {
-        fileName = "space_grotesk_regular";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Light") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_light") == 0) {
-        fileName = "space_grotesk_light";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Medium") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_medium") == 0) {
-        fileName = "space_grotesk_medium";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-SemiBold") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_semibold") == 0) {
-        fileName = "space_grotesk_semibold";
-    } else if (std::strcmp(fontFamily, "SpaceGrotesk-Bold") == 0 ||
-               std::strcmp(fontFamily, "space_grotesk_bold") == 0) {
-        fileName = "space_grotesk_bold";
-    } else if (std::strcmp(fontFamily, "SpaceMono-Regular") == 0 ||
-               std::strcmp(fontFamily, "space_mono_regular") == 0) {
-        fileName = "space_mono_regular";
-    } else if (std::strcmp(fontFamily, "SpaceMono-Bold") == 0 ||
-               std::strcmp(fontFamily, "space_mono_bold") == 0) {
-        fileName = "space_mono_bold";
+    for (const auto &mapping : kSlockFontTable) {
+        if (std::strcmp(fontFamily, mapping.familyName) == 0) {
+            fileName = mapping.fileName;
+            break;
+        }
     }
 
     if (fileName == nullptr) {
@@ -100,12 +126,12 @@ static void SlockKuiklyLogAdapter(int /*logLevel*/, const char *tag, const char 
 
 static void RegisterSlockFontAdapters() {
     std::call_once(g_slockFontAdaptersOnceFlag, []() {
-        for (const auto *family : kSlockFontFamilies) {
-            KRRegisterFontAdapter(SlockFontAdapter, family);
+        for (const auto &mapping : kSlockFontTable) {
+            KRRegisterFontAdapter(SlockFontAdapter, mapping.familyName);
         }
         OH_LOG_Print(LOG_APP, LOG_INFO, kSlockFontLogDomain, "SlockFontAdapter",
                      "Registered Slock font adapter for %{public}zu family names",
-                     kSlockFontFamiliesCount);
+                     kSlockFontMappingCount);
     });
 }
 
