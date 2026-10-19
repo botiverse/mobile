@@ -98,7 +98,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -107,7 +106,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 
@@ -765,7 +763,7 @@ internal class SlockSharedStoreProvider private constructor(
             featureFlags = serverFeatureFlags,
             sqlDatabase = sqlDatabase,
             now = ::defaultNowMillis,
-            scope = CoroutineScope(SupervisorJob()),
+            scope = SlockStoreThreading.newScope(),
             logger = sharedInfoLogger("SyncCoreT0Shadow", "sync_core_t0_shadow"),
         )
 
@@ -1343,7 +1341,7 @@ internal class SlockSharedStoreProvider private constructor(
                 dataSource = dataSource,
                 scope =
                     homeStoreScopes.getOrPut(scope) {
-                        if (scope == SlockShellStoreScope.Legacy) homeStoreScope else CoroutineScope(SupervisorJob())
+                        if (scope == SlockShellStoreScope.Legacy) homeStoreScope else SlockStoreThreading.newScope()
                     },
                 diagnosticsLogger = diagnosticsLogger,
                 loadSidebarOrder = loadSidebarOrder,
@@ -1446,7 +1444,7 @@ internal class SlockSharedStoreProvider private constructor(
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
-                        if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
+                        if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else SlockStoreThreading.newScope()
                     },
                 diagnosticsLogger = diagnosticsLogger ?: {}
             )
@@ -1656,7 +1654,7 @@ internal class SlockSharedStoreProvider private constructor(
     fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
         authSessionClearLogger = logger
         authSessionClearedSubscription?.let(authSessionEvents::removeSessionClearedListener)
-        val scope = CoroutineScope(EmptyCoroutineContext)
+        val scope = CoroutineScope(SlockStoreThreading.dispatcher)
         authSessionClearedSubscription =
             authSessionEvents.addSessionClearedListener { signal ->
                 if (authSessionEvents.isLocalSource(signal)) {
@@ -1786,7 +1784,7 @@ internal class SlockSharedStoreProvider private constructor(
                         authStore.readSession()?.currentServerId
                     }
                 )
-            CoroutineScope(SupervisorJob()).launch {
+            SlockStoreThreading.newScope().launch {
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
                         is AuthSessionEvent.Authenticated,
@@ -1840,7 +1838,7 @@ internal class SlockSharedStoreProvider private constructor(
             // task #343: seed the mounted session from durable rows once the owner resolves, so a
             // cold start paints cached avatars on the first frame instead of waiting per-row mounts.
             // Re-attempted on auth changes (login, server/binding switch); one run per owner.
-            CoroutineScope(SupervisorJob()).launch {
+            SlockStoreThreading.newScope().launch {
                 runCatchingPreservingCancellation {
                     avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
                 }
@@ -1874,7 +1872,7 @@ internal class SlockSharedStoreProvider private constructor(
                             source = clearSource,
                         )
                     },
-                    scope = CoroutineScope(SupervisorJob()),
+                    scope = SlockStoreThreading.newScope(),
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
                 )
             val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
@@ -1931,7 +1929,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkClient = scopedNetworkClientFactory(authStore)
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
-                    scope = CoroutineScope(SupervisorJob()),
+                    scope = SlockStoreThreading.newScope(),
                     diagnosticsLogger = sharedInfoLogger("SlockMessageBodyFontSize", "store"),
                 )
             val processServerMembersRepository =
@@ -2002,7 +2000,7 @@ internal class SlockSharedStoreProvider private constructor(
                     ownerResolver = resolveActivityUnreadOwner,
                     ownerFlowResolver = resolveActivityUnreadOwnerFlow,
                     projectionCache = processActivityUnreadProjectionCache,
-                    scope = CoroutineScope(SupervisorJob()),
+                    scope = SlockStoreThreading.newScope(),
                     logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
                 )
             // ONE sink instance shared by the legacy and every scoped realtime
@@ -2034,7 +2032,7 @@ internal class SlockSharedStoreProvider private constructor(
                     store = sharedPreferenceStore,
                     currentBinding = { presenceAuthContext.value?.toServerFeatureFlagLastKnownBinding() },
                 )
-            CoroutineScope(SupervisorJob()).launch {
+            SlockStoreThreading.newScope().launch {
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
@@ -2178,7 +2176,7 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                 )
-            val threadSendScope = CoroutineScope(SupervisorJob())
+            val threadSendScope = SlockStoreThreading.newScope()
             val realtimeAuthorityDiagnosticsLogger =
                 sharedInfoLogger("RealtimeAuthority", "realtime_authority")
             val realtimeAuthorityRegistry =
@@ -2191,7 +2189,7 @@ internal class SlockSharedStoreProvider private constructor(
             val canonicalFinalIntegration =
                 canonicalFinalIntegrationFactory?.let { factory ->
                     val registrationDirectory = RealtimeCanonicalFinalSinkRegistrationDirectory()
-                    val canonicalFinalScope = CoroutineScope(SupervisorJob())
+                    val canonicalFinalScope = SlockStoreThreading.newScope()
                     factory.create(
                         SlockSharedCanonicalFinalIntegrationFactoryScope(
                             registry = realtimeAuthorityRegistry,
@@ -2305,7 +2303,7 @@ internal class SlockSharedStoreProvider private constructor(
             // the generated bundled table stays the fallback.
             val pixelAvatarStore = KeyValuePixelAvatarStore(sharedPreferenceStore)
             SlockPixelAvatarRuntime.applyRuntimeJson(pixelAvatarStore.readJson(), source = "cache")
-            CoroutineScope(SupervisorJob()).launch {
+            SlockStoreThreading.newScope().launch {
                 // Jittered delay: the refresh is not first-screen data (the cached/bundled
                 // table is already applied above), so keep it off the startup window where
                 // it would contend with channel/message fetches — and spread clients out
@@ -2357,7 +2355,7 @@ internal class SlockSharedStoreProvider private constructor(
                             reason = "foreground_reconcile"
                         )
                     },
-                    scope = CoroutineScope(SupervisorJob()),
+                    scope = SlockStoreThreading.newScope(),
                     diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
                 )
             // Write side of the same partition (task #1124): same canary (for "is this scope yours"),
@@ -2451,7 +2449,7 @@ internal class SlockSharedStoreProvider private constructor(
                         diagnosticsLogger = sharedInfoLogger("SlockComposerDraft"),
                         scheduler =
                             CoroutineThreadComposerDraftPersistenceScheduler(
-                                CoroutineScope(SupervisorJob())
+                                SlockStoreThreading.newScope()
                             )
                     ),
                 activityPersistSlice =
@@ -2490,7 +2488,7 @@ internal class SlockSharedStoreProvider private constructor(
                     SharedMessageTranslationStore(
                         authStore = authStore,
                         api = NetworkSlockMessageTranslationApi(networkClient),
-                        scope = CoroutineScope(SupervisorJob()),
+                        scope = SlockStoreThreading.newScope(),
                         translationMode = {
                             KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationModeSync()
                         },
@@ -2502,19 +2500,19 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
-                threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
+                threadPayloadStore = SharedThreadPayloadStore(SlockStoreThreading.newScope()),
                 threadDurableLastKnownReader = threadDurableLastKnownReader,
                 threadEnteredScopeSnapshotLoader = threadEnteredScopeSnapshotLoader,
                 threadDurablePageExtender = threadDurablePageExtender,
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
-                homeStoreScope = CoroutineScope(SupervisorJob()),
-                homeActivityStoreScope = CoroutineScope(SupervisorJob()),
+                homeStoreScope = SlockStoreThreading.newScope(),
+                homeActivityStoreScope = SlockStoreThreading.newScope(),
                 threadSendScope = threadSendScope
             )
             return provider.also {
-                val pushLifecycleScope = CoroutineScope(SupervisorJob())
+                val pushLifecycleScope = SlockStoreThreading.newScope()
                 SlockPushRegistrationLifecycle.observeSessionEvents(
                     source = authStore.authSessionEvents,
                     scope = pushLifecycleScope

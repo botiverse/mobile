@@ -81,7 +81,7 @@ class SharedMessageTranslationStore internal constructor(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
 ) {
-    private val _state = MutableStateFlow(SharedMessageTranslationState())
+    private val _state = slockStoreState(SharedMessageTranslationState(), "SharedMessageTranslationStore")
     val state: StateFlow<SharedMessageTranslationState> = _state.asStateFlow()
 
     private var settingsJob: Job? = null

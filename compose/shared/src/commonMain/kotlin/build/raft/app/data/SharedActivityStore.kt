@@ -106,7 +106,7 @@ class SharedActivityStore internal constructor(
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
 ) {
-    private val _state = MutableStateFlow(SharedActivityState())
+    private val _state = slockStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
     internal val presentationStore = SharedActivityPresentationStore()
 
