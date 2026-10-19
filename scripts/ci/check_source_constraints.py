@@ -52,7 +52,7 @@ TASKS_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/Ta
 SLOCK_SHARED_STORE_PROVIDER = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
 )
-ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"
 VISUAL_FIXTURE_DATA = (
     "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
 )

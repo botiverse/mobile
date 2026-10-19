@@ -23,7 +23,7 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
-      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"
       - "compose/iosApp/iosApp/SlockIosMobileOAuthHost.swift"
       - "compose/iosApp/iosApp/iosApp.entitlements"
       - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
