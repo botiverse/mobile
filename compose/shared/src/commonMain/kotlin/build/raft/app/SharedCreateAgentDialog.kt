@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSelectField
@@ -1344,13 +1345,13 @@ internal fun SharedCreateAgentDialog(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                                    .padding(SlockSpacing.Xs)
+                                    .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
                                 text = hint,
-                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                                color = SlockColor.TextMutedGray
+                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMuted),
+                                color = SlockColor.TextMuted
                             )
                         }
                     }
@@ -1380,8 +1381,7 @@ internal fun SharedCreateAgentDialog(
                                     enabled = dialogBuiltInFormRefreshState.retryAvailable && !submitting,
                                     leadingIcon = SlockLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
-                                    minHeight = 32.dp,
-                                    shadowOffset = SlockShadow.BrutalSmall
+                                    minHeight = 32.dp
                                 )
                             }
                         )
@@ -1495,8 +1495,7 @@ internal fun SharedCreateAgentDialog(
                                     enabled = !submitting,
                                     leadingIcon = SlockLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
-                                    minHeight = 32.dp,
-                                    shadowOffset = SlockShadow.BrutalSmall
+                                    minHeight = 32.dp
                                 )
                             }
                         )
@@ -1831,9 +1830,9 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockRaftUiBannerStatus.Warning.background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockRaftUiBannerSize.Medium.padding)
+                // raft-ui warning Banner surface (`--warning-soft`, hairline ring, md padding).
+                .slockRaftCardSurface(fill = SlockColor.WarningSoft)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Text(
             text =
@@ -1844,7 +1843,7 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
                     append(action)
                     pop()
                 },
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+            style = SlockType.Body.withSlockFontWeight(FontWeight.SemiBold).copy(fontSize = 14.sp, lineHeight = 20.sp),
             color = SlockColor.TextBlack
         )
     }
@@ -1875,16 +1874,15 @@ private fun MachinePicker(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                            .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
-                            .background(SlockColor.SurfaceCream)
-                            .padding(SlockSpacing.Sm),
+                            // raft-ui danger Banner surface.
+                            .slockRaftCardSurface(fill = SlockColor.DangerSoft)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
                 ) {
                     Text(
                         text = machinesErrorMessage,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.SemiBold),
+                        color = SlockColor.DangerStrong
                     )
                     SlockBrutalActionButton(
                         label = stringResource(MR.strings.common_retry),
@@ -1892,21 +1890,19 @@ private fun MachinePicker(
                         enabled = enabled,
                         leadingIcon = SlockLucideIconName.RefreshCw,
                         minWidth = 72.dp,
-                        minHeight = 32.dp,
-                        shadowOffset = SlockShadow.BrutalSmall
+                        minHeight = 32.dp
                     )
                 }
             machines.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.3f))
-                    .background(SlockColor.SurfaceCream)
-                    .padding(SlockSpacing.Sm)
+                    .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
                     text = stringResource(MR.strings.agent_create_state_computers_empty),
                     style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    color = SlockColor.TextMuted
                 )
             }
             else -> {
@@ -2494,8 +2490,8 @@ internal fun AdvancedRuntimeSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(SlockSpacing.Sm),
+                    .slockRaftCardSurface()
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 EnvVarsEditor(

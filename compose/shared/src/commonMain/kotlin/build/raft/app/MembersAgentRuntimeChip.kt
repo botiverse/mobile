@@ -1,5 +1,7 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -44,17 +46,18 @@ internal fun MembersAgentRuntimeChip(
     textStyle: TextStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
         .withSlockFontWeight(FontWeight.Bold)
 ) {
+    // raft-ui soft Badge: the role's `-soft` wash, chip radius 6dp, no edge.
     val backgroundColor: Color = when (kind) {
-        MembersAgentRuntimeChipKind.Runtime -> SlockColor.AccentCyan
-        MembersAgentRuntimeChipKind.Model -> SlockColor.AccentLavender
-        MembersAgentRuntimeChipKind.Reasoning -> SlockColor.BrandYellow
-        MembersAgentRuntimeChipKind.Mode -> SlockColor.AccentOrange
+        MembersAgentRuntimeChipKind.Runtime -> SlockColor.InfoSoft
+        MembersAgentRuntimeChipKind.Model -> SlockColor.FillMuted
+        MembersAgentRuntimeChipKind.Reasoning -> SlockColor.BrandSoft
+        MembersAgentRuntimeChipKind.Mode -> SlockColor.WarningSoft
     }
     Box(
         modifier = modifier
-            .background(backgroundColor)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .heightIn(min = 22.dp)
+            .background(backgroundColor, RoundedCornerShape(SlockRadius.Chip))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(

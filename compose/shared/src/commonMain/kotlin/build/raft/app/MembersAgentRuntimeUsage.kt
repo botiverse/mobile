@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.components.SlockRaftBadgeChrome
+import build.raft.app.components.slockRaftCardSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -304,8 +306,7 @@ private fun MembersRuntimeUsageAccountCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(if (stale) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .slockRaftCardSurface(fill = if (stale) SlockColor.FillMuted else SlockColor.Card)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -401,43 +402,34 @@ internal fun RuntimeAccountUsageWindow.displayPercentOrNull(): Int? {
 private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
     val (label, color) =
         when (health) {
-            RuntimeAccountUsageHealth.Ok -> stringResource(MR.strings.member_runtime_usage_health_ok) to SlockColor.AccentLime
+            RuntimeAccountUsageHealth.Ok -> stringResource(MR.strings.member_runtime_usage_health_ok) to SlockColor.Success
             RuntimeAccountUsageHealth.RateLimited ->
-                stringResource(MR.strings.member_runtime_usage_health_rate_limited) to SlockColor.AccentOrange
+                stringResource(MR.strings.member_runtime_usage_health_rate_limited) to SlockColor.Warning
             RuntimeAccountUsageHealth.ReauthRequired ->
-                stringResource(MR.strings.member_runtime_usage_health_reauth_required) to SlockColor.AccentOrange
+                stringResource(MR.strings.member_runtime_usage_health_reauth_required) to SlockColor.Warning
             RuntimeAccountUsageHealth.Unsupported ->
-                stringResource(MR.strings.member_runtime_usage_health_unsupported) to SlockColor.SurfaceCream
+                stringResource(MR.strings.member_runtime_usage_health_unsupported) to SlockColor.StickerPaper
             RuntimeAccountUsageHealth.Error ->
-                stringResource(MR.strings.member_runtime_usage_health_error) to SlockColor.AccentRed
+                stringResource(MR.strings.member_runtime_usage_health_error) to SlockColor.Danger
             RuntimeAccountUsageHealth.Unknown ->
-                stringResource(MR.strings.member_runtime_usage_health_unknown) to SlockColor.SurfaceCream
+                stringResource(MR.strings.member_runtime_usage_health_unknown) to SlockColor.StickerPaper
         }
-    Text(
-        text = label,
-        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        modifier =
-            Modifier
-                .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-    )
+    // raft-ui solid Badge (sticker).
+    SlockRaftBadgeChrome(label = label, fill = color)
 }
 
 @Composable
 private fun MembersRuntimeUsageBanner(text: String) {
     Text(
         text = text,
-        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
+        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.SemiBold),
         color = SlockColor.TextBlack,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.AccentOrange)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                // raft-ui warning Banner `density="sm"` surface.
+                .slockRaftCardSurface(fill = SlockColor.WarningSoft)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
     )
 }
 
