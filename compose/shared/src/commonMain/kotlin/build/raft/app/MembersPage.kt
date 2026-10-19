@@ -2030,6 +2030,10 @@ internal fun MembersPageContent(
     }
     var maxAgents by remember { mutableStateOf(-1) }
     var optimisticMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
+    // task #399 (Hands 3a56004f): the Members page is a *separate* create path from the thread
+    // member panel. #3132/#3140 only fixed ChannelMembersCreateAgentDialog, so creating from here
+    // still dropped the user back on the list. The created row is staged here and opened below.
+    var createdAgentToOpen by remember { mutableStateOf<MemberProfile?>(null) }
     // Derive the active serverId from the auth session. Replaces the prior
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
@@ -2144,6 +2148,7 @@ internal fun MembersPageContent(
                         DataRequestPriority.Foreground,
                         force = true
                     )
+
                 }
             }
         }
@@ -2177,6 +2182,15 @@ internal fun MembersPageContent(
                 if (result is DataResult.Content) {
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
+                    // task #399: hand the created agent to the detail opener below so the user
+                    // lands on its profile instead of the refreshed member list.
+                    //
+                    // Ordering matters here and must not be changed: this runs inside the dialog's
+                    // submit coroutine, which the caller cancels by clearing activeCreateAgentMode
+                    // AFTER submit() returns. Staging the profile inside submit — before that
+                    // teardown — is what makes the write survive; that is the opposite of the
+                    // #3140 bug, where the dismissal came first and cancelled the navigation.
+                    createdAgentToOpen = profile
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),
@@ -2318,12 +2332,75 @@ internal fun MembersPageContent(
         } else {
             payload.agentPanelTabOrder
         }
+
+
     val membersPayload =
         payload.copy(
             members = localMembers,
             agentPanelTabOrder = agentPanelTabOrder,
             showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
         )
+
+    // task #399 (Hands 3a56004f): the Members page has its own create path (createAgentSubmit
+    // above), separate from ChannelMembersCreateAgentDialog used by the thread member panel.
+    // #3132/#3140 only fixed the thread panel, so creating here still landed on the list.
+    // Defined here so both the row tap and the post-create path share one navigation.
+    fun openMemberDetail(member: MemberProfile) {
+        scope.launch {
+            val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+            val accessMode = identity.memberDetailAccessMode(serverId)
+            val launchPayload =
+                if (
+                    member.kind == MemberKind.Agent &&
+                    accessMode.allowsPrivateAgentSurfaces &&
+                    (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                ) {
+                    loadAgentPanelTabOrderForMembersPage()
+                        ?.also { order ->
+                            agentPanelTabOrderStore.applyLoaded(
+                                serverId = serverId,
+                                order = order,
+                                source = "members_detail_open_preload",
+                                logger = { message -> bridge.log(message) }
+                            )
+                        }
+                        ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                        ?: membersPayload
+                } else {
+                    membersPayload
+                }
+            val pageData = launchPayload.toMemberDetailPageData(identity)
+            if (pageData == null) {
+                bridge.toast(openProfileFailed)
+                bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
+            } else {
+                val seedMember =
+                    member.copy(
+                        serverId = member.serverId ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                    )
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                pager.openSlockPage(
+                    pageName = MEMBER_DETAIL_PAGE,
+                    pageData = pageData,
+                    storeScopeOverride = storeScope,
+                    onMissingScope = {
+                        bridge.toast(openProfileFailed)
+                        bridge.log("members_detail_open_skip reason=missing_shell_scope instanceId=${payload.instanceId}")
+                    }
+                )
+            }
+        }
+    }
+
+    // task #399: open the profile of a just-created agent. Runs after localMembers merged the
+    // optimistic row, so the created agent is addressable. Cleared immediately so re-entry does
+    // not reopen it on recomposition.
+    LaunchedEffect(createdAgentToOpen) {
+        val created = createdAgentToOpen ?: return@LaunchedEffect
+        createdAgentToOpen = null
+        bridge.log("members_create_agent_open_profile memberId=${created.id.value} instanceId=${payload.instanceId}")
+        openMemberDetail(created)
+    }
 
     MembersRouteContent(
         payload = membersPayload,
@@ -2332,55 +2409,7 @@ internal fun MembersPageContent(
         onRefresh = refreshMembers,
         paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
-        onOpenMemberDetail = { member ->
-            scope.launch {
-                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                val accessMode = identity.memberDetailAccessMode(serverId)
-                val launchPayload =
-                    if (
-                        member.kind == MemberKind.Agent &&
-                        accessMode.allowsPrivateAgentSurfaces &&
-                        (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                    ) {
-                        loadAgentPanelTabOrderForMembersPage()
-                            ?.also { order ->
-                                agentPanelTabOrderStore.applyLoaded(
-                                    serverId = serverId,
-                                    order = order,
-                                    source = "members_detail_open_preload",
-                                    logger = { message -> bridge.log(message) }
-                                )
-                            }
-                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                            ?: membersPayload
-                    } else {
-                        membersPayload
-                    }
-                val pageData =
-                    launchPayload.toMemberDetailPageData(
-                        identity
-                    )
-                if (pageData == null) {
-                    bridge.toast(openProfileFailed)
-                    bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
-                } else {
-                    val seedMember =
-                        member.copy(
-                            serverId = member.serverId ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                        )
-                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                    pager.openSlockPage(
-                        pageName = MEMBER_DETAIL_PAGE,
-                        pageData = pageData,
-                        storeScopeOverride = storeScope,
-                        onMissingScope = {
-                            bridge.toast(openProfileFailed)
-                            bridge.log("members_detail_open_skip reason=missing_shell_scope instanceId=${payload.instanceId}")
-                        }
-                    )
-                }
-            }
-        },
+        onOpenMemberDetail = ::openMemberDetail,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = payload.canCreateAgents,
