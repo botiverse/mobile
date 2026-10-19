@@ -40,6 +40,7 @@ import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.SlockAvatarCommitIdentity
 import build.raft.app.data.SlockAvatarMountedBinding
 import build.raft.app.data.SlockAvatarMountedHandle
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -7371,25 +7372,77 @@ internal fun SlockAvatarHttpImage(
                 "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
         )
     }
-    val imageModel =
+    val admittedImageModel =
         slockAvatarHttpAdmittedImageModel(
             candidateImageModel = candidateImageModel,
             loadState = loadState,
             ownsCurrentRequest = ownsCurrentRequest
         )
-    if (imageModel == null) {
+    // Sticky render source: once a model has reached painter Success, keep it while the pending
+    // candidate is only a different encoding of the same bytes (URL -> managed at the pinned
+    // commit, or managed at the same commit). Switching the painter model mid-display rebuilds the
+    // painter and drops the frame back to the placeholder for a frame or two — the visible
+    // "flash" of task #402. The managed first-frame value (cold start renders durable bytes
+    // without a fetch) is unaffected: stickiness only arms after a Success is already on screen.
+    var lastRenderedFrame by
+        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+            mutableStateOf<SlockAvatarRenderedFrame?>(null)
+        }
+    val stickyImageModel =
+        slockAvatarStickyImageModel(
+            candidateImageModel = admittedImageModel,
+            lastRenderedFrame = lastRenderedFrame
+        )
+    if (stickyImageModel != admittedImageModel) {
+        LaunchedEffect(stickyImageModel, admittedImageModel) {
+            slockLogDebug(
+                "SlockAvatar",
+                "avatar_model_sticky source=${activeSource.slockAvatarDiagnosticsHash()} " +
+                    "rendered=${if (parseSlockAvatarMountedRenderModel(stickyImageModel.orEmpty()) != null) "managed" else "url"} " +
+                    "candidate=${if (parseSlockAvatarMountedRenderModel(admittedImageModel.orEmpty()) != null) "managed" else "url"}"
+            )
+        }
+    }
+    if (stickyImageModel == null) {
         if (!slockAvatarHttpShowsFallback(loadState)) placeholder()
         return
     }
     // The endpoint whose URL this painter renders; every report carries it so a late result for a
     // URL the flight has moved off is ignored.
     val renderedEndpoint = loadState.endpoint
-    val painter = rememberAsyncImagePainter(model = imageModel)
+    val painter = rememberAsyncImagePainter(model = stickyImageModel)
     val imageState by painter.state.collectAsState()
+    // Record the rendered frame inside an effect — writing state mid-composition can skip
+    // dependents and re-runs anyway. A fresh Success becomes the new baseline and clears the
+    // URL pin; for a URL frame the pin is the managed commit admitted at this instant (usually
+    // none yet — the first later managed candidate arms it below).
+    LaunchedEffect(imageState, stickyImageModel, admittedImageModel) {
+        if (imageState is AsyncImagePainter.State.Success) {
+            lastRenderedFrame =
+                SlockAvatarRenderedFrame(
+                    model = stickyImageModel,
+                    urlBaselineCommit =
+                        parseSlockAvatarMountedRenderModel(admittedImageModel.orEmpty())
+                            ?.commitIdentity
+                )
+        }
+    }
+    // Arm the URL pin lazily: the mount's imageModel can emit after the URL frame is already on
+    // screen, in which case the first managed candidate seen belongs to this frame and becomes the
+    // bound. Any commit that supersedes it ends the stickiness.
+    LaunchedEffect(admittedImageModel, lastRenderedFrame) {
+        val frame = lastRenderedFrame ?: return@LaunchedEffect
+        if (parseSlockAvatarMountedRenderModel(frame.model) != null) return@LaunchedEffect
+        if (frame.urlBaselineCommit != null) return@LaunchedEffect
+        val candidateCommit =
+            parseSlockAvatarMountedRenderModel(admittedImageModel.orEmpty())?.commitIdentity
+                ?: return@LaunchedEffect
+        lastRenderedFrame = frame.copy(urlBaselineCommit = candidateCommit)
+    }
     if (imageState !is AsyncImagePainter.State.Success && !slockAvatarHttpShowsFallback(loadState)) {
         placeholder()
     }
-    LaunchedEffect(imageState, imageModel, loadState.generation, lease?.ownerToken) {
+    LaunchedEffect(imageState, stickyImageModel, loadState.generation, lease?.ownerToken) {
         val phase = imageState.toSlockAvatarHttpPainterPhase()
         if (ownsCurrentRequest) {
             lease?.let { currentLease ->
@@ -7424,6 +7477,67 @@ internal fun slockAvatarHttpShowsFallback(loadState: SlockAvatarHttpLoadSnapshot
     loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
         (loadState.cache == SlockAvatarHttpCacheState.Ready &&
             loadState.painter == SlockAvatarHttpPainterPhase.Error)
+
+/**
+ * The model the avatar painter last reached Success with, plus the bound for URL-frame stickiness.
+ *
+ * `urlBaselineCommit` is meaningful only while [model] is a plain URL: it pins the URL -> managed
+ * stickiness to a single managed commit. It is recorded when the URL frame succeeds (the admitted
+ * candidate at that instant) or, if no managed model had been emitted yet, armed by the first
+ * managed candidate observed afterwards. A later managed model carrying a different commitIdentity
+ * is a real avatar change and is admitted, so a stable (non content-addressed) URL cannot pin the
+ * old frame forever. Own-CDN avatar URLs are content-addressed (`/avatars/<ns>/<hash>.webp`, see
+ * AppAvatarCdnPath), so the common change path already resets this frame via `activeSource`.
+ */
+internal data class SlockAvatarRenderedFrame(
+    val model: String,
+    val urlBaselineCommit: SlockAvatarCommitIdentity? = null
+)
+
+/**
+ * task #402: pick the render model once a frame has succeeded. `candidateImageModel` is the
+ * currently admitted model; `lastRenderedFrame` is the model the painter last reached Success
+ * with. Returns the model to feed `rememberAsyncImagePainter`.
+ *
+ * Rules:
+ * - No candidate or no rendered success yet → the candidate decides (cold start, first frame).
+ * - Candidate is not a managed descriptor (a URL, including a reverted/cleared mount) → the
+ *   candidate decides; stickiness only suppresses managed-model handoffs, never a real source change.
+ * - Rendered model is a URL and candidate is managed → keep the URL while the candidate is the
+ *   commit this URL frame belongs to (baseline unset = the first managed candidate seen, which is
+ *   then armed as the baseline). The managed bytes for that commit are fetched from the same
+ *   activeSource, so re-rendering would re-decode the identical image through a placeholder gap.
+ *   A superseding commitIdentity re-renders — the stickiness window is bounded to one commit.
+ * - Both managed → keep the rendered model only while slot and commitIdentity match (same bytes,
+ *   newer modelRevision). A different commitIdentity is a real avatar change and must re-render.
+ */
+internal fun slockAvatarStickyImageModel(
+    candidateImageModel: String?,
+    lastRenderedFrame: SlockAvatarRenderedFrame?
+): String? {
+    val candidate = candidateImageModel ?: return null
+    val frame = lastRenderedFrame ?: return candidate
+    val rendered = frame.model
+    if (rendered == candidate) return rendered
+    val candidateManaged = parseSlockAvatarMountedRenderModel(candidate) ?: return candidate
+    val renderedManaged = parseSlockAvatarMountedRenderModel(rendered)
+    if (renderedManaged == null) {
+        val baseline = frame.urlBaselineCommit
+        return if (baseline == null || candidateManaged.commitIdentity == baseline) {
+            rendered
+        } else {
+            candidate
+        }
+    }
+    return if (
+        renderedManaged.slot == candidateManaged.slot &&
+        renderedManaged.commitIdentity == candidateManaged.commitIdentity
+    ) {
+        rendered
+    } else {
+        candidate
+    }
+}
 
 /**
  * A committed mounted descriptor is already fenced by environment/account/server/subject/content
