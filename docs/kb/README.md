@@ -36,6 +36,9 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Driving the iOS app with agent-device: sessions, runners, and the traps that cost a day](ios-agent-device-automation.md) | automation / ios | Jony | 2026-10-18 | current |
 | [iOS fixture launches: the SIMCTL_CHILD_ env contract and what a fixture does not prove](ios-fixture-launch-environment.md) | qa / ios | Jony | 2026-10-18 | current |
 | [Android CI: D8 dex merging OOMs at the project heap ceiling](android-ci-d8-dex-heap-ceiling.md) | build / CI | CC-Cata | 2026-10-19 | current |
+| [A green number is not a working feature: choosing criteria an implementation cannot satisfy by accident](numeric-criteria-that-pass-while-the-feature-is-broken.md) | verification / criteria | CC-Cata | 2026-10-19 | current |
+| [WebView `injectedJavaScript` runs at document start: five ways that bites](webview-document-start-injection-pitfalls.md) | webview / platform | CC-Cata | 2026-10-19 | current |
+| [Say what you did not verify, in the same sentence as what you did](declaring-your-verification-ceiling.md) | verification / reporting | CC-Cata | 2026-10-19 | current |
 
 ## Planned sections
 
