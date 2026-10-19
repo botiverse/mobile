@@ -119,13 +119,35 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
         // ShenKuo: a bare `raw=<absent>` merges "the key genuinely is not there" with "I asked the
         // wrong place", which are the two cases this diagnostic exists to separate. Carry the store
         // identity and the exact key with the value.
-        "font_preference_coldstart store=${binding.store::class.simpleName} scope=${binding.scope}" +
+        //
+        // storeId is the object identity, not the class: the class is invariant across two handles,
+        // so it cannot discriminate them. Two calls in one process (install point, read point)
+        // printing different storeIds prove two handles; the same storeId with raw=<absent> points
+        // at the key/namespace or the timing instead.
+        "font_preference_coldstart store=${binding.store::class.simpleName}" +
+            " storeId=${slockStoreIdentity(binding.store)} scope=${binding.scope}" +
             " namespace=${SlockLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
             " raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
     }.getOrElse { error ->
         "font_preference_coldstart store=<unavailable> namespace=${SlockLocalPreferenceStore.KuiklyNamespace}" +
             " key=$KEY_FONT_PREFERENCE_STORAGE_KEY raw=<unreadable> error=${error.message}"
     }
+
+/**
+ * Stable per-instance identity for diagnostics: distinguishes two store handles that share a class.
+ * Uses the platform identity hash where available; falls back to a per-process counter keyed by the
+ * instance so repeated calls for the SAME object keep returning the SAME value.
+ */
+private val slockStoreIdentities = mutableListOf<Pair<Any, Int>>()
+
+internal fun slockStoreIdentity(store: Any): String {
+    // Identity comparison, not equals(): a store wrapper with value equality (or two equal-content
+    // handles) must still read as two distinct instances here, which is the whole point.
+    slockStoreIdentities.firstOrNull { (known, _) -> known === store }?.let { return it.second.toString() }
+    val next = slockStoreIdentities.size
+    slockStoreIdentities += store to next
+    return next.toString()
+}
 
 /** Storage key of the font face inside the `slockLocal` app-scope store. */
 internal const val KEY_FONT_PREFERENCE_STORAGE_KEY = "appearance:font_preference"

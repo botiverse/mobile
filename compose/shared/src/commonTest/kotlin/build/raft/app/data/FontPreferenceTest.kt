@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -154,5 +155,16 @@ class FontPreferenceTest {
         } finally {
             SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
+    }
+
+    @Test
+    fun storeIdentityDistinguishesTwoHandlesThatShareAClass() {
+        // ShenKuo: the class is invariant across handles, so it cannot discriminate them. Two empty
+        // stores of the same type (equal content, equal class) must read as two instances.
+        val first = InMemorySlockKeyValueStore()
+        val second = InMemorySlockKeyValueStore()
+
+        assertEquals(slockStoreIdentity(first), slockStoreIdentity(first), "same object is stable")
+        assertNotEquals(slockStoreIdentity(first), slockStoreIdentity(second), "distinct handles differ")
     }
 }
