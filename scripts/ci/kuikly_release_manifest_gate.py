@@ -111,18 +111,10 @@ class Registry:
                     return True, f.read(), 200
             return False, None, 404
         url = f"{self.base}/{rel_path}"
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
-
-        class _NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None
-
-        opener = urllib.request.build_opener(_NoRedirect)
         last_error = None
         for attempt in range(3):
             try:
-                with opener.open(req, timeout=60) as resp:
-                    return True, resp.read(), resp.status
+                return self._fetch_once(url)
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     return False, None, e.code
@@ -138,6 +130,18 @@ class Registry:
             if attempt < 2:
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"registry unreachable after 3 attempts: {url}: {last_error}") from last_error
+
+    def _fetch_once(self, url: str):
+        """Single GET attempt. Returns (found, bytes_or_none, status)."""
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
+
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(req, timeout=60) as resp:
+            return True, resp.read(), resp.status
 
     def list_prefix(self, prefix: str):
         """Return the list of object paths under prefix (paginated to the end
@@ -655,6 +659,39 @@ def self_test() -> int:
     check("conflict-bad-bytes", EXIT_CONFLICT, root_conflict_bad_bytes)
     check("conflict-unexpected", EXIT_CONFLICT, root_conflict_unexpected)
     check("invalid-schema", EXIT_CONFLICT, root_invalid_schema)
+
+    # Transport-retry regression arm: ssl.SSLError mid-readback must be
+    # retried (not surfaced as CONFLICT), and sustained failure must end as
+    # RuntimeError, never a raw SSLError.
+    class _FlakyRegistry(Registry):
+        def __init__(self, fails):
+            super().__init__(base="https://example.invalid")
+            self._fails = fails
+            self.calls = 0
+
+        def _fetch_once(self, url):
+            self.calls += 1
+            if self.calls <= self._fails:
+                raise ssl.SSLError("UNEXPECTED_EOF_WHILE_READING")
+            return True, b"bytes", 200
+
+    ok_reg = _FlakyRegistry(fails=2)
+    try:
+        found, data, status = ok_reg.get_bytes("x/y.jar")
+        if not (found and data == b"bytes" and ok_reg.calls == 3):
+            failures.append("ssl-retry: expected 3 calls then success")
+        else:
+            log("self-test arm ssl-retry-recovers: OK")
+    except Exception as e:
+        failures.append(f"ssl-retry: unexpected {e!r}")
+    dead_reg = _FlakyRegistry(fails=9)
+    try:
+        dead_reg.get_bytes("x/y.jar")
+        failures.append("ssl-exhausted: expected RuntimeError")
+    except ssl.SSLError as e:
+        failures.append(f"ssl-exhausted: raw SSLError escaped: {e!r}")
+    except RuntimeError:
+        log("self-test arm ssl-retry-exhausted: OK")
 
     if failures:
         for f in failures:
