@@ -567,6 +567,12 @@ private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 
 /** task #188: toggles the HTML attachment's desktop viewport. */
 internal const val SlockFilePreviewDesktopModeActionId = "html-desktop-mode"
+internal const val SlockFilePreviewCopyTextActionId = "copy-text"
+internal const val SlockFilePreviewSelectTextActionId = "select-text"
+
+/** Markdown / plain-text previews expose their source text for copy and selection. */
+internal fun SlockFilePreviewPayload.selectableSourceText(): String? =
+    content.takeIf { (kind == "markdown" || kind == "text") && it.isNotBlank() }
 private const val SlockFilePreviewSaveToFilesActionId = "save-to-files"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -1705,6 +1711,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
     // within the page, but only for authority/expiry reasons on the SAME attachment.
     var htmlDesktopMode by remember { mutableStateOf(false) }
+    var textSelectionOpen by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -1912,6 +1919,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     val storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable)
     val unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
     val downloadedFileDeleted = stringResource(MR.strings.file_preview_download_deleted)
+    val copiedLabel = stringResource(MR.strings.common_copied)
     val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
     val attachmentOpenResultTerms =
         SlockAttachmentOpenResultTerms(
@@ -3689,6 +3697,33 @@ private fun SlockFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
+                // Rendered Markdown / text is not selectable in place, so expose the
+                // source the same way a message does: copy all, or open Select Text.
+                if (payload.selectableSourceText() != null) {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewCopyTextActionId,
+                        label =
+                            stringResource(
+                                if (payload.kind == "markdown") {
+                                    MR.strings.thread_action_copy_markdown
+                                } else {
+                                    MR.strings.file_preview_action_copy_text
+                                }
+                            ),
+                        icon = SlockLucideIconName.Copy
+                    )
+                } else {
+                    null
+                },
+                if (payload.selectableSourceText() != null) {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewSelectTextActionId,
+                        label = stringResource(MR.strings.thread_action_select_text),
+                        icon = SlockLucideIconName.FileText
+                    )
+                } else {
+                    null
+                },
                 if (photosActionState != SlockFilePreviewPhotosActionState.Hidden) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewSaveToPhotosActionId,
@@ -3782,6 +3817,12 @@ private fun SlockFilePreviewStandalonePageContent() {
                 // The reload itself lives next to the WebView (SlockFilePreviewPayloadContent),
                 // which is a separate composable and reloads when this prop changes.
                 SlockFilePreviewDesktopModeActionId -> htmlDesktopMode = !htmlDesktopMode
+                SlockFilePreviewCopyTextActionId ->
+                    payload.selectableSourceText()?.let { text ->
+                        bridge.copyToPasteboard(text)
+                        bridge.toast(copiedLabel)
+                    }
+                SlockFilePreviewSelectTextActionId -> textSelectionOpen = true
             }
         }
     ) {
@@ -3805,6 +3846,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     payload = payload,
                     onOpenUrl = {},
                     htmlDesktopMode = htmlDesktopMode,
+                    onLongPressText = { textSelectionOpen = true },
                     onExternalBrowserOpen =
                         if (
                             payload.source == SlockFilePreviewSourceThreadAttachment &&
@@ -3887,6 +3929,16 @@ private fun SlockFilePreviewStandalonePageContent() {
                             ?.takeIf { it.attachment.id == state.attachment.id }
                             ?.withQuotedAttachmentComment(comment)
                 }
+            )
+        }
+    }
+    if (textSelectionOpen && !composerImageEditMode) {
+        payload.selectableSourceText()?.let { text ->
+            SlockTextSelectionDialog(
+                text = text,
+                textStyle = SlockType.Body,
+                onDismiss = { textSelectionOpen = false },
+                testTag = "file_preview_selection_text"
             )
         }
     }
@@ -7648,6 +7700,8 @@ internal fun SlockFilePreviewPayloadContent(
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
     onExternalBrowserOpen: (() -> Unit)? = null,
+    /** Long-press on a Markdown / text body; the page opens Select Text. */
+    onLongPressText: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -7693,7 +7747,8 @@ internal fun SlockFilePreviewPayloadContent(
                     modifier = Modifier.fillMaxSize(),
                     performanceKey = "preview:${payload.path}",
                     textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                    showChrome = false
+                    showChrome = false,
+                    onLongPress = onLongPressText
                 )
             }
         "text" ->
@@ -7711,7 +7766,8 @@ internal fun SlockFilePreviewPayloadContent(
                     meta = payload.meta,
                     content = payload.content,
                     modifier = Modifier.fillMaxSize(),
-                    showChrome = false
+                    showChrome = false,
+                    onLongPress = onLongPressText
                 )
             }
         "xlsx" -> {
@@ -9951,7 +10007,8 @@ internal fun SlockFilePreviewMarkdownPanel(
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
     textStyle: TextStyle? = null,
-    showChrome: Boolean = true
+    showChrome: Boolean = true,
+    onLongPress: (() -> Unit)? = null
 ) {
     if (!showChrome && status == "content") {
         LazyColumn(
@@ -9964,7 +10021,7 @@ internal fun SlockFilePreviewMarkdownPanel(
                     body = body.orEmpty(),
                     textStyle = textStyle ?: SlockType.Body,
                     onOpenUrl = onOpenUrl,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().slockFilePreviewLongPress(onLongPress),
                     softLineBreaksAsNewLines = false,
                     performanceKey = performanceKey
                 )
@@ -10018,13 +10075,21 @@ internal fun SlockFilePreviewMarkdownPanel(
     }
 }
 
+private fun Modifier.slockFilePreviewLongPress(onLongPress: (() -> Unit)?): Modifier =
+    if (onLongPress == null) {
+        this
+    } else {
+        pointerInput(onLongPress) { detectTapGestures(onLongPress = { onLongPress() }) }
+    }
+
 @Composable
 internal fun SlockFilePreviewTextPanel(
     name: String,
     meta: String,
     content: String,
     modifier: Modifier = Modifier,
-    showChrome: Boolean = true
+    showChrome: Boolean = true,
+    onLongPress: (() -> Unit)? = null
 ) {
     if (!showChrome) {
         LazyColumn(
@@ -10034,6 +10099,7 @@ internal fun SlockFilePreviewTextPanel(
             item {
                 Text(
                     text = content,
+                    modifier = Modifier.fillMaxWidth().slockFilePreviewLongPress(onLongPress),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextBlack,
                     maxLines = Int.MAX_VALUE,
