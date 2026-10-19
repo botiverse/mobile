@@ -483,6 +483,25 @@ jobs:
           # blackhole. Keep that SDK on loopback too so the target-UID non-loopback counter is a meaningful zero.
           SLOCK_HANDS_BASE_URL: https://127.0.0.1:1
         run: |
+          # This step assembles three test APKs in ONE Gradle invocation, and D8 merges their dex in
+          # the same heap that compose/gradle.properties sizes for a single Kotlin/Native link (4g).
+          # On 2026-10-18 it died with "D8: java.lang.OutOfMemoryError: Java heap space" inside
+          # :androidApp:mergeLibDexConnectedTest -- while the runner reported 12 GiB available. The
+          # heap, not the machine, was the binding constraint.
+          #
+          # Raised through $GRADLE_USER_HOME/gradle.properties, which outranks the project file: the
+          # same mechanism ios-simulator-app.yml and ios-release.yml already use to lift the same 4g
+          # ceiling for their own builds. Scoped to this runner, so developer machines and the other
+          # jobs keep the conservative project value.
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$GUH"
+          # Drop any previous line first: setup-gradle may restore this directory, and appending
+          # blindly would stack duplicate org.gradle.jvmargs entries across runs.
+          if [ -f "$GUH/gradle.properties" ]; then
+            grep -v '^org\.gradle\.jvmargs=' "$GUH/gradle.properties" > "$GUH/gradle.properties.tmp" || true
+            mv "$GUH/gradle.properties.tmp" "$GUH/gradle.properties"
+          fi
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
           ./gradlew \
             -PslockVisualFixtures=true \
             :shared:assembleDebugAndroidTest \

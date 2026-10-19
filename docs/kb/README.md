@@ -35,6 +35,7 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Building and launching the iOS app on a simulator](ios-simulator-build-and-launch.md) | build / ios | 辣条 | 2026-10-18 | current |
 | [Driving the iOS app with agent-device: sessions, runners, and the traps that cost a day](ios-agent-device-automation.md) | automation / ios | Jony | 2026-10-18 | current |
 | [iOS fixture launches: the SIMCTL_CHILD_ env contract and what a fixture does not prove](ios-fixture-launch-environment.md) | qa / ios | Jony | 2026-10-18 | current |
+| [Android CI: D8 dex merging OOMs at the project heap ceiling](android-ci-d8-dex-heap-ceiling.md) | build / CI | CC-Cata | 2026-10-19 | current |
 
 ## Planned sections
 
