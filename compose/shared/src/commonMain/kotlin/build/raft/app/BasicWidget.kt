@@ -1528,7 +1528,8 @@ internal fun raftResolvedKeyboardOptions(
 /**
  * CMP port of the Android host's hardware-Enter routing (SlockKuiklyActivity
  * handleSlockTextFieldEnterKey): when the field's IME action is Send, Enter sends on key-up and
- * Shift+Enter inserts a newline (multi-line fields only). Compose would otherwise insert a newline
+ * Shift+Enter inserts a newline (multi-line fields only); which of the two is decided on key-down
+ * ([RaftHardwareEnterRouter]). Compose would otherwise insert a newline
  * for every hardware Enter on a multi-line field.
  *
  * TODO(cmp-switch): `systemNewlineAction` (an "Insert newline" item in the Android text
@@ -1536,28 +1537,64 @@ internal fun raftResolvedKeyboardOptions(
  * TODO(cmp-switch): verify on iOS that the soft-keyboard Send key on a multi-line field fires
  * KeyboardActions.onSend instead of inserting "\n".
  */
+@Composable
 internal fun Modifier.raftImeEnterAction(
     singleLine: Boolean,
     keyboardOptions: KeyboardOptions,
     keyboardActions: KeyboardActions,
 ): Modifier {
+    val router = remember { RaftHardwareEnterRouter() }
     if (keyboardOptions.imeAction != ImeAction.Send) return this
     val onSend = keyboardActions.onSend ?: return this
     return onPreviewKeyEvent { event ->
         if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
-        if (event.isShiftPressed) {
-            // Multi-line: let the field insert the newline. Single-line: swallow (no send).
-            return@onPreviewKeyEvent singleLine
-        }
-        when (event.type) {
-            KeyEventType.KeyDown -> true
-            KeyEventType.KeyUp -> {
-                onSend(RaftHardwareEnterKeyboardActionScope)
-                true
+        val phase =
+            when (event.type) {
+                KeyEventType.KeyDown -> RaftHardwareEnterRouter.Phase.Down
+                KeyEventType.KeyUp -> RaftHardwareEnterRouter.Phase.Up
+                else -> return@onPreviewKeyEvent false
             }
-            else -> false
+        router.onEnter(phase, shiftPressed = event.isShiftPressed, singleLine = singleLine) {
+            onSend(RaftHardwareEnterKeyboardActionScope)
         }
     }
+}
+
+/**
+ * Per-field hardware Enter decision for [raftImeEnterAction]. Send vs newline is decided on the
+ * key-down (by the Shift state at that moment) and the key-up only carries it out, so releasing
+ * Shift a moment before Enter still inserts the newline instead of sending, and a key-up whose
+ * key-down this field did not see (focus moved mid-press) does nothing.
+ */
+internal class RaftHardwareEnterRouter {
+    enum class Phase { Down, Up }
+
+    private enum class Decision { Send, Newline }
+
+    private var pending: Decision? = null
+
+    /** Returns true when the event is consumed (the field must not handle it). */
+    fun onEnter(phase: Phase, shiftPressed: Boolean, singleLine: Boolean, send: () -> Unit): Boolean =
+        when (phase) {
+            Phase.Down -> {
+                val decision = if (shiftPressed) Decision.Newline else Decision.Send
+                pending = decision
+                // Newline: a multi-line field inserts it; a single-line field swallows (no send).
+                decision == Decision.Send || singleLine
+            }
+            Phase.Up -> {
+                val decision = pending
+                pending = null
+                when (decision) {
+                    Decision.Send -> {
+                        send()
+                        true
+                    }
+                    Decision.Newline -> singleLine
+                    null -> false
+                }
+            }
+        }
 }
 
 /**
