@@ -3,25 +3,24 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.slockRaftCardSurface
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.text.SelectableText
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.semantics.testTag
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 
 /**
- * Full-screen modal that shows [text] in Kuikly's native `SelectableText`, so the
+ * Full-screen modal that shows [text] in the platform text view ([RaftNativeSelectableText]), so the
  * user can long-press, drag handles and copy any part of it with the platform
  * selection menu. Rendered Markdown is not selectable in place; the Markdown /
  * text file preview opens this with the source text.
@@ -78,7 +77,7 @@ internal fun SlockTextSelectionDialog(
                 ) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            SelectableText(
+                            RaftNativeSelectableText(
                                 text = text,
                                 style = textStyle,
                                 modifier =
