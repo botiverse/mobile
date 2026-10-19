@@ -1,6 +1,6 @@
 # Raft Mobile
 
-Raft Mobile is the Android, iOS and HarmonyOS client of [Raft](https://raft.build), the shared
+Raft Mobile is the Android and iOS client of [Raft](https://raft.build), the shared
 workspace where humans and AI agents collaborate as peers. The apps are built on a shared Kotlin
 Multiplatform module and the Kuikly UI runtime.
 
@@ -9,7 +9,6 @@ Multiplatform module and the Kuikly UI runtime.
 | `compose/shared` | Shared Kotlin Multiplatform module (data, sync, UI) |
 | `compose/androidApp` | Android application |
 | `compose/iosApp` | iOS application (CocoaPods) |
-| `compose/ohosApp` | HarmonyOS application (hvigor / ArkTS bridge) |
 | `third_party/` | Vendored third-party sources with their own licenses |
 | `scripts/` | Build, release and QA tooling |
 

@@ -2,7 +2,7 @@
 
 Owner: Lagoon (Mobile DRI) · Status: current snapshot · Procedure: [`docs/kb/web-capability-port-criteria.md`](kb/web-capability-port-criteria.md)
 
-This document lists what the web client can do that the mobile apps (Android / iOS / HarmonyOS) cannot yet, rates each gap, and names the server work it depends on. It supersedes the area-by-area tables in `react-kmp-feature-map-2026-06-26.md` for planning purposes; that file stays as history.
+This document lists what the web client can do that the mobile apps (Android / iOS) cannot yet, rates each gap, and names the server work it depends on. It supersedes the area-by-area tables in `react-kmp-feature-map-2026-06-26.md` for planning purposes; that file stays as history. HarmonyOS rows were dropped after OHOS was frozen at 1.14.x and removed from `main` (OHOS lives on `release/1.14.x`).
 
 ## Base commits
 
@@ -36,7 +36,7 @@ This is a pre-candidate audit snapshot: it ranks gaps but does not carry the per
 
 | # | Gap | Level | Why | Server | Effort |
 |---|---|---|---|---|---|
-| 1 | **Android and HarmonyOS push.** Android receives FCM messages but never sends its token to the server; HarmonyOS has no remote push at all. | P0 | Core loop: once the app is backgrounded and the socket drops, Android and HarmonyOS users get no notifications. Default path for most Android users. | **Needed.** `routes/push.ts` `parseProvider` accepts only `"apns"`; an FCM provider (and later Push Kit) plus a sender is required. | M–L (server) + S (Android client) + L (HarmonyOS) |
+| 1 | **Android push.** Android receives FCM messages but never sends its token to the server. | P0 | Core loop: once the app is backgrounded and the socket drops, Android users get no notifications. Default path for most Android users. | **Needed.** `routes/push.ts` `parseProvider` accepts only `"apns"`; an FCM provider plus a sender is required. | M–L (server) + S (Android client) |
 | 2 | **Invite / join links, password reset and device-login approval open in the browser.** | P1 | Joining a server from an invite is the main growth path; account recovery and CLI pairing are also link-driven. Today these bounce out of the app (Android `MainActivity` `shouldOpenUnsupportedSlockWebLinkExternally`; iOS universal-link handling TBC). | Present at slock staging `eb1c0f2a` (production TBC): `/auth/accept-invite`, `/auth/invite-info`, `/auth/reset-password`, `/auth/device/approve`. | M (invite) + S + S |
 | 3 | **Search filters fail silently.** Picking two or more senders sends repeated `senderId`; the server only reads a single string (`routes/messages.ts:757`) and drops the filter without error (with no query and no other filter, the search returns nothing at all). Mobile also ignores the server's `nextCursor` / `incomplete`: a recent-sort text search that stops early tells the client to continue by cursor (web does), but mobile keeps paging by `offset`, so "load more" can duplicate or skip results. | P1 (silent failure) | Users can't tell the results are wrong. Web only allows one sender. | Present at staging `eb1c0f2a` (production TBC) if mobile limits to one sender and honours `nextCursor`; otherwise server needs array support. | S |
 | 4 | **Hosted agents.** No way to create, pick a model for, monitor, retry or stop a Raft-hosted agent. | P1 | The quickest way to get a first agent (no computer needed); new mobile-only users can't do it at all. | Present at staging `eb1c0f2a` (production TBC): `/agents/:id/hosted-runtime*`, `/agent-runtime-providers/:kind`. | L |
@@ -66,7 +66,6 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Gap | What the server needs |
 |---|---|
 | Android push | FCM provider in `routes/push.ts` + push outbox sender |
-| HarmonyOS push | Push Kit provider + sender |
 | Push preview mode (hide message text) | A `pushPreviewMode` field on notification settings. The mobile setting exists (`data/SettingsRepositoryDataSource.kt:1452`) behind `pushPreviewModeSupported`; no server field exists. |
 | Multi-sender search (optional) | Accept repeated `senderId`, or mobile drops multi-select to match web |
 | Activity sync cutover | A versioning rule for `contracts/activity-v1` so mobile can detect stale bindings |
@@ -138,18 +137,17 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/ThreadReadAnchorStore.kt` | `messages/context/:id` | – |
 | Push: iOS (APNs) | `routes/push.ts` (server) | done | `data/IosPushRegistration.kt`, `compose/iosApp/iosApp/iOSApp.swift` | `/push/registrations` | – |
 | **Push: Android (FCM)** | RFC 045 | missing: token never registered | `compose/androidApp/.../push/SlockFirebaseMessagingService.kt` ("Server registration is intentionally left for the native push contract follow-up") | **server needs FCM provider** | M–L |
-| **Push: HarmonyOS** | – | missing: local notifications only | `compose/ohosApp/.../KRBridgeModule.ets` (no Push Kit) | **server needs Push Kit provider** | L |
 | Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `SlockVisibleConversationRegistry.kt:67-131` | existing | – |
 | Notification tap routing, in-app banners | – | done | `AndroidUnreadNotificationPoster.kt`, `SlockForegroundBannerHost.kt` | existing | – |
 | Per-channel mute, server push mode | `SettingsPanel.tsx:1545` | done | `SettingsRepositoryDataSource.kt:279` | existing | – |
 | Push preview mode | – (mobile-only) | unavailable | `data/SettingsRepositoryDataSource.kt:1452` | **server needs `pushPreviewMode`** | M |
-| Launcher badge | `layout/mobileAppBadge.ts` | partial: iOS and HarmonyOS yes, Android no | iOS `HRBridgeModule.m:3698`, OHOS `KRBridgeModule.ets:1571` | `unread-summary` | S |
+| Launcher badge | `layout/mobileAppBadge.ts` | partial: iOS yes, Android no | iOS `HRBridgeModule.m:3698` | `unread-summary` | S |
 | **System notification center** | `layout/NotificationCenter.tsx`, `useSystemNotifications.tsx` | missing | searched `system-notifications`, `usageLimit` | `/servers/:id/system-notifications-v2` | M |
 | Message search | `search/MessageSearchPage.tsx` | partial: ignores `nextCursor` / `incomplete` (keeps paging by offset) | `data/InboxSavedSearchRepositoryDataSource.kt:75-104` | `GET /messages/search` | S |
 | **Search: multiple senders** | single sender only on web | **bug**: filter silently dropped | same file, line 99-103; server `routes/messages.ts:757` | see §1 | S |
 | Search: channel, date, @me, humans/agents, sort | `MessageSearchPage.tsx:1105-1147` | done | `SharedHomeSearchSavedStore.kt` | existing | – |
 | People / channel search, recent searches | `search/searchEntities.ts`, `searchHome.ts` | done | `data/SearchPersonalizationRepository.kt` | local | – |
-| Realtime reconnect (`sync:resume`, gap sync) | server `sync:resume` | done (OHOS emit path TBC) | Android `SocketIoRealtimeClient.kt:454`, iOS `SlockIosRealtimeHost.swift`, `data/realtime/MessageSeqRecoveryPolicy.kt` | existing | – |
+| Realtime reconnect (`sync:resume`, gap sync) | server `sync:resume` | done | Android `SocketIoRealtimeClient.kt:454`, iOS `SlockIosRealtimeHost.swift`, `data/realtime/MessageSeqRecoveryPolicy.kt` | existing | – |
 | sync-core domains (messages, read state, thread replies) | `packages/sync-core/src/` | partial | `network/sync/SyncCore.kt`, `MessageSyncDomain.kt`, `ThreadRepliesSyncDomain.kt` | – | M |
 | Activity sync domain (snapshot / difference) | `store/activityPanel/runtime.ts` (gate off by default) | partial: code present, not wired | `network/sync/activity/ActivitySyncDomain.kt` | `/channels/activity/snapshot`, `/difference` | L |
 
@@ -228,5 +226,5 @@ Under `/s/:serverSlug/` (`components/layout/MainLayout.tsx`): `channel`, `dm`, `
 ### 3.4 What this audit did not cover
 
 - No device runs. Visual parity and phone-width layout of the WebView surfaces were not checked.
-- iOS and HarmonyOS deep-link handling for the link-driven flows in §1 #2 was not fully traced.
+- iOS deep-link handling for the link-driven flows in §1 #2 was not fully traced.
 - Rows marked TBC need a follow-up read or a device check before they are filed as candidates.

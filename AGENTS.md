@@ -90,7 +90,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   do that. Do not leave an Android "thin wrapper" whose only job is to delegate
   to shared; use typealiases or direct shared imports while the old Android
   package names are being retired.
-- Platform code (Android, OHOS/Kuikly, future targets) should adapt only the
+- Platform code (Android, iOS, future targets) should adapt only the
   single bottom network layer: auth, refresh, priority, headers, and raw HTTP
   request/response. Server DTO parsing and request-body construction remain in
   shared.
@@ -552,7 +552,7 @@ or helper scripts as a workaround for branch protection.
   - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
     the Kuikly Compose / Kuikly DSL rules.
   - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
-- For Kuikly, OHOS, shared shell, navigation, assets, native bridge, or
+- For Kuikly, shared shell, navigation, assets, native bridge, or
   recomposition work, read the relevant workspace skill/rule first instead of
   relying on Android-native assumptions.
 - The local Tencent KuiklyUI upstream reference lives at
@@ -563,20 +563,17 @@ or helper scripts as a workaround for branch protection.
   - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/demo/src/commonMain/kotlin/com/tencent/kuikly/demo/pages/compose/`
     for Compose DSL demos such as popups, gestures, Canvas, dialogs, lazy lists,
     and text/input behavior.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/ohosApp/` for the
-    HarmonyOS host shell.
   - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/androidApp/` for the
     Android host shell.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/core-render-ohos/`
-    and `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
+  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
     render/runtime implementation details.
 - Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
   unless explicitly asked; for Slock product fixes, change Slock shared/app code.
 - Cross-platform visual states must not rely on parent/view opacity when the
   intended result is a specific token color. Kuikly Compose emits
   `Modifier.alpha(...)` as an `opacity` prop; Android applies that through
-  `View.alpha`, while OHOS applies it through ArkUI `NODE_OPACITY`. The final
-  subtree blending can differ, especially for disabled buttons/icons on light
+  `View.alpha`, while other Kuikly renderers apply it through their own native
+  opacity primitive. The final subtree blending can differ, especially for disabled buttons/icons on light
   backgrounds. Prefer explicit ARGB colors such as
   `AccentPink.copy(alpha = 0.3f)` and matching icon colors (`#4D000000`) for
   disabled/pressed states instead of wrapping the whole component in
@@ -594,83 +591,37 @@ scripts/sync_kuikly_ai_skills.sh
   `compose/gradle/kuikly-release-closure.json`; it does not carry a Kuikly
   source gitlink or build Kuikly into Maven Local.
 - `scripts/ci/verify_kuikly_release_manifest.sh` is the fail-closed version
-  admission gate. Android/KMP/OHOS then resolve exact coordinates from the
-  exclusive Raft repository, while iOS and the OHOS renderer are fetched from
-  the same manifest with byte verification. Set `KUIKLY_FULL_READBACK=1` only
+  admission gate. Android/KMP then resolve exact coordinates from the
+  exclusive Raft repository, while iOS artifacts are fetched from the same
+  manifest with byte verification. Set `KUIKLY_FULL_READBACK=1` only
   for an explicit audit/recovery run that must re-read the full release set.
 - Fork development and publication happen in the KuiklyUI repository. To
   upgrade Mobile, publish a complete immutable successor first, then update
-  the closure, exact Gradle versions, CocoaPods lock, and OHOS lock together.
+  the closure, exact Gradle versions, and CocoaPods lock together.
 - The `.agents/skills/kuikly-ui-framework/references/KuiklyUI` tree remains a
   vendor reference for API and implementation research; it is not a build
   input or consumer fallback.
 
-## OHOS Kuikly Workflow
+## HarmonyOS (OHOS) Status
 
-- For local HarmonyOS virtual-device lifecycle, HDC connection, signed-HAP
-  install, screenshots/layout dumps, and repeatable input smoke, read
-  `docs/ohos-emulator-setup.md` before starting an emulator.
+- OHOS support is frozen. `1.14.x` is the last OHOS release line and is built
+  only from the `release/1.14.x` branch; `main` carries no OHOS app, bridge,
+  build scripts, CI lanes, or device tooling. Do not add OHOS targets, docs, or
+  release steps on `main`. OHOS-only fixes, if any are explicitly requested,
+  go to `release/1.14.x`.
 
-- The Slock OHOS app bundle/module/ability is `build.raft.mobile` / `entry` /
-  `EntryAbility`.
-- `hdc` may not be on `PATH`; the default DevEco path in this workspace is
-  `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.
-- Do not assume global `hvigor` or `hvigorw` commands exist on this machine.
-  Command-line OHOS builds should use DevEco Studio's bundled Node +
-  `hvigorw.js` and bundled `ohpm`.
-- The default DevEco installation path used by this project is
-  `/Applications/DevEco-Studio.app/Contents`. Override it in scripts with
-  `DEVECO_STUDIO_HOME` only when DevEco is installed elsewhere.
-- To sync and assemble a HAP without relying on global `hvigorw`, run:
+## Local Preferences
 
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose/ohosApp
-/Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
-/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
-  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
-  --sync -p product=default --analyze=normal --parallel
-/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
-  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
-  --mode module -p module=entry@default -p product=default \
-  -p requiredDeviceType=phone assembleHap --analyze=normal --parallel
-```
-
-- To build, install, and launch the OHOS app, run the wrapper from the Compose
-  project. It applies the same bundled DevEco toolchain path above, then installs
-  the signed HAP on a connected target. The script is not guaranteed to have its
-  executable bit set, so prefer invoking it through `sh`:
-
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose
-sh ohosApp/runOhosApp.sh
-```
-
-- `scripts/capture_ohos_screenshot.sh` uses `snapshot_display`; on some current
-  OHOS emulator images, `snapshot_display` rejects `.png` output names and only
-  accepts `.jpeg`. If screenshot capture fails with a suffix error, use a remote
-  `.jpeg` path and pull that file with `hdc file recv`.
-
-## OHOS Kuikly SharedPreferences
-
-- Kuikly OHOS has two SharedPreferences implementations:
-  `KRSharedPreferencesModule` uses XML files and is compatible with all API
-  versions; `KROhSharedPreferencesModule` uses the native OpenHarmony
-  `oh_preferences` C API / GSKV format and requires OpenHarmony API >= 13.
-- Prefer `KROhSharedPreferencesModule` on API 13+ by enabling it through the
-  Kuikly entry config, for example `Kuikly({ useOhSharedPreferences: true, ... })`.
-- When business code builds a platform Preference instance on OHOS, never set
-  `fileName` to `KROhSharedPreferencesModule`; that name is reserved by the
-  module implementation and will conflict with its cache path.
-- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
-  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
-  platform Preference file names.
 - Local product preferences must be represented as shared repositories over
   `SharedPreferenceStore` in `compose/shared`. Business code must not create
-  platform `SharedPreferences` / OHOS `Preference` instances, choose file names,
-  or hand-roll preference keys in feature pages.
+  platform `SharedPreferences` instances, choose file names, or hand-roll
+  preference keys in feature pages.
+- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
+  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
+  platform preference file names.
 - Platform hosts only adapt the bottom store: Android provides
   `AndroidSharedPreferencesKeyValueStore` using the shared
-  `SlockLocalPreferenceStore.AndroidPreferencesName`; Kuikly/OHOS provides
+  `SlockLocalPreferenceStore.AndroidPreferencesName`; Kuikly hosts provide
   `KuiklySharedPreferencesKeyValueStore` through `kuiklySharedPreferenceStore(...)`.
   Business repositories for locale, chat layout, notifications, tasks view mode,
   and future local settings stay in shared.
@@ -831,21 +782,15 @@ After any shared-layer change, validate all target platforms before handoff:
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :shared:compileDebugKotlinAndroid
 
-# 2. Shared OHOS compile (Kotlin/Native cross-check)
+# 2. Shared iOS compile (Kotlin/Native cross-check; macOS host)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew -c settings.ohos.gradle.kts \
-  :shared:compileKotlinOhosArm64 \
-  :ohosBridge:compileKotlinOhosArm64
+./gradlew :shared:compileKotlinIosSimulatorArm64
 
 # 3. Android app compile + assemble
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:compileDebugKotlin :androidApp:assembleDebug
 
-# 4. OHOS HAP (requires DevEco Studio; uses bundled hvigorw.js, not a global CLI)
-cd /Users/artin/AndroidStudioProjects/Slock/compose
-sh ohosApp/runOhosApp.sh
-
-# 5. Focused unit tests
+# 4. Focused unit tests
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:testDebugUnitTest \
   --tests "build.raft.app.core.data.quality.NetworkPriorityCallSiteTest*" \
@@ -856,24 +801,15 @@ Key invariants:
 - If step 1 fails, fix shared before validating the app. The Android app now sees
   shared changes directly through the project dependency.
 - Step 2 must pass even if you only changed commonMain; Kotlin/Native catches
-  expect/actual mismatches, missing `ohosArm64` source sets, and
+  expect/actual mismatches, missing native source sets, and
   platform-incompatible dependencies. It is also what catches JVM-only APIs in
   commonMain (e.g. `Map.putIfAbsent`/`Map.merge`) that compile fine for
-  Android but break the iOS and OHOS builds — never push a commonMain change
-  that has only been validated by step 1. Do not count on CI to catch this
-  after push: the CI-side OHOS shared compile is a non-blocking lane (red
-  does not stop a merge; failures are fixed forward), so this local step is
-  the real gate until the pre-merge JVM-only-Map grep gate lands on main.
-- The `ohosBridge` module is the intentionally narrow C ABI for
-  `libshared.so`. Keep its public API primitive and minimal; realtime calls
-  cross the existing KNOI bridge. Building the binary directly from `:shared`
-  exports the full shared API and creates an impractically large C adapter.
-- Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
-  comments; treat them as warnings unless Hvigor reports a hard compile error.
+  Android but break the iOS build — never push a commonMain change
+  that has only been validated by step 1.
 
 ## Visual Testing (Cross-Provider Parity)
 
-React web is the visual baseline; Android/iOS/OHOS captures are compared
+React web is the visual baseline; Android/iOS captures are compared
 against it (and against each other) by
 `.github/workflows/visual-testing.yml`. The data model, CLI, and report site
 live in the React repo under `packages/visual-testing/` — read its README and
@@ -885,7 +821,7 @@ Pipeline contracts:
 
 - Comparisons are provider pairs (`--pairs react__android,react__ios,android__ios`
   when iOS capture runs; `react__android` otherwise). Pair keys normalize by
-  provider precedence react > android > ios > ohos.
+  provider precedence react > android > ios.
 - The report job publishes images first with analysis seeded from the previous
   gh-pages state; AI analysis runs as a separate job with a cancel-in-progress
   concurrency group and a generation guard (it republishes only if the
@@ -923,7 +859,8 @@ not complete without its own changeset in that version directory.
 
 The release lane aggregates those changesets separately for each shipped
 platform under `change-logs/<version>/<platform>/{zh-CN,en}.md`, where
-`<platform>` is `android`, `ios`, or `ohos`. A platform aggregate contains only
+`<platform>` is `android` or `ios` (historical versions up to 1.14.x may also
+carry `ohos`). A platform aggregate contains only
 behavior shipped on that platform and does not repeat the platform name in
 each bullet. Historical root-level `change-logs/<version>/{zh-CN,en}.md` files
 remain supported as workflow fallbacks, but new versions must use the

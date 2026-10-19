@@ -1,6 +1,8 @@
 # Mobile Release Train SOP
 
 Use this procedure when Mobile ships Android and iOS from one release train.
+HarmonyOS (OHOS) is frozen: 1.14.x is the last OHOS release, and any OHOS
+build is cut only from `release/1.14.x`; trains from `main` do not ship OHOS.
 Platform-specific signing and build rules remain in
 [Android Release SOP](android-release-sop.md) and
 [iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md).
@@ -82,7 +84,7 @@ must remain separate for the exact being reviewed.
    complete manifest, and per-artifact bytes and SHA-256. A missing manifest,
    incomplete platform set, hash mismatch, version range, `latest`, or silent
    fallback of those pinned coordinates to a gitlink, `mavenLocal`, local pod,
-   HAR, or source build blocks the candidate. A source checkout may remain as
+   or source build blocks the candidate. A source checkout may remain as
    a provenance anchor, but it is not a production dependency fallback.
    Kuikly (`com.tencent.kuikly-open`) and Hands (`build.hands`) are routed
    with Gradle `exclusiveContent` to Raft Artifacts, so they cannot fall
@@ -91,12 +93,12 @@ must remain separate for the exact being reviewed.
    provenance rules and are not covered by deleting that repository entry.
 8. Platform versionName / versionCode / CFBundleVersion values are **CI
    dispatch inputs**. Frozen source may keep placeholder defaults
-   (`1.0.0` / `1000000` on Android and OHOS; iOS `MARKETING_VERSION=1.0` /
+   (`1.0.0` / `1000000` on Android; iOS `MARKETING_VERSION=1.0` /
    `CURRENT_PROJECT_VERSION=1`). Do not rewrite those placeholders into the
    freeze tree, and do not fail preflight merely because the source defaults
    are still present. The version gate is: allocate monotonic coordinates,
-   inject them at workflow dispatch, then verify the signed artifacts. Android,
-   OHOS and iOS all use the train semantic version (artin, 2026-09-27: iOS
+   inject them at workflow dispatch, then verify the signed artifacts. Android
+   and iOS both use the train semantic version (artin, 2026-09-27: iOS
    1.12.0 ships as marketing version `1.12.0` build 1, not `1.0.0`). iOS
    dispatches `version_major/minor/patch` = the train version and
    `version_build` restarting at 1 per marketing version; the resulting
@@ -130,7 +132,7 @@ must remain separate for the exact being reviewed.
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
-    in-flight Android, iOS, and OHOS run, Hands draft/readback, and any
+    in-flight Android and iOS run, Hands draft/readback, and any
     TestFlight processing state, then post a short status in that thread.
     Cancel the reminder only after every dispatched platform is terminal and
     the receipt is written, or the owner explicitly stops the train. A release
@@ -148,7 +150,7 @@ The plan is the train's scope authority. It records:
 
 - target release date and timezone;
 - reservation cutoff, scope lock, branch cut, and release-candidate dates;
-- Android/iOS/OHOS delivery intent and the maximum authorized boundary;
+- Android/iOS delivery intent and the maximum authorized boundary;
 - candidate PR or changeset, feature owner, support owner, dependencies,
   platforms, rollout, risk, and required evidence;
 - current state: `proposed`, `reserved`, `accepted`, `removed`, or `shipped`;
@@ -236,7 +238,7 @@ carrier source exact, tree, required PRs, and terminal exact-source checks.
 Before dispatch, allocate and record each platform's version coordinates as
 workflow inputs. Source-tree placeholders are expected. Then resolve the
 plan's Raft Artifacts Kuikly/Hands coordinates from an empty cache using only
-that exact manifest. Require the resolved Android/KMP, Apple, OHOS, plugin,
+that exact manifest. Require the resolved Android/KMP, Apple, plugin,
 and renderer set selected by the plan to be complete and byte-identical to
 that manifest. Record the dependency release version, source exact, manifest
 digest, and resolved artifact digests in the candidate receipt. Publishing
@@ -335,21 +337,20 @@ Release smoke is a hard gate before activation:
    `testbed run` creates a pending ticket; a device seat or CI agent still has
    to execute it. Unrun, un-dispatched, or harness-blocked core cases are
    `NOT RUN` or blocked — they do not aggregate into PASS.
-3. Required every train, on the exact release APK/IPA/HAP: image
+3. Required every train, on the exact release APK/IPA: image
    picker → Done → composer preview → send → server or message-row readback
    (`select-and-upload-image` or the platform equivalent). Also prove upload
    size limits are readable and that an oversized sibling is dropped while
    remaining files still upload. A file-attachment path is separate; an image
    PASS does not cover it.
 4. Keep platform/carrier grids separate (Android cloud device, iOS Simulator,
-   OHOS emulator, physical device). Do not infer across them. Record
+   physical device). Do not infer across them. Record
    preconditions, duration, fixture/device capability, and failure class.
 
 A broader matrix (fresh install, upgrades, auth, Home/Activity/Thread,
 composer/IME, crash scans, accepted changesets) remains in the plan. Until a
 named seat has timed one image-upload case on the release carrier, do not treat
-the full testbed table as a hard time-box. Physical OHOS stays `NOT RUN` unless
-a physical seat exists.
+the full testbed table as a hard time-box.
 
 A **hotfix** train may skip the full smoke matrix only with a recorded owner
 exception. Record `release_mode=hotfix`, waiver owner, scope, expiry or

@@ -50,7 +50,7 @@ The test for a real diff: name what changed and which component property produce
 |---|---|---|
 | Fixture screenshot of the changed component | "the component renders as shown under <theme> with fixture data" | "verified on device" |
 | Fixture with injected callbacks | "the interaction wiring produces the expected state transitions in the fixture" | "remove/undo works against the server" |
-| Authenticated build, one device | "verified on <device>, build <versionCode>, account <role>" | "works on iOS/OHOS", "works for all roles" |
+| Authenticated build, one device | "verified on <device>, build <versionCode>, account <role>" | "works on iOS", "works for all roles" |
 | Reference vs client screenshots, same density/theme | "header chrome matches; list inset differs by ~4dp" | "pixel-perfect parity" |
 
 When a lane or platform was not exercised, write it in the report as `not verified on <lane>` instead of leaving it to inference. A reviewer can accept a bounded claim; they cannot audit silence.

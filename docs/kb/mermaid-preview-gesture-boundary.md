@@ -21,9 +21,9 @@ The ownership boundary is local to the diagram scroller. A drag from a toolbar o
 2. Start a horizontal drag inside the diagram at the fitted scale and after zoom. Confirm that the diagram pans while the outer tab index stays unchanged.
 3. Start the same drag from the toolbar and from outside the card. Confirm that those gestures remain with the outer surface.
 4. Drag vertically from the message list and confirm that the list still scrolls. Check resize and invalid viewport inputs as well as zoom changes.
-5. Run the shared fit/resize/zoom tests and the Android renderer edge-ownership tests. Run the iOS and OHOS compilation checks before treating the change as cross-platform ready.
+5. Run the shared fit/resize/zoom tests and the Android renderer edge-ownership tests. Run the iOS compilation checks before treating the change as cross-platform ready.
 
-The source-level and boundary tests in PR #2880 cover these contracts, including diagram-origin versus outside/disabled gestures and vertical interception. They are not a substitute for an Android/iOS/OHOS device or released-package acceptance run; report those separately when they have not been executed.
+The source-level and boundary tests in PR #2880 cover these contracts, including diagram-origin versus outside/disabled gestures and vertical interception. They are not a substitute for an Android/iOS device or released-package acceptance run; report those separately when they have not been executed.
 
 ## Failure classification
 

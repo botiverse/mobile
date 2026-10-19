@@ -21,7 +21,7 @@ description: Kuikly UI 框架开发与排障助手。用于 Kuikly DSL 或 Kuikl
 
 - `third_party/kuikly-ui` 及项目记录的 Kuikly commit/pin。
 - `compose/shared` 中现有生产 callsite 与 focused tests。
-- Android、iOS、OHOS host 中与该能力对应的 renderer/bridge 注册。
+- Android、iOS host 中与该能力对应的 renderer/bridge 注册（Raft main 已不再包含 OHOS host，OHOS 冻结在 `release/1.14.x`）。
 
 不要用本 skill 的上游 checkout 覆盖 Raft fork 的行为。
 
@@ -80,7 +80,7 @@ description: Kuikly UI 框架开发与排障助手。用于 Kuikly DSL 或 Kuikl
 - 确认类、方法、参数、返回类型与 import 存在。
 - 确认 API 所在线程和生命周期；同步 bridge 不做耗时工作。
 - 确认目标平台 renderer 真正实现该能力。
-- Raft 中同时核对 shared contract 与 Android/iOS/OHOS host，不把单端实现写成三端能力。
+- Raft 中同时核对 shared contract 与 Android/iOS host，不把单端实现写成双端能力。
 
 ### 4. 实现与验证
 
