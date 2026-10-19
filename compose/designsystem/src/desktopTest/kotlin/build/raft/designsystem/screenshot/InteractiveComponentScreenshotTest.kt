@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
@@ -461,6 +462,29 @@ class InteractiveComponentScreenshotTest {
                     },
                     Modifier.width(240.dp),
                     style = type.body,
+                )
+                Caption("Centred under a full-width button (fillMaxWidth, TextAlign.Center)")
+                Column(Modifier.width(340.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RaftButton("Sign In", {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Xl, modifier = Modifier.fillMaxWidth())
+                    RaftText(
+                        buildAnnotatedString {
+                            append("Don't have an account? ")
+                            appendRaftTextLink("Create One", {})
+                        },
+                        Modifier.fillMaxWidth(),
+                        style = type.footnote,
+                        color = colors.foregroundMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Caption("A link longer than its line wraps; each line is underlined")
+                RaftText(
+                    buildAnnotatedString {
+                        appendRaftTextLink("Choose a Plan for Your Whole Team", {})
+                        append(" now")
+                    },
+                    Modifier.width(150.dp),
+                    style = type.footnote,
                 )
                 Caption("Banner: a text action inside the description")
                 RaftBanner(

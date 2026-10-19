@@ -166,7 +166,7 @@ Other checks:
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
 | `RaftTextField` | Input, InputGroup | Done | Placeholder, value, focus ring on any focus (tap included), invalid, disabled, read-only (`fill-muted`, hairline, muted text); icon and text addons (`/` prefix, suffix) ring the whole group |
 | `RaftTextarea`, `RaftTextareaCounter` | Textarea | Done | Grows to `maxHeight`; counter turns bold red past the limit or when invalid |
-| `RaftField`, `RaftFieldLabel`, `RaftFieldItem`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FieldItem, FormSection | Done | Label (required `*`, "(optional)", sm / md, at its style's full line height); `RaftFieldItem` (sm / md, matching its label) puts a checkbox, radio or switch 8dp before its label, centred on the label's first line; help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
+| `RaftField`, `RaftFieldLabel`, `RaftFieldItem`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FieldItem, FormSection | Done | Label (required `*`, "(optional)", sm / md, at its style's full line height); `RaftFieldItem` (sm / md, matching its label) puts a checkbox, radio or switch 8dp before its label, centred on the label's first line; the label names the control and a tap on it works the control; help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
 | `RaftCheckbox`, `RaftCheckboxRow` | Checkbox, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole, the box on the label's first line even when it wraps |
 | `RaftRadio`, `RaftRadioGroup`, `RaftRadioRow` | RadioGroup | Done | Ring with an ink dot; rows with descriptions (reset-agent list) |
 | `RaftSwitch` | Switch | Done | Off, on (brand sticker, die-cut in dark), focused, disabled; the knob slides; `label` names it (pass the row's title) |
@@ -305,8 +305,10 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   has no fill to lay an overlay on, so pressed takes its hover look (muted turns ink;
   strong's underline turns pink).
 - **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
-  with its own click target over its words and its underline and focus ring drawn
-  under the text. Its spaces are no-break spaces, as raft-ui's inline-block button
+  with a click target over its words on each line it takes (one node for focus and
+  screen readers, on its first line), and its underline and focus ring drawn under the
+  text. The text is measured with the constraints it is given, so `fillMaxWidth` with
+  `TextAlign.Center` / `End` aligns as plain `RaftText` does. Its spaces are no-break spaces, as raft-ui's inline-block button
   doesn't wrap. A `RaftText` with such links drops any other link or string
   annotations; don't mix them.
 - **Busy button keeps its colour.** button.tsx sets `disabled` while `loading`, which

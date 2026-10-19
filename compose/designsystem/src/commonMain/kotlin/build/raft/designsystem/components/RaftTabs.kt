@@ -20,6 +20,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -111,6 +112,7 @@ fun RaftTabStrip(
     val colors = RaftTheme.colors
     val scroll = rememberScrollState()
     val strip = remember(scroll) { RaftTabStripScroll(scroll) }
+    SideEffect { strip.composed = true }
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         Box(
             Modifier
@@ -174,12 +176,16 @@ private class RaftTabStripScroll(val scroll: ScrollState) {
     var content: LayoutCoordinates? = null
 
     /**
-     * Whether any tab has revealed itself yet. Only the strip's very first reveal (the
-     * tab selected when it is composed) jumps; every later one animates, including the
-     * first selection of a tab that was not selected at first.
+     * False while the strip's first composition runs (set after it applies). A tab
+     * remembers whether it was selected then: only that reveal jumps; every later one
+     * animates, including the first selection of a tab that was not selected at first,
+     * and a strip composed with no tab selected never jumps.
      */
-    var revealedOnce: Boolean = false
+    var composed: Boolean = false
 }
+
+/** Per tab: whether its next reveal is the strip's initial one, which jumps. */
+private class RaftInitialReveal(var pending: Boolean)
 
 /** Set by [RaftTabStrip]: its tabs scroll themselves into view when selected. */
 private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScroll?> { null }
@@ -223,8 +229,8 @@ fun RaftTab(
 
 /**
  * Scrolls [strip] so the element shows, with 8dp round it for a focus ring or die-cut
- * edge, when [active] turns true: at once for the strip's first reveal (the tab selected
- * when it is composed), animated after that ([RaftTabStripScroll.revealedOnce]).
+ * edge, when [active] turns true: at once for the tab selected when the strip is first
+ * composed, animated for every other reveal ([RaftTabStripScroll.composed]).
  * It moves the strip's own [ScrollState] and nothing else (a bring-into-view request
  * would also scroll every scrolling parent, so the page would jump), and only when the
  * selection changes, not when the tab's size does.
@@ -232,10 +238,14 @@ fun RaftTab(
 @Composable
 private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll): Modifier {
     val tab = remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val initial = remember { RaftInitialReveal(pending = active && !strip.composed) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     LaunchedEffect(active) {
         if (!active) return@LaunchedEffect
+        // Consumed by the first activation, whether or not it scrolls.
+        val jump = initial.pending
+        initial.pending = false
         val coordinates = snapshotFlow { tab.value }.filterNotNull().first()
         val content = strip.content ?: return@LaunchedEffect
         if (!coordinates.isAttached || !content.isAttached) return@LaunchedEffect
@@ -254,9 +264,8 @@ private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripS
                 max = scroll.maxValue,
             )
         if (target != scroll.value) {
-            if (strip.revealedOnce) scroll.animateScrollTo(target) else scroll.scrollTo(target)
+            if (jump) scroll.scrollTo(target) else scroll.animateScrollTo(target)
         }
-        strip.revealedOnce = true
     }
     return onPlaced { tab.value = it }
 }

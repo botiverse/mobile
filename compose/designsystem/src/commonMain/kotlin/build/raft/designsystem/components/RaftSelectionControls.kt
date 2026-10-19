@@ -151,6 +151,8 @@ fun RaftCheckbox(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onCheckedChange != null
+    val label = LocalRaftFieldState.current.label
+    RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val toggle =
         if (onCheckedChange != null) {
             Modifier.triStateToggleable(
@@ -169,7 +171,7 @@ fun RaftCheckbox(
         indeterminate = indeterminate,
         enabled = enabled,
         focused = interactive && enabled && raftIsFocused(source),
-        modifier = modifier.then(toggle),
+        modifier = modifier.then(toggle).then(if (interactive && label != null) Modifier.semantics { contentDescription = label } else Modifier),
     )
 }
 
@@ -214,9 +216,13 @@ fun RaftRadio(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
+    val label = LocalRaftFieldState.current.label
+    RaftRegisterFieldItemTap(if (onClick != null && enabled) onClick else null)
     val select =
         if (onClick != null) {
-            Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            Modifier
+                .selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+                .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
         } else {
             Modifier
         }
@@ -263,6 +269,7 @@ fun RaftSwitch(
     val colors = RaftTheme.colors
     val look = raftSwitchLook(checked, enabled, colors)
     val focused = onCheckedChange != null && enabled && raftIsFocused(source)
+    RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(220, easing = RaftEaseSlide))
     val toggle =
         if (onCheckedChange != null) {

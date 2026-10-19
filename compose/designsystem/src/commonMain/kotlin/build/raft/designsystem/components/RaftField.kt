@@ -10,6 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -42,7 +48,8 @@ enum class RaftFieldLabelSize {
  * [RaftSelect], [RaftCheckbox], [RaftRadio], [RaftSwitch]) default their `invalid` /
  * `enabled` to it. The text fields, the select trigger and the switch are also named by
  * [label] for screen readers and carry [error] as their error (Base UI wires the label
- * and the error to the control with `aria-labelledby` / `aria-describedby`).
+ * and the error to the control with `aria-labelledby` / `aria-describedby`); an
+ * interactive checkbox or radio is named by [label] too ([RaftFieldItem] sets it).
  */
 @Immutable
 data class RaftFieldState(
@@ -151,8 +158,13 @@ fun RaftFieldLabel(
  * - [RaftFieldLabelSize.Md] (default): `text-footnote` semibold label, 18dp line.
  * - [RaftFieldLabelSize.Sm]: `text-caption` semibold label, 16dp line, for dense layouts.
  *
- * [control] handles its own taps (pass it its `onCheckedChange`). For a choice in a form
- * or dialog where the whole row should toggle, use [RaftCheckboxRow] / [RaftRadioRow].
+ * As Base UI `Field.Item` / `Field.Label` do, the label names the control (a [RaftCheckbox],
+ * [RaftRadio] or [RaftSwitch] inside reads [label] as its content description) and a tap
+ * on the label (or the description) works the control, as a tap on the control itself
+ * does. The label text is hidden from screen readers, which read it on the control. The
+ * control keeps its own `onCheckedChange` / `onClick`; pass `null` there and nothing toggles.
+ * For a choice in a form or dialog where the whole padded row is one target, use
+ * [RaftCheckboxRow] / [RaftRadioRow].
  */
 @Composable
 fun RaftFieldItem(
@@ -164,17 +176,47 @@ fun RaftFieldItem(
     control: @Composable () -> Unit,
 ) {
     val style = raftFieldLabelStyle(size)
-    RaftFirstLineRow(
-        lineHeight = raftLineHeightDp(style.lineHeight, style.fontSize, LocalDensity.current),
-        gap = 8.dp,
-        modifier = modifier,
-        control = control,
+    val target = remember { RaftFieldItemTarget() }
+    val field = LocalRaftFieldState.current
+    CompositionLocalProvider(
+        LocalRaftFieldState provides field.copy(label = label, enabled = enabled),
+        LocalRaftFieldItemTarget provides target,
     ) {
-        Column {
-            RaftFieldLabel(label, size = size, enabled = enabled)
-            if (description != null) RaftFieldDescription(description, enabled = enabled)
+        RaftFirstLineRow(
+            lineHeight = raftLineHeightDp(style.lineHeight, style.fontSize, LocalDensity.current),
+            gap = 8.dp,
+            modifier = modifier,
+            control = control,
+        ) {
+            Column(
+                Modifier
+                    // `<label>`: a tap works the control; the control carries the name.
+                    .clearAndSetSemantics {}
+                    .pointerInput(target) { detectTapGestures { target.onTap?.invoke() } },
+            ) {
+                RaftFieldLabel(label, size = size, enabled = enabled)
+                if (description != null) RaftFieldDescription(description, enabled = enabled)
+            }
         }
     }
+}
+
+/**
+ * The control of a [RaftFieldItem] registers its tap here, so a tap on the item's label
+ * works it (`<label for>`). Null when the control is disabled or only an indicator.
+ */
+internal class RaftFieldItemTarget {
+    var onTap: (() -> Unit)? = null
+}
+
+/** The enclosing [RaftFieldItem]'s label target, for the control inside it. */
+internal val LocalRaftFieldItemTarget = staticCompositionLocalOf<RaftFieldItemTarget?> { null }
+
+/** Registers [onTap] (null: nothing to do) with the enclosing [RaftFieldItem]'s label. */
+@Composable
+internal fun RaftRegisterFieldItemTap(onTap: (() -> Unit)?) {
+    val target = LocalRaftFieldItemTarget.current ?: return
+    SideEffect { target.onTap = onTap }
 }
 
 /** `FieldLabel`'s type: semibold `text-caption` (sm) or `text-footnote` (md), at the style's own line height. */

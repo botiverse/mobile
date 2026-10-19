@@ -3,15 +3,19 @@ package build.raft.designsystem.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -20,7 +24,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
@@ -31,7 +34,6 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -214,7 +216,6 @@ internal fun RaftLinkedText(
     onTextLayout: ((TextLayoutResult) -> Unit)?,
 ) {
     val colors = RaftTheme.colors
-    val density = LocalDensity.current
     val sources = remember(links.size) { List(links.size) { MutableInteractionSource() } }
     val looks = ArrayList<RaftTextLinkLook>(links.size)
     val focused = ArrayList<Boolean>(links.size)
@@ -232,54 +233,107 @@ internal fun RaftLinkedText(
             paragraphStyles = text.paragraphStyles,
         )
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    Box(modifier) {
-        BasicText(
-            text = display,
-            modifier =
-                Modifier.drawBehind {
-                    val result = layout ?: return@drawBehind
-                    links.forEachIndexed { i, link ->
-                        if (focused[i]) {
-                            raftTextLinkSegments(result, link.start, link.end).forEach { box ->
-                                drawRaftFocusRing(box, RaftTextLinkMetrics.FocusRadius, colors.layerCanvas, colors.lineStrong)
+    val result = layout
+    // One target per line of a link (a link that wraps has one per line), so a tap on
+    // plain words beside a wrapped link, or on an earlier link, never lands on it.
+    val targets =
+        if (result == null) {
+            emptyList()
+        } else {
+            links.flatMapIndexed { i, link ->
+                raftTextLinkSegments(result, link.start, link.end).mapIndexed { line, bounds -> RaftTextLinkTarget(i, line, bounds) }
+            }
+        }
+    Layout(
+        modifier = modifier,
+        content = {
+            BasicText(
+                text = display,
+                modifier =
+                    Modifier.drawBehind {
+                        val drawn = layout ?: return@drawBehind
+                        links.forEachIndexed { i, link ->
+                            if (focused[i]) {
+                                raftTextLinkSegments(drawn, link.start, link.end).forEach { box ->
+                                    drawRaftFocusRing(box, RaftTextLinkMetrics.FocusRadius, colors.layerCanvas, colors.lineStrong)
+                                }
                             }
+                            looks[i].underline?.let { drawRaftTextLinkUnderline(drawn, link.start, link.end, it) }
                         }
-                        looks[i].underline?.let { drawRaftTextLinkUnderline(result, link.start, link.end, it) }
-                    }
+                    },
+                style = style,
+                onTextLayout = {
+                    layout = it
+                    onTextLayout?.invoke(it)
                 },
-            style = style,
-            onTextLayout = {
-                layout = it
-                onTextLayout?.invoke(it)
-            },
-            overflow = overflow,
-            softWrap = softWrap,
-            maxLines = maxLines,
-        )
-        val result = layout
-        if (result != null) {
-            links.forEachIndexed { i, link ->
-                val segments = raftTextLinkSegments(result, link.start, link.end)
-                if (segments.isEmpty()) return@forEachIndexed
-                val bounds = segments.reduce { a, b -> Rect(min(a.left, b.left), min(a.top, b.top), max(a.right, b.right), max(a.bottom, b.bottom)) }
-                val words = text.text.substring(link.start, link.end)
-                Box(
-                    Modifier
-                        .offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
-                        .size(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
-                        .semantics { this.text = AnnotatedString(words) }
-                        .clickable(
-                            interactionSource = sources[i],
-                            indication = null,
-                            enabled = link.enabled,
-                            role = Role.Button,
-                            onClick = { link.annotation.linkInteractionListener?.onClick(link.annotation) },
-                        ),
-                )
+                overflow = overflow,
+                softWrap = softWrap,
+                maxLines = maxLines,
+            )
+            targets.forEach { target ->
+                val link = links[target.index]
+                val source = sources[target.index]
+                val onClick = { link.annotation.linkInteractionListener?.onClick(link.annotation); Unit }
+                if (target.line == 0) {
+                    // The link's one node for focus, keyboard and screen readers.
+                    val words = text.text.substring(link.start, link.end)
+                    Box(
+                        Modifier
+                            .semantics { this.text = AnnotatedString(words) }
+                            .clickable(interactionSource = source, indication = null, enabled = link.enabled, role = Role.Button, onClick = onClick),
+                    )
+                } else {
+                    // Later lines take taps (and press the same link) without a node of their own.
+                    key(target.index, target.line) {
+                        val latest by rememberUpdatedState(onClick)
+                        Box(Modifier.raftTapTarget(link.enabled, source) { latest() })
+                    }
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        // The text takes the incoming constraints as they are (a fillMaxWidth caller's
+        // min width included), so TextAlign.Center / End align within that width.
+        val text = measurables.first().measure(constraints)
+        val overlays =
+            measurables.drop(1).mapIndexed { k, measurable ->
+                val bounds = targets[k].bounds
+                measurable.measure(Constraints.fixed(bounds.width.roundToInt().coerceAtLeast(0), bounds.height.roundToInt().coerceAtLeast(0)))
+            }
+        layout(text.width, text.height) {
+            text.place(0, 0)
+            overlays.forEachIndexed { k, overlay ->
+                val bounds = targets[k].bounds
+                overlay.place(bounds.left.roundToInt(), bounds.top.roundToInt())
             }
         }
     }
 }
+
+/** The click target of [line] of link [index]: its words on that line ([bounds], px). */
+private class RaftTextLinkTarget(val index: Int, val line: Int, val bounds: Rect)
+
+/**
+ * A tap target with no semantics or focus: a press shows on [source] (so the link's
+ * pressed look covers every line) and a tap runs [onClick] (read when tapped: pass a
+ * lambda reading an updated state).
+ */
+private fun Modifier.raftTapTarget(enabled: Boolean, source: MutableInteractionSource, onClick: () -> Unit): Modifier =
+    if (!enabled) {
+        this
+    } else {
+        // Keyed on the source only: a press recomposes the link, which must not restart this.
+        pointerInput(source) {
+            detectTapGestures(
+                onPress = { offset ->
+                    val press = PressInteraction.Press(offset)
+                    source.emit(press)
+                    source.emit(if (tryAwaitRelease()) PressInteraction.Release(press) else PressInteraction.Cancel(press))
+                },
+                onTap = { onClick() },
+            )
+        }
+    }
 
 /** Ink-box of the characters [start] until [end], one rect per line (px). Empty when none is laid out. */
 internal fun raftTextLinkSegments(layout: TextLayoutResult, start: Int, end: Int): List<Rect> {
@@ -289,7 +343,10 @@ internal fun raftTextLinkSegments(layout: TextLayoutResult, start: Int, end: Int
     val last = layout.getLineForOffset(visibleEnd - 1)
     return (first..last).mapNotNull { line ->
         val segStart = max(start, layout.getLineStart(line))
-        val segEnd = min(visibleEnd, layout.getLineEnd(line, visibleEnd = true))
+        var segEnd = min(visibleEnd, layout.getLineEnd(line, visibleEnd = true))
+        // A wrapped line can end in a (no-break) space: not part of the underline or target.
+        val chars = layout.layoutInput.text.text
+        while (segEnd > segStart && chars[segEnd - 1].isWhitespace()) segEnd--
         if (segStart >= segEnd) return@mapNotNull null
         val a = layout.getBoundingBox(segStart)
         val b = layout.getBoundingBox(segEnd - 1)
