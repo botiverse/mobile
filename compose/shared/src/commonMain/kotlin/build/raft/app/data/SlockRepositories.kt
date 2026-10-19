@@ -402,7 +402,8 @@ interface MemberRepository {
     ): DataResult<AgentLifecycleActionResult>
     suspend fun deleteAgent(
         priority: DataRequestPriority,
-        agentId: MemberId
+        agentId: MemberId,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult>
     suspend fun assignAgentMachine(
         priority: DataRequestPriority,

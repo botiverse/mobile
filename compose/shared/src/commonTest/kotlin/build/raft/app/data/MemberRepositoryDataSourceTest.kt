@@ -113,7 +113,7 @@ class MemberRepositoryDataSourceTest {
             DataRequestPriority.Foreground,
             AgentMachineAssignmentRequest(agentId, "machine-2")
         )
-        val delete = repository.deleteAgent(DataRequestPriority.Foreground, agentId)
+        val delete = repository.deleteAgent(DataRequestPriority.Foreground, agentId, AgentArchiveWorkspaceChoice.Delete)
 
         assertTrue(detail is DataResult.Content)
         assertEquals("agent-1", detail.data.summary?.id)
@@ -162,6 +162,7 @@ class MemberRepositoryDataSourceTest {
         assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/reset") })
         assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/assign-machine") })
         assertTrue(network.requests.any { it.matches("DELETE", "agents/agent-1") })
+        assertTrue(network.calls.any { it == """DELETE agents/agent-1 body={"workspace":"delete"}""" })
     }
 
     @Test
@@ -732,7 +733,7 @@ class MemberRepositoryDataSourceTest {
                     ok("""{"ok":true}""")
                 }
                 normalized == "agents/agent-1" && method == "DELETE" -> {
-                    calls += "DELETE agents/agent-1"
+                    calls += "DELETE agents/agent-1 body=${bodyText.orEmpty()}"
                     ok("""{"ok":true}""")
                 }
                 normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse

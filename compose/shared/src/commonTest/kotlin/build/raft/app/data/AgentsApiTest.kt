@@ -219,7 +219,7 @@ class AgentsApiTest {
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.startAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.stopAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.resetAgent(agentId, """{"mode":"session"}""")).data.ok)
-        assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.deleteAgent(agentId)).data.ok)
+        assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.deleteAgent(agentId, AgentArchiveWorkspaceChoice.Delete.toRequestBody())).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.assignMachine(agentId, """{"machineId":"machine-1"}""")).data.ok)
         assertEquals(1, assertIs<DataResult.Content<AgentDmPage>>(client.agentDirectMessages(agentId)).data.itemCount)
         assertEquals(1, assertIs<DataResult.Content<AgentActivityPage>>(client.agentActivityLog(agentId)).data.entryCount)
@@ -252,7 +252,7 @@ class AgentsApiTest {
                 "POST agents/agent-1/start",
                 "POST agents/agent-1/stop",
                 """POST agents/agent-1/reset body={"mode":"session"}""",
-                "DELETE agents/agent-1",
+                """DELETE agents/agent-1 body={"workspace":"delete"}""",
                 """POST agents/agent-1/assign-machine body={"machineId":"machine-1"}""",
                 "GET agents/agent-1/agent-dms",
                 "GET agents/agent-1/activity-log limit=50",
@@ -538,8 +538,8 @@ class AgentsApiTest {
             return ok(commandBody)
         }
 
-        override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse {
-            calls += "DELETE agents/${agentId.value}"
+        override suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse {
+            calls += "DELETE agents/${agentId.value} body=$body"
             return ok(commandBody)
         }
 

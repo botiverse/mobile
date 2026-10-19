@@ -3320,7 +3320,8 @@ class SharedServerMembersStoreTest {
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun deleteAgent(
             priority: DataRequestPriority,
-            agentId: MemberId
+            agentId: MemberId,
+            workspaceChoice: AgentArchiveWorkspaceChoice
         ): DataResult<AgentLifecycleActionResult> {
             deleteAgentCalls += 1
             if (!retainDeletedAgentsInRoster) {

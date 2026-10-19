@@ -1226,11 +1226,12 @@ class SharedServerMembersStore internal constructor(
     suspend fun deleteAgent(
         serverId: ServerId,
         agentId: MemberId,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep,
         priority: DataRequestPriority = DataRequestPriority.Foreground
     ): DataResult<AgentLifecycleActionResult> {
         val result =
             try {
-                memberRepository.deleteAgent(priority, agentId)
+                memberRepository.deleteAgent(priority, agentId, workspaceChoice)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {

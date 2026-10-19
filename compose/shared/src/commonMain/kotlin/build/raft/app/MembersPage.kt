@@ -13,6 +13,9 @@ import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockCheckMarker
+import build.raft.app.components.SlockCheckMarkerShape
+import build.raft.app.components.SlockCheckMarkerTone
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.SlockSectionEyebrow
@@ -25,6 +28,7 @@ import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueReportSubmission
@@ -1141,7 +1145,9 @@ internal enum class MembersAgentLifecycleAction(
     Restart("restart", "Restart", SlockLucideIconName.RotateCw, "Restarted"),
     ResetSession("reset_session", "Reset session", SlockLucideIconName.RefreshCw, "Session reset"),
     ResetFull("reset_full", "Full reset", SlockLucideIconName.Eraser, "Full reset"),
-    Delete("delete", "Delete Agent", SlockLucideIconName.Trash2, "Deleted", destructive = true),
+    // task #515: the action is the web "archive" (former delete). Enum labels are
+    // non-localized fallbacks; user-visible text comes from MR strings.
+    Delete("delete", "Archive Agent", SlockLucideIconName.Archive, "Archived", destructive = true),
     UnassignMachine("assign_machine", "Unassign machine", SlockLucideIconName.MonitorX, "Machine unassigned");
 
     val resetMode: AgentResetMode?
@@ -3031,7 +3037,8 @@ private class MemberDetailRouteProvider(
     suspend fun runLifecycleAction(
         serverId: ServerId,
         agentId: MemberId,
-        action: MembersAgentLifecycleAction
+        action: MembersAgentLifecycleAction,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult> {
         val result =
             when (action) {
@@ -3053,6 +3060,7 @@ private class MemberDetailRouteProvider(
                     serverMembersStore.deleteAgent(
                         serverId = serverId,
                         agentId = agentId,
+                        workspaceChoice = workspaceChoice,
                         priority = DataRequestPriority.Foreground
                     )
                 MembersAgentLifecycleAction.UnassignMachine ->
@@ -3879,9 +3887,10 @@ internal fun MemberDetailPageContent(
                             object : SharedAgentDetailActions {
                                 override suspend fun runLifecycleAction(
                                     agentId: MemberId,
-                                    action: MembersAgentLifecycleAction
+                                    action: MembersAgentLifecycleAction,
+                                    workspaceChoice: AgentArchiveWorkspaceChoice
                                 ): DataResult<AgentLifecycleActionResult> {
-                                    val result = provider.runLifecycleAction(current.server.id, agentId, action)
+                                    val result = provider.runLifecycleAction(current.server.id, agentId, action, workspaceChoice)
                                     if (result is DataResult.Content && result.data.success) {
                                         localAgentDetailRefreshKey += 1
                                         if (action == MembersAgentLifecycleAction.Delete) {
@@ -4006,8 +4015,8 @@ internal fun MemberDetailPageContent(
                                 }
                                 result
                             },
-                            onAgentLifecycleAction = { agentId, action ->
-                                agentDetailActions.runLifecycleAction(agentId, action)
+                            onAgentLifecycleAction = { agentId, action, workspaceChoice ->
+                                agentDetailActions.runLifecycleAction(agentId, action, workspaceChoice)
                             },
                             agentWorkspaceTreeLoader = { agentId ->
                                 provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
@@ -4242,7 +4251,7 @@ private fun MemberDetailVisualSeedContent(
         agentCallbacks = MembersAgentDetailCallbacks(
             onUpdateAgentProfile = { DataResult.Content(seed.member) },
             onUploadAgentAvatar = null,
-            onAgentLifecycleAction = { agentId, action ->
+            onAgentLifecycleAction = { agentId, action, _ ->
                 DataResult.Content(
                     AgentLifecycleActionResult(
                         agentId = agentId,
@@ -4368,7 +4377,7 @@ internal fun MembersAgentDetailVisualContent() {
         ),
         agentCallbacks = MembersAgentDetailCallbacks(
             onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
-            onAgentLifecycleAction = { _, action ->
+            onAgentLifecycleAction = { _, action, _ ->
                 DataResult.Content(
                     AgentLifecycleActionResult(
                         agentId = membersAgentDetailVisualMember.id,
@@ -5284,7 +5293,7 @@ private class MembersAgentDetailCallbacks(
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
+    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction, AgentArchiveWorkspaceChoice) -> DataResult<AgentLifecycleActionResult>)?,
     val agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
     val onCopyAgentDiagnostics: (String) -> Unit,
@@ -5656,7 +5665,11 @@ private fun MembersDetailContent(
             loadWorkspaceRoot()
         }
     }
-    fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
+    fun runLifecycleAction(
+        action: MembersAgentLifecycleAction,
+        confirmed: Boolean = false,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
+    ) {
         if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
         if (!canManage || (agentDetailActions == null && callback == null)) {
@@ -5677,10 +5690,10 @@ private fun MembersDetailContent(
             actionState = MembersAgentActionState(action, inProgress = true)
             val result =
                 if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions)
+                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions, workspaceChoice)
                 } else {
                     try {
-                        requireNotNull(callback).invoke(member.id, action)
+                        requireNotNull(callback).invoke(member.id, action, workspaceChoice)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -6219,10 +6232,24 @@ private fun MembersDetailContent(
         val activePendingConfirmation =
             if (sharedAgentDetailStore != null) storePendingConfirmation else pendingConfirmation
         activePendingConfirmation?.let { action ->
+            // task #515: archive (the former delete) gains the web
+            // `AgentArchiveDialog` contract — "keep on the Computer" vs "delete
+            // the workspace" — only when this agent actually has a workspace on
+            // a Computer, matching the web gate `hasComputerWorkspace`
+            // (`machineId` set, not an external runtime).
+            val archiveHasComputerWorkspace =
+                action == MembersAgentLifecycleAction.Delete &&
+                    membersAgentArchiveHasComputerWorkspace(
+                        machineId = detail?.summary?.machineId,
+                        isExternalAgent = isExternalAgent
+                    )
+            var archiveWorkspaceChoice by remember(member.id.value, detail?.summary?.machineId) {
+                mutableStateOf(AgentArchiveWorkspaceChoice.Keep)
+            }
             // Reuse the shared unified dialog (React ConfirmDialog is a plain
             // card: uppercase 18px title + X, no header divider, max-w-sm).
             SlockUnifiedDialog(
-                title = membersLifecycleConfirmTitle(action).slockDisplayUppercase(),
+                title = membersLifecycleConfirmTitle(action, member.displayName).slockDisplayUppercase(),
                 dismissEnabled = lifecycleInFlight != action.actionKey,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
@@ -6240,7 +6267,12 @@ private fun MembersDetailContent(
                     action = action,
                     agentName = member.displayName,
                     busy = lifecycleInFlight == action.actionKey,
-                    onConfirm = { runLifecycleAction(action, confirmed = true) },
+                    archiveHasComputerWorkspace = archiveHasComputerWorkspace,
+                    archiveComputerName = detail?.summary?.machineName?.takeIf { it.isNotBlank() }
+                        ?: stringResource(MR.strings.member_archive_unknown_computer),
+                    archiveWorkspaceChoice = archiveWorkspaceChoice,
+                    onArchiveWorkspaceChoiceChange = { archiveWorkspaceChoice = it },
+                    onConfirm = { runLifecycleAction(action, confirmed = true, workspaceChoice = archiveWorkspaceChoice) },
                     onCancel = {
                         if (sharedAgentDetailStore != null) {
                             sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
@@ -6582,15 +6614,39 @@ private fun MembersDetailActions(
     }
 }
 
+
+/**
+ * task #515 — web `AgentArchiveDialog` gate `hasComputerWorkspace`
+ * (`Boolean(agent.machineId) && agent.external !== true && !isExternalAgentRuntime(runtime)`):
+ * the workspace keep/delete choice is offered only when a managed agent really
+ * has a workspace on a Computer. External runtimes never do (server would 409
+ * `archive_workspace_unavailable`), and a missing machineId hides the radio
+ * entirely — the request then archives with the workspace kept.
+ */
+internal fun membersAgentArchiveHasComputerWorkspace(
+    machineId: String?,
+    isExternalAgent: Boolean
+): Boolean = !isExternalAgent && machineId?.isNotBlank() == true
+
+/**
+ * Wire body for `DELETE /agents/:id` — web always sends `{"workspace":...}`.
+ */
+internal fun membersAgentArchiveRequestBody(choice: AgentArchiveWorkspaceChoice): String =
+    choice.toRequestBody()
+
 // Mirrors React ConfirmDialog usage in AgentDetailPanel: title matches the
 // action button label, message is user-facing copy, warning banner shows the
 // message only (never repeats the title), and the confirm button carries the
 // action label with warning/destructive color.
 @Composable
-private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction): String =
+private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
         MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
-        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_delete_agent)
+        // task #515: the archive dialog's title carries the agent name, matching
+        // web `agent.archive.title` ("Archive {name}?"); other actions keep the
+        // action-label title.
+        MembersAgentLifecycleAction.Delete ->
+            stringResource(MR.strings.member_archive_title).replace("%1\$s", agentName)
         else -> action.localizedLabel()
     }
 
@@ -6600,7 +6656,7 @@ private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, 
         MembersAgentLifecycleAction.Stop ->
             stringResource(MR.strings.member_dialog_confirm_stop).replace("%1\$s", agentName)
         MembersAgentLifecycleAction.Delete ->
-            stringResource(MR.strings.member_dialog_confirm_delete).replace("%1\$s", agentName)
+            stringResource(MR.strings.member_archive_description)
         MembersAgentLifecycleAction.UnassignMachine ->
             stringResource(MR.strings.member_dialog_confirm_unassign).replace("%1\$s", agentName)
         else -> "Are you sure you want to ${action.localizedLabel().lowercase()} \"$agentName\"?"
@@ -6611,10 +6667,22 @@ private fun MembersLifecycleConfirmation(
     action: MembersAgentLifecycleAction,
     agentName: String,
     busy: Boolean,
+    archiveHasComputerWorkspace: Boolean = false,
+    archiveComputerName: String = "",
+    archiveWorkspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep,
+    onArchiveWorkspaceChoiceChange: (AgentArchiveWorkspaceChoice) -> Unit = {},
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val accent = if (action.destructive) SlockColor.AccentRed else SlockColor.AccentOrange
+    // Web `AgentArchiveDialog`: confirm button is warning when the workspace is
+    // kept, danger once the user picks "delete the workspace". For non-archive
+    // actions the classic destructive flag rules unchanged.
+    val isArchive = action == MembersAgentLifecycleAction.Delete
+    // Archive overrides the enum's blanket `destructive=true`: web keeps the
+    // confirm button at warning until the user picks "delete the workspace".
+    val destructive =
+        if (isArchive) archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete else action.destructive
+    val accent = if (destructive) SlockColor.AccentRed else SlockColor.AccentOrange
     // Hosted inside SlockUnifiedDialog, which owns the card padding.
     // Banner metrics mirror React Banner density=md: p-3 (12), gap-3 (12),
     // text-sm (14/20), border-2, and ConfirmDialog's mb-5 (20) to the buttons.
@@ -6622,26 +6690,50 @@ private fun MembersLifecycleConfirmation(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(accent.copy(alpha = 0.2f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // React Banner icons: destructive → AlertTriangle, warning →
-            // CircleAlert (closest available catalog glyph is Info).
-            SlockLucideIcon(
-                if (action.destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
-                modifier = Modifier.size(18.dp),
-                color = SlockColor.TextBlackArgb
-            )
+        if (isArchive) {
+            // Web order: description → workspace question + radio rows → the
+            // destructive banner ONLY when "delete" is selected (the keep path
+            // carries no warning at all).
             Text(
-                text = membersLifecycleConfirmMessage(action, agentName),
+                text = stringResource(MR.strings.member_archive_description),
                 style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack
+            )
+            if (archiveHasComputerWorkspace) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_workspace_question),
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    MembersArchiveWorkspaceOption(
+                        label = stringResource(MR.strings.member_archive_option_keep),
+                        description = stringResource(MR.strings.member_archive_option_keep_desc)
+                            .replace("%1\$s", archiveComputerName),
+                        selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Keep,
+                        enabled = !busy,
+                        onSelect = { onArchiveWorkspaceChoiceChange(AgentArchiveWorkspaceChoice.Keep) }
+                    )
+                    MembersArchiveWorkspaceOption(
+                        label = stringResource(MR.strings.member_archive_option_delete),
+                        description = stringResource(MR.strings.member_archive_option_delete_desc)
+                            .replace("%1\$s", archiveComputerName),
+                        selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete,
+                        enabled = !busy,
+                        onSelect = { onArchiveWorkspaceChoiceChange(AgentArchiveWorkspaceChoice.Delete) }
+                    )
+                }
+            }
+            if (archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete && archiveHasComputerWorkspace) {
+                MembersLifecycleWarningBanner(
+                    destructive = true,
+                    text = stringResource(MR.strings.member_archive_delete_warning)
+                )
+            }
+        } else {
+            MembersLifecycleWarningBanner(
+                destructive = destructive,
+                text = membersLifecycleConfirmMessage(action, agentName)
             )
         }
         SlockDialogFooter {
@@ -6651,11 +6743,90 @@ private fun MembersLifecycleConfirmation(
                 onClick = onCancel
             )
             SlockBrutalActionButton(
-                label = membersLifecycleConfirmTitle(action),
+                label = if (isArchive) {
+                    stringResource(MR.strings.member_action_delete_agent)
+                } else {
+                    membersLifecycleConfirmTitle(action, agentName)
+                },
                 enabled = !busy,
                 backgroundColor = accent,
-                leadingIcon = if (busy) SlockLucideIconName.Loader else null,
+                // Web ConfirmDialog carries confirmIcon=<Archive> on the archive
+                // confirm; other actions stay icon-less.
+                leadingIcon = if (busy) SlockLucideIconName.Loader else if (isArchive) SlockLucideIconName.Archive else null,
                 onClick = onConfirm
+            )
+        }
+    }
+}
+
+/** Banner row extracted so the archive flow can show it conditionally (web renders it only for the delete choice). */
+@Composable
+private fun MembersLifecycleWarningBanner(destructive: Boolean, text: String) {
+    val accent = if (destructive) SlockColor.AccentRed else SlockColor.AccentOrange
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(accent.copy(alpha = 0.2f))
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // React Banner icons: destructive → AlertTriangle, warning →
+        // CircleAlert (closest available catalog glyph is Info).
+        SlockLucideIcon(
+            if (destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
+            modifier = Modifier.size(18.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+/**
+ * One workspace-disposition row of the archive dialog — web renders a
+ * `RadioGroupItem` + 15px/600 label + 13px muted description; the closest
+ * shared primitive is the circle `SlockCheckMarker` used by
+ * `SlockRaftUiRadioRow`, with the whole row tappable.
+ */
+@Composable
+private fun MembersArchiveWorkspaceOption(
+    label: String,
+    description: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (enabled) Modifier.clickable(onClick = onSelect) else Modifier)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockCheckMarker(
+            checked = selected,
+            shape = SlockCheckMarkerShape.Circle,
+            tone = SlockCheckMarkerTone.YellowFill,
+            disabled = !enabled,
+            size = 16.dp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = label,
+                style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.SemiBold),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f)
+            )
+            Text(
+                text = description,
+                style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
             )
         }
     }
