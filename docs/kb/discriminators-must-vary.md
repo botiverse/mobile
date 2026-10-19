@@ -17,7 +17,7 @@
 > thing. Nothing here has been superseded.
 
 A **discriminator** is anything you use to tell two states apart: a test, a log line, a metric, a
-toggle, a measurement. Five ways they fail, all of which produce a confident wrong answer rather than
+toggle, a measurement. Six ways they fail, all of which produce a confident wrong answer rather than
 an error.
 
 ## 1. It never varies
@@ -84,7 +84,34 @@ there in the copy I happened to ask*.
 480px of it. The criterion described what the code should *do*, not what the user must *experience*.
 Full treatment in `numeric-criteria-that-pass-while-the-feature-is-broken.md`.
 
-## The question that catches all five
+## 6. Two measurements of different things, sitting in one window
+
+The most convincing form, because both numbers are real and correctly measured — they are just not
+about the same subject.
+
+Observed on this repo: a frame of **478 ms** recorded by `FrameMetrics` sat in the same diagnostic line
+as a tag `operation=thread_first_frame` applied by the app's own render layer. Read together they
+form a clean causal sentence: *the first-frame path took 478 ms.* But they come from two sources with
+different subjects:
+
+- `FrameMetrics` describes frames of the thread that **owns the `ViewRootImpl`**. Its listener is
+  registered with its own `Handler`, so it fires on a **different thread** from the one it measures —
+  `SlockPerformanceDiagnostics.kt:327` installs it with
+  `window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))`, and the file contains
+  no `Looper.myLooper()` / thread assertion anywhere.
+- `operation=` is a label the application's render layer attaches. Which thread that label describes
+  depends on the renderer's execution mode.
+
+Sharing a timestamp proves they share a **window**, not a **subject**. Whether these two actually
+refer to the same thread on this stack is **unresolved as of 2026-10-19**; the next probe prints both
+thread names so the question is answered rather than assumed.
+
+**The tell is the same as form 4, pointed the other way.** Form 4 is *asking the wrong object*; this is
+*two right objects read as one*. It is invisible precisely because nothing is wrong with either
+measurement.
+
+## The question that catches all six
+
 
 Before trusting a signal, ask: **what would this report if the thing I am testing for were true, and
 what would it report if it were false?** If the two answers are the same — or if you cannot say what
