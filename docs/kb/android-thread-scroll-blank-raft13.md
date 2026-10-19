@@ -1,6 +1,6 @@
 # Thread fast-scroll blank rows: the reverseLayout re-anchor case
 
-Owner: Mahua · Verified at: 2026-10-18 · Status: current
+Owner: Mahua · Verified at: 2026-10-19 · Status: current
 
 **Scope.** This article explains the share of fast-scroll blank rows that came from reverse-layout re-anchoring, and the fix for it. It is **not** a general explanation of blank rows during a hard fling: on a build that already contains the fix, a hard fling can still blank out a comparable area through frame production alone — **narrowed but not yet explained**; see "The residual blank: what the data shows, and what it does not". See "Evidence method" for the measurement that separates the two.
 
@@ -36,7 +36,9 @@ Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_flin
 
 ### What remains open
 
-The 478 ms `jank_frame` names its own operation (`thread_first_frame`), which points at first-frame composition / measure / layout on the UI thread, with the `thread_markdown_row / body_recompose` for a 1536-character message (building an `AnnotatedString`, text measurement) as a candidate — those do run on the UI thread. **This is a candidate, not a finding**: the trace has no per-phase breakdown of the 478 ms.
+The 478 ms `jank_frame` names its own operation (`thread_first_frame`), which points at first-frame composition / measure / layout, with the `thread_markdown_body_recompose` for a 1536-character message (building an `AnnotatedString`, text measurement) as a candidate.
+
+That recompose runs during composition is **read from the source, not measured**: the marker is emitted from a `remember{}` block in `ThreadPage.kt` (~line 7284) whose own comment states `remember{}` runs during composition, unlike the `LaunchedEffect` below it which fires after. Whether the 1536-character row is what consumed the 478 ms is **not established** — the trace has no per-phase breakdown of that window.
 
 **Also an inference, not an observation:** that native scrolling kept advancing during the stall. The gap is unsampled; the evidence is only the state before and after it. The current probe has no `gapSinceLastFrameMs`, so the blind spot cannot report its own width yet.
 
