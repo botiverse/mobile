@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -32,9 +34,9 @@ import kotlinx.coroutines.withContext
  * such a state from outside [dispatcher], or any blocking call on it, is reported with the store /
  * operation name and thread.
  */
+@SlockCoreInternalApi
 object SlockStoreThreading {
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val dispatcher: CoroutineDispatcher = SlockStoreConfinedDispatcher(Dispatchers.Default.limitedParallelism(1))
+    val dispatcher: CoroutineDispatcher = slockStoreConfinedDispatcher(Dispatchers.Default)
 
     /**
      * A supervisor scope whose coroutines all run on [dispatcher]. Only for stores whose coroutines
@@ -48,11 +50,19 @@ object SlockStoreThreading {
 
     /**
      * Debug-only write guard. Null (the default, and always in release) disables checking entirely,
-     * so production pays one null check per write.
+     * so production pays one null check per write. Read from any thread; set only through
+     * [installViolationHandler].
      */
+    @Volatile
     var violationHandler: ((SlockStoreThreadingViolation) -> Unit)? = null
+        private set
 
-    fun checkWrite(store: String) {
+    /** Debug wiring only (Kuikly `verifyThread`, unit tests); pass null to disable checking. */
+    fun installViolationHandler(handler: ((SlockStoreThreadingViolation) -> Unit)?) {
+        violationHandler = handler
+    }
+
+    internal fun checkWrite(store: String) {
         val handler = violationHandler ?: return
         if (!SlockStoreConfinement.isConfined()) {
             handler(
@@ -92,6 +102,7 @@ object SlockStoreThreading {
         if (SlockStoreConfinement.isConfined()) withContext(Dispatchers.Default) { block() } else block()
 }
 
+@SlockCoreInternalApi
 data class SlockStoreThreadingViolation(
     val kind: Kind,
     /** Store name for [Kind.WriteOffStoreDispatcher], operation name for [Kind.BlockingCallOnStoreDispatcher]. */
@@ -114,6 +125,7 @@ data class SlockStoreThreadingViolation(
  * State holder for a store whose writes are confined to [SlockStoreThreading.dispatcher]. Reads are
  * unchanged; `value =`, `update {}` / `compareAndSet` and `emit` are checked in debug.
  */
+@SlockCoreInternalApi
 fun <T> slockStoreState(initial: T, store: String): MutableStateFlow<T> =
     SlockStoreStateFlow(MutableStateFlow(initial), store)
 
@@ -152,6 +164,14 @@ private class SlockStoreStateFlow<T>(
     override fun resetReplayCache() = delegate.resetReplayCache()
 }
 
+/**
+ * A serial (`limitedParallelism(1)`) view of [delegate] whose tasks are marked as confined. Internal
+ * so tests can drive it with a manual delegate instead of real threads.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun slockStoreConfinedDispatcher(delegate: CoroutineDispatcher): CoroutineDispatcher =
+    SlockStoreConfinedDispatcher(delegate.limitedParallelism(1))
+
 /** Marks every task it runs so [SlockStoreThreading.checkWrite] can tell confined writes apart. */
 private class SlockStoreConfinedDispatcher(
     private val delegate: CoroutineDispatcher,
@@ -172,8 +192,11 @@ private class SlockStoreConfinedDispatcher(
     override fun toString(): String = "SlockStoreDispatcher"
 }
 
-/** Per-thread confinement depth (JVM `ThreadLocal`, Kotlin/Native `@ThreadLocal`). */
-expect object SlockStoreConfinement {
+/**
+ * Per-thread confinement depth (JVM `ThreadLocal`, Kotlin/Native `@ThreadLocal`). Internal: only
+ * [SlockStoreConfinedDispatcher] may enter/exit, so no other code can mark itself as confined.
+ */
+internal expect object SlockStoreConfinement {
     fun enter()
 
     fun exit()

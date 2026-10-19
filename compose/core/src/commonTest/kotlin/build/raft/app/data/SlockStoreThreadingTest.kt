@@ -17,12 +17,12 @@ class SlockStoreThreadingTest {
 
     @BeforeTest
     fun installGuard() {
-        SlockStoreThreading.violationHandler = { violation -> violations += violation }
+        SlockStoreThreading.installViolationHandler { violation -> violations += violation }
     }
 
     @AfterTest
     fun removeGuard() {
-        SlockStoreThreading.violationHandler = null
+        SlockStoreThreading.installViolationHandler(null)
     }
 
     @Test
@@ -54,7 +54,7 @@ class SlockStoreThreadingTest {
 
     @Test
     fun withoutAHandlerNothingIsChecked() = runTest {
-        SlockStoreThreading.violationHandler = null
+        SlockStoreThreading.installViolationHandler(null)
         val state = slockStoreState(0, "TestStore")
 
         state.value = 1

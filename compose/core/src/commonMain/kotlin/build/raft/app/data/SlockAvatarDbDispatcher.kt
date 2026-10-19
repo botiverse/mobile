@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
 import kotlinx.coroutines.CoroutineDispatcher
 
 /**
@@ -9,4 +10,5 @@ import kotlinx.coroutines.CoroutineDispatcher
  * frame thread stayed busy for seconds while the Android main thread synchronously waited on it
  * for touch-move dispatch → ANR. All avatar metadata I/O is serialized onto this dispatcher instead.
  */
+@SlockCoreInternalApi
 expect val SlockAvatarDbDispatcher: CoroutineDispatcher

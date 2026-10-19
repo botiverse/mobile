@@ -79,6 +79,8 @@ kotlin {
     // suppression (KT-61573) — zero behavior change.
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
+        // :core declarations that are public only for :shared (see SlockCoreInternalApi).
+        optIn.add("build.raft.app.SlockCoreInternalApi")
     }
 
     androidTarget {

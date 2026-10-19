@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
 import kotlinx.serialization.json.Json
 
 data class HttpClientConfig(
@@ -21,6 +22,7 @@ data class JsonConfig(
     val ignoreUnknownKeys: Boolean = true
 )
 
+@SlockCoreInternalApi
 fun JsonConfig.toKotlinxJson(): Json =
     Json {
         prettyPrint = this@toKotlinxJson.prettyPrint

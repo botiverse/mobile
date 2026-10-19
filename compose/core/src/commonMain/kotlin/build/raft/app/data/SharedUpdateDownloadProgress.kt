@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
 import build.raft.app.optLong
 import build.raft.app.optString
 import kotlinx.serialization.json.JsonObject
@@ -19,6 +20,7 @@ data class SharedUpdateDownloadProgress(
     val active: Boolean get() = phase == "downloading" || phase == "paused"
 }
 
+@SlockCoreInternalApi
 fun JsonObject.toSharedUpdateDownloadProgress(): SharedUpdateDownloadProgress? {
     val token = optString("token")
     val phase = optString("phase")

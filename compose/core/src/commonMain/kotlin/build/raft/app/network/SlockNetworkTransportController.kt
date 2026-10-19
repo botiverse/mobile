@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
 import build.raft.app.data.NetworkTransportPreferenceAvailability
 import build.raft.app.data.NetworkTransportPreferenceSnapshot
 import com.tencent.kmm.network.export.NetworkCurlConfigurationFailureReason
@@ -16,6 +17,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
+@SlockCoreInternalApi
 data class SlockNetworkTransportPlatformPolicy(
     val platformLabel: String,
     /** OHOS has no Ktor delegate; off means curl with H3 not requested. */
@@ -24,9 +26,12 @@ data class SlockNetworkTransportPlatformPolicy(
     val readyDetail: String
 )
 
+@SlockCoreInternalApi
 const val SLOCK_HTTP1_ONLY_METADATA_KEY = "com.raft.mobile.transport.http1_only"
+@SlockCoreInternalApi
 const val SLOCK_HTTP1_ONLY_METADATA_VALUE = "true"
 
+@SlockCoreInternalApi
 fun NetworkRequest.flagHttp1Only(warningLogger: (String) -> Unit) {
     val metadata = metadata
     if (metadata is MutableMap<String, String>) {
@@ -38,17 +43,21 @@ fun NetworkRequest.flagHttp1Only(warningLogger: (String) -> Unit) {
     }
 }
 
+@SlockCoreInternalApi
 fun NetworkRequest.isHttp1Only(): Boolean =
     metadata[SLOCK_HTTP1_ONLY_METADATA_KEY] == SLOCK_HTTP1_ONLY_METADATA_VALUE
 
+@SlockCoreInternalApi
 expect fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransportPlatformPolicy
 
 /** Mirrors the process-global remote policy into non-NetworkClient platform consumers. */
+@SlockCoreInternalApi
 expect fun slockApplyPlatformHttp3Preference(
     enabled: Boolean,
     generation: Long
 ): Boolean
 
+@SlockCoreInternalApi
 enum class SlockRemoteTransportVariant(val wireValue: String) {
     Ktor("ktor"),
     CurlH2("curl_h2"),
@@ -64,6 +73,7 @@ enum class SlockRemoteTransportVariant(val wireValue: String) {
  * Process-owned transport policy. Remote variants are reconciled across every active server selection;
  * each new request reads the committed snapshot without reconstructing NetworkClient instances.
  */
+@SlockCoreInternalApi
 class SlockNetworkTransportController(
     private val platformPolicy: SlockNetworkTransportPlatformPolicy = slockNetworkTransportPlatformPolicy(),
     private val nativeStatusProvider: () -> NetworkCurlNativeStatus = { VBTransportCurl.nativeStatus },
@@ -363,16 +373,19 @@ private object SlockNetworkTransportRegistry {
     fun currentOrNull(): SlockNetworkTransportController? = controller.value
 }
 
+@SlockCoreInternalApi
 fun installSlockNetworkTransportController(
     controller: SlockNetworkTransportController
 ) {
     SlockNetworkTransportRegistry.install(controller)
 }
 
+@SlockCoreInternalApi
 fun currentSlockNetworkTransportController(): SlockNetworkTransportController? =
     SlockNetworkTransportRegistry.currentOrNull()
 
 /** Shared by ordinary API calls, binary downloads and attachment streams. */
+@SlockCoreInternalApi
 fun slockNetworkClientConfig(
     defaultPolicy: com.tencent.kmm.network.export.NetworkRequestPolicy =
         com.tencent.kmm.network.export.NetworkRequestPolicy(),

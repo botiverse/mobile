@@ -1,10 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
+
+@SlockCoreInternalApi
 data class TranslationTargetLanguageOption(
     val key: String,
     val label: String
 )
 
+@SlockCoreInternalApi
 object TranslationTargetLanguages {
     /**
      * Persisted/wire value retained for compatibility with the web setting.

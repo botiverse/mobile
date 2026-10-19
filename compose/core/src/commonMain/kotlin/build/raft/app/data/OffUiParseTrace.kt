@@ -1,8 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
+@SlockCoreInternalApi
 suspend inline fun <T> parseResponseBodyWithTrace(
     source: String,
     markerPrefix: String,

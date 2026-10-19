@@ -1,7 +1,9 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
 import kotlin.concurrent.Volatile
 
+@SlockCoreInternalApi
 object SlockNetworkKmmRecoveryRemoteFlagBridge {
     private data class Listener(
         val onEvaluation: (String, Long, String, Boolean, String?) -> String?,
@@ -47,6 +49,7 @@ object SlockNetworkKmmRecoveryRemoteFlagBridge {
     fun updateActiveSelection(scopeId: String, serverId: String?): String? =
         listener?.onActiveSelectionChanged?.invoke(scopeId, serverId)
 
+    @SlockCoreInternalApi
     fun clearForTests() {
         listener = null
     }

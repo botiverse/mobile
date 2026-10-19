@@ -153,7 +153,7 @@ internal abstract class BasePager : ComposeContainer() {
         if (verifyThread) {
             // Debug thread verification also reports process-wide store writes made outside the
             // store dispatcher (logged, not thrown: see SlockStoreThreading for the known gaps).
-            SlockStoreThreading.violationHandler = { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
+            SlockStoreThreading.installViolationHandler { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
         }
         slockLogInfo(
             TAG_VERIFY,

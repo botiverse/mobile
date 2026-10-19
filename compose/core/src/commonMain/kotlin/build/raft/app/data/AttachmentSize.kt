@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
+
 /**
  * Single canonical byte-size formatter used at UI/presentation assembly boundaries.
  * Wire/domain mappers preserve raw `sizeBytes` and must not call this formatter.
@@ -7,6 +9,7 @@ package build.raft.app.data
  * `0` (or negative) renders as the empty string — every call site currently
  * relies on that behaviour to skip "0 B" labels for missing sizes.
  */
+@SlockCoreInternalApi
 fun formatAttachmentSizeLabel(bytes: Long): String {
     if (bytes <= 0) return ""
     val units = listOf("B", "KB", "MB", "GB")

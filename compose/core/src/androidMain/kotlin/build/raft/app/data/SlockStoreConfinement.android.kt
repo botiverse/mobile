@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-actual object SlockStoreConfinement {
+internal actual object SlockStoreConfinement {
     private val depth = ThreadLocal<IntArray>()
 
     private fun counter(): IntArray = depth.get() ?: IntArray(1).also(depth::set)

@@ -3,7 +3,7 @@ package build.raft.app.data
 import platform.Foundation.NSThread
 
 @kotlin.native.concurrent.ThreadLocal
-actual object SlockStoreConfinement {
+internal actual object SlockStoreConfinement {
     private var depth = 0
 
     actual fun enter() {

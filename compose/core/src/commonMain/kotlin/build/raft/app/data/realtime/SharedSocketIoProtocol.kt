@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.SlockCoreInternalApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
+@SlockCoreInternalApi
 object SharedSocketIoProtocol {
     private const val SocketIoPath = "/socket.io/"
     private const val EngineIoOpen = "0"
@@ -120,6 +122,7 @@ object SharedSocketIoProtocol {
         (this as? JsonPrimitive)?.contentOrNull
 }
 
+@SlockCoreInternalApi
 sealed class SharedSocketIoDecodedFrame {
     data object Empty : SharedSocketIoDecodedFrame()
     data class EngineOpen(val pingInterval: Long?, val pingTimeout: Long?) : SharedSocketIoDecodedFrame()

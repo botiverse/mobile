@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import build.raft.app.SlockCoreInternalApi
+
 /** Stable durable consumer identity for the canonical messages ledger. Rollout flags are not identities. */
 const val SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID: String = "sync-core.messages.v1"
 
@@ -25,6 +27,7 @@ data class DurablePartitionKey(
     }
 }
 
+@SlockCoreInternalApi
 fun requireOpaqueDurableIdentity(label: String, value: String) {
     require(value.isNotBlank()) { "$label must not be blank" }
     require(value == value.trim()) { "$label must already be canonical (no surrounding whitespace)" }

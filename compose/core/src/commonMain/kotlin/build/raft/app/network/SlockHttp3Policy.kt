@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
 import kotlin.concurrent.Volatile
 
 /**
@@ -49,6 +50,7 @@ object SlockHttp3Policy {
             else -> null
         }
 
+    @SlockCoreInternalApi
     fun resetForTest() {
         userChoiceReader = null
     }

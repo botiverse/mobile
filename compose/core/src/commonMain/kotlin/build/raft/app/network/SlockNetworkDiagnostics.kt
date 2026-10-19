@@ -1,5 +1,7 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
+
 /**
  * Redacted, single-token diagnostics for transport failures. Never includes
  * tokens, passwords, JWTs, full emails, or raw bodies.
@@ -7,6 +9,7 @@ package build.raft.app.network
 private fun Throwable.safeDiagnosticsName(): String =
     this::class.simpleName ?: "Exception"
 
+@SlockCoreInternalApi
 fun Throwable.safeDiagnosticsSummary(): String =
     buildString {
         append("reason=")
@@ -27,6 +30,7 @@ fun Throwable.safeDiagnosticsSummary(): String =
             }
     }
 
+@SlockCoreInternalApi
 fun String.toSafeDiagnosticsToken(): String {
     val redacted =
         SensitiveNetworkDiagnosticsPatterns.fold(this) { current, pattern ->
@@ -57,9 +61,11 @@ fun String.toSafeDiagnosticsToken(): String {
  * replaced wholesale.  Callers handling a known presigned response use [redactPresignedUrlText]
  * directly, which redacts every HTTP(S) URL.
  */
+@SlockCoreInternalApi
 fun String.redactPresignedUrlText(): String =
     PresignedUrlPattern.replace(this) { "[redacted-url]" }
 
+@SlockCoreInternalApi
 fun String.redactNetworkErrorText(): String =
     redactPresignedUrlText()
         .replace(EncodedPresignedUrlPattern, "[redacted-url]")

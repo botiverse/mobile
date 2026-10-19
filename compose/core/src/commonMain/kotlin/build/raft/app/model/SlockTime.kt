@@ -1,16 +1,24 @@
 package build.raft.app.model
 
+import build.raft.app.SlockCoreInternalApi
+
+@SlockCoreInternalApi
 const val MillisPerSecond = 1_000L
+@SlockCoreInternalApi
 const val MillisPerMinute = 60_000L
+@SlockCoreInternalApi
 const val MillisPerHour = 3_600_000L
+@SlockCoreInternalApi
 const val MillisPerDay = 86_400_000L
 
+@SlockCoreInternalApi
 enum class SlockRelativeTimeUnit {
     Minute,
     Hour,
     Day
 }
 
+@SlockCoreInternalApi
 sealed interface SlockRelativeTimeLabel {
     data object Empty : SlockRelativeTimeLabel
 
@@ -58,6 +66,7 @@ fun slockTimeContextRefreshDelayMillis(nowEpochMillis: Long): Long {
     return MillisPerMinute - millisIntoMinute
 }
 
+@SlockCoreInternalApi
 fun resolveSlockRelativeTimeLabel(
     value: String?,
     context: SlockTimeContext?
@@ -228,6 +237,7 @@ private val SlockTimestampRegex =
 private val SlockDisplayClockRegex =
     Regex("""^\d{1,2}:\d{2}(?::\d{2})?(?:\s[AP]M)?$""", RegexOption.IGNORE_CASE)
 
+@SlockCoreInternalApi
 data class SlockCivilDate(
     val year: Int,
     val month: Int,
@@ -269,6 +279,7 @@ private fun String.toOffsetMinutesOrNull(): Int? {
     return sign * (hours * 60 + minutes)
 }
 
+@SlockCoreInternalApi
 fun formatSlockClock(
     hour: Int,
     minute: Int,
@@ -334,6 +345,7 @@ private fun daysSinceUnixEpoch(year: Int, month: Int, day: Int): Long {
     return era * 146_097L + dayOfEra - 719_468L
 }
 
+@SlockCoreInternalApi
 fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
     val zeroDay = epochDay + 719_468L
     val era = floorDiv(zeroDay, 146_097L)
@@ -349,18 +361,21 @@ fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
     return SlockCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
 }
 
+@SlockCoreInternalApi
 fun floorDiv(value: Int, divisor: Int): Int {
     val quotient = value / divisor
     val remainder = value % divisor
     return if (remainder != 0 && (value xor divisor) < 0) quotient - 1 else quotient
 }
 
+@SlockCoreInternalApi
 fun floorDiv(value: Long, divisor: Long): Long {
     val quotient = value / divisor
     val remainder = value % divisor
     return if (remainder != 0L && (value xor divisor) < 0L) quotient - 1 else quotient
 }
 
+@SlockCoreInternalApi
 fun floorMod(value: Long, divisor: Long): Long =
     value - floorDiv(value, divisor) * divisor
 
@@ -390,5 +405,6 @@ private fun formatEpochMillisAsUtcIso(epochMillis: Long): String {
     }
 }
 
+@SlockCoreInternalApi
 fun Int.twoDigits(): String =
     if (this < 10) "0$this" else toString()

@@ -1,22 +1,30 @@
 package build.raft.app.data
 
+import build.raft.app.SlockCoreInternalApi
+
 /**
  * task #37: the list column of the wide list + detail split is user-resizable (the web
  * useResizablePanel): dragged within [SLOCK_LIST_PANE_MIN_DP]..[SLOCK_LIST_PANE_MAX_DP], saved per
  * device (one width for every server, like the web localStorage value), and clamped to the
  * current window so the detail keeps at least [SLOCK_LIST_PANE_DETAIL_MIN_DP].
  */
+@SlockCoreInternalApi
 const val SLOCK_LIST_PANE_DEFAULT_DP = 360f
+@SlockCoreInternalApi
 const val SLOCK_LIST_PANE_MIN_DP = 280f
+@SlockCoreInternalApi
 const val SLOCK_LIST_PANE_MAX_DP = 520f
 
 /** Narrowest detail the list may leave; the 840dp dual-pane window with the default list. */
+@SlockCoreInternalApi
 const val SLOCK_LIST_PANE_DETAIL_MIN_DP = 400f
 
 /** Divider between the list and the detail. */
+@SlockCoreInternalApi
 const val SLOCK_LIST_PANE_DIVIDER_DP = 1f
 
 /** The saved width, or the default when nothing (or nothing valid) was saved. */
+@SlockCoreInternalApi
 fun slockListPanePreferredWidthDp(stored: String?): Float =
     stored?.toFloatOrNull()
         ?.takeIf { it.isFinite() && it >= SLOCK_LIST_PANE_MIN_DP && it <= SLOCK_LIST_PANE_MAX_DP }
@@ -27,6 +35,7 @@ fun slockListPanePreferredWidthDp(stored: String?): Float =
  * ([rowWidthDp], null before it is measured) leaves after the detail minimum. The saved preference
  * is not changed by this clamp, so a window that grows back gets the user's width again.
  */
+@SlockCoreInternalApi
 fun slockListPaneWidthDp(preferredDp: Float, rowWidthDp: Float?): Float {
     val windowMax =
         rowWidthDp?.let { it - SLOCK_LIST_PANE_DIVIDER_DP - SLOCK_LIST_PANE_DETAIL_MIN_DP }
@@ -40,10 +49,12 @@ fun slockListPaneWidthDp(preferredDp: Float, rowWidthDp: Float?): Float {
  * Starting from the rendered width (not the saved one) keeps the divider under the finger when
  * the window had clamped the list.
  */
+@SlockCoreInternalApi
 fun slockListPaneDraggedWidthDp(startWidthDp: Float, dragDeltaDp: Float, rowWidthDp: Float?): Float =
     slockListPaneWidthDp(startWidthDp + dragDeltaDp, rowWidthDp)
 
 /** What a finished drag saves: whole dp, so the stored value is stable across densities. */
+@SlockCoreInternalApi
 fun slockListPaneStoredWidth(widthDp: Float): String =
     widthDp.coerceIn(SLOCK_LIST_PANE_MIN_DP, SLOCK_LIST_PANE_MAX_DP).toInt().toString()
 
@@ -52,6 +63,7 @@ fun slockListPaneStoredWidth(widthDp: Float): String =
  * reached (lift, gesture cancel, host inactive, handle disposed, density change); movement after
  * the end is ignored.
  */
+@SlockCoreInternalApi
 class SlockListPaneDragSession(private val onEnd: (reason: String) -> Unit) {
     var active: Boolean = false
         private set

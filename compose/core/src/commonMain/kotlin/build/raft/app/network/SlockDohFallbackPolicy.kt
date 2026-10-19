@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.SlockCoreInternalApi
 import build.raft.kuiklybase.datetime.SystemTimeZone
 import com.tencent.kmm.network.export.NetworkCurlDohFallbackProvider
 import com.tencent.kmm.network.export.VBTransportCurl
@@ -22,6 +23,7 @@ import kotlinx.atomicfu.locks.synchronized
  * resolver answers geo-DNS from its own location, so the nearer one gets the nearer CDN edge, and
  * the first provider is the one most likely to answer at all on that network.
  */
+@SlockCoreInternalApi
 class SlockDohFallbackPolicy(
     private val applyProviders: (List<NetworkCurlDohFallbackProvider>) -> Unit =
         VBTransportCurl::setDohFallbackProviders,
