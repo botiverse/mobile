@@ -28252,16 +28252,19 @@ private fun ThreadMessageActionMenu(
     // The adaptive identity key alone is not enough: phones open threads through the same adaptive
     // workspace, so it is also set on a full-width single-pane page (device check of 6de03d9a took
     // the shell path in 720x1280 portrait). Only a page that starts right of the window's left
-    // edge sits in a narrower pane whose Modal surface can clip the menu.
+    // edge sits in a narrower pane whose Modal surface can clip the menu. Until the page has been
+    // measured its origin reads as zero, which would look full-width; route an unmeasured adaptive
+    // page through the shell host, which renders the menu whole in every geometry, rather than
+    // risk one clipped in-page menu (review: CC-Cata, 沈括).
     val adaptiveDetailPage =
         LocalActivity.current.pageData.params
             .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .isNotBlank()
+    val pageOriginState =
+        SlockChildPageOriginRegistry
+            .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
     val clippingChildPage =
-        adaptiveDetailPage &&
-            SlockChildPageOriginRegistry
-                .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
-                .windowOrigin.x > 0f
+        adaptiveDetailPage && (!pageOriginState.measured || pageOriginState.windowOrigin.x > 0f)
     if (!clippingChildPage) {
         SlockModalAnchoredPopover(
             anchor = anchor,
