@@ -30,6 +30,23 @@ class SlockBrutalSelectLayoutTest {
     }
 
     @Test
+    fun raftSelectGroupLabelsTakeTheirOwnHeight() {
+        // 6 (p-1.5) + 28 (group label px-2.5 pt-2 pb-1) + 2 x 36 (min-h-9) + 6.
+        assertEquals(
+            112.dp,
+            slockRaftSelectListHeight(
+                options =
+                    listOf(
+                        SlockBrutalSelectOption("group", "Group", header = true),
+                        SlockBrutalSelectOption("a", "A"),
+                        SlockBrutalSelectOption("b", "B")
+                    ),
+                maxMenuHeight = 220.dp
+            )
+        )
+    }
+
+    @Test
     fun selectPopoverKeepsTriggerWidthAndFlipsAboveBottomTrigger() {
         val viewport = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         val contentSize = Size(width = 358f, height = 224f)

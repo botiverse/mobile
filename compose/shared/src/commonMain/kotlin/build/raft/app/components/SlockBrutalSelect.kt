@@ -80,6 +80,31 @@ internal fun slockBrutalSelectListHeight(
     ((optionCount.coerceAtLeast(1) * rowHeight.value).dp + SlockRaftMetrics.PopupPadding * 2)
         .coerceAtMost(maxMenuHeight)
 
+/** raft-ui `SelectGroupLabel`: `px-2.5 pt-2 pb-1` around a 12/16 caption = 28dp. */
+internal val SlockRaftSelectGroupLabelHeight = 28.dp
+
+/** raft-ui select popup minimum width (`min-w-[max(var(--anchor-width),220px)]`). */
+internal val SlockRaftSelectMinWidth = 220.dp
+
+/**
+ * raft select popup height: 36dp items and 28dp group labels plus the `p-1.5` inset on
+ * both edges, capped at [maxMenuHeight].
+ */
+internal fun slockRaftSelectListHeight(
+    options: List<SlockBrutalSelectOption>,
+    maxMenuHeight: Dp
+): Dp {
+    val rows =
+        if (options.isEmpty()) {
+            SlockRaftMetrics.MenuRowHeight.value
+        } else {
+            options.sumOf { option ->
+                (if (option.header) SlockRaftSelectGroupLabelHeight else SlockRaftMetrics.MenuRowHeight).value.toDouble()
+            }.toFloat()
+        }
+    return (rows.dp + SlockRaftMetrics.PopupPadding * 2).coerceAtMost(maxMenuHeight)
+}
+
 @Composable
 internal fun SlockBrutalSelectField(
     options: List<SlockBrutalSelectOption>,
@@ -232,10 +257,10 @@ private fun SlockRaftSelectField(
     var triggerRootWidthPx by remember { mutableStateOf(0f) }
     val triggerAnchor = remember { SlockLiveRootAnchorRef(identity = "raft_select") }
     val density = LocalDensity.current
-    val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
+    val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density).coerceAtLeast(SlockRaftSelectMinWidth)
     val rowHeight = SlockRaftMetrics.MenuRowHeight
     val popupInset = SlockRaftMetrics.PopupPadding
-    val listHeight = slockBrutalSelectListHeight(options.size, rowHeight, maxMenuHeight)
+    val listHeight = slockRaftSelectListHeight(options, maxMenuHeight)
     val sideOffset = 4.dp
     Column(modifier = modifier.fillMaxWidth()) {
         SlockRaftSelectTrigger(
@@ -305,13 +330,18 @@ private fun SlockRaftSelectField(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .height(rowHeight)
+                                        .height(if (option.header) SlockRaftSelectGroupLabelHeight else rowHeight)
                                         .clickable(enabled = rowEnabled) {
                                             expanded = false
                                             onSelect(option)
                                         }
-                                        .padding(horizontal = 10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        .padding(
+                                            start = SlockRaftMetrics.MenuItemPaddingHorizontal,
+                                            end = SlockRaftMetrics.MenuItemPaddingHorizontal,
+                                            top = if (option.header) SlockRaftMetrics.MenuLabelPaddingTop else 0.dp,
+                                            bottom = if (option.header) SlockRaftMetrics.MenuLabelPaddingBottom else 0.dp
+                                        ),
+                                horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
@@ -321,7 +351,6 @@ private fun SlockRaftSelectField(
                                             SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold)
                                         } else {
                                             SlockType.Body
-                                                .copy(fontSize = 14.sp, lineHeight = 20.sp)
                                                 .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium)
                                         },
                                     color =
@@ -337,7 +366,7 @@ private fun SlockRaftSelectField(
                                 if (selected) {
                                     SlockLucideIcon(
                                         SlockLucideIconName.Check,
-                                        modifier = Modifier.size(16.dp),
+                                        modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
                                         color = SlockColor.TextBlackArgb,
                                         strokeWidth = 2f
                                     )

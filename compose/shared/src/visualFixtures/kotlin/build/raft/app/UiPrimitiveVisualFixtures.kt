@@ -23,6 +23,8 @@ import build.raft.app.components.SlockBrutalTone
 import build.raft.app.components.SlockSectionHeader
 import build.raft.app.components.SlockSectionEyebrow
 import build.raft.app.components.SlockSelectTrigger
+import build.raft.app.components.SlockMenuItemRow
+import build.raft.app.components.slockRaftOverlaySurface
 import build.raft.app.components.SlockSelectionPopover
 import build.raft.app.components.SlockSelectionPopoverOption
 import build.raft.app.components.SlockSkeleton
@@ -539,35 +541,40 @@ internal fun UiSelectionPopoverVisualContent() {
 
 @Composable
 internal fun UiMenuItemVisualContent() {
-    // 181dp matches react's content-sized element (543px @3x). Padding is
-    // start/top only: react's card is the full 310dp wide with its 4px shadow
-    // overflowing to the right/bottom, while the Kuikly surface reserves the
-    // shadow inside its parent — trailing padding would shrink the card below
-    // 310dp (task #370).
+    // Mirrors the web case: four slock `MenuItem` rows (36dp, px-2.5, callout medium, mono
+    // hint shortcut) stacked flush inside a `rounded-container border border-line-seam
+    // bg-layer-popover shadow-raft-float` card -- no popup inset -- with the last row
+    // carrying its own `border-t border-line-muted` inside its 36dp box. 342 x 178dp =
+    // 16 + 1 + 4 x 36 + 1 + 16.
     Box(
         modifier =
             Modifier
                 .width(342.dp)
-                .height(181.dp)
+                .height(178.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(start = 16.dp, top = 16.dp)
+                .padding(16.dp)
     ) {
-        SlockBrutalDropdownMenuSurface(
-            items =
-                listOf(
-                    SlockBrutalDropdownMenuItem(id = "open", label = "Open Channel", trailing = "⌘K"),
-                    SlockBrutalDropdownMenuItem(id = "read", label = "Mark as Read"),
-                    SlockBrutalDropdownMenuItem(id = "archive", label = "Archive unavailable", enabled = false),
-                    SlockBrutalDropdownMenuItem(id = "delete", label = "Delete Message")
-                ),
-            onSelect = {},
-            width = 310.dp,
-            rowHeight = 36.dp,
-            // react's shadow-brutal is 4px 4px (measured 12px @3x in the capture).
-            shadowOffset = 4.dp,
-            showDividers = false,
-            dividerBeforeIds = setOf("delete")
-        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .slockRaftOverlaySurface()
+                    .padding(SlockStroke.Thin)
+        ) {
+            SlockMenuItemRow(label = "Open Channel", trailing = "⌘K")
+            SlockMenuItemRow(label = "Mark as Read")
+            SlockMenuItemRow(label = "Archive unavailable", enabled = false)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                SlockMenuItemRow(label = "Delete Message")
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(SlockStroke.Thin)
+                            .background(SlockColor.LineMuted)
+                )
+            }
+        }
     }
 }
 

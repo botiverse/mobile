@@ -47,6 +47,19 @@ internal object SlockRaftMetrics {
     val PopupPadding = 6.dp
     /** Vertical inset on each side of a menu separator (`my-1.5`). */
     val MenuSeparatorInset = 6.dp
+    /** Menu item horizontal padding (`px-2.5`). */
+    val MenuItemPaddingHorizontal = 10.dp
+    /** Menu item icon-to-label gap (`gap-2.5`). */
+    val MenuItemGap = 10.dp
+    /** Menu item icon (`[&>svg]:size-4`). */
+    val MenuIconSize = 16.dp
+    /** DropdownMenu / ContextMenu popup minimum width (`min-w-60`). */
+    val MenuMinWidth = 240.dp
+    /** DropdownMenu default side offset (`sideOffset ?? 6`). */
+    val MenuSideOffset = 6.dp
+    /** Menu group label padding (`px-2.5 pt-2 pb-1`). */
+    val MenuLabelPaddingTop = 8.dp
+    val MenuLabelPaddingBottom = 4.dp
     /** Status / attention pixel (`size-[9px]`). */
     val StatusSize = 9.dp
     /** Approximates `--theme-shadow-float` (0 12px 32px -12px ink/32) on Kuikly's elevation shadow. */

@@ -472,7 +472,9 @@ internal fun SlockBrutalModalLayer(
 internal fun SlockBrutalActionSheetRow(
     model: SlockActionSheetRowModel,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // raft: the row sits in a menu popup, so it takes the menu item's `px-2.5 py-1.5`.
+    menuItemPadding: Boolean = false
 ) {
     // The bare material3 Button paints the theme's default filled container
     // (purple in this build) over the sheet's surface and disables text via the
@@ -480,7 +482,7 @@ internal fun SlockBrutalActionSheetRow(
     // parent's selected/unselected surface shows through and ink stays readable.
     val theme = LocalSlockTheme.current
     if (theme.isAmbient) {
-        SlockRaftActionSheetRow(model = model, onClick = onClick, modifier = modifier)
+        SlockRaftActionSheetRow(model = model, onClick = onClick, modifier = modifier, menuItemPadding = menuItemPadding)
         return
     }
     Button(
@@ -545,7 +547,8 @@ internal fun SlockBrutalActionSheetRow(
 private fun SlockRaftActionSheetRow(
     model: SlockActionSheetRowModel,
     onClick: () -> Unit,
-    modifier: Modifier
+    modifier: Modifier,
+    menuItemPadding: Boolean = false
 ) {
     var pressed by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(SlockRadius.Control)
@@ -558,7 +561,10 @@ private fun SlockRaftActionSheetRow(
             modifier
                 .fillMaxWidth()
                 .background(if (pressed) SlockColor.FillPressed else Color.Transparent, shape)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(
+                    horizontal = if (menuItemPadding) SlockRaftMetrics.MenuItemPaddingHorizontal else 12.dp,
+                    vertical = if (menuItemPadding) 6.dp else 10.dp
+                )
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

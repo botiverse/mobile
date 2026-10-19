@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.slockDisplayUppercase
+import build.raft.app.slockRaftMenuWidth
 import build.raft.app.SlockAnchoredPopover
 import build.raft.app.SlockColor
 import build.raft.app.SlockFloatingDefaultViewportGap
@@ -420,8 +421,8 @@ internal fun SlockMenuItemRow(
                         .fillMaxWidth()
                         .height(SlockRaftMetrics.MenuRowHeight)
                         .clickable(enabled = enabled) { onClick() }
-                        .padding(horizontal = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal),
+                horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 leadingIconName?.let {
@@ -433,7 +434,7 @@ internal fun SlockMenuItemRow(
                 }
                 Text(
                     text = label,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.Medium),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium),
                     color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -840,11 +841,16 @@ internal fun SlockRaftUiControlledMenu(
     // raft overlays float on a shadow that takes no layout space; the list sits in a p-1.5 popup.
     val reservedShadow = if (raft) 0.dp else shadowOffset
     val chromeHeight = if (raft) SlockRaftMetrics.PopupPadding * 2 else 0.dp
+    // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
+    val measuredRowHeight = if (raft && rowHeight == 40.dp) SlockRaftMetrics.MenuRowHeight else rowHeight
+    val measuredWidth = if (raft) slockRaftMenuWidth(width) else width
     val contentSize =
         with(density) {
             Size(
-                width = (width + reservedShadow).toPx(),
-                height = rowHeight.toPx() * effectiveRowCount + (chromeHeight + reservedShadow).toPx()
+                width = (measuredWidth + reservedShadow).toPx(),
+                height =
+                    measuredRowHeight.toPx() * effectiveRowCount +
+                        (chromeHeight + reservedShadow).toPx()
             )
         }
     SlockModalAnchoredPopover(

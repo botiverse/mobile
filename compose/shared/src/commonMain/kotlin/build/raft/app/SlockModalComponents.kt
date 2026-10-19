@@ -697,6 +697,7 @@ internal fun SlockActionSheetRow(
     subtitle: String = "",
     icon: SlockLucideIconName,
     destructive: Boolean = false,
+    menuItemPadding: Boolean = false,
     onClick: () -> Unit
 ) {
     SlockBrutalActionSheetRow(
@@ -707,7 +708,8 @@ internal fun SlockActionSheetRow(
                 icon = icon,
                 destructive = destructive
             ),
-        onClick = onClick
+        onClick = onClick,
+        menuItemPadding = menuItemPadding
     )
 }
 

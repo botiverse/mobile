@@ -544,6 +544,7 @@ import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import build.raft.app.components.SlockRaftMetrics
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -27132,17 +27133,17 @@ private fun SlockSlackNavMoreMenu(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .padding(start = SlockSpacing.Md, end = SlockSpacing.Md, bottom = bottomInset + SlockSpacing.Sm)
-                        .widthIn(max = 320.dp)
-                        .padding(end = 4.dp, bottom = 4.dp)
+                        .widthIn(min = SlockRaftMetrics.MenuMinWidth, max = 320.dp)
                         .slockDialogContentPointerBarrier()
             ) {
+                // raft-ui menu popup: `p-1.5` inset, rows flush (no inter-row gap), the
+                // current destination on the `--primary-soft` highlight at control radius.
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .slockRaftOverlaySurface()
-                            .padding(SlockSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                            .padding(SlockRaftMetrics.PopupPadding)
                 ) {
                     rows.forEach { (destination, labels, icon) ->
                         Box(
@@ -27150,13 +27151,15 @@ private fun SlockSlackNavMoreMenu(
                                 Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        if (destination == selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite
+                                        if (destination == selected) SlockColor.PrimarySoft else Color.Transparent,
+                                        RoundedCornerShape(SlockRadius.Control)
                                     )
                         ) {
                             SlockActionSheetRow(
                                 title = labels.first,
                                 subtitle = labels.second,
                                 icon = icon,
+                                menuItemPadding = true,
                                 onClick = { onSelect(destination) }
                             )
                         }
