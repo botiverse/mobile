@@ -33,6 +33,7 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import ssl
 import os
 import sys
 import time
@@ -130,6 +131,10 @@ class Registry:
                 last_error = e
             except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
                 last_error = e
+            except ssl.SSLError as e:
+                # e.g. UNEXPECTED_EOF_WHILE_READING: CDN-side transport flake,
+                # indistinguishable from content state without a retry.
+                last_error = e
             if attempt < 2:
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"registry unreachable after 3 attempts: {url}: {last_error}") from last_error
@@ -217,9 +222,9 @@ def validate_manifest(manifest: dict, expected_version: str, closure: list) -> l
         missing = set(closure) - set(closure_coordinates)
         extra = set(closure_coordinates) - set(closure)
         if missing:
-            errors.append(f"closure missing coordinates: {sorted(missing)}")
+            errors.append(f"closure missing coordinates (is the closure file for release {expected_version}?): {sorted(missing)}")
         if extra:
-            errors.append(f"unexpected coordinates beyond closure: {sorted(extra)}")
+            errors.append(f"unexpected coordinates beyond closure (is the closure file for release {expected_version}?): {sorted(extra)}")
     pubs = manifest.get("publications")
     if not isinstance(pubs, list) or not pubs:
         errors.append("publications missing or empty")
@@ -275,9 +280,9 @@ def validate_manifest(manifest: dict, expected_version: str, closure: list) -> l
         missing = expected_gavs - primary_gavs
         extra = seen_gavs - expected_gavs
         if missing:
-            errors.append(f"closure missing coordinates: {sorted(missing)}")
+            errors.append(f"closure missing coordinates (is the closure file for release {expected_version}?): {sorted(missing)}")
         if extra:
-            errors.append(f"unexpected coordinates beyond closure: {sorted(extra)}")
+            errors.append(f"unexpected coordinates beyond closure (is the closure file for release {expected_version}?): {sorted(extra)}")
     # set digest
     if len(closure) == 37 and len(pubs) != EXPECTED_FILE_COUNT:
         errors.append(f"production manifest must contain {EXPECTED_FILE_COUNT} files")
@@ -662,7 +667,11 @@ def self_test() -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release", help="release id, e.g. 2.21.0-raft.0")
-    parser.add_argument("--registry-base", help="registry base URL (production)")
+    parser.add_argument(
+        "--registry-base",
+        default="https://maven.artifacts.botiverse.dev",
+        help="registry base URL (default: production maven.artifacts.botiverse.dev)",
+    )
     parser.add_argument("--offline-root", help="directory-based fake registry (testing)")
     parser.add_argument("--closure", help="JSON file: list of expected publication GAVs")
     parser.add_argument(
