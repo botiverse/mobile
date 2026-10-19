@@ -15,6 +15,9 @@ import kotlin.math.roundToLong
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionModeDefault
 import platform.AVFoundation.*
 import platform.AVKit.AVPlayerViewController
 import platform.CoreMedia.CMTimeGetSeconds
