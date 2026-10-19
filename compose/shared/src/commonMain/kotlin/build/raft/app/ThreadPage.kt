@@ -28249,10 +28249,19 @@ private fun ThreadMessageActionMenu(
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
     // its 400dp child surface. Everywhere else (single-pane phones, full-width pages) keep the
     // original in-page Modal path unchanged; only the clipping case goes through the shell host.
-    val clippingChildPage =
+    // The adaptive identity key alone is not enough: phones open threads through the same adaptive
+    // workspace, so it is also set on a full-width single-pane page (device check of 6de03d9a took
+    // the shell path in 720x1280 portrait). Only a page that starts right of the window's left
+    // edge sits in a narrower pane whose Modal surface can clip the menu.
+    val adaptiveDetailPage =
         LocalActivity.current.pageData.params
             .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .isNotBlank()
+    val clippingChildPage =
+        adaptiveDetailPage &&
+            SlockChildPageOriginRegistry
+                .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
+                .windowOrigin.x > 0f
     if (!clippingChildPage) {
         SlockModalAnchoredPopover(
             anchor = anchor,
@@ -28355,17 +28364,24 @@ private fun ThreadMessageActionMenu(
                     horizontalOffset = -horizontalNudgePx,
                     verticalOffset = anchorGapPx,
                     content = { onSelected ->
-                        ThreadMessageMenuChrome(
-                            actions = actions.mapIndexed { index, action ->
-                                action.copy(onClick = { onSelected(index.toString()) })
-                            },
-                            showReactionActions = showReactionActions,
-                            reactionAtlasImage = reactionAtlasImage,
-                            onReact = { emoji ->
-                                onReact(emoji)
-                            },
-                            modifier = Modifier
-                        )
+                        // The shell host composes this in its own page. Decode the reaction atlas
+                        // there instead of capturing this page's `reactionAtlasImage`: the atlas
+                        // loads asynchronously, so a lambda registered before it was ready kept
+                        // the first-frame null forever and every reaction rendered as an empty
+                        // box (HuaTuo device check of 6de03d9a, all layouts).
+                        ThreadReactionAtlasProvider {
+                            ThreadMessageMenuChrome(
+                                actions = actions.mapIndexed { index, action ->
+                                    action.copy(onClick = { onSelected(index.toString()) })
+                                },
+                                showReactionActions = showReactionActions,
+                                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                                onReact = { emoji ->
+                                    onReact(emoji)
+                                },
+                                modifier = Modifier
+                            )
+                        }
                     },
                     onSelected = { id ->
                         actions.getOrNull(id.toIntOrNull() ?: -1)
