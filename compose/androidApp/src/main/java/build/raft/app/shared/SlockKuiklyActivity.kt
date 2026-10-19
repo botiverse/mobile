@@ -4492,6 +4492,7 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
+                SlockMainThreadStallWatchdog.noteBridgeThread("log")
                 if (content.startsWith("shared_realtime_auth_refresh_")) {
                     SlockAndroidLocalDiagnostics.recordAuthLog(level.name.lowercase(), "SlockKuikly", content)
                 } else {
@@ -4900,6 +4901,7 @@ internal class SlockKuiklyBridgeModule(
         val routeName = request.optString("routeName").trim()
         val phase = request.optString("phase").trim()
         if (routeName.isBlank() && phase.isBlank()) return
+        SlockMainThreadStallWatchdog.noteBridgeThread("performanceMarker")
         val container =
                 (activity as? SlockKuiklyActivity)
                         ?.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
