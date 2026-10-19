@@ -165,6 +165,11 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
+                // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
+                // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
+                implementation("build.raft.mermaid:mermaid-core:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val commonTest by getting {
@@ -187,10 +192,6 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                // TODO(cmp-switch): mermaid-kuikly rendered through Kuikly CanvasView; needs a CMP renderer.
             }
         }
         val androidUnitTest by getting {
@@ -223,9 +224,6 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val iosX64Test by getting
