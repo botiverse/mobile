@@ -8,6 +8,9 @@ static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
     if ([result isKindOfClass:NSString.class]) {
         return (NSString *)result;
     }
+    if ([result isKindOfClass:NSNumber.class]) {
+        return [(NSNumber *)result stringValue];
+    }
     if (![NSJSONSerialization isValidJSONObject:result]) {
         NSLog(@"[SlockCmpHost][warn] dropped non-JSON bridge result class=%@", NSStringFromClass([result class]));
         return nil;
@@ -28,6 +31,14 @@ static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
     return self;
 }
 
+- (UIViewController *)hostController {
+    return _module.slockHostController;
+}
+
+- (void)setHostController:(UIViewController *)hostController {
+    _module.slockHostController = hostController;
+}
+
 - (void)callMethod:(NSString *)method
         paramsJson:(NSString *)paramsJson
           callback:(id<SharedSlockCmpIosBridgeCallback> _Nullable)callback {
@@ -38,24 +49,42 @@ static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
             [callback deliverJson:@"{\"code\":-1,\"message\":\"Method not implemented\"}"];
             return;
         }
-        NSMutableDictionary *args = [NSMutableDictionary dictionaryWithObject:paramsJson forKey:KR_PARAM_KEY];
+        NSMutableDictionary *args = [NSMutableDictionary dictionaryWithObject:paramsJson ?: @"" forKey:RaftBridgeParamKey];
         if (callback) {
-            KuiklyRenderCallback renderCallback = ^(id _Nullable result) {
+            RaftBridgeCallback bridgeCallback = ^(id _Nullable result) {
                 [callback deliverJson:SlockCmpBridgeResultJson(result)];
             };
-            args[KR_CALLBACK_KEY] = renderCallback;
+            args[RaftBridgeCallbackKey] = bridgeCallback;
         }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        // Never read the return value here: most bridge methods return void.
         [self->_module performSelector:selector withObject:args];
 #pragma clang diagnostic pop
     };
-    // Kuikly invokes async module methods on the main thread; keep that contract.
+    // Async bridge methods run on the main thread (the Kuikly module contract).
     if (NSThread.isMainThread) {
         invoke();
     } else {
         dispatch_async(dispatch_get_main_queue(), invoke);
     }
+}
+
+- (NSString *_Nullable)callSyncMethod:(NSString *)method paramsJson:(NSString *)paramsJson {
+    if (![HRBridgeModule isSynchronousMethod:method]) {
+        return nil;
+    }
+    SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
+    if (![_module respondsToSelector:selector]) {
+        return nil;
+    }
+    NSDictionary *args = @{ RaftBridgeParamKey: paramsJson ?: @"" };
+    // Every synchronous method returns an object (id / NSString *).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    id result = [_module performSelector:selector withObject:args];
+#pragma clang diagnostic pop
+    return SlockCmpBridgeResultJson(result) ?: @"";
 }
 
 @end

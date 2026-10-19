@@ -666,12 +666,11 @@ struct iOSApp: App {
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
         SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
-        // Kuikly/CMP page routing: debug builds also route the debug-only CMP pages.
+        // CMP page routing: debug builds also admit the debug-only :ui-cmp pages.
         SlockPageControllerFactory.configure()
-        // task #436: register the SVG coder so SDWebImage (used by the image
-        // load path Kuikly delegates to) can decode SVG assets — e.g. the
-        // Google/GitHub provider icons, which are shipped as SVG and otherwise
-        // render blank on iOS (UIImage has no native SVG support).
+        // task #436: register the SVG coder with SDWebImage, which the durable avatar store
+        // (SlockIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
+        // otherwise rejected (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
@@ -691,6 +690,10 @@ struct iOSApp: App {
         SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         SlockIosPushHost.install()
         SlockIosSharedLogBridge.install()
+        // Every page renders through Compose Multiplatform: install the :shared page registry
+        // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
+        // after the network transport (NetworkKMM image downloads), before the first page.
+        RaftIosHostHooks.shared.install(managedImages: SlockIosAvatarCacheHost.shared)
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 

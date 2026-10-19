@@ -1,9 +1,31 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <OpenKuiklyIOSRender/KRBaseModule.h>
 NS_ASSUME_NONNULL_BEGIN
 
-@interface HRBridgeModule : KRBaseModule
+/** Bridge call argument keys: the params (JSON text or dictionary) and the optional result callback. */
+FOUNDATION_EXTERN NSString *const RaftBridgeParamKey;
+FOUNDATION_EXTERN NSString *const RaftBridgeCallbackKey;
+/** Result callback of an asynchronous bridge method (JSON-compatible object, string, or nil). */
+typedef void (^RaftBridgeCallback)(id _Nullable result);
+
+/**
+ * The native side of the `HRBridgeModule` bridge protocol (shared `BridgeModule` /
+ * `BridgeWireHostCapabilities`), one instance per page. Each method `-name:(NSDictionary *)args`
+ * reads its params from args[RaftBridgeParamKey] and answers through args[RaftBridgeCallbackKey];
+ * the synchronous methods ([HRBridgeModule isSynchronousMethod:]) return their value instead.
+ * Driven by SlockCmpBridgeHost.
+ */
+@interface HRBridgeModule : NSObject
+
+/**
+ * The page this module belongs to (a RaftPageViewController): presentation anchor, navigation
+ * stack, share-image capture root and the owner of page-bound native state (adaptive navigation,
+ * conversation forward gesture). Weak: the page owns its bridge.
+ */
+@property (nonatomic, weak, nullable) UIViewController *slockHostController;
+
+/** Methods answered synchronously on the calling thread (cheap and thread-safe). */
++ (BOOL)isSynchronousMethod:(NSString *)method;
 
 @end
 

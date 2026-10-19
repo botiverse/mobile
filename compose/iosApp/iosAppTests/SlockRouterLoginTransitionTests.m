@@ -1,9 +1,9 @@
 #import <XCTest/XCTest.h>
-#import "../iosApp/KuiklyExpand/Handler/KRRouterHandler.h"
-#import "../iosApp/KuiklyExpand/KuiklyRenderViewController.h"
+#import "../iosApp/Cmp/RaftPageRouter.h"
+#import "../iosApp/Cmp/RaftPageViewController.h"
 
 // Keep real UIKit containment without attaching the navigation stack to a
-// window or loading a Kuikly view. These tests count transition requests; they do
+// window or loading a page view. These tests count transition requests; they do
 // not claim that an on-screen animation or shared logout flow has completed.
 @interface SlockRouterRecordingNavigationController : UINavigationController
 @property (nonatomic, assign) NSUInteger replacementCount;
@@ -54,14 +54,14 @@
 @end
 
 @interface SlockRouterLoginTransitionTests : XCTestCase
-@property (nonatomic, strong) KRRouterHandler *router;
+@property (nonatomic, strong) RaftPageRouter *router;
 @end
 
 @implementation SlockRouterLoginTransitionTests
 
 - (void)setUp {
     [super setUp];
-    self.router = [KRRouterHandler new];
+    self.router = [RaftPageRouter new];
 }
 
 - (void)tearDown {
@@ -69,9 +69,9 @@
     [super tearDown];
 }
 
-- (KuiklyRenderViewController *)renderPage:(NSString *)pageName {
-    KuiklyRenderViewController *page =
-        [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:@{}];
+- (RaftPageViewController *)renderPage:(NSString *)pageName {
+    RaftPageViewController *page =
+        [[RaftPageViewController alloc] initWithPageName:pageName pageData:@{}];
     XCTAssertFalse(page.isViewLoaded, @"Constructing a route must not start shared rendering");
     return page;
 }
@@ -94,25 +94,25 @@
                      controller:source];
 }
 
-- (KuiklyRenderViewController *)loginInNavigation:(UINavigationController *)navigation {
+- (RaftPageViewController *)loginInNavigation:(UINavigationController *)navigation {
     UIViewController *top = navigation.topViewController;
-    XCTAssertTrue([top isKindOfClass:KuiklyRenderViewController.class]);
-    if (![top isKindOfClass:KuiklyRenderViewController.class]) {
+    XCTAssertTrue([top isKindOfClass:RaftPageViewController.class]);
+    if (![top isKindOfClass:RaftPageViewController.class]) {
         return nil;
     }
-    KuiklyRenderViewController *login = (KuiklyRenderViewController *)top;
+    RaftPageViewController *login = (RaftPageViewController *)top;
     XCTAssertTrue(login.slockIsLoginPage);
     XCTAssertFalse(login.isViewLoaded, @"Router admission must not load the shared login page");
     return login;
 }
 
 - (void)testAccountTerminalThenShellAuthLossKeepsFirstLoginInstance {
-    KuiklyRenderViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
     SlockRouterRecordingSourceController *account = [SlockRouterRecordingSourceController new];
     SlockRouterRecordingNavigationController *navigation = [self navigationWithPages:@[shell, account]];
 
     [self replaceWithLoginFrom:account];
-    KuiklyRenderViewController *login = [self loginInNavigation:navigation];
+    RaftPageViewController *login = [self loginInNavigation:navigation];
     XCTAssertEqual(navigation.replacementCount, 1u);
     XCTAssertTrue(navigation.lastRequestedAnimation);
     XCTAssertEqual(navigation.viewControllers.count, 2u);
@@ -146,7 +146,7 @@
 
     // Model an outgoing transition view retained by UIKit after containment
     // changes. This window stays hidden and never becomes key; the navigation
-    // stack and the new Kuikly login are never mounted into it.
+    // stack and the new login are never mounted into it.
     UIWindow *transitionWindow = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 320, 640)];
     [transitionWindow addSubview:account.view];
     XCTAssertTrue(transitionWindow.isHidden);
@@ -154,7 +154,7 @@
     XCTAssertEqual(account.viewIfLoaded.window, transitionWindow);
 
     [self replaceWithLoginFrom:account];
-    KuiklyRenderViewController *login = [self loginInNavigation:navigation];
+    RaftPageViewController *login = [self loginInNavigation:navigation];
     XCTAssertEqual(navigation.replacementCount, 1u);
     XCTAssertNil(account.navigationController);
     XCTAssertNil(account.presentingViewController);
@@ -173,8 +173,8 @@
 }
 
 - (void)testExistingLoginSuppressesReplacementWithoutPriorRouterRequest {
-    KuiklyRenderViewController *shell = [self renderPage:@"compose_slock_app_shell"];
-    KuiklyRenderViewController *login = [self renderPage:@"compose_login"];
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *login = [self renderPage:@"compose_login"];
     SlockRouterRecordingNavigationController *navigation = [self navigationWithPages:@[shell, login]];
 
     [self replaceWithLoginFrom:shell];
@@ -193,7 +193,7 @@
             [source loadViewIfNeeded];
         }
         [self replaceWithLoginFrom:source];
-        KuiklyRenderViewController *login = [self loginInNavigation:navigation];
+        RaftPageViewController *login = [self loginInNavigation:navigation];
         XCTAssertEqual(navigation.replacementCount, 1u);
         XCTAssertNil(source.navigationController);
         XCTAssertNil(source.presentingViewController);
@@ -217,9 +217,9 @@
     XCTAssertTrue([source.recordedPresentation isKindOfClass:UINavigationController.class]);
     if ([source.recordedPresentation isKindOfClass:UINavigationController.class]) {
         UINavigationController *presentedNavigation = (UINavigationController *)source.recordedPresentation;
-        XCTAssertTrue([presentedNavigation.topViewController isKindOfClass:KuiklyRenderViewController.class]);
-        if ([presentedNavigation.topViewController isKindOfClass:KuiklyRenderViewController.class]) {
-            XCTAssertTrue(((KuiklyRenderViewController *)presentedNavigation.topViewController).slockIsLoginPage);
+        XCTAssertTrue([presentedNavigation.topViewController isKindOfClass:RaftPageViewController.class]);
+        if ([presentedNavigation.topViewController isKindOfClass:RaftPageViewController.class]) {
+            XCTAssertTrue(((RaftPageViewController *)presentedNavigation.topViewController).slockIsLoginPage);
         }
         XCTAssertEqual(presentedNavigation.viewControllers.count, 1u);
     }
@@ -230,18 +230,18 @@
     UIViewController *source = [UIViewController new];
     SlockRouterRecordingNavigationController *navigation = [self navigationWithPages:@[source]];
     [self replaceWithLoginFrom:source];
-    KuiklyRenderViewController *firstLogin = [self loginInNavigation:navigation];
+    RaftPageViewController *firstLogin = [self loginInNavigation:navigation];
 
     [self.router openPageWithName:@"compose_slock_app_shell"
                        pageData:@{@"slockReplaceCurrentPage": @YES}
                      controller:firstLogin];
-    KuiklyRenderViewController *newShell = (KuiklyRenderViewController *)navigation.topViewController;
+    RaftPageViewController *newShell = (RaftPageViewController *)navigation.topViewController;
     XCTAssertTrue(newShell.slockIsAppShellPage);
     XCTAssertFalse(newShell.slockIsLoginPage);
     XCTAssertEqual(navigation.replacementCount, 2u);
 
     [self replaceWithLoginFrom:newShell];
-    KuiklyRenderViewController *secondLogin = [self loginInNavigation:navigation];
+    RaftPageViewController *secondLogin = [self loginInNavigation:navigation];
     XCTAssertNotEqual(secondLogin, firstLogin, @"A later authenticated cycle must receive a new login page");
     XCTAssertEqual(navigation.replacementCount, 3u);
     XCTAssertEqual(navigation.viewControllers.count, 1u);
@@ -257,10 +257,10 @@
     SlockRouterRecordingNavigationController *secondNavigation = [self navigationWithPages:@[secondSource]];
 
     [self replaceWithLoginFrom:firstSource];
-    KuiklyRenderViewController *firstLogin = [self loginInNavigation:firstNavigation];
+    RaftPageViewController *firstLogin = [self loginInNavigation:firstNavigation];
     [self replaceWithLoginFrom:firstLogin];
     [self replaceWithLoginFrom:secondSource];
-    KuiklyRenderViewController *secondLogin = [self loginInNavigation:secondNavigation];
+    RaftPageViewController *secondLogin = [self loginInNavigation:secondNavigation];
     XCTAssertNotEqual(firstLogin, secondLogin);
     XCTAssertEqual(firstNavigation.replacementCount, 1u);
     XCTAssertEqual(secondNavigation.replacementCount, 1u, @"Another stack's login must not suppress this transition");
@@ -279,7 +279,7 @@
     [self.router openPageWithName:@"compose_slock_app_shell"
                        pageData:@{@"slockReplaceCurrentPage": @YES}
                      controller:firstShell];
-    KuiklyRenderViewController *secondShell = (KuiklyRenderViewController *)navigation.topViewController;
+    RaftPageViewController *secondShell = (RaftPageViewController *)navigation.topViewController;
     XCTAssertNotEqual(secondShell, firstShell);
     XCTAssertTrue(secondShell.slockIsAppShellPage);
     XCTAssertFalse(secondShell.slockIsLoginPage);
@@ -290,12 +290,12 @@
 }
 
 - (void)testLoginPushesAreNotCoalescedWithExistingLogin {
-    KuiklyRenderViewController *initialLogin = [self renderPage:@"compose_login"];
+    RaftPageViewController *initialLogin = [self renderPage:@"compose_login"];
     SlockRouterRecordingNavigationController *navigation = [self navigationWithPages:@[initialLogin]];
     for (NSDictionary *pageData in @[@{}, @{@"slockReplaceCurrentPage": @NO}]) {
         UIViewController *priorLogin = navigation.topViewController;
         [self.router openPageWithName:@"compose_login" pageData:pageData controller:priorLogin];
-        KuiklyRenderViewController *nextLogin = [self loginInNavigation:navigation];
+        RaftPageViewController *nextLogin = [self loginInNavigation:navigation];
         XCTAssertNotEqual(nextLogin, priorLogin);
         XCTAssertTrue(navigation.lastRequestedAnimation);
     }

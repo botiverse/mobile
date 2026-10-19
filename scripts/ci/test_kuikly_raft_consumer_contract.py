@@ -56,15 +56,12 @@ require(
     "non-JS Mobile shared module must not apply the Kuikly JS build plugin",
 )
 
+# iOS hosts every page on Compose Multiplatform: no Kuikly renderer pod (or fallback) remains.
 podfile = read("compose/iosApp/Podfile")
-require("fetch_kuikly_release_artifact.py" in podfile, "iOS podspec is not manifest-derived")
-require(":podspec => kuikly_podspec" in podfile, "iOS renderer is not the immutable binary pod")
+require("kuikly" not in podfile.lower(), "iOS app still consumes a Kuikly pod")
 require("../../third_party/kuikly-ui" not in podfile, "iOS local Kuikly pod fallback remains")
 podfile_lock = read("compose/iosApp/Podfile.lock")
-require(
-    f"OpenKuiklyIOSRender ({NORMAL})" in podfile_lock,
-    "iOS lockfile does not bind the immutable renderer version",
-)
+require("OpenKuiklyIOSRender" not in podfile_lock, "iOS lockfile still binds the Kuikly renderer")
 require("third_party/kuikly-ui" not in podfile_lock, "iOS lockfile retains the Kuikly gitlink")
 require(not (ROOT / "third_party/kuikly-ui").exists(), "obsolete Kuikly consumer gitlink remains")
 require('submodule "third_party/kuikly-ui"' not in read(".gitmodules"), "Kuikly gitlink metadata remains")
