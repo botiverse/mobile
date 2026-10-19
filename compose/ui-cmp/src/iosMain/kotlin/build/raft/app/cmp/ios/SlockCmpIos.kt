@@ -1,5 +1,6 @@
 package build.raft.app.cmp.ios
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.ComposeUIViewController
 import build.raft.app.cmp.SlockCmpRoot
 import build.raft.app.cmp.SlockCmpRouter
@@ -60,11 +61,19 @@ interface RaftIosPageListener {
  * One CMP page created for the iOS host: the Compose view controller the host embeds, plus the
  * host -> page event channel (the Kuikly `sendWithEvent` counterpart: adaptive panes, window
  * insets, theme changes, adaptive navigation receipts, conversation forward requests).
+ *
+ * The host may publish window facts before the page has composed (and subscribed). The latest
+ * [stickyEvents] are therefore replayed once the page's first composition is applied; they carry
+ * replace-semantics snapshots, so a duplicate is harmless.
  */
 class RaftIosPage internal constructor(
-    val viewController: UIViewController,
     private val events: RaftHostEvents,
+    content: (RaftIosPage) -> UIViewController,
 ) {
+    private val sticky = LinkedHashMap<String, JsonObject>()
+
+    val viewController: UIViewController = content(this)
+
     /**
      * Delivers [event] with [dataJson] (a JSON object as text; blank or malformed -> `{}`) to the
      * page as a pager event. Safe from any thread: delivery always happens on the main thread.
@@ -72,10 +81,24 @@ class RaftIosPage internal constructor(
     fun sendEvent(event: String, dataJson: String) {
         val data = parseSlockJsonObjectOrNull(dataJson.takeIf { it.isNotBlank() }) ?: JsonObject(emptyMap())
         if (NSThread.isMainThread) {
-            events.send(event, data)
+            deliver(event, data)
         } else {
-            dispatch_async(dispatch_get_main_queue()) { events.send(event, data) }
+            dispatch_async(dispatch_get_main_queue()) { deliver(event, data) }
         }
+    }
+
+    private fun deliver(event: String, data: JsonObject) {
+        if (event in stickyEvents) sticky[event] = data
+        events.send(event, data)
+    }
+
+    /** Main thread: re-sends the latest sticky snapshots (after the first composition). */
+    internal fun replayStickyEvents() {
+        sticky.entries.toList().forEach { (event, data) -> events.send(event, data) }
+    }
+
+    private companion object {
+        val stickyEvents = setOf("slockAdaptivePaneChanged", "slockWindowInsetsChanged")
     }
 }
 
@@ -111,8 +134,13 @@ object SlockCmpIos {
             )
         val args = SlockCmpPageArgs.fromJsonText(pageName, pageDataJson)
         val onDarkThemeResolved: ((Boolean) -> Unit)? = listener?.let { target -> { dark -> target.onDarkThemeResolved(dark) } }
-        val controller = ComposeUIViewController { SlockCmpRoot(args, host, onDarkThemeResolved) }
-        return RaftIosPage(controller, events)
+        return RaftIosPage(events) { page ->
+            ComposeUIViewController {
+                SlockCmpRoot(args, host, onDarkThemeResolved)
+                // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.
+                LaunchedEffect(Unit) { page.replayStickyEvents() }
+            }
+        }
     }
 }
 
