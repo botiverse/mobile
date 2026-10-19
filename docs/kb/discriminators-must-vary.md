@@ -41,6 +41,19 @@ This direction is the dangerous one: **an absence is read as a negative finding,
 may be that nothing was ever written there.** Any "we saw zero of X" needs a positive control — a
 companion line that must appear if the path ran at all.
 
+There is a sharper case of the same thing, and it is the one that actually fools people: **the channel
+can be down for the same reason the observation is missing.** A log write that is forwarded to the main
+thread cannot report anything while the main thread is blocked — so "no log lines in that window" is
+compatible both with "the code did not run" and with "the code ran and the logging was blocked with
+everything else". The silence carries no information in the second case, and nothing in the output
+distinguishes the two.
+
+The general form: **a silence is only evidence if the observing channel is independent of the thing
+being observed.** Before reading an absence, ask what else would have to be true for the record simply
+not to arrive. If the recorder shares a dependency with the subject, the absence is `NOT COVERED`
+rather than `NOT OBSERVED` — and those two call for opposite next actions: change the design, or look
+harder.
+
 ## 3. It is not measured where you assume the value comes from
 
 `viewportStartOffset` read `-134`, which looks like a scroll past the content start. It is defined as
