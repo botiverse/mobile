@@ -1322,6 +1322,7 @@ fun Modal(
         onDismissRequest = { onWillDismiss?.invoke("") },
         properties = slockModalDialogProperties()
     ) {
+        RaftModalDialogWindowEffect()
         SlockInputFocusDismissHost { focusDismissModifier ->
             Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
                 content()
@@ -1340,12 +1341,9 @@ fun Modal(
  * dismissal to [SlockModalDismissBarrier].
  */
 internal fun slockModalDialogProperties(): DialogProperties =
-    DialogProperties(
-        dismissOnClickOutside = false,
-        usePlatformDefaultWidth = false,
-        // TODO(cmp-switch): Kuikly passed scrimColor = Transparent (Slock draws its own barrier);
-        // upstream DialogProperties has no scrim colour in common code. Check Android's window dim.
-    )
+    // Per platform: no framework scrim / window dim (Kuikly passed scrimColor = Transparent),
+    // edge to edge, insets left to the page. See raftModalDialogProperties.
+    raftModalDialogProperties()
 
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
@@ -1612,6 +1610,25 @@ internal fun TextFieldValue.toSlockTextInputState(): TextInputState =
         compositionStart = composition?.start ?: TextInputState.NO_COMPOSITION,
         compositionEnd = composition?.end ?: TextInputState.NO_COMPOSITION,
     )
+
+/**
+ * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
+ * composition (mid-dictation, mid-CJK conversion) is committed as-is, without dropping characters.
+ *
+ * Kuikly's Android editor ran `finishComposingText()` inside `getTextInputState` (7ae5b181a), so
+ * the composer never received an open composing region. On CMP the reader returns the Compose
+ * [TextFieldValue], whose text already contains the composing characters; clearing the range makes
+ * the snapshot match that contract, and when the composer writes the snapshot back to the field
+ * (acceptEditorValue) Compose sees a composition-only change and restarts input, which ends the
+ * IME's composition the way `finishComposingText` did - so the IME cannot keep composing into
+ * the text that is being sent.
+ */
+internal fun TextInputState.raftWithFinishedComposition(): TextInputState =
+    if (compositionStart == TextInputState.NO_COMPOSITION && compositionEnd == TextInputState.NO_COMPOSITION) {
+        this
+    } else {
+        copy(compositionStart = TextInputState.NO_COMPOSITION, compositionEnd = TextInputState.NO_COMPOSITION)
+    }
 
 /**
  * Reads the native editor's current text/selection/composition state at an action boundary.
@@ -1906,7 +1923,7 @@ internal fun TextField(
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
                 callback(
                     SlockTextFieldNativeEditorRead(
-                        state = currentValueForReader.toSlockTextInputState(),
+                        state = currentValueForReader.toSlockTextInputState().raftWithFinishedComposition(),
                         editorNativeRef = -1,
                     )
                 )

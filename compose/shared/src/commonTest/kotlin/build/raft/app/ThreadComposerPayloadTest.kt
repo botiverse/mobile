@@ -333,6 +333,47 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun sendSnapshotCommitsOpenImeCompositionWithoutDroppingCharacters() {
+        // Mid-dictation / mid-CJK composition: the composing characters are part of the text the
+        // user sees. The action-boundary read must hand Send that text with the composition
+        // finished (Kuikly's finishComposingText barrier), never an open composing region.
+        val reader = SlockTextFieldNativeEditingStateReader()
+        val bindingOwner = Any()
+        val live =
+            TextFieldValue(
+                text = "hello nihao",
+                selection = TextRange(11),
+                composition = TextRange(6, 11),
+            )
+        reader.bind(bindingOwner) { callback ->
+            callback(
+                SlockTextFieldNativeEditorRead(
+                    state = live.toSlockTextInputState().raftWithFinishedComposition(),
+                    editorNativeRef = -1,
+                )
+            )
+        }
+        var result: SlockTextFieldNativeEditingStateReadResult? = null
+
+        reader.readCurrentValue { result = it }
+
+        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        assertEquals("hello nihao", available.value.text)
+        assertEquals(TextRange(11), available.value.selection)
+        assertEquals(null, available.value.composition)
+        // Text and selection unchanged, composition cleared: the write-back is a
+        // composition-only change, which is what makes Compose restart input and end the IME's
+        // composition.
+        assertEquals(live.copy(composition = null), available.value)
+    }
+
+    @Test
+    fun finishedCompositionLeavesCommittedStateUntouched() {
+        val committed = TextInputState(text = "done", selectionStart = 4, selectionEnd = 4)
+        assertEquals(committed, committed.raftWithFinishedComposition())
+    }
+
+    @Test
     fun nativeEditingStateReaderKeepsInFlightReadAcrossSameOwnerRefRefresh() {
         val reader = SlockTextFieldNativeEditingStateReader()
         val bindingOwner = Any()

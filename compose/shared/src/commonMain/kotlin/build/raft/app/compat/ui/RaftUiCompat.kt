@@ -2,6 +2,7 @@ package build.raft.app.compat.ui
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,16 +74,32 @@ data class KeyboardParams(val height: Float, val duration: Float)
 /**
  * Kuikly `keyboardHeightChange`: reports the IME height (dp) whenever it changes, from
  * `WindowInsets.ime`. CMP animates the inset frame by frame, so [KeyboardParams.duration] is 0.
+ *
+ * Keeps Kuikly's per-platform meaning of the height: on Android, Kuikly's keyboard watcher
+ * reported `ime - navigationBars` and the host advertises that through
+ * `slockKeyboardInsetExcludesBottomSafeArea`, so pages add their bottom safe area back while the
+ * keyboard is open. Reporting the raw `WindowInsets.ime` bottom (which already includes the
+ * navigation bar) counted the navigation bar twice and left a gap between the composer and the
+ * keyboard. See [raftKeyboardHeightExcludesNavigationBars].
  */
 fun Modifier.keyboardHeightChange(keyboardHeightChange: (KeyboardParams) -> Unit): Modifier =
     composed {
         val density = LocalDensity.current
         val imeBottom = WindowInsets.ime.getBottom(density)
+        val navigationBottom =
+            if (raftKeyboardHeightExcludesNavigationBars) WindowInsets.navigationBars.getBottom(density) else 0
+        val keyboardPx = (imeBottom - navigationBottom).coerceAtLeast(0)
         val callback by rememberUpdatedState(keyboardHeightChange)
-        val heightDp = with(density) { imeBottom.toDp().value }
+        val heightDp = with(density) { keyboardPx.toDp().value }
         LaunchedEffect(heightDp) { callback(KeyboardParams(heightDp, 0f)) }
         this
     }
+
+/**
+ * True where the Kuikly host reported keyboard heights without the navigation bar (Android:
+ * `ime - navigationBars`); false where it reported the full keyboard frame (iOS).
+ */
+internal expect val raftKeyboardHeightExcludesNavigationBars: Boolean
 
 /** Kuikly iOS interactive keyboard dismissal: no CMP equivalent. TODO(cmp-switch). */
 fun Modifier.keyboardDismissModeInteractiveIOS(): Modifier = this
