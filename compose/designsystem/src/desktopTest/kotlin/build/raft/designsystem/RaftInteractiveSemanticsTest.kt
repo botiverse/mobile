@@ -44,9 +44,18 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.fillMaxWidth
+import kotlin.math.abs
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftFieldItem
+import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftPopupMargins
 import build.raft.designsystem.components.RaftSafeArea
@@ -258,6 +267,167 @@ class RaftInteractiveSemanticsTest {
             assertEquals(0, page.value, "selecting a tab left the page where it was")
             val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
             assertTrue(right <= 220f, "the strip itself scrolled: the selected tab ends at ${right}dp, inside the 220dp strip")
+        }
+
+    /**
+     * Only the strip's first reveal jumps: a tab that was not selected at first composition
+     * animates into view the first time it is selected (still off screen one frame later),
+     * and ends up in view.
+     */
+    @Test
+    fun aTabSelectedLaterAnimatesIntoView() {
+        // A strip composed with a tab selected, and one composed with none: neither jumps later.
+        listOf<String?>("Profile", null).forEach { initial -> aTabSelectedLaterAnimatesIntoView(initial) }
+    }
+
+    private fun aTabSelectedLaterAnimatesIntoView(initial: String?) =
+        runComposeUiTest {
+            val tabs = listOf("Profile", "Workspace", "Activity", "Settings", "Billing")
+            var selected by mutableStateOf(initial)
+            setContent(
+                themed {
+                    Box(Modifier.width(220.dp)) {
+                        RaftTabStrip {
+                            tabs.forEach { RaftTab(it, selected = it == selected, onClick = { selected = it }) }
+                        }
+                    }
+                },
+            )
+            waitForIdle()
+            // Unclipped: boundsInRoot is cut to the strip's viewport.
+            fun billingRight() =
+                onNodeWithText("Billing").fetchSemanticsNode().let { it.positionInRoot.x + it.size.width } / density.density
+            val before = billingRight()
+            assertTrue(before > 220f, "Billing starts past the 220dp strip (${before}dp)")
+            mainClock.autoAdvance = false
+            selected = "Billing"
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeByFrame()
+            val midway = billingRight()
+            assertTrue(midway > 220f, "initially $initial: two frames in, the strip is still animating (Billing ends at ${midway}dp), not jumped")
+            mainClock.autoAdvance = true
+            waitForIdle()
+            val after = billingRight()
+            assertTrue(after <= 220f, "the animation ends with Billing inside the strip (${after}dp)")
+        }
+
+    /**
+     * A TextLink inside a sentence is a button of its own over its words: a tap on it runs
+     * its action, a disabled one is disabled in semantics. A standalone one is a button too.
+     */
+    @Test
+    fun aTextLinkInASentenceIsAButtonOverItsWords() =
+        runComposeUiTest {
+            var created = 0
+            var forgot = 0
+            setContent(
+                themed {
+                    Column {
+                        RaftText(
+                            buildAnnotatedString {
+                                append("Don't have an account? ")
+                                appendRaftTextLink("Create One", onClick = { created++ })
+                                append(" ")
+                                appendRaftTextLink("Log Out", onClick = { error("disabled") }, enabled = false)
+                            },
+                        )
+                        RaftTextLink("Forgot Password", onClick = { forgot++ })
+                    }
+                },
+            )
+            onNodeWithText("Create\u00A0One").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+            assertEquals(1, created, "the inline link ran its action")
+            onNodeWithText("Log\u00A0Out").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            onNodeWithText("Forgot Password").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+            assertEquals(1, forgot)
+        }
+
+    /**
+     * The text of a RaftText with links takes the width it is given: with fillMaxWidth and
+     * TextAlign.End the line ends at the container's end, as plain RaftText does.
+     */
+    @Test
+    fun aRaftTextWithALinkAlignsInTheWidthItIsGiven() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Box(Modifier.width(320.dp)) {
+                        RaftText(
+                            buildAnnotatedString {
+                                append("Don't have an account? ")
+                                appendRaftTextLink("Create One", onClick = {})
+                            },
+                            Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.End,
+                        )
+                    }
+                },
+            )
+            val link = onNodeWithText("Create\u00A0One").fetchSemanticsNode()
+            val right = (link.positionInRoot.x + link.size.width) / density.density
+            assertTrue(abs(right - 320f) <= 1f, "the end-aligned link ends at the 320dp container's end, not at ${right}dp")
+        }
+
+    /**
+     * A link that wraps takes taps only on its own words, on every line: a tap beside its
+     * last line (inside the box round all its lines) misses it; taps on its last line and
+     * on its first line hit it. It is still one node for screen readers.
+     */
+    @Test
+    fun aWrappedLinkTakesTapsOnlyOnItsWords() =
+        runComposeUiTest {
+            var taps = 0
+            setContent(
+                themed {
+                    Box(Modifier.width(150.dp)) {
+                        RaftText(
+                            buildAnnotatedString {
+                                appendRaftTextLink("Choose a Plan for Your Whole Team", onClick = { taps++ })
+                                append(" now")
+                            },
+                            Modifier.testTag("text"),
+                            style = RaftTheme.typography.footnote,
+                        )
+                    }
+                },
+            )
+            val text = onNodeWithTag("text")
+            val textHeight = text.fetchSemanticsNode().size.height / density.density
+            assertTrue(textHeight >= 36f, "the text wraps onto two lines (${textHeight}dp tall)")
+            // Last line: "Whole Team now"; its end is plain text and room, not the link.
+            text.performTouchInput { click(Offset(width - 2.dp.toPx(), height - 9.dp.toPx())) }
+            assertEquals(0, taps, "a tap past the link on its last line misses it")
+            text.performTouchInput { click(Offset(4.dp.toPx(), height - 9.dp.toPx())) }
+            assertEquals(1, taps, "a tap on the link's last line hits it")
+            onNodeWithText("Choose\u00A0a\u00A0Plan\u00A0for\u00A0Your\u00A0Whole\u00A0Team").performClick()
+            assertEquals(2, taps, "the link's one node (its first line) hits it")
+        }
+
+    /**
+     * FieldItem (Base UI Field.Item / Field.Label): the label names the control, and a tap
+     * on the label works it.
+     */
+    @Test
+    fun aFieldItemLabelNamesAndWorksItsControl() =
+        runComposeUiTest {
+            var checked by mutableStateOf(false)
+            var on by mutableStateOf(false)
+            setContent(
+                themed {
+                    Column {
+                        RaftFieldItem("Send as a task") { RaftCheckbox(checked, { checked = it }) }
+                        RaftFieldItem("Notify me") { RaftSwitch(on, { on = it }) }
+                    }
+                },
+            )
+            val box = onNodeWithContentDescription("Send as a task")
+            box.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
+            box.performTouchInput { click(Offset(width + 40.dp.toPx(), centerY)) }
+            assertTrue(checked, "a tap on the label toggled the checkbox")
+            val switch = onNodeWithContentDescription("Notify me")
+            switch.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+            switch.performTouchInput { click(Offset(width + 30.dp.toPx(), centerY)) }
+            assertTrue(on, "a tap on the label toggled the switch")
         }
 
     /** A select opened and closed from the keyboard hands focus back to its trigger. */

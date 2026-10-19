@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -102,6 +103,22 @@ internal fun raftBannerMetrics(size: RaftBannerSize): RaftBannerMetrics =
 @Composable
 fun RaftBanner(
     description: String,
+    status: RaftBannerStatus,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    size: RaftBannerSize = RaftBannerSize.Md,
+    showIcon: Boolean = status.glyph != null,
+    action: (@Composable RowScope.() -> Unit)? = null,
+) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action)
+
+/**
+ * [RaftBanner] whose [description] carries a text action inside the sentence: a strong
+ * TextLink appended with [appendRaftTextLink] ("Remove an inactive machine before adding
+ * another. Manage Machines"), not a button and not the [action] row.
+ */
+@Composable
+fun RaftBanner(
+    description: AnnotatedString,
     status: RaftBannerStatus,
     modifier: Modifier = Modifier,
     title: String? = null,

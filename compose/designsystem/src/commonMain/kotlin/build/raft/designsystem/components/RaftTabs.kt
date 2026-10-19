@@ -20,12 +20,11 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -36,12 +35,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -111,6 +112,7 @@ fun RaftTabStrip(
     val colors = RaftTheme.colors
     val scroll = rememberScrollState()
     val strip = remember(scroll) { RaftTabStripScroll(scroll) }
+    SideEffect { strip.composed = true }
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         Box(
             Modifier
@@ -172,7 +174,18 @@ private fun Modifier.raftEdgeFade(fill: Color, start: () -> Boolean, end: () -> 
 private class RaftTabStripScroll(val scroll: ScrollState) {
     /** The scrolled row of tabs (with its padding). */
     var content: LayoutCoordinates? = null
+
+    /**
+     * False while the strip's first composition runs (set after it applies). A tab
+     * remembers whether it was selected then: only that reveal jumps; every later one
+     * animates, including the first selection of a tab that was not selected at first,
+     * and a strip composed with no tab selected never jumps.
+     */
+    var composed: Boolean = false
 }
+
+/** Per tab: whether its next reveal is the strip's initial one, which jumps. */
+private class RaftInitialReveal(var pending: Boolean)
 
 /** Set by [RaftTabStrip]: its tabs scroll themselves into view when selected. */
 private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScroll?> { null }
@@ -216,7 +229,8 @@ fun RaftTab(
 
 /**
  * Scrolls [strip] so the element shows, with 8dp round it for a focus ring or die-cut
- * edge, when [active] turns true: at once on first composition, animated after that.
+ * edge, when [active] turns true: at once for the tab selected when the strip is first
+ * composed, animated for every other reveal ([RaftTabStripScroll.composed]).
  * It moves the strip's own [ScrollState] and nothing else (a bring-into-view request
  * would also scroll every scrolling parent, so the page would jump), and only when the
  * selection changes, not when the tab's size does.
@@ -224,11 +238,14 @@ fun RaftTab(
 @Composable
 private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll): Modifier {
     val tab = remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var revealed by remember { mutableStateOf(false) }
+    val initial = remember { RaftInitialReveal(pending = active && !strip.composed) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     LaunchedEffect(active) {
         if (!active) return@LaunchedEffect
+        // Consumed by the first activation, whether or not it scrolls.
+        val jump = initial.pending
+        initial.pending = false
         val coordinates = snapshotFlow { tab.value }.filterNotNull().first()
         val content = strip.content ?: return@LaunchedEffect
         if (!coordinates.isAttached || !content.isAttached) return@LaunchedEffect
@@ -247,9 +264,8 @@ private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripS
                 max = scroll.maxValue,
             )
         if (target != scroll.value) {
-            if (revealed) scroll.animateScrollTo(target) else scroll.scrollTo(target)
+            if (jump) scroll.scrollTo(target) else scroll.animateScrollTo(target)
         }
-        revealed = true
     }
     return onPlaced { tab.value = it }
 }
@@ -388,12 +404,40 @@ private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Un
  * raft-ui 0.8.0 SegmentedControl: two to five views of the same content (All / Mentions /
  * Unread), one always picked. A `fill-muted` track holding [RaftSegment]s; the picked
  * one is the yellow sticker. It hugs its segments; to fill a width pass
- * `Modifier.fillMaxWidth()` and give each segment `Modifier.weight(1f)`.
+ * `Modifier.fillMaxWidth()` and give each segment `Modifier.weight(1f)`, on its own line
+ * (not in a row beside other controls).
+ *
+ * It never shrinks below its segments (raft-ui 0.8.0 `shrink-0`): in a row too narrow for
+ * it, it keeps its width and runs past the end, as on the web, rather than squeezing or
+ * clipping a segment. Give it the room, or let the row give way first (Responsive layout:
+ * neighbours drop to icons, then the segments show only their icons).
  */
 @Composable
 fun RaftSegmentedControl(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    RaftTrack(modifier.selectableGroup(), content)
+    RaftTrack(modifier.raftNoShrink().selectableGroup(), content)
 }
+
+/**
+ * CSS `shrink-0` on a track that hugs its items: measured at least as wide as its
+ * max-intrinsic width (each item at its own width), even when the parent offers less.
+ * It reports the parent's width and runs past the end; a full-width track that does fit
+ * keeps the parent's width.
+ */
+internal fun Modifier.raftNoShrink(): Modifier =
+    layout { measurable, constraints ->
+        if (!constraints.hasBoundedWidth) {
+            val placeable = measurable.measure(constraints)
+            return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+        }
+        val natural = measurable.maxIntrinsicWidth(constraints.maxHeight)
+        val placeable =
+            if (natural <= constraints.maxWidth) {
+                measurable.measure(constraints)
+            } else {
+                measurable.measure(constraints.copy(minWidth = natural, maxWidth = natural))
+            }
+        layout(constraints.constrainWidth(placeable.width), placeable.height) { placeable.placeRelative(0, 0) }
+    }
 
 /**
  * One option of a [RaftSegmentedControl]: the sticker item (see [RaftTab]) with an

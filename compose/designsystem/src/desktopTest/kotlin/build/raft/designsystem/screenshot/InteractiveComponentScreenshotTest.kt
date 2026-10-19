@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +24,9 @@ import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
@@ -40,6 +45,7 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftGlyph
@@ -69,6 +75,9 @@ import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftToastSurface
 import build.raft.designsystem.components.RaftToggleGroup
@@ -103,6 +112,8 @@ import kotlin.test.Test
  *   `components.ui.selection-popover.states`.
  * - [overlays]: `library.raft-ui.wip-overlay-shells.states`,
  *   `library.raft-ui.controlled-open-overlays`.
+ * - [textLink]: raft-ui 0.8.0 TextLink (`text-link/compositions/preview`, `disabled`) and
+ *   the banner's inline action (`banner/compositions/action`).
  */
 class InteractiveComponentScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -179,6 +190,10 @@ class InteractiveComponentScreenshotTest {
                         RaftTextField("raft-labs", {}, prefix = "/")
                     }
                     RaftField(label = "Small label", labelSize = RaftFieldLabelSize.Sm) { RaftTextField("", {}, placeholder = "Wug") }
+                    Caption("FieldItem md, sm: the control on the label's first line")
+                    RaftFieldItem("Don't remind me again") { RaftCheckbox(true, {}) }
+                    RaftFieldItem("Don't remind me again", size = RaftFieldLabelSize.Sm) { RaftCheckbox(true, {}) }
+                    RaftFieldItem("Send as a task", description = "Leaving this off posts an ordinary message.") { RaftCheckbox(false, {}) }
                 }
                 Column(Modifier.width(340.dp)) {
                     Caption("FormSection: sections of a wide dialog", Modifier.padding(bottom = 12.dp))
@@ -250,6 +265,17 @@ class InteractiveComponentScreenshotTest {
                     StateCell(focused = true) { RaftCheckboxRow("Pin to the top", checked = false, onCheckedChange = {}) }
                     RaftCheckboxRow("Disabled checked", checked = true, onCheckedChange = {}, enabled = false)
                 }
+                Caption("A label that wraps: the box stays on its first line")
+                Column(Modifier.width(200.dp)) {
+                    RaftCheckboxRow("Notify everyone in the channel when this is done", checked = true, onCheckedChange = {})
+                }
+                Caption("FieldItem md, sm; wrapping label; with a description")
+                Column(Modifier.width(240.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RaftFieldItem("Send as a task") { RaftCheckbox(true, {}) }
+                    RaftFieldItem("Send as a task", size = RaftFieldLabelSize.Sm) { RaftCheckbox(true, {}) }
+                    RaftFieldItem("A label long enough that it has to wrap onto a second line") { RaftCheckbox(false, {}) }
+                    RaftFieldItem("Send as a task", description = "Leaving this off posts an ordinary message.") { RaftCheckbox(false, {}) }
+                }
             }
         }
 
@@ -273,6 +299,11 @@ class InteractiveComponentScreenshotTest {
                         RaftRadioRow("Full reset", selected = false, onClick = {}, description = "Clears memory and files. You can't undo this.", enabled = false)
                     }
                     RaftBanner("Wug stops for a few seconds while it restarts.", RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                }
+                Caption("FieldItem md, sm: the radio on the label's first line")
+                RaftRadioGroup(Modifier.width(240.dp)) {
+                    RaftFieldItem("Everyone", Modifier.padding(vertical = 4.dp)) { RaftRadio(true, {}) }
+                    RaftFieldItem("Only people I follow", Modifier.padding(vertical = 4.dp), size = RaftFieldLabelSize.Sm) { RaftRadio(false, {}) }
                 }
             }
         }
@@ -299,6 +330,12 @@ class InteractiveComponentScreenshotTest {
                         description = "Play a sound for mentions.",
                         trailing = { RaftSwitch(false, {}) },
                     )
+                }
+                Caption("FieldItem md, sm, with a description: the 30dp switch on the label's first line")
+                Column(Modifier.width(280.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RaftFieldItem("Send as a task") { RaftSwitch(true, {}) }
+                    RaftFieldItem("Send as a task", size = RaftFieldLabelSize.Sm) { RaftSwitch(false, {}) }
+                    RaftFieldItem("Send as a task", description = "Leaving this off posts an ordinary message.") { RaftSwitch(false, {}) }
                 }
             }
         }
@@ -373,6 +410,16 @@ class InteractiveComponentScreenshotTest {
                     RaftSegment("Dark", selected = false, onClick = {}, modifier = Modifier.weight(1f))
                     RaftSegment("System", selected = false, onClick = {}, modifier = Modifier.weight(1f))
                 }
+                Caption("In a 200dp row: the segments keep their width and run past it (shrink-0)")
+                Column(Modifier.width(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RaftSegmentedControl {
+                        RaftSegment("All", selected = false, onClick = {}, count = "24")
+                        RaftSegment("Mentions", selected = true, onClick = {}, count = "3")
+                        RaftSegment("Unread", selected = false, onClick = {}, count = "9")
+                    }
+                    // The row's 200dp.
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(RaftTheme.colors.foregroundHint))
+                }
                 Caption("ToggleGroup: two pressed, focused, disabled")
                 RaftToggleGroup {
                     RaftToggleGroupItem("Bold", pressed = true, onPressedChange = {})
@@ -382,6 +429,87 @@ class InteractiveComponentScreenshotTest {
                 }
             }
         }
+
+    @Test
+    fun textLink() =
+        capture("text_link") {
+            val colors = RaftTheme.colors
+            val type = RaftTheme.typography
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf(RaftTextLinkVariant.Muted, RaftTextLinkVariant.Strong).forEach { variant ->
+                    Caption("${variant.name}: rest, pressed, focused, disabled (text-footnote)")
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        RaftTextLink("Forgot Password", {}, variant = variant, style = type.footnote)
+                        StateCell(pressed = true) { RaftTextLink("Forgot Password", {}, variant = variant, style = type.footnote) }
+                        StateCell(focused = true) { RaftTextLink("Forgot Password", {}, variant = variant, style = type.footnote) }
+                        RaftTextLink("Log Out", {}, variant = variant, style = type.footnote, enabled = false)
+                    }
+                }
+                Caption("Takes the size of the text around it: caption, footnote, callout, body")
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    listOf(type.caption, type.footnote, type.callout, type.body).forEach { RaftTextLink("See All", {}, style = it) }
+                }
+                Caption("Inside a sentence (strong): rest, pressed, focused")
+                listOf(false to false, true to false, false to true).forEach { (pressed, focused) ->
+                    StateCell(pressed = pressed, focused = focused) { Sentence(type.footnote, colors.foregroundMuted) }
+                }
+                Caption("In body text, wrapping at 240dp: the link stays on one line and the line keeps its height")
+                RaftText(
+                    buildAnnotatedString {
+                        append("Your trial ends in three days. To keep your agents running, ")
+                        appendRaftTextLink("Choose a Plan", {})
+                        append(" or talk to us.")
+                    },
+                    Modifier.width(240.dp),
+                    style = type.body,
+                )
+                Caption("Centred under a full-width button (fillMaxWidth, TextAlign.Center)")
+                Column(Modifier.width(340.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RaftButton("Sign In", {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Xl, modifier = Modifier.fillMaxWidth())
+                    RaftText(
+                        buildAnnotatedString {
+                            append("Don't have an account? ")
+                            appendRaftTextLink("Create One", {})
+                        },
+                        Modifier.fillMaxWidth(),
+                        style = type.footnote,
+                        color = colors.foregroundMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Caption("A link longer than its line wraps; each line is underlined")
+                RaftText(
+                    buildAnnotatedString {
+                        appendRaftTextLink("Choose a Plan for Your Whole Team", {})
+                        append(" now")
+                    },
+                    Modifier.width(150.dp),
+                    style = type.footnote,
+                )
+                Caption("Banner: a text action inside the description")
+                RaftBanner(
+                    buildAnnotatedString {
+                        append("Remove an inactive machine before adding another. ")
+                        appendRaftTextLink("Manage Machines", {})
+                    },
+                    RaftBannerStatus.Warning,
+                    title = "Plan limit reached",
+                    modifier = Modifier.width(340.dp),
+                )
+            }
+        }
+
+    @Composable
+    private fun Sentence(style: TextStyle, color: androidx.compose.ui.graphics.Color) {
+        RaftText(
+            buildAnnotatedString {
+                append("Don't have an account? ")
+                appendRaftTextLink("Create One", {})
+            },
+            style = style,
+            color = color,
+        )
+    }
 
     @Test
     fun select() =

@@ -2,6 +2,7 @@ package build.raft.designsystem.text
 
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
@@ -10,6 +11,8 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import build.raft.designsystem.components.RaftLinkedText
+import build.raft.designsystem.components.raftTextLinks
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 
@@ -43,7 +46,11 @@ fun RaftText(
     )
 }
 
-/** [RaftText] for styled spans. */
+/**
+ * [RaftText] for styled spans. Text links appended with
+ * [build.raft.designsystem.components.appendRaftTextLink] become TextLinks inside the
+ * sentence: its size and line height, their own look, states and click targets.
+ */
 @Composable
 fun RaftText(
     text: AnnotatedString,
@@ -56,6 +63,11 @@ fun RaftText(
     softWrap: Boolean = true,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
+    val links = remember(text) { raftTextLinks(text) }
+    if (links.isNotEmpty()) {
+        RaftLinkedText(text, links, modifier, style.resolve(color, textAlign), maxLines, overflow, softWrap, onTextLayout)
+        return
+    }
     BasicText(
         text = text,
         modifier = modifier,

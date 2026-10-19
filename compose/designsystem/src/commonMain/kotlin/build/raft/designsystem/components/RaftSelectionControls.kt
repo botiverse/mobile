@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
@@ -28,12 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -45,6 +48,7 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
+import kotlin.math.roundToInt
 
 // Value selection (States > Selected: value): a checkbox or radio shows the pick in ink,
 // never in yellow; a switch is the one control whose "on" is a brand sticker. None of them
@@ -147,6 +151,8 @@ fun RaftCheckbox(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onCheckedChange != null
+    val label = LocalRaftFieldState.current.label
+    RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val toggle =
         if (onCheckedChange != null) {
             Modifier.triStateToggleable(
@@ -165,7 +171,7 @@ fun RaftCheckbox(
         indeterminate = indeterminate,
         enabled = enabled,
         focused = interactive && enabled && raftIsFocused(source),
-        modifier = modifier.then(toggle),
+        modifier = modifier.then(toggle).then(if (interactive && label != null) Modifier.semantics { contentDescription = label } else Modifier),
     )
 }
 
@@ -210,9 +216,13 @@ fun RaftRadio(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
+    val label = LocalRaftFieldState.current.label
+    RaftRegisterFieldItemTap(if (onClick != null && enabled) onClick else null)
     val select =
         if (onClick != null) {
-            Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            Modifier
+                .selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+                .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
         } else {
             Modifier
         }
@@ -259,6 +269,7 @@ fun RaftSwitch(
     val colors = RaftTheme.colors
     val look = raftSwitchLook(checked, enabled, colors)
     val focused = onCheckedChange != null && enabled && raftIsFocused(source)
+    RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(220, easing = RaftEaseSlide))
     val toggle =
         if (onCheckedChange != null) {
@@ -309,7 +320,8 @@ fun RaftRadioGroup(modifier: Modifier = Modifier, content: @Composable ColumnSco
 /**
  * A checkbox and its label as one tappable row (the page hand-off's choice row, raft-ui
  * FieldItem): at least 44dp tall, 12dp vertical padding, the box 12dp before the text and
- * centred on the label's first line (Alignment: a control and its label). [label] is
+ * centred on the label's first line (Alignment: a control and its label), whether the
+ * label wraps or a description follows. [label] is
  * `text-subhead` semibold (sentence case), [description] `text-footnote`
  * `foreground-muted` under it. The whole row toggles; keyboard focus rings the box.
  */
@@ -379,20 +391,67 @@ private fun RaftChoiceRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val labelStyle = typography.subhead.copy(fontWeight = FontWeight.SemiBold)
-    // Centre the 20dp control on the label's first line: (1lh - 20) / 2, which is 0 at the
-    // normal size and grows with the font scale (the line height is in sp).
-    val controlTop: Dp = ((raftLineHeightDp(labelStyle.lineHeight, labelStyle.fontSize, LocalDensity.current) - RaftCheckSize) / 2).coerceAtLeast(0.dp)
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
+    RaftFirstLineRow(
+        lineHeight = raftLineHeightDp(labelStyle.lineHeight, labelStyle.fontSize, LocalDensity.current),
+        gap = 12.dp,
+        modifier = modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 12.dp),
+        control = control,
     ) {
-        Box(Modifier.padding(top = controlTop)) { control() }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             RaftText(label, style = labelStyle, color = if (enabled) colors.foreground else colors.foregroundDisabled)
             if (description != null) {
                 RaftText(description, style = typography.footnote, color = if (enabled) colors.foregroundMuted else colors.foregroundDisabled)
             }
+        }
+    }
+}
+
+/**
+ * Where a control and the text beside it go so the control's centre is on the centre of
+ * the text's first line, [lineHeight] tall (Alignment: a control and its label; raft-ui
+ * FieldItem `mt-[calc((1lh-<control>)/2)]`): `(1lh - control) / 2` down for the control
+ * when the line is taller, else that much down for the text, so a 30dp switch beside an
+ * 18dp line doesn't hang above the row. [Pair] of (control y, text y), px.
+ */
+internal fun raftFirstLineOffsets(lineHeight: Int, controlHeight: Int): Pair<Int, Int> {
+    val delta = (lineHeight - controlHeight) / 2f
+    return if (delta >= 0f) delta.roundToInt() to 0 else 0 to (-delta).roundToInt()
+}
+
+/**
+ * [control], [gap], then [text] filling the rest of the width, with the control centred on
+ * the text's first line ([raftFirstLineOffsets]): not on the top of the text, and not on
+ * the whole block, so it stays put when the label wraps or a description follows.
+ */
+@Composable
+internal fun RaftFirstLineRow(
+    lineHeight: Dp,
+    gap: Dp,
+    modifier: Modifier = Modifier,
+    control: @Composable () -> Unit,
+    text: @Composable () -> Unit,
+) {
+    Layout(contents = listOf(control, text), modifier = modifier) { (controlMeasurables, textMeasurables), constraints ->
+        val gapPx = gap.roundToPx()
+        val controlPlaceables = controlMeasurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val controlWidth = controlPlaceables.maxOfOrNull { it.width } ?: 0
+        val controlHeight = controlPlaceables.maxOfOrNull { it.height } ?: 0
+        val textConstraints =
+            if (constraints.hasBoundedWidth) {
+                val rest = (constraints.maxWidth - controlWidth - gapPx).coerceAtLeast(0)
+                Constraints(minWidth = rest, maxWidth = rest, maxHeight = constraints.maxHeight)
+            } else {
+                Constraints(maxHeight = constraints.maxHeight)
+            }
+        val textPlaceables = textMeasurables.map { it.measure(textConstraints) }
+        val textWidth = textPlaceables.maxOfOrNull { it.width } ?: 0
+        val textHeight = textPlaceables.maxOfOrNull { it.height } ?: 0
+        val (controlY, textY) = raftFirstLineOffsets(lineHeight.roundToPx(), controlHeight)
+        val width = constraints.constrainWidth(controlWidth + gapPx + textWidth)
+        val height = constraints.constrainHeight(maxOf(controlY + controlHeight, textY + textHeight))
+        layout(width, height) {
+            controlPlaceables.forEach { it.placeRelative(0, controlY) }
+            textPlaceables.forEach { it.placeRelative(controlWidth + gapPx, textY) }
         }
     }
 }
