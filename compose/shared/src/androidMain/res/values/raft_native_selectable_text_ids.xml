@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- task #924: native resource id of the Select Text dialog's platform TextView. -->
+    <item name="thread_message_selection_text" type="id" />
+</resources>
