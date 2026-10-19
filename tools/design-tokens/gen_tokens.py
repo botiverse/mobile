@@ -23,8 +23,8 @@ chroma-reduction gamut map), and so does this generator.
 (capture_chrome_oracle.mjs).
 
 Usage:
-  gen_tokens.py            regenerate the Kotlin file
-  gen_tokens.py --check    fail if sources do not match manifest.json or the
+  gen_tokens.py            regenerate the Kotlin files (every target in TARGETS)
+  gen_tokens.py --check    fail if sources do not match manifest.json, any
                            Kotlin file is stale, or the oracle disagrees
   gen_tokens.py --self-test
   gen_tokens.py --dump-json  print resolved tokens (used by the oracle script)
@@ -45,9 +45,35 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 MANIFEST = HERE / "manifest.json"
 ORACLE = HERE / "chrome-oracle.json"
-OUTPUT = (
-    REPO
-    / "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt"
+
+
+@dataclass(frozen=True)
+class Target:
+    """One generated Kotlin file: the same tokens for one Compose flavour."""
+
+    output: Path
+    package: str
+    color_import: str
+    visibility: str  # "internal " or "" (public)
+
+
+# Every target renders the same tokens, resolved from the one source set pinned in
+# manifest.json; the raft-ui version is chosen there (paths + sha256), not per target.
+TARGETS = (
+    # Kuikly Compose (the shipping UI in compose/shared).
+    Target(
+        output=REPO / "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt",
+        package="build.raft.app.designtokens",
+        color_import="com.tencent.kuikly.compose.ui.graphics.Color",
+        visibility="internal ",
+    ),
+    # Official Compose Multiplatform (the compose/designsystem module).
+    Target(
+        output=REPO / "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiColorTokens.g.kt",
+        package="build.raft.designsystem.tokens",
+        color_import="androidx.compose.ui.graphics.Color",
+        visibility="",
+    ),
 )
 
 THEMES = ("raftLight", "raftDark")
@@ -438,7 +464,7 @@ def argb(rgba) -> str:
     return f"0x{a:02X}{r:02X}{g:02X}{b:02X}"
 
 
-def render(tokens, themed) -> str:
+def render(tokens, themed, target: Target) -> str:
     manifest = json.loads(MANIFEST.read_text())
     shared = sorted(n for n in tokens[BASE_THEME] if n not in themed and all(n in tokens[t] for t in THEMES))
     for n in shared:
@@ -459,12 +485,12 @@ def render(tokens, themed) -> str:
         lines.append(f"//   {entry['origin']} sha256={entry['sha256'][:16]}")
     lines += [
         "",
-        "package build.raft.app.designtokens",
+        f"package {target.package}",
         "",
-        "import com.tencent.kuikly.compose.ui.graphics.Color",
+        f"import {target.color_import}",
         "",
         "/** Theme-invariant Web colours: raw ramps, brand colours and the Tailwind palette. */",
-        "internal object RaftUiPalette {",
+        f"{target.visibility}object RaftUiPalette {{",
     ]
     for n in shared:
         lines.append(f"    /** `{n}` */")
@@ -477,7 +503,7 @@ def render(tokens, themed) -> str:
         " * One object per theme; an abstract class (not a constructor) so the token",
         " * count is not bounded by the JVM's 255-slot parameter limit.",
         " */",
-        "internal sealed class RaftUiThemeColors {",
+        f"{target.visibility}sealed class RaftUiThemeColors {{",
     ]
     for n in theme_only:
         lines.append(f"    /** `{n}` */")
@@ -635,20 +661,25 @@ def main() -> int:
         print("design sources do not match manifest.json:\n  " + "\n  ".join(errors), file=sys.stderr)
         return 1
     tokens, themed = resolve_all(load_sources())
-    text = render(tokens, themed) + "\n"
+    texts = {target.output: render(tokens, themed, target) + "\n" for target in TARGETS}
     if args.check:
         problems = []
-        if not OUTPUT.exists() or OUTPUT.read_text() != text:
-            problems.append(f"{OUTPUT.relative_to(REPO)} is stale: run python3 tools/design-tokens/gen_tokens.py")
+        for output, text in texts.items():
+            if not output.exists() or output.read_text() != text:
+                problems.append(f"{output.relative_to(REPO)} is stale: run python3 tools/design-tokens/gen_tokens.py")
         problems += check_oracle(tokens)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
-        print(f"design tokens up to date ({sum(len(v) for v in tokens.values())} theme values)")
+        print(
+            f"design tokens up to date ({sum(len(v) for v in tokens.values())} theme values, "
+            f"{len(texts)} Kotlin files)"
+        )
         return 0
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(text)
-    print(f"wrote {OUTPUT.relative_to(REPO)}")
+    for output, text in texts.items():
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text)
+        print(f"wrote {output.relative_to(REPO)}")
     return 0
 
 

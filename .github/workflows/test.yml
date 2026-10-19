@@ -517,9 +517,19 @@ jobs:
       # Hard run gate since #215 cleared the legacy failures: the shared JVM
       # suite must pass. Run androidApp unit tests in the same gate so stale
       # Android host tests cannot stay hidden until a local developer run.
+      # :designsystem:desktopTest is the CMP design system's unit tests plus its
+      # screenshot goldens in verify mode (compose/designsystem/README.md).
       - name: Run shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
+
+      - name: Upload design system screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: designsystem-screenshot-diffs
+          path: compose/designsystem/build/reports/screenshots/
+          if-no-files-found: ignore
 
       - name: Verify NetworkKMM curl runtime and pinned CA
         shell: bash
@@ -952,7 +962,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
-      - name: Compile shared iOS targets and unit tests
+      - name: Compile shared and design system iOS targets and unit tests
         working-directory: compose
         run: |
           ./gradlew \
@@ -960,6 +970,7 @@ jobs:
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:compileKotlinIosX64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
+            :designsystem:compileKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain \
             --stacktrace

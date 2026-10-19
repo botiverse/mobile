@@ -65,7 +65,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 ## Tooling — npm (compose/package.json; dev/CI only, not shipped)
 MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router, koa-static, koa-whistle, mime-types, uuid, yargs, file-loader, gulp, gulp-zip, husky, querystring, shell · BSD-3-Clause: md5, shelljs · Unlicense: big-integer.
 
-## Bundled font assets (compose/androidApp, compose/ohosApp, compose/iosApp)
+## Bundled font assets (compose/androidApp, compose/ohosApp, compose/iosApp, compose/designsystem)
 | Family | Weights | Upstream | License |
 | --- | --- | --- | --- |
 | Space Grotesk | 300/400/500/600/700 (+variable) | google/fonts ofl/spacegrotesk — https://fonts.googleapis.com/css2?family=Space+Grotesk | SIL OFL 1.1 (`compose/androidApp/SpaceGrotesk-OFL.txt`) |

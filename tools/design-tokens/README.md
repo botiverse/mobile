@@ -7,7 +7,7 @@ Web palette change becomes a reviewable diff here instead of silent drift (task 
 | --- | --- |
 | `manifest.json` | Pinned sources: raft-ui and Tailwind versions that `slock/packages/web` locks, the Web `index.css` at a slock commit, and the sha256 of each vendored copy |
 | `source/` | Vendored copies of those files (raft-ui and Tailwind are MIT) |
-| `gen_tokens.py` | Resolves the CSS cascade per theme and writes `compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt` |
+| `gen_tokens.py` | Resolves the CSS cascade per theme and writes the same tokens twice: `compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt` (Kuikly Compose `Color`, `internal`) and `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiColorTokens.g.kt` (official Compose Multiplatform `androidx.compose.ui.graphics.Color`, public). The targets are listed in `TARGETS` |
 | `chrome-oracle.json` | The same tokens as painted by Chromium; `--check` requires every generated colour to match within 1/255 per channel |
 | `capture_chrome_oracle.mjs` | Regenerates the oracle (local, needs Playwright) |
 
@@ -21,8 +21,8 @@ Names drop the leading `--` and `color-` and are camel-cased (`--foreground-mute
 ## Commands
 
 ```sh
-python3 tools/design-tokens/gen_tokens.py              # regenerate the Kotlin file
-python3 tools/design-tokens/gen_tokens.py --check      # CI: sources match manifest, Kotlin file current, oracle agrees
+python3 tools/design-tokens/gen_tokens.py              # regenerate both Kotlin files
+python3 tools/design-tokens/gen_tokens.py --check      # CI: sources match manifest, both Kotlin files current, oracle agrees
 python3 tools/design-tokens/gen_tokens.py --self-test  # CI: colour maths, cascade, fail-closed parsing
 ```
 

@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/design-tokens/**"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/**"
+      - "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/**"
       - ".github/workflows/design-tokens.yml"
   push:
     branches:
