@@ -26,12 +26,23 @@ import kotlin.test.assertTrue
  * | false      | 0     | no   | full-width page: the in-page menu fits                     |
  * | false      | > 0   | yes  | narrow pane: the in-page modal would clip                  |
  *
- * **Which assertion is load-bearing was verified by mutation, once:**
- * `verified by mutation on 2026-10-19 @ f033638435f9 — removing `!originMeasured ||` turns only
- * "unmeasured x = 0" red; the "unmeasured x = 312" assertion still passes, because x > 0 already
- * routes to the host on its own.` That is a one-off observation, not a standing guarantee: it
- * describes the implementation as of that commit, and nothing re-runs it. If someone changes the
- * predicate, re-do the mutation check rather than trusting this line.
+ * **Each clause of the predicate has exactly one guarding case.** Verified by mutation on
+ * 2026-10-19 @ f033638435f9, and independently recomputed in review:
+ *
+ * | mutation (delete)      | turns red                 |
+ * |------------------------|---------------------------|
+ * | `!originMeasured ||`   | `unmeasured x = 0`        |
+ * | `windowOriginX > 0f`   | `measured x = 161`        |
+ * | `adaptiveDetailPage &&`| `non-adaptive x = 400`    |
+ * | (none)                 | `unmeasured x = 312` — this one guards nothing |
+ *
+ * So the three clauses are each pinned, but "unmeasured x = 312" is a contract statement, not a
+ * safety net: it passes with any single clause removed, because x > 0 already routes to the host on
+ * its own. It is kept to document that the measured value is ignored until `measured` is true.
+ *
+ * That table is a one-off observation, not a standing guarantee: it describes the implementation as
+ * of that commit and nothing re-runs it. If the predicate changes, redo the mutation check rather
+ * than trusting this comment.
  */
 class ThreadMenuShellHostPredicateTest {
 
