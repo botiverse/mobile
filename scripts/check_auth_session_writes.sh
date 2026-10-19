@@ -6,7 +6,11 @@
 # (the 1.3.0 auto-logout regression). New callers must not reintroduce that pattern.
 set -euo pipefail
 
-source_root="compose/shared/src/commonMain/kotlin"
+# :core holds the UI-free data foundation split out of :shared; both commonMain trees are checked.
+source_roots=(
+  "compose/shared/src/commonMain/kotlin"
+  "compose/core/src/commonMain/kotlin"
+)
 # The store implementation legitimately uses the low-level primitives internally.
 store_file="build/raft/app/data/AuthSessionStore.kt"
 # Bypass writers forbidden outside the store. updateSelectedServer is intentionally allowed — it is
@@ -19,7 +23,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/check_auth_session_writes.sh [--source-root <path>] [--self-test]
 
-Fails if a commonMain file other than the auth-session store calls .saveSession(...) or
+Fails if a :shared or :core commonMain file other than the auth-session store calls .saveSession(...) or
 .updateTokens(...). Route session writes through replaceAuthenticatedSession / rotateTokensIfMatch /
 updateMetadata / clearSession instead. For a reviewed exception, put "auth-session-write: allow-bypass
 <reason>" on the call or the preceding line.
@@ -134,7 +138,11 @@ case "${1:-}" in
     usage
     ;;
   "")
-    check_source_root "$source_root"
+    status=0
+    for root in "${source_roots[@]}"; do
+      check_source_root "$root" || status=1
+    done
+    exit "$status"
     ;;
   *)
     usage
