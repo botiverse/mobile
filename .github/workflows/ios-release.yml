@@ -190,9 +190,6 @@ jobs:
           GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
           mkdir -p "$GUH"
           printf '%s\n' 'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' >> "$GUH/gradle.properties"
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       - name: Ensure shared framework placeholder
         working-directory: compose
         shell: bash

@@ -100,19 +100,12 @@ fixture_build_tokens.each do |argument|
   raise "Android visual-fixture build lost #{argument}" unless
     includes_shell_tokens?(fixture_build, [argument])
 end
-# The Android host left Kuikly in the CMP switch; only the iOS host may still
-# pod OpenKuiklyIOSRender. While it does, the iOS job must admit the immutable
-# release first. No job may rebuild Kuikly from source or mavenLocal.
-ios_steps = jobs.fetch("ios").fetch("steps")
-if File.read("compose/iosApp/Podfile").include?("OpenKuiklyIOSRender")
-  raise "iOS job lost the Kuikly manifest admission while the Podfile still consumes Kuikly" unless
-    ios_steps.any? { |step| step["run"]&.include?("verify_kuikly_release_manifest.sh") }
-end
-raise "Android compile must not depend on the retired Kuikly release" if
-  android_steps.any? { |step| step["run"].to_s.include?("verify_kuikly_release_manifest.sh") }
-raise "Kuikly gate regressed to gitlink/source publication" if jobs.values.flat_map { |job| Array(job["steps"]) }.any? do |step|
+# Kuikly UI left Mobile in the CMP switch (scripts/ci/test_kuikly_raft_consumer_contract.py
+# guards the retired plumbing); no Test job may rebuild or admit it again.
+raise "Test workflow re-wired retired Kuikly UI plumbing" if jobs.values.flat_map { |job| Array(job["steps"]) }.any? do |step|
   run = step["run"].to_s
-  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh")
+  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") ||
+    run.include?("verify_kuikly_release_manifest.sh")
 end
 
 plan_outputs = jobs.fetch("plan").fetch("outputs").keys

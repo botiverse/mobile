@@ -80,7 +80,7 @@ jobs:
       - name: Validate attachment save failure mapping across native bridges
         run: python3 scripts/ci/test_attachment_save_mapping_contract.py
 
-      - name: Validate Kuikly immutable-Raft consumer contract
+      - name: Validate no Kuikly UI consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
       - name: Validate Hands Android SDK Raft consumer contract
@@ -97,12 +97,6 @@ jobs:
         run: |
           python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
           python3 scripts/ci/check_mermaid_plane_confinement.py
-
-      # Task #34: Kuikly release completion-manifest gate (contract v0.3).
-      # Self-test only until the release set lands; the production gate runs
-      # against the registry once task #93 publishes the release set.
-      - name: Validate Kuikly release manifest gate self-test
-        run: python3 scripts/ci/kuikly_release_manifest_gate.py --self-test
 
       - name: Validate fail-closed git diff consumers
         run: |
@@ -916,13 +910,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      # TODO(cmp-switch): the Android host no longer consumes Kuikly, but the
-      # iOS host still pods OpenKuiklyIOSRender from the immutable Raft release
-      # (compose/iosApp/Podfile). Admit that release here until the iOS host
-      # migration drops the pod; then delete this step and the manifest gate.
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5
