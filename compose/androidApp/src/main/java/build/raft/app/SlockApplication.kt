@@ -2,6 +2,7 @@ package build.raft.app
 
 import android.app.Application
 import android.content.Context
+import build.raft.app.cmp.SlockCmpRouter
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
@@ -33,6 +34,8 @@ class SlockApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Kuikly/CMP page routing: debug builds also route the debug-only CMP pages.
+        SlockCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)

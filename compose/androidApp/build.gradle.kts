@@ -808,6 +808,9 @@ dependencies {
 
     // Kuikly Compose shared module
     implementation(project(":shared"))
+    // Compose Multiplatform pages (SlockCmpActivity); Kuikly-free, see ui-cmp/build.gradle.kts.
+    implementation(project(":ui-cmp"))
+    implementation(project(":designsystem"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.47")
 
     implementation(libs.androidx.core.ktx)

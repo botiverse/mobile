@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.app.Activity
+import build.raft.app.cmp.SlockCmpRouter
 import org.json.JSONObject
 
 /**
@@ -30,11 +31,15 @@ internal fun isHomeAppShellChildPageData(pageDataText: String): Boolean =
     runCatching { JSONObject(pageDataText).optString("tab") == "home" }
         .getOrDefault(false)
 
+/**
+ * Host Activity for [pageName]: the router split between Kuikly and Compose Multiplatform. Pages in
+ * the CMP allowlist ([SlockCmpRouter]) open in [SlockCmpActivity]; everything else stays on Kuikly.
+ */
 internal fun slockKuiklyHostActivityClass(pageName: String): Class<out Activity> =
-    if (pageName == SlockKuiklyActivity.PAGE_APP_SHELL) {
-        SlockAppShellActivity::class.java
-    } else {
-        SlockKuiklyActivity::class.java
+    when {
+        pageName == SlockKuiklyActivity.PAGE_APP_SHELL -> SlockAppShellActivity::class.java
+        SlockCmpRouter.rendersOnCmp(pageName) -> SlockCmpActivity::class.java
+        else -> SlockKuiklyActivity::class.java
     }
 
 internal fun slockAppShellHostActivityClass(

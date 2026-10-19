@@ -79,6 +79,7 @@ import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.slockInputFontFaceName
 import build.raft.app.MainActivity
+import build.raft.app.cmp.SlockCmpRouter
 import build.raft.app.BuildConfig
 import build.raft.app.androidExternalBrowserIntent
 import build.raft.app.data.SlockDesktopShortcutContract
@@ -852,6 +853,9 @@ open class SlockKuiklyActivity :
             finish()
             return
         }
+        if (redirectToCmpHostIfRouted()) {
+            return
+        }
         if (pageName == PAGE_LOGIN) {
             loginTransitionToken = AndroidLoginTransitionRouting.bindLogin(
                 this,
@@ -1018,6 +1022,18 @@ open class SlockKuiklyActivity :
             content.viewTreeObserver.removeOnDrawListener(listener)
         }
         homeColdStartFirstDrawListener = null
+    }
+
+    /**
+     * [start] already opens CMP pages in [SlockCmpActivity]; this covers Intents that name this
+     * Activity directly (the debug diagnostics deep-link alias, instrumentation tests).
+     */
+    private fun redirectToCmpHostIfRouted(): Boolean {
+        val routedPageName = pageName
+        if (this is SlockAppShellActivity || !SlockCmpRouter.rendersOnCmp(routedPageName)) return false
+        startActivity(SlockCmpActivity.intent(this, routedPageName, resolvedPageData(intent).text))
+        finish()
+        return true
     }
 
     private fun prepareHomeColdStartSplashIfNeeded() {
@@ -4400,9 +4416,18 @@ internal fun slockAndroidBridgeUrlEncode(value: String): String =
 internal fun slockAndroidBridgeUrlDecode(value: String): String =
         URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 
+/**
+ * The native side of `HRBridgeModule` on Android. Kuikly pages get one per render context; CMP pages
+ * (`SlockCmpActivity`) create one directly and pass [hostActivity], since they have no Kuikly
+ * render context to derive [activity] from. Kuikly pages leave it null (unchanged behaviour).
+ */
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
+        private val hostActivity: (() -> Activity?)? = null,
 ) : KuiklyRenderBaseModule() {
+    override val activity: Activity?
+        get() = hostActivity?.invoke() ?: super.activity
+
     private val threadImageCompressionOperations = ConcurrentHashMap<String, ThreadImageCompressionOperation>()
     private val threadImageCompressionMainHandler = Handler(Looper.getMainLooper())
     private val feedbackDiagnosticsLifecycle = FeedbackDiagnosticsLifecycle()

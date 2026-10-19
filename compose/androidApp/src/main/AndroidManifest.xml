@@ -48,6 +48,13 @@
             android:exported="false"
             android:theme="@style/Theme.Slock.Translucent"
             android:windowSoftInputMode="adjustNothing" />
+        <!-- Compose Multiplatform pages (SlockCmpRouter allowlist); same extras as SlockKuiklyActivity. -->
+        <activity
+            android:name=".shared.SlockCmpActivity"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Slock"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".shared.SlockAppShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
