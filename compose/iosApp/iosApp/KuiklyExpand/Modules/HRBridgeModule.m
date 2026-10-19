@@ -6153,8 +6153,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             SlockDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
         }
         UIViewController *controller = [self slock_currentViewController];
-        KuiklyRenderViewController *renderViewController =
-            [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:pageData ?: @{}];
+        // Kuikly or Compose Multiplatform by page name (SlockCmpRouter allowlist).
+        UIViewController *renderViewController =
+            [SlockPageControllerFactory controllerForPageName:pageName pageData:pageData ?: @{}];
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController) {
             if (replaceCurrent && navigationController.viewControllers.count > 0) {

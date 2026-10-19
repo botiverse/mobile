@@ -111,6 +111,9 @@ kotlin {
                     "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
             isStatic = true
             license = "MIT"
+            // Compose Multiplatform pages: Swift/ObjC reach SlockCmpIos (view controller factory,
+            // routing, bridge/navigator protocols). Not transitive: :core stays unexported.
+            export(project(":ui-cmp"))
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
         extraSpecAttributes["resources"] = "['src/commonMain/assets/**', 'src/commonMain/resources/MR/assets/**']"
@@ -209,6 +212,8 @@ kotlin {
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
+                // The app links one Kotlin framework (this one); CMP pages ship inside it (see export above).
+                api(project(":ui-cmp"))
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")

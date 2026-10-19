@@ -1,5 +1,6 @@
 #import "KRRouterHandler.h"
 #import "KuiklyRenderViewController.h"
+#import "iosApp-Swift.h"
 #import <objc/runtime.h>
 
 static NSString *const SlockRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
@@ -72,7 +73,8 @@ static BOOL SlockRouterBool(id value) {
             return;
         }
     }
-    KuiklyRenderViewController *renderViewController = [[KuiklyRenderViewController alloc] initWithPageName:pageName pageData:sanitizedPageData];
+    // Kuikly or Compose Multiplatform by page name (SlockCmpRouter allowlist).
+    UIViewController *renderViewController = [SlockPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];

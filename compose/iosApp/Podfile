@@ -57,7 +57,12 @@ set -e
 # The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),
 # one level up from this target's $SRCROOT (compose/iosApp).
 GRADLE_ROOT="$SRCROOT/.."
+# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources
+# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;
+# compose.ios.resources.sync=false keeps the CMP plugin from doing it.
 "$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
+  :ui-cmp:syncComposeResourcesForXcodeApp \\
+  -Praft.cmp.resources.dir="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources" \\
   -Ptmm.resources.BUILT_PRODUCTS_DIR="$BUILT_PRODUCTS_DIR" \\
   -Ptmm.resources.CONTENTS_FOLDER_PATH="$CONTENTS_FOLDER_PATH" \\
   -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\

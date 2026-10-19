@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000003 /* SlockCmpBridgeHost.m */; };
+		A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000004 /* SlockPageControllerFactory.swift */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
@@ -106,6 +108,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A51000020000000000000002 /* SlockCmpBridgeHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockCmpBridgeHost.h; sourceTree = "<group>"; };
+		A51000020000000000000003 /* SlockCmpBridgeHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockCmpBridgeHost.m; sourceTree = "<group>"; };
+		A51000020000000000000004 /* SlockPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockPageControllerFactory.swift; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
@@ -248,6 +253,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A51000020000000000000001 /* Cmp */ = {
+			isa = PBXGroup;
+			children = (
+				A51000020000000000000004 /* SlockPageControllerFactory.swift */,
+				A51000020000000000000002 /* SlockCmpBridgeHost.h */,
+				A51000020000000000000003 /* SlockCmpBridgeHost.m */,
+			);
+			path = Cmp;
+			sourceTree = "<group>";
+		};
 		0474A3EF29F6A3FE00F43E31 /* Vendor */ = {
 			isa = PBXGroup;
 			children = (
@@ -331,6 +346,7 @@
 				D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */,
 				A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */,
 				FF6B713E29A2A10E009349F1 /* KuiklyExpand */,
+				A51000020000000000000001 /* Cmp */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
 				D49163102E14000100C0DE01 /* Fonts */,
 				7555FF82242A565900829871 /* ContentView.swift */,
@@ -672,7 +688,7 @@
 			name = "[CP-User] Copy kmmresource MR bundle to app";
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n\n# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.\n# The runtime reads assets via the moko convention: relativePath with '/'\n# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,\n# #409). Inject every MR/assets file flattened to the bundle root, e.g.\n#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png\nMR_ASSETS_SRC=\"$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets\"\nMR_BUNDLE_DST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle\"\nif [ -d \"$MR_ASSETS_SRC\" ] && [ -d \"$MR_BUNDLE_DST\" ]; then\n  # Land under Contents/Resources/ to exactly match the verified-working Debug\n  # simulator bundle shape (KMP task #22 evidence: assets live at\n  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there\n  # first. Create the dir if the Release bundle didn't have it.\n  MR_DEST=\"$MR_BUNDLE_DST/Contents/Resources\"\n  mkdir -p \"$MR_DEST\"\n  find \"$MR_ASSETS_SRC\" -type f | while IFS= read -r f; do\n    rel=${f#\"$MR_ASSETS_SRC/\"}\n    flat=$(printf '%s' \"$rel\" | tr '/' '+')\n    cp -f \"$f\" \"$MR_DEST/$flat\"\n    echo \"MR asset injected: Contents/Resources/$flat\"\n  done\nelse\n  echo \"warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)\" >&2\nfi\n";
+			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources\n# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;\n# compose.ios.resources.sync=false keeps the CMP plugin from doing it.\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  :ui-cmp:syncComposeResourcesForXcodeApp \\\n  -Praft.cmp.resources.dir=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources\" \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n\n# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.\n# The runtime reads assets via the moko convention: relativePath with '/'\n# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,\n# #409). Inject every MR/assets file flattened to the bundle root, e.g.\n#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png\nMR_ASSETS_SRC=\"$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets\"\nMR_BUNDLE_DST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle\"\nif [ -d \"$MR_ASSETS_SRC\" ] && [ -d \"$MR_BUNDLE_DST\" ]; then\n  # Land under Contents/Resources/ to exactly match the verified-working Debug\n  # simulator bundle shape (KMP task #22 evidence: assets live at\n  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there\n  # first. Create the dir if the Release bundle didn't have it.\n  MR_DEST=\"$MR_BUNDLE_DST/Contents/Resources\"\n  mkdir -p \"$MR_DEST\"\n  find \"$MR_ASSETS_SRC\" -type f | while IFS= read -r f; do\n    rel=${f#\"$MR_ASSETS_SRC/\"}\n    flat=$(printf '%s' \"$rel\" | tr '/' '+')\n    cp -f \"$f\" \"$MR_DEST/$flat\"\n    echo \"MR asset injected: Contents/Resources/$flat\"\n  done\nelse\n  echo \"warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)\" >&2\nfi\n";
 		};
 		6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -843,6 +859,8 @@
 				FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */,
 				A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */,
 				04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */,
+				A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */,
+				A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,

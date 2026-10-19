@@ -6,7 +6,8 @@ struct KuiklyRenderViewPage: UIViewControllerRepresentable {
     var data: Dictionary<String, Any>
     //  typealiaUIViewControllerType = UINavigationController
     func makeUIViewController(context: Context) -> UINavigationController {
-        let hrVC = KuiklyRenderViewController(pageName: pageName, pageData: data)
+        // Kuikly or Compose Multiplatform by page name (SlockCmpRouter allowlist).
+        let hrVC = SlockPageControllerFactory.controller(pageName: pageName, pageData: data)
         return UINavigationController.init(rootViewController: hrVC)
     }
 

@@ -666,6 +666,8 @@ struct iOSApp: App {
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
         SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
+        // Kuikly/CMP page routing: debug builds also route the debug-only CMP pages.
+        SlockPageControllerFactory.configure()
         // task #436: register the SVG coder so SDWebImage (used by the image
         // load path Kuikly delegates to) can decode SVG assets — e.g. the
         // Google/GitHub provider icons, which are shipped as SVG and otherwise
