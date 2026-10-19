@@ -3,7 +3,7 @@ package com.tencent.kuiklybase.markdown.model
 import androidx.compose.runtime.Composable
 import coil3.compose.rememberAsyncImagePainter
 import androidx.compose.ui.graphics.painter.Painter
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.ui.geometry.Size
 import com.tencent.kuiklybase.markdown.model.ImageData
 import com.tencent.kuiklybase.markdown.model.ImageTransformer
 

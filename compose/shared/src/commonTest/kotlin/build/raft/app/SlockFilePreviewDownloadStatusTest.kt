@@ -6,7 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.tencent.kuikly.core.views.PlayState
+import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.Dispatchers

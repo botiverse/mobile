@@ -62,10 +62,12 @@ class SlockCmpActivity : ComponentActivity(), SlockCmpNavigator {
                 pageName,
                 SlockKuiklyPageData.fromText(intent?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_DATA)).text,
             )
+        val transport = KuiklyBridgeModuleTransport(bridge)
         val host =
             SlockCmpHost(
-                capabilities = BridgeWireHostCapabilities(KuiklyBridgeModuleTransport(bridge)),
+                capabilities = BridgeWireHostCapabilities(transport),
                 navigator = this,
+                bridgeTransport = transport,
             )
         SlockAppLog.record(TAG, "cmp_host_open page=$pageName")
         setContent {

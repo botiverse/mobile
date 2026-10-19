@@ -21,7 +21,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.ui.geometry.Size
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings

@@ -1,0 +1,174 @@
+package build.raft.app.compat.module
+
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.slockLogWarn
+import build.raft.app.slockSha256Hex
+import build.raft.app.toJsonObject
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+/*
+ * TODO(cmp-switch): Kuikly `Module` on top of the CMP host's bridge transport.
+ *
+ * `BridgeModule` (HRBridgeModule) and Kuikly's built-in Router/Codec/Performance modules keep
+ * their API; native calls go over `SlockCmpHost.bridgeTransport` (the same HRBridgeModule wire the
+ * Kuikly renderer used) and callbacks are delivered on the main thread, where CMP composes.
+ * Synchronous native calls do not exist on the CMP transport: `syncCall = true` is sent
+ * asynchronously and returns an empty value (callers that need a sync answer must move to a
+ * Kotlin implementation or to HostCapabilities).
+ */
+
+typealias CallbackFn = (data: JSONObject?) -> Unit
+typealias AnyCallbackFn = (data: Any?) -> Unit
+typealias CallbackRef = String
+
+fun Boolean.toInt(): Int = if (this) 1 else 0
+
+private val moduleCallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+private val callbackSequence = atomic(0L)
+
+abstract class Module {
+    var pagerId: String = ""
+        private set
+    var pageData: PageData? = null
+        private set
+    protected var pager: Pager? = null
+        private set
+
+    private val liveCallbacks = HashSet<CallbackRef>()
+
+    abstract fun moduleName(): String
+
+    internal fun attach(pager: Pager) {
+        this.pager = pager
+        this.pagerId = pager.pagerId
+        this.pageData = pager.pageData
+    }
+
+    class ReturnValue(val callbackRef: CallbackRef?, val returnValue: Any? = null) {
+        override fun toString(): String = returnValue?.toString() ?: ""
+    }
+
+    fun toNative(
+        keepCallbackAlive: Boolean = false,
+        methodName: String,
+        param: Any?,
+        callback: CallbackFn? = null,
+        syncCall: Boolean = false,
+    ): ReturnValue {
+        val transport = pager?.host?.bridgeTransport
+        if (transport == null) {
+            slockLogWarn("RaftModuleCompat", "no_bridge_transport module=${moduleName()} method=$methodName")
+            return ReturnValue(null)
+        }
+        if (syncCall) {
+            // TODO(cmp-switch): no synchronous bridge on CMP; see file header.
+            slockLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
+        }
+        val ref: CallbackRef? = callback?.let { "cb-${callbackSequence.incrementAndGet()}" }
+        if (ref != null) liveCallbacks.add(ref)
+        transport.call(methodName, param?.toString().orEmpty(), if (callback == null) null else { result ->
+            moduleCallbackScope.launch {
+                if (ref == null || ref !in liveCallbacks) return@launch
+                if (!keepCallbackAlive) liveCallbacks.remove(ref)
+                callback(result?.let { text -> runCatching { JSONObject(text) }.getOrNull() })
+            }
+        })
+        return ReturnValue(ref)
+    }
+
+    fun asyncToNativeMethod(methodName: String, data: JSONObject?, callbackFn: CallbackFn?) {
+        toNative(false, methodName, data?.toString(), callbackFn, false)
+    }
+
+    fun syncToNativeMethod(methodName: String, data: JSONObject?, callbackFn: CallbackFn?): String =
+        toNative(false, methodName, data?.toString(), callbackFn, true).toString()
+
+    fun removeCallback(callbackRef: CallbackRef) {
+        liveCallbacks.remove(callbackRef)
+    }
+}
+
+/** Kuikly `RouterModule`: page navigation through the CMP host navigator. */
+class RouterModule : Module() {
+    override fun moduleName(): String = MODULE_NAME
+
+    fun openPage(pageName: String, pageData: JSONObject? = null) {
+        val navigator = pager?.host?.navigator
+        if (navigator == null) {
+            slockLogWarn("RaftModuleCompat", "no_navigator openPage=$pageName")
+            return
+        }
+        navigator.openPage(pageName, (pageData ?: JSONObject()).toJsonObject())
+    }
+
+    fun closePage() {
+        pager?.host?.navigator?.closePage()
+    }
+
+    companion object {
+        const val MODULE_NAME = "KRRouterModule"
+    }
+}
+
+/** Kuikly `CodecModule`, implemented in Kotlin. */
+class CodecModule : Module() {
+    override fun moduleName(): String = MODULE_NAME
+
+    fun sha256(string: String): String = slockSha256Hex(string.encodeToByteArray())
+
+    companion object {
+        const val MODULE_NAME = "KRCodecModule"
+    }
+}
+
+/** Kuikly `PerformanceModule`: the Kuikly render pipeline metrics no longer exist on CMP. */
+class PerformanceModule : Module() {
+    override fun moduleName(): String = MODULE_NAME
+
+    /** TODO(cmp-switch): always answers null (no Kuikly launch metrics on CMP). */
+    fun getPerformanceData(callback: (PerformanceData?) -> Unit) {
+        callback(null)
+    }
+
+    companion object {
+        const val MODULE_NAME = "KRPerformanceModule"
+    }
+}
+
+enum class ExecuteMode(val value: Int) { JVM(0), FRAMEWORK(1), JS(2), OHOS_NATIVE(4) }
+
+data class PerformanceData(
+    val pageExistTime: Int,
+    val mode: ExecuteMode,
+    val isFirstLaunchOfProcess: Boolean,
+    val isFirstLaunchOfPage: Boolean,
+    val pageLoadTime: LaunchData?,
+    val mainFPS: Int?,
+    val kotlinFPS: Int?,
+    val memory: MemoryData?,
+)
+
+data class LaunchData(
+    val initViewCost: Int,
+    val preloadClassCost: Int,
+    val fetchContextCodeCost: Int,
+    val initRenderContextCost: Int,
+    val initRenderCoreCost: Int,
+    val initRenderLayerReadCacheCost: Int,
+    val initRenderLayerRenderCacheCost: Int,
+    val newPageCost: Int,
+    val pageBuildCost: Int,
+    val pageLayoutCost: Int,
+    val createPageCost: Int,
+    val createInstanceCost: Int,
+    val renderCost: Int,
+    val firstPaintCost: Int,
+)
+
+data class MemoryData(val avgIncrement: Int, val peakIncrement: Int, val appPeak: Int, val appAvg: Int)

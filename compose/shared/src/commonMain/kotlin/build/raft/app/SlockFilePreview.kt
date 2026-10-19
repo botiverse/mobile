@@ -120,8 +120,8 @@ import com.tencent.kuikly.core.base.ViewRef
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc

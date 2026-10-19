@@ -29,7 +29,7 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsModifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.ui.geometry.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.appendSlockInlineCodeWithEdgeBoxes
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString

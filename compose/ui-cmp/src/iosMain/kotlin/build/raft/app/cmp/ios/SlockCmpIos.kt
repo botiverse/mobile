@@ -4,6 +4,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import build.raft.app.cmp.SlockCmpRoot
 import build.raft.app.cmp.SlockCmpRouter
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.SlockCmpHost
 import build.raft.app.cmp.host.SlockCmpNavigator
 import build.raft.app.cmp.host.SlockCmpPageArgs
@@ -56,13 +57,15 @@ object SlockCmpIos {
         bridge: SlockCmpIosBridge,
         navigator: SlockCmpIosNavigator,
     ): UIViewController {
+        val transport =
+            HostBridgeTransport { method, paramsJson, callback ->
+                bridge.call(method, paramsJson, callback?.let(::BridgeCallback))
+            }
         val host =
             SlockCmpHost(
-                capabilities =
-                    BridgeWireHostCapabilities { method, paramsJson, callback ->
-                        bridge.call(method, paramsJson, callback?.let(::BridgeCallback))
-                    },
+                capabilities = BridgeWireHostCapabilities(transport),
                 navigator = IosNavigator(navigator),
+                bridgeTransport = transport,
             )
         val args = SlockCmpPageArgs.fromJsonText(pageName, pageDataJson)
         return ComposeUIViewController { SlockCmpRoot(args, host) }

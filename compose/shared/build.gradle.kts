@@ -64,6 +64,14 @@ val stageTmmCommonSources by tasks.registering(Sync::class) {
     into(generatedTmmCommonSourceDir.map { it.dir("src") })
 }
 
+// Compose resources: :shared ships none yet, but the plugin generates resource collectors once
+// components-resources is on the classpath, so give the (internal) Res class a package.
+compose.resources {
+    packageOfResClass = "build.raft.app.shared.resources"
+    publicResClass = false
+    generateResClass = always
+}
+
 multiplatformResources {
     multiplatformResourcesPackage = "build.raft.app.resources"
     multiplatformResourcesPrefix = "slock_"
@@ -130,6 +138,9 @@ kotlin {
                 // commonTest instead (see below) — exactly one source set per build, so the
                 // same declarations are never compiled twice.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
+            } else {
+                // Empty RaftVisualFixturePages (the generated one lives in src/visualFixtures).
+                kotlin.srcDir("src/visualFixturesOff/kotlin")
             }
             dependencies {
                 // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
@@ -286,6 +297,14 @@ tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
 
 tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
     dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+}
+
+// The afterEvaluate setSrcDirs above drops the SQLDelight source dir's task dependency; the
+// Kuikly KSP tasks used to carry it. Kotlin compilations now depend on the generator directly.
+tasks.matching { task ->
+    task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
+}.configureEach {
+    dependsOn("generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {

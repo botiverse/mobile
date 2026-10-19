@@ -18,10 +18,17 @@ interface SlockCmpNavigator {
     fun closePage()
 }
 
-/** Everything a CMP page gets from its native host. Provided by [LocalSlockHost]. */
+/**
+ * Everything a CMP page gets from its native host. Provided by [LocalSlockHost].
+ *
+ * [bridgeTransport] is the raw `HRBridgeModule` wire [capabilities] is built on. It exists for the
+ * CMP switch only: :shared's compat `BridgeModule` still speaks the bridge method protocol directly.
+ * TODO(cmp-switch): remove once every bridge call goes through [HostCapabilities].
+ */
 class SlockCmpHost(
     val capabilities: HostCapabilities,
     val navigator: SlockCmpNavigator,
+    val bridgeTransport: HostBridgeTransport? = null,
 )
 
 /** The route a CMP page was opened with: page name plus the unchanged pageData JSON. */

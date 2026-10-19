@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.PlaceholderVerticalAlign
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.ui.geometry.Size
 
 interface ImageTransformer {
     /**

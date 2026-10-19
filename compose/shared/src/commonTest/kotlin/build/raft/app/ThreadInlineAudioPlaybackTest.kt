@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

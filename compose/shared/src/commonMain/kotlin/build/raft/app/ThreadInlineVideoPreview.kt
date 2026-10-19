@@ -30,8 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 
 internal enum class ThreadInlineVideoPreviewStatus {
     Loading,

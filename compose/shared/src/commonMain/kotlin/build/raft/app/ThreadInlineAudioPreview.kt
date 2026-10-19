@@ -46,7 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
-import com.tencent.kuikly.core.views.PlayState
+import build.raft.app.compat.ui.PlayState
 
 internal enum class ThreadInlineAudioPreviewStatus {
     Loading,
