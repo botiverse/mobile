@@ -36,20 +36,17 @@ Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_flin
 
 ### What remains open
 
-The 478 ms `jank_frame` carries the operation label `thread_first_frame`, and the same window contains a `thread_markdown_body_recompose` for a 1536-character message (building an `AnnotatedString`, text measurement). Those are the two things in the window that involve composition; **whether either one caused the stall is not established** (see below).
+The 478 ms `jank_frame` is **one frame on the Android UI thread**, and the same window contains a `thread_markdown_body_recompose` for a 1536-character message.
 
-That recompose happens **during composition** is read from the source, not measured: the marker is emitted from a `remember{}` block in `ThreadPage.kt` (~line 7284) whose own comment states `remember{}` runs during composition, unlike the `LaunchedEffect` below it which fires after.
+**What the 478 ms is:** `jank_frame` comes from JankStats, not from the FrameMetrics listener (that is a separate log). `SlockPerformanceDiagnostics.kt` reads `frameData.frameDurationUiNanos` and prints `jank_frame`; by API definition `frameDurationUiNanos` is the time this frame spent on the UI thread that owns the window. So the number is a main-thread frame, full stop.
 
-**The Compose thread is not the Android UI thread — the app's own source says so.** `SlockKuiklyThreading.kt` calls it "Kuikly's Android context thread (`HRContextQueueHandlerThread`)" and notes that Kuikly runs Compose layout placement on that context thread, with an 8 MB stack sized for exactly that recursion. So this section says "Compose thread", not "UI thread", and the distinction is not pedantic: the 478 ms was spent on Kuikly's context thread, while `jank_frame` reports on the thread owning the ViewRootImpl.
+**What `operation=thread_first_frame` is not:** `operation` is an `AtomicReference("idle")` set by `updateOperation(...)`; `jank_frame` prints whatever value it held at the moment of the jank. It records "the most recently set label", **not** what this frame was doing, and not which thread was doing it. **`operation` also has no expiry** — if nothing calls `updateOperation` again, a frame ten seconds later still prints the stale label. A reader cannot tell `operationAgeMs=3` from `operationAgeMs=9400` in the current output.
 
-Which means **the two numbers in the sentence above may not even describe the same thread**:
+**So do not read a causal link into the co-occurrence.** "A 478 ms main-thread frame happened while the operation label read `thread_first_frame`" is supported. "`thread_first_frame` occupied the main thread for 478 ms" is not.
 
-- `jank_frame` comes from FrameMetrics. In `SlockPerformanceDiagnostics.kt`, `install(window)` makes **no thread assertion**, and the listener is registered as `window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))` — so the callback runs on a **dedicated HandlerThread**. FrameMetrics describes frames of the thread that **owns the ViewRootImpl**, not of the callback thread.
-- `operation=thread_first_frame` is a **Kuikly-side marker**.
+**What is separate and still true:** Kuikly's Compose runs on `HRContextQueueHandlerThread` (`SlockKuiklyThreading.kt`), which is **not** the Android main thread. That is a fact about where Compose runs. It does **not** mean the 478 ms was spent there — the 478 ms is a main-thread measurement, and **whether the main thread was doing the work itself or synchronously waiting on the Kuikly thread is not established.**
 
-They appear in one sentence only because they fall in the same frame window, **not because they measure the same thread**. If Kuikly's execution mode puts Compose off the window's UI thread, then 478 ms and `thread_first_frame` may be unrelated. Do not read "478 ms blocked `thread_first_frame`" out of this trace.
-
-**Making it decidable costs two strings:** log `Thread.currentThread().name` and `window.decorView.viewRootImpl?.theThread?.name` at `install(window)`, and log `Thread.currentThread().name` where `thread_first_frame` is emitted. Same name ⇒ one thread, and "the UI thread was occupied for 478 ms" holds; different ⇒ that sentence has to be rewritten. Whether the 1536-character row consumed the 478 ms is **not established** — the trace has no per-phase breakdown of that window.
+**Making that last question decidable** is what the next probe addresses: when the main thread stalls ≥150 ms, capture the main-thread stack and the Kuikly-thread stack from a **single `getAllStackTraces()`** call, and mark which one is merely waiting in its looper. Note that a stack sample must be read as busy-or-idle — a stack parked in `MessageQueue.nativePollOnce` means "nothing was dispatched", not "the thread was held".
 
 **Also an inference, not an observation:** that native scrolling kept advancing during the stall. The gap is unsampled; the evidence is only the state before and after it. The current probe has no `gapSinceLastFrameMs`, so the blind spot cannot report its own width yet.
 
