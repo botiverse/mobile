@@ -1162,6 +1162,7 @@
     <string name="file_preview_crop_reset">Reset</string>
     <string name="file_preview_crop_apply">Apply</string>
     <string name="file_preview_action_comments">Comments</string>
+    <string name="file_preview_action_copy_text">Copy Text</string>
     <string name="file_preview_action_download">Download</string>
     <string name="file_preview_action_install">Install</string>
     <string name="file_preview_action_open">Open</string>
