@@ -44,9 +44,13 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftPopupMargins
 import build.raft.designsystem.components.RaftSafeArea
@@ -295,6 +299,37 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             val after = billingRight()
             assertTrue(after <= 220f, "the animation ends with Billing inside the strip (${after}dp)")
+        }
+
+    /**
+     * A TextLink inside a sentence is a button of its own over its words: a tap on it runs
+     * its action, a disabled one is disabled in semantics. A standalone one is a button too.
+     */
+    @Test
+    fun aTextLinkInASentenceIsAButtonOverItsWords() =
+        runComposeUiTest {
+            var created = 0
+            var forgot = 0
+            setContent(
+                themed {
+                    Column {
+                        RaftText(
+                            buildAnnotatedString {
+                                append("Don't have an account? ")
+                                appendRaftTextLink("Create One", onClick = { created++ })
+                                append(" ")
+                                appendRaftTextLink("Log Out", onClick = { error("disabled") }, enabled = false)
+                            },
+                        )
+                        RaftTextLink("Forgot Password", onClick = { forgot++ })
+                    }
+                },
+            )
+            onNodeWithText("Create\u00A0One").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+            assertEquals(1, created, "the inline link ran its action")
+            onNodeWithText("Log\u00A0Out").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            onNodeWithText("Forgot Password").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+            assertEquals(1, forgot)
         }
 
     /** A select opened and closed from the keyboard hands focus back to its trigger. */

@@ -34,12 +34,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -393,12 +395,40 @@ private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Un
  * raft-ui 0.8.0 SegmentedControl: two to five views of the same content (All / Mentions /
  * Unread), one always picked. A `fill-muted` track holding [RaftSegment]s; the picked
  * one is the yellow sticker. It hugs its segments; to fill a width pass
- * `Modifier.fillMaxWidth()` and give each segment `Modifier.weight(1f)`.
+ * `Modifier.fillMaxWidth()` and give each segment `Modifier.weight(1f)`, on its own line
+ * (not in a row beside other controls).
+ *
+ * It never shrinks below its segments (raft-ui 0.8.0 `shrink-0`): in a row too narrow for
+ * it, it keeps its width and runs past the end, as on the web, rather than squeezing or
+ * clipping a segment. Give it the room, or let the row give way first (Responsive layout:
+ * neighbours drop to icons, then the segments show only their icons).
  */
 @Composable
 fun RaftSegmentedControl(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    RaftTrack(modifier.selectableGroup(), content)
+    RaftTrack(modifier.raftNoShrink().selectableGroup(), content)
 }
+
+/**
+ * CSS `shrink-0` on a track that hugs its items: measured at least as wide as its
+ * max-intrinsic width (each item at its own width), even when the parent offers less.
+ * It reports the parent's width and runs past the end; a full-width track that does fit
+ * keeps the parent's width.
+ */
+internal fun Modifier.raftNoShrink(): Modifier =
+    layout { measurable, constraints ->
+        if (!constraints.hasBoundedWidth) {
+            val placeable = measurable.measure(constraints)
+            return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+        }
+        val natural = measurable.maxIntrinsicWidth(constraints.maxHeight)
+        val placeable =
+            if (natural <= constraints.maxWidth) {
+                measurable.measure(constraints)
+            } else {
+                measurable.measure(constraints.copy(minWidth = natural, maxWidth = natural))
+            }
+        layout(constraints.constrainWidth(placeable.width), placeable.height) { placeable.placeRelative(0, 0) }
+    }
 
 /**
  * One option of a [RaftSegmentedControl]: the sticker item (see [RaftTab]) with an

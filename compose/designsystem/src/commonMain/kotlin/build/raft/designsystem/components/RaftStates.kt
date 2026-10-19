@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -113,14 +114,27 @@ internal fun raftOuterBand(offset: Float, width: Float, radius: Float): RaftBand
 internal fun raftInsetBand(width: Float, radius: Float): RaftBand =
     RaftBand(outset = -width / 2f, cornerRadius = (radius - width / 2f).coerceAtLeast(0f), strokeWidth = width)
 
-private fun DrawScope.drawBand(band: RaftBand, color: Color) {
+private fun DrawScope.drawBand(band: RaftBand, color: Color) = drawBandAround(Rect(Offset.Zero, size), band, color)
+
+private fun DrawScope.drawBandAround(box: Rect, band: RaftBand, color: Color) {
     drawRoundRect(
         color = color,
-        topLeft = Offset(-band.outset, -band.outset),
-        size = Size(size.width + band.outset * 2f, size.height + band.outset * 2f),
+        topLeft = Offset(box.left - band.outset, box.top - band.outset),
+        size = Size(box.width + band.outset * 2f, box.height + band.outset * 2f),
         cornerRadius = CornerRadius(band.cornerRadius),
         style = Stroke(width = band.strokeWidth),
     )
+}
+
+/**
+ * [raftFocusRing] round [box] (px, in the draw scope's coordinates) rather than the whole
+ * element: a link inside a run of text rings only its own words.
+ */
+internal fun DrawScope.drawRaftFocusRing(box: Rect, radius: Dp, gap: Color, ink: Color) {
+    val r = radius.toPx()
+    val gapPx = RaftFocusRing.Gap.toPx()
+    drawBandAround(box, raftOuterBand(0f, gapPx, r), gap)
+    drawBandAround(box, raftOuterBand(gapPx, RaftFocusRing.Width.toPx(), r), ink)
 }
 
 /**

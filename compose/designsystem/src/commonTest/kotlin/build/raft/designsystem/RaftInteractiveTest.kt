@@ -2,6 +2,8 @@ package build.raft.designsystem
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -19,6 +21,11 @@ import build.raft.designsystem.components.raftCheckboxLook
 import build.raft.designsystem.components.raftCounterAlarm
 import build.raft.designsystem.components.raftFieldBoxLook
 import build.raft.designsystem.components.raftLineHeightDp
+import build.raft.designsystem.components.raftFirstLineOffsets
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.components.raftTextLinkLook
+import build.raft.designsystem.components.raftTextLinks
 import build.raft.designsystem.components.raftMenuKeyTarget
 import build.raft.designsystem.components.raftMenuMaxSurfaceHeight
 import build.raft.designsystem.components.raftMenuPosition
@@ -176,6 +183,67 @@ class RaftNavigationItemTest {
         assertEquals(22.5f, raftLineHeightDp(TextUnit.Unspecified, 15.sp, density).value, 0.01f, "no line height: the font size")
         assertEquals(20.dp, raftLineHeightDp(1.2.em, 1.em, density), "unresolvable: the control's own size")
         assertEquals(20.dp, raftLineHeightDp(TextUnit.Unspecified, TextUnit.Unspecified, density))
+    }
+
+    /** field.tsx `mt-[calc((1lh-<control>)/2)]`, with the text moved instead of a negative margin. */
+    @Test
+    fun aControlCentresOnTheFirstLineOfItsLabel() {
+        // (line, control) -> (control y, text y), px.
+        val cases =
+            mapOf(
+                (20 to 20) to (0 to 0), // choice row: subhead 20 / 20dp box
+                (36 to 20) to (8 to 0), // the same at 180% type
+                (18 to 20) to (0 to 1), // FieldItem md: footnote 18 / 20dp box
+                (16 to 20) to (0 to 2), // FieldItem sm: caption 16 / 20dp box
+                (18 to 30) to (0 to 6), // FieldItem md: 30dp switch
+                (16 to 30) to (0 to 7), // FieldItem sm: 30dp switch
+            )
+        cases.forEach { (input, expected) ->
+            assertEquals(expected, raftFirstLineOffsets(input.first, input.second), "line ${input.first}, control ${input.second}")
+        }
+    }
+
+    @Test
+    fun aTextLinkTakesItsVariantsLookAndThePressedHoverLook() {
+        val muted = raftTextLinkLook(RaftTextLinkVariant.Muted, enabled = true, active = false, colors = light)
+        assertEquals(light.foregroundMuted, muted.ink)
+        assertEquals(light.foregroundMuted, muted.underline, "the underline is the text colour")
+        assertEquals(FontWeight.Medium, muted.weight)
+        val mutedPressed = raftTextLinkLook(RaftTextLinkVariant.Muted, enabled = true, active = true, colors = light)
+        assertEquals(light.foreground, mutedPressed.ink, "muted turns ink")
+        val strong = raftTextLinkLook(RaftTextLinkVariant.Strong, enabled = true, active = false, colors = dark)
+        assertEquals(dark.foreground, strong.ink)
+        assertEquals(dark.foreground, strong.underline)
+        assertEquals(FontWeight.SemiBold, strong.weight)
+        val strongPressed = raftTextLinkLook(RaftTextLinkVariant.Strong, enabled = true, active = true, colors = dark)
+        assertEquals(dark.foreground, strongPressed.ink, "strong keeps its ink")
+        assertEquals(RaftUiPalette.attention, strongPressed.underline, "only the underline turns pink")
+        RaftTextLinkVariant.entries.forEach {
+            val disabled = raftTextLinkLook(it, enabled = false, active = true, colors = light)
+            assertEquals(light.foregroundDisabled, disabled.ink)
+            assertEquals(null, disabled.underline, "a disabled link drops its underline")
+        }
+    }
+
+    @Test
+    fun anInlineTextLinkIsFoundWithItsVariantAndKeepsToOneLine() {
+        var clicked = 0
+        val text =
+            buildAnnotatedString {
+                append("Don't have an account? ")
+                appendRaftTextLink("Create One", onClick = { clicked++ })
+                append(" ")
+                appendRaftTextLink("Log Out", onClick = {}, variant = RaftTextLinkVariant.Muted, enabled = false)
+            }
+        val links = raftTextLinks(text)
+        assertEquals(2, links.size)
+        assertEquals("Create\u00A0One", text.text.substring(links[0].start, links[0].end), "no-break spaces keep it on one line")
+        assertEquals(RaftTextLinkVariant.Strong, links[0].variant, "strong by default inside a sentence")
+        assertTrue(links[0].enabled)
+        assertEquals(RaftTextLinkVariant.Muted, links[1].variant)
+        assertFalse(links[1].enabled)
+        links[0].annotation.linkInteractionListener?.onClick(links[0].annotation)
+        assertEquals(1, clicked)
     }
 
     @Test

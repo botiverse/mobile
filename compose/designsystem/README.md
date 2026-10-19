@@ -152,12 +152,13 @@ Other checks:
 | `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
 | `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
-| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy (focusable, semantics disabled, taps ignored) |
+| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink` |
+| `RaftTextLink`, `appendRaftTextLink` | TextLink | Done | Muted (default, on its own) and strong (ink 600, inside a sentence); no height, padding or border, takes the text's size; 1.5dp underline 3dp under the baseline; pressed (the web's hover look), focus ring on a 2dp radius, disabled. Inside a sentence: `appendRaftTextLink` in the `AnnotatedString` of a `RaftText` (or a `RaftBanner` description) |
 | `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer. An option card with `onClick` is one target: press, focus ring, radio / checkbox role and `selected` |
 | `RaftAvatar`, `RaftAvatarGroup`, `RaftAvatarGroupCount` | Avatar | Done | 7 sizes, agent / human, initials (first grapheme of each word), placeholder, presence light cut out of the current surface, die-cut edge, stack |
 | `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg |
 | `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse (all in phase, one shared frame loop per theme), or still for screenshots / reduced motion |
-| `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action |
+| `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action; a text action goes inside the description as a strong `appendRaftTextLink` |
 | `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`, `selected` semantics), pressed, inset focus, disabled, subtitle (AvatarListRow) |
 | `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below, two columns at content width when unbounded; values wrap; each fact is one screen-reader item |
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
@@ -165,17 +166,17 @@ Other checks:
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
 | `RaftTextField` | Input, InputGroup | Done | Placeholder, value, focus ring on any focus (tap included), invalid, disabled, read-only (`fill-muted`, hairline, muted text); icon and text addons (`/` prefix, suffix) ring the whole group |
 | `RaftTextarea`, `RaftTextareaCounter` | Textarea | Done | Grows to `maxHeight`; counter turns bold red past the limit or when invalid |
-| `RaftField`, `RaftFieldLabel`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FormSection | Done | Label (required `*`, "(optional)", sm / md), help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
-| `RaftCheckbox`, `RaftCheckboxRow` | Checkbox, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole |
+| `RaftField`, `RaftFieldLabel`, `RaftFieldItem`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FieldItem, FormSection | Done | Label (required `*`, "(optional)", sm / md, at its style's full line height); `RaftFieldItem` (sm / md, matching its label) puts a checkbox, radio or switch 8dp before its label, centred on the label's first line; help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
+| `RaftCheckbox`, `RaftCheckboxRow` | Checkbox, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole, the box on the label's first line even when it wraps |
 | `RaftRadio`, `RaftRadioGroup`, `RaftRadioRow` | RadioGroup | Done | Ring with an ink dot; rows with descriptions (reset-agent list) |
 | `RaftSwitch` | Switch | Done | Off, on (brand sticker, die-cut in dark), focused, disabled; the knob slides; `label` names it (pass the row's title) |
 | `RaftTabs`, `RaftTab`, `RaftTabStrip` | Tabs | Done | Default (sticker, 44dp touch target) and underline; the panel strip scrolls without clipping the sticker or ring, scrolls the selected tab into view (its own scroll only, never the page around it) and fades an edge with more tabs past it. No drag-reorder |
-| `RaftSegmentedControl`, `RaftSegment` | SegmentedControl | Done | `fill-muted` track, sticker segment, counts, full width with weights |
+| `RaftSegmentedControl`, `RaftSegment` | SegmentedControl | Done | `fill-muted` track, sticker segment, counts, full width with weights (on its own line); never shrinks below its segments (`shrink-0`): in a narrow row it runs past the end |
 | `RaftToggleGroup`, `RaftToggleGroupItem` | ToggleGroup | Done | Same item as a segment; a toggle button (on / off), not a switch |
 | `RaftSelectTrigger`, `RaftSelect` | Select | Done | Value / placeholder, pressed, focused, invalid, disabled; field type inside a `RaftField`; read as a drop-down list with its label, value (or placeholder) and expanded state; the list is a dropdown menu exactly as wide as the trigger, and focus returns to the trigger after a keyboard pick |
 | `RaftPickerTriggerButton` | PickerTriggerButton | Done | Rest (seam ring), applied filter (`info-soft`, no border), pressed, focused, invalid, disabled; 44dp touch target |
 | `RaftDropdownMenu`, `RaftMenuSurface`, `RaftMenuItem`, `RaftMenuLabel`, `RaftMenuSeparator`, `RaftMenuSearchField` | DropdownMenu, Select popup | Done | Hugs its rows (`IntrinsicSize.Max`, at least 240dp: so rows must answer intrinsic measurement, no `LazyColumn`, `RaftDescriptionList` or other subcomposed content unless a fixed `width` is passed); highlight `brand-soft`, current value bold + check, shortcut, disabled; the search row (16/24) takes the inset focus outline; keyboard: first row focused on open, arrows, Home / End, type-ahead; kept inside the safe area and above the keyboard |
-| `RaftDialog`, `RaftDialogSurface` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16 |
+| `RaftDialog`, `RaftDialogSurface` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16. Cancel or a minor action in the footer (an announcement's "Not Now" too) is a `Ghost` button, never an underlined link |
 | `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
 | `RaftToast` | Toast | Done | HUD surface (title only, icon, action with a 44dp touch target, description) and the pages' foreground banner on the popover surface |
 | `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw |
@@ -269,8 +270,24 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   are the same in both versions.
 - Docs only: Typography adds "Why message text is 16px" (the module follows it: `body` is 16/24); Alignment
   adds "A control and its label" (centre a checkbox, radio or switch on the first line of
-  its label; the choice rows do); Spacing gives the hover toolbar 28px buttons; the
+  its label); Spacing gives the hover toolbar 28px buttons; the
   rest renames "workspace" to "server" in copy.
+- Components (CHANGELOG 0.8.0), and where the module has them:
+  - `TextLink` replaces Button `variant="link"` / `size="inline"`: `RaftTextLink` and
+    `appendRaftTextLink`. `RaftButton` never had a link variant.
+  - `AnnouncementDialogSecondaryAction` is a ghost button, not an underlined link. The
+    module has no announcement dialog; its dialogs' minor actions are `Ghost` buttons.
+  - `FieldLabel` drops `leading-none`: `RaftFieldLabel` always had its style's line height
+    (footnote 18, caption 16). `FieldItem` takes `size`: `RaftFieldItem(size = …)`.
+  - Checkbox, radio and switch centre on the first line of their label
+    (`(1lh - control) / 2`): `RaftFieldItem`, `RaftCheckboxRow`, `RaftRadioRow`. Where the
+    control is taller than the line (a 30dp switch beside an 18dp label) the label moves
+    down instead of the control hanging above the row. A switch in a `RaftListRow`'s
+    trailing slot stays centred on the row, as raft-ui ListRow (`items-center`) does.
+  - `SegmentedControl` is `shrink-0`: `RaftSegmentedControl` measures at least its
+    segments' width. `ToggleGroup` keeps `max-w-full` in 0.8.0 and is unchanged.
+  - The presence light on 19px avatars (`xs`, `2xs`) is 7px with a 1px edge: `RaftAvatar`
+    already drew it so (7dp, 1dp edge, 2dp overhang, 1dp cut-out).
 
 ## Differences from raft-ui and its docs
 
@@ -284,7 +301,14 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Disabled solid badge keeps its die-cut edge in dark.** badge.tsx (0.7.1 and 0.8.0) removes only
   the inset ink edge when disabled and keeps `ring-sticker-edge`; the Dark mode doc says
   a disabled button is no longer a sticker. The module follows the component source.
-- **No hover.** Touch has no hover; only the pressed overlay is drawn.
+- **No hover.** Touch has no hover; only the pressed overlay is drawn. A `RaftTextLink`
+  has no fill to lay an overlay on, so pressed takes its hover look (muted turns ink;
+  strong's underline turns pink).
+- **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
+  with its own click target over its words and its underline and focus ring drawn
+  under the text. Its spaces are no-break spaces, as raft-ui's inline-block button
+  doesn't wrap. A `RaftText` with such links drops any other link or string
+  annotations; don't mix them.
 - **Busy button keeps its colour.** button.tsx sets `disabled` while `loading`, which
   greys it; the Button doc ("keeps the button's width and color") and the States rule
   (busy: unchanged) win. The busy button stays focusable (raft-ui `aria-disabled`), is

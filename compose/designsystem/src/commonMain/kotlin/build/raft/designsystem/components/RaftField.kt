@@ -12,12 +12,14 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
@@ -112,6 +114,8 @@ fun RaftField(
 /**
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The
  * required asterisk and the "(optional)" suffix follow the text after a space (`ml-1`).
+ * It takes the full line height of its style (raft-ui 0.8.0 dropped `leading-none`), so
+ * a control beside it can centre on that line ([RaftFieldItem]).
  */
 @Composable
 fun RaftFieldLabel(
@@ -123,7 +127,6 @@ fun RaftFieldLabel(
     required: Boolean = false,
 ) {
     val colors = RaftTheme.colors
-    val base = if (size == RaftFieldLabelSize.Sm) RaftTheme.typography.caption else RaftTheme.typography.footnote
     val ink = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     val markInk = if (enabled) colors.foregroundHint else colors.foregroundDisabled
     val annotated =
@@ -135,7 +138,50 @@ fun RaftFieldLabel(
                 withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(" (optional)") }
             }
         }
-    RaftText(annotated, modifier, style = base.copy(fontWeight = FontWeight.SemiBold), color = ink)
+    RaftText(annotated, modifier, style = raftFieldLabelStyle(size), color = ink)
+}
+
+/**
+ * raft-ui 0.8.0 FieldItem: a checkbox, radio or switch beside its [RaftFieldLabel] (and an
+ * optional [description] under the label), 8dp apart. The control is centred on the
+ * label's first line, worked out from the line height of [size] (`(1lh - control) / 2`),
+ * so a 20dp box and a 30dp switch both land on it, and it stays there when the label wraps
+ * or a description follows. Give it the size of its label: [size] sets both.
+ *
+ * - [RaftFieldLabelSize.Md] (default): `text-footnote` semibold label, 18dp line.
+ * - [RaftFieldLabelSize.Sm]: `text-caption` semibold label, 16dp line, for dense layouts.
+ *
+ * [control] handles its own taps (pass it its `onCheckedChange`). For a choice in a form
+ * or dialog where the whole row should toggle, use [RaftCheckboxRow] / [RaftRadioRow].
+ */
+@Composable
+fun RaftFieldItem(
+    label: String,
+    modifier: Modifier = Modifier,
+    size: RaftFieldLabelSize = RaftFieldLabelSize.Md,
+    description: String? = null,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+    control: @Composable () -> Unit,
+) {
+    val style = raftFieldLabelStyle(size)
+    RaftFirstLineRow(
+        lineHeight = raftLineHeightDp(style.lineHeight, style.fontSize, LocalDensity.current),
+        gap = 8.dp,
+        modifier = modifier,
+        control = control,
+    ) {
+        Column {
+            RaftFieldLabel(label, size = size, enabled = enabled)
+            if (description != null) RaftFieldDescription(description, enabled = enabled)
+        }
+    }
+}
+
+/** `FieldLabel`'s type: semibold `text-caption` (sm) or `text-footnote` (md), at the style's own line height. */
+@Composable
+internal fun raftFieldLabelStyle(size: RaftFieldLabelSize): TextStyle {
+    val base = if (size == RaftFieldLabelSize.Sm) RaftTheme.typography.caption else RaftTheme.typography.footnote
+    return base.copy(fontWeight = FontWeight.SemiBold)
 }
 
 /** The default error a control reports when it is invalid but its field gave no message. */
