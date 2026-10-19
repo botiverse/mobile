@@ -74,3 +74,37 @@ one had a different cause. CI stayed green throughout, including compile and uni
 of them are compile errors or logic errors in an isolated function: they are all about **when** code
 runs relative to state that already exists. Only a device run, reading a value the page itself
 reports, distinguishes them.
+
+## Related shape, not a sixth WebView defect: registering a reference before an async value exists
+
+§1–§5 are five distinct defects of the same fact in the same component. This section is a different
+component, recorded here because the mechanism is identical and the tell-tale symptoms match: **a
+value that does not exist yet at the moment it is handed over.** Found on a window-level menu host,
+not in a WebView.
+
+A menu overlay was moved to a window-level host. The host was registered with a closure carrying the
+reaction emoji atlas image. The atlas decodes asynchronously, so at registration time the reference was
+`null` — and it stayed `null`, because the host captured the value once rather than observing it. The
+emoji row rendered as empty boxes, in every layout, on every re-capture.
+
+Two things had to change: the host decodes the atlas itself instead of receiving a bitmap across a page
+boundary, and the emoji row renders from the host's own provider.
+
+### The shape
+
+| §1–§5 (document start) | this case (host registration) |
+|---|---|
+| viewport meta not parsed yet | atlas not decoded yet |
+| capture the document state too early | capture the resource reference too early |
+| rewrite on `DOMContentLoaded` + observe insertions | let the consumer own the resource |
+
+Both are "the capture happened at a moment when the thing was not ready", and both look like "the
+feature silently does nothing" rather than like an error. Neither produces a compile failure or a test
+failure; the artefact is simply empty.
+
+### Rule
+
+When handing a resource across a boundary — page, host, coroutine, another owner — decide whether you
+are passing a **value** or a **reference that will be filled later**. If it can be filled later, the
+receiver must own the resolution (or observe it). Capturing it once converts "not ready yet" into
+"never ready", which is indistinguishable from "the feature was never wired up".
