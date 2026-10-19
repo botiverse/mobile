@@ -32,6 +32,7 @@ import build.raft.app.components.SlockSkeletonRow
 import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SlockSpinner
+import build.raft.app.components.SlockSpinnerSize
 import build.raft.app.components.SlockStatusDot
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -447,25 +449,34 @@ internal fun UiSkeletonVisualContent() {
 
 @Composable
 internal fun UiSpinnerVisualContent() {
+    // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
+    // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
+    // content box is one 24px line with the spinner sitting on the baseline (the bottom).
+    // The web capture freezes the spinners with the top-right pixel lit (step 1).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Canvas)
                 .padding(16.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            SlockSpinner(size = 10.dp)
-            SlockSpinner(size = 16.dp)
-            SlockSpinner(size = 20.dp)
-            SlockSpinner(size = 32.dp)
-            Box(modifier = Modifier.background(SlockColor.TextBlack).padding(8.dp)) {
-                SlockSpinner(size = 16.dp, inverse = true)
+            SlockSpinner(size = SlockSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
+            Box(
+                modifier = Modifier.background(Color.Black).padding(8.dp).height(24.dp),
+                contentAlignment = Alignment.BottomStart
+            ) {
+                SlockSpinner(size = SlockSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
             }
         }
     }
 }
+
+private const val UiSpinnerVisualStillStep = 1
 
 @Composable
 internal fun UiSlugInputVisualContent() {
