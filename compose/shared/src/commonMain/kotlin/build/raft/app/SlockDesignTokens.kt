@@ -60,6 +60,8 @@ internal object SlockColor {
     val Canvas: Color get() = SlockThemeState.colors.layerCanvas
     val Card: Color get() = SlockThemeState.colors.layerCard
     val Popover: Color get() = SlockThemeState.colors.layerPopover
+    // `--layer-code`: the code / command block fill (paper in light, near-black in dark).
+    val Code: Color get() = SlockThemeState.colors.layerCode
     val TextMuted: Color get() = SlockThemeState.colors.foregroundMuted
 
     // raft-ui 0.7 semantic roles the primitives draw with (foundation.css). Themed ones

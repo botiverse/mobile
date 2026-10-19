@@ -276,6 +276,7 @@ internal fun SlockRaftUiBanner(
     modifier: Modifier = Modifier,
     size: SlockRaftUiBannerSize = SlockRaftUiBannerSize.Medium,
     iconName: SlockLucideIconName? = null,
+    descriptionMaxLines: Int = 2,
     action: (@Composable () -> Unit)? = null
 ) {
     if (slockRaftActive()) {
@@ -286,6 +287,7 @@ internal fun SlockRaftUiBanner(
             modifier = modifier,
             size = size,
             iconName = iconName,
+            descriptionMaxLines = descriptionMaxLines,
             action = action
         )
         return
@@ -318,7 +320,7 @@ internal fun SlockRaftUiBanner(
                 text = description,
                 style = SlockType.Body.copy(fontSize = size.bodySize.sp, lineHeight = (size.bodySize + 4).sp),
                 color = SlockColor.TextBlack,
-                maxLines = 2,
+                maxLines = descriptionMaxLines,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -339,6 +341,7 @@ private fun SlockRaftBanner(
     modifier: Modifier,
     size: SlockRaftUiBannerSize,
     iconName: SlockLucideIconName?,
+    descriptionMaxLines: Int,
     action: (@Composable () -> Unit)?
 ) {
     val small = size == SlockRaftUiBannerSize.Small
@@ -372,7 +375,7 @@ private fun SlockRaftBanner(
                 text = description,
                 style = SlockType.Body.copy(fontSize = fontSize, lineHeight = lineHeight),
                 color = SlockColor.TextBlack,
-                maxLines = 2,
+                maxLines = descriptionMaxLines,
                 overflow = TextOverflow.Ellipsis
             )
             action?.let {
