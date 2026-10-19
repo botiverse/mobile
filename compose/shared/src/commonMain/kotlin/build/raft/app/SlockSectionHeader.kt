@@ -50,7 +50,7 @@ private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val PullRefreshCarrierColor: Color get() = SlockColor.Panel
+private val PullRefreshCarrierColor: Color get() = SlockColor.Canvas
 internal val SlockCollapsibleSectionContentGap = 4.dp
 internal val SlockCollapsibleSectionCountTextStyle =
     SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
@@ -99,7 +99,7 @@ internal fun SlockTopPageHeader(
     title: String,
     subtitle: String? = null,
     iconName: SlockLucideIconName? = null,
-    iconBackground: Color = SlockColor.Primary,
+    iconBackground: Color = SlockColor.Brand,
     // raft-ui 0.6.0: a phone section head sits on the frame layer (Source Yellow in
     // light, the dark frame in dark) — the yellow marks where you are.
     backgroundColor: Color = SlockColor.Frame,
@@ -197,7 +197,7 @@ internal fun SlockTopPageHeader(
 @Composable
 internal fun SlockTopPageHeaderFrame(
     modifier: Modifier = Modifier,
-    backgroundColor: Color = SlockColor.Panel,
+    backgroundColor: Color = SlockColor.Canvas,
     topSafeArea: Dp = 0.dp,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
     contentStartPadding: Dp = SlockTopPageHeaderContentStartPadding,
@@ -284,7 +284,7 @@ internal fun SlockTopPageHeaderAction(
         SlockLucideIcon(
             name = icon,
             modifier = Modifier.size(SectionHeaderActionIconSize),
-            color = slockArgbHex(SlockColor.ForegroundIcon)
+            color = slockArgbHex(SlockColor.TextMuted)
         )
     }
 }
@@ -377,7 +377,7 @@ internal fun SlockCenteredLoading(
 ) {
     val resolvedMessage = message ?: stringResource(MR.strings.common_loading)
     Box(
-        modifier = modifier.background(SlockColor.Panel),
+        modifier = modifier.background(SlockColor.Canvas),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -540,7 +540,7 @@ internal fun SlockHeaderIconAction(
             SlockLucideIcon(
                 name = icon,
                 modifier = Modifier.size(18.dp),
-                color = slockArgbHex(SlockColor.ForegroundIcon)
+                color = slockArgbHex(SlockColor.TextMuted)
             )
             label?.let {
                 Text(
@@ -559,7 +559,7 @@ internal fun SlockHeaderIconAction(
 @Composable
 internal fun SlockMemberCountBadge(count: Int) {
     Box(Modifier.background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
-        .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Chip))
+        .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Chip))
         .padding(horizontal = 6.dp, vertical = 2.dp), contentAlignment = Alignment.Center) {
         Text(count.toString(), style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp),
             color = SlockColor.TextMuted)

@@ -8588,7 +8588,7 @@ private fun MembersAgentAvatarChoiceGrid(
     // React parity: each cell renders the actual pixel art (or upload icon
     // for the first cell) inside a 40dp cell with a 2dp border, mirroring
     // `AgentDetailPanel.tsx`. Active selection gets a pink border
-    // + pink tint background (React `border-brutal-pink bg-brutal-pink/20`).
+    // + pink tint background (React `border-palette-pink bg-palette-pink/20`).
     val activeCustomAvatar = member.avatarUrl != null
     val activePixelKey = if (activeCustomAvatar) {
         null

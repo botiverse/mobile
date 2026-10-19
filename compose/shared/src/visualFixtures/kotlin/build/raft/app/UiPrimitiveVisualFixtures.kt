@@ -32,6 +32,7 @@ import build.raft.app.components.SlockSkeletonRow
 import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.components.SlockSlugInput
 import build.raft.app.components.SlockSpinner
+import build.raft.app.components.SlockSpinnerSize
 import build.raft.app.components.SlockStatusDot
 import build.raft.app.components.SlockSurfaceListItem
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -287,7 +289,7 @@ internal fun UiTextareaVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(252.dp)
-                .background(SlockColor.Panel)
+                .background(SlockColor.Canvas)
                 .padding(16.dp)
     ) {
         SlockBrutalTextarea(
@@ -447,25 +449,34 @@ internal fun UiSkeletonVisualContent() {
 
 @Composable
 internal fun UiSpinnerVisualContent() {
+    // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
+    // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
+    // content box is one 24px line with the spinner sitting on the baseline (the bottom).
+    // The web capture freezes the spinners with the top-right pixel lit (step 1).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Canvas)
                 .padding(16.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            SlockSpinner(size = 10.dp)
-            SlockSpinner(size = 16.dp)
-            SlockSpinner(size = 20.dp)
-            SlockSpinner(size = 32.dp)
-            Box(modifier = Modifier.background(SlockColor.TextBlack).padding(8.dp)) {
-                SlockSpinner(size = 16.dp, inverse = true)
+            SlockSpinner(size = SlockSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
+            SlockSpinner(size = SlockSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
+            Box(
+                modifier = Modifier.background(Color.Black).padding(8.dp).height(24.dp),
+                contentAlignment = Alignment.BottomStart
+            ) {
+                SlockSpinner(size = SlockSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
             }
         }
     }
 }
+
+private const val UiSpinnerVisualStillStep = 1
 
 @Composable
 internal fun UiSlugInputVisualContent() {
@@ -543,8 +554,8 @@ internal fun UiSelectionPopoverVisualContent() {
 internal fun UiMenuItemVisualContent() {
     // Mirrors the web case: four slock `MenuItem` rows (36dp, px-2.5, callout medium, mono
     // hint shortcut) stacked flush inside a `rounded-container border border-line-seam
-    // bg-layer-popover shadow-raft-float` card -- no popup inset -- with the last row
-    // carrying its own `border-t border-line-muted` inside its 36dp box. 342 x 178dp =
+    // bg-layer-popover shadow-float` card -- no popup inset -- with the last row
+    // carrying its own `border-t border-line-hairline` inside its 36dp box. 342 x 178dp =
     // 16 + 1 + 4 x 36 + 1 + 16.
     Box(
         modifier =
@@ -571,7 +582,7 @@ internal fun UiMenuItemVisualContent() {
                         Modifier
                             .fillMaxWidth()
                             .height(SlockStroke.Thin)
-                            .background(SlockColor.LineMuted)
+                            .background(SlockColor.BorderHairline)
                 )
             }
         }

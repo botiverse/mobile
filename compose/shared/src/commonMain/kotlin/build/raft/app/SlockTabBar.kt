@@ -248,7 +248,7 @@ internal fun SlockBottomTabBar(
                                     Modifier
                                         .border(SlockStroke.Control, SlockColor.StickerEdge, RoundedCornerShape(SlockRadius.Control + SlockStroke.Control))
                                         .padding(SlockStroke.Control)
-                                        .background(SlockColor.Primary, RoundedCornerShape(SlockRadius.Control))
+                                        .background(SlockColor.Brand, RoundedCornerShape(SlockRadius.Control))
                                         .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Control))
                                 } else {
                                     Modifier

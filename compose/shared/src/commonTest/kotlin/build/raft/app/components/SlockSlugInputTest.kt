@@ -13,7 +13,7 @@ class SlockSlugInputTest {
 
     @Test
     fun disabledPrefixBackgroundMatchesReactControlOpacityRule() {
-        // react: tile bg-soft-signal/30 x control opacity-60, flattened over
+        // react: tile bg-palette-yellow/30 x control opacity-60, flattened over
         // white = opaque #FFF7DD (group-opacity composite, not a live alpha)
         assertEquals(Color(0xFFFFF7DD), SlockSlugInputDisabledPrefixBackground)
     }

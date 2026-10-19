@@ -1316,7 +1316,7 @@ internal fun ThreadComposerScreen() {
     }
     SlockInputFocusDismissHost { focusDismissModifier ->
         Box(
-            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.Panel),
+            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.Canvas),
             contentAlignment = Alignment.TopCenter
         ) {
             if (suggestionUnderlayOracleEnabled) {
@@ -1347,7 +1347,7 @@ internal fun ThreadComposerScreen() {
                                     suggestionScrollOracleLeak -> ThreadComposerSuggestionScrollOracleLeak
                                     suggestionInteractionOracleActionReceived ->
                                         ThreadComposerSuggestionInteractionOracleSuccess
-                                    else -> SlockColor.Panel
+                                    else -> SlockColor.Canvas
                                 }
                             ),
                     contentAlignment = Alignment.Center
@@ -2627,7 +2627,7 @@ internal fun ThreadComposerContentLeaf(
             Modifier
                 .fillMaxWidth()
                 .retainInputFocusForInteractions()
-                .background(SlockColor.Panel)
+                .background(SlockColor.Canvas)
                 .padding(
                     start = hostPaddingHorizontal,
                     top = hostPaddingTop,
@@ -2823,7 +2823,7 @@ internal fun ThreadComposerContentLeaf(
                                     keyboardInsetDp = nextInset
                                 }
                             },
-                            placeholderColor = SlockColor.ForegroundPlaceholder,
+                            placeholderColor = SlockColor.ForegroundHint,
                             cursorBrush = SolidColor(SlockColor.TextBlack),
                             systemNewlineAction = true,
                             nativeEditingStateReader = nativeEditingStateReader,
@@ -3621,7 +3621,7 @@ private fun ComposerMemberSuggestionRow(
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = muted,
-        selectedColor = SlockColor.PrimarySoft,
+        selectedColor = SlockColor.BrandSoft,
         minHeight = ComposerMemberSuggestionRowMinHeight,
         mutedOverlay = true,
         onClick = onClick
@@ -4450,7 +4450,7 @@ private fun ComposerImageAttachmentPreview(
                 .clickable(enabled = previewEnabled, onClick = onPreview)
                 .slockThemedCorners(SlockRadius.Control)
                 .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control)),
+                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         if (imagePreviewUri != null) {
@@ -4462,7 +4462,7 @@ private fun ComposerImageAttachmentPreview(
                 contentScale = SlockImageThumbnailContentScale
             )
         } else {
-            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = slockArgbHex(SlockColor.ForegroundIcon))
+            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = slockArgbHex(SlockColor.TextMuted))
         }
     }
 }
@@ -4480,7 +4480,7 @@ private fun ComposerFileAttachmentPreview(
                 .clickable(enabled = previewEnabled, onClick = onPreview)
                 .slockThemedCorners(SlockRadius.Control)
                 .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control))
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
@@ -4488,7 +4488,7 @@ private fun ComposerFileAttachmentPreview(
         SlockLucideIcon(
             SlockLucideIconName.FileText,
             modifier = Modifier.size(16.dp),
-            color = slockArgbHex(SlockColor.ForegroundIcon)
+            color = slockArgbHex(SlockColor.TextMuted)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -4524,7 +4524,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                 .fillMaxSize()
                 .slockThemedCorners(SlockRadius.Control)
                 .background(SlockColor.Card.copy(alpha = 0.86f), RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control)),
+                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -4572,7 +4572,7 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
                 .slockThemedCorners(SlockRadius.Control)
                 // deliberate near-opaque failure scrim over the attachment thumbnail; triaged token-audit #1066
                 .background(SlockColor.AccentOrange.copy(alpha = 0.92f), RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Control))
+                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control))
                 .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -4707,7 +4707,7 @@ private fun ComposerChannelSuggestionRow(
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = false,
-        selectedColor = SlockColor.PrimarySoft,
+        selectedColor = SlockColor.BrandSoft,
         minHeight = ComposerChannelSuggestionRowMinHeight,
         onClick = onClick
     ) {
@@ -4820,7 +4820,7 @@ private fun ComposerSuggestionDivider() {
                 .padding(horizontal = ComposerSuggestionPanelInset)
                 .fillMaxWidth()
                 .height(SlockStroke.Thin)
-                .background(SlockColor.LineMuted)
+                .background(SlockColor.BorderHairline)
     )
 }
 
@@ -4986,7 +4986,7 @@ private fun ComposerTextChip(
             modifier =
                 Modifier
                     // raft-ui disabled control: fill-muted, line-muted edge, control radius.
-                    .slockRaftControlSurface(fill = SlockColor.FillMuted, border = SlockColor.LineMuted)
+                    .slockRaftControlSurface(fill = SlockColor.FillMuted, border = SlockColor.BorderHairline)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)

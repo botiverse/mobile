@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButtonDefaultTextStyle
 import build.raft.app.components.SlockSpinnerActiveSweepAngle
+import build.raft.app.components.SlockSpinnerPixelRestAlpha
+import build.raft.app.components.SlockSpinnerSize
+import build.raft.app.components.slockSpinnerLitCell
+import build.raft.app.components.slockSpinnerStepAt
 import build.raft.app.data.FontPreference
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -154,8 +158,25 @@ class SlockDesignTokensTest {
     }
 
     @Test
-    fun spinnerActiveArcMatchesReactRingTopCap() {
+    fun brutalSpinnerActiveArcMatchesReactRingTopCap() {
         assertEquals(46f, SlockSpinnerActiveSweepAngle)
+    }
+
+    @Test
+    fun raftSpinnerSizesMatchRaftUiPixelGrid() {
+        // raft-ui Spinner `--spinner-pixel` / `--spinner-gap` per size.
+        assertEquals(listOf(4f to 1.5f, 5f to 2f, 6f to 2f, 8f to 3f), SlockSpinnerSize.entries.map { it.pixel.value to it.gap.value })
+        assertEquals(12f, SlockSpinnerSize.Sm.extent.value)
+        assertEquals(19f, SlockSpinnerSize.Lg.extent.value)
+    }
+
+    @Test
+    fun raftSpinnerStepsClockwiseEveryQuarterSecond() {
+        // raft-spinner-pixel: 1s steps(1); delays 0 / .25 / .75 / .5s on cells TL, TR, BL, BR.
+        assertEquals(listOf(0, 0, 1, 2, 3, 0), listOf(0, 249, 250, 500, 999, 1000).map(::slockSpinnerStepAt))
+        assertEquals(listOf(0, 1, 3, 2), (0 until 4).map(::slockSpinnerLitCell))
+        assertEquals(0, slockSpinnerLitCell(4))
+        assertEquals(0.2f, SlockSpinnerPixelRestAlpha)
     }
 
     private fun Any?.slockFontName(): String? =
