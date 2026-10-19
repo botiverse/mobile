@@ -100,4 +100,40 @@ class FontPreferenceTest {
 
         assertEquals(FontPreference.HankenGrotesk, runBlocking { afterRestart.getFontPreference() }.current)
     }
+
+    /**
+     * Task #521: the restart contract above only covers the repository. What the user sees is
+     * [build.raft.app.SlockFontFaceState], which is process-scoped and starts at the default — so a
+     * cold start must publish the stored value to it BEFORE the first composition, otherwise the UI
+     * renders the default face (observed on Android and OHOS: MMKV held geist_inter, UI reverted).
+     */
+    @Test
+    fun coldStartPublishesTheStoredFaceToTheObservableState() {
+        val store = InMemorySlockKeyValueStore()
+        // A previous session stored a non-default face.
+        runBlocking { KeyValueFontPreferenceStore(store).saveFontPreference(FontPreference.HankenGrotesk) }
+
+        // Cold start: the observable state begins at the default.
+        build.raft.app.SlockFontFaceState.apply(FontPreference.Default)
+        assertEquals(FontPreference.Default, build.raft.app.SlockFontFaceState.preference)
+
+        // The startup restore must publish what is stored, without waiting for a settings snapshot.
+        assertEquals(
+            FontPreference.HankenGrotesk,
+            KeyValueFontPreferenceStore(store).readFontPreferenceSync(),
+            "the store holds the user's choice"
+        )
+        build.raft.app.SlockFontFaceState.apply(KeyValueFontPreferenceStore(store).readFontPreferenceSync())
+        assertEquals(FontPreference.HankenGrotesk, build.raft.app.SlockFontFaceState.preference)
+    }
+
+    @Test
+    fun restoringWhenNothingIsStoredKeepsTheDefault() {
+        // No stored value must not push an arbitrary face: fromStorageKey(null) yields the default.
+        val store = InMemorySlockKeyValueStore()
+        assertEquals(
+            FontPreference.SpaceGrotesk,
+            KeyValueFontPreferenceStore(store).readFontPreferenceSync()
+        )
+    }
 }

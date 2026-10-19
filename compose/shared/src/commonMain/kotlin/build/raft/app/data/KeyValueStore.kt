@@ -71,6 +71,34 @@ object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
 }
 
+/**
+ * Task #521: publish the stored font face to [SlockFontFaceState] as soon as the app-scope store is
+ * available, i.e. before the first composition.
+ *
+ * `SlockFontFaceState.preference` is process-scoped state that starts at [FontPreference.Default].
+ * Its other restore point lives in `SharedSettingsStore.withLocalMobilePreferences()`, which only
+ * runs when a settings snapshot loads. On a cold start the first frames are composed before any
+ * snapshot resolves, so the UI rendered the default face and only swapped once unrelated settings
+ * data arrived — on a slow start it appeared to never swap at all (observed on Android and OHOS:
+ * MMKV held `geist_inter` while shared reverted to Space Grotesk).
+ *
+ * Call this after the app-scope key-value stores are installed and before shared UI is composed.
+ * Safe to call more than once: the snapshot path re-applies the same value and [apply] no-ops when
+ * the preference is unchanged.
+ *
+ * @return the preference published, or null when the store was not readable.
+ */
+fun slockRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
+    runCatching {
+        val binding = SlockSharedKeyValueStoreProvider.create(
+            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+            storageName = "local preference"
+        )
+        KeyValueFontPreferenceStore(binding.store).readFontPreferenceSync()
+    }.getOrNull()?.also { stored ->
+        build.raft.app.SlockFontFaceState.apply(stored)
+    }
+
 fun SharedPreferenceStore.getBoolean(key: String, defaultValue: Boolean = false): Boolean =
     when (getString(key)) {
         "true" -> true
