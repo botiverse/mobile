@@ -21004,14 +21004,6 @@ private fun ThreadMessagesListContent(
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
-            if (threadOverscrollBounceEnabled) {
-                threadListSegments += {
-                    threadOverscrollBounceItem(
-                        state = threadOverscrollState,
-                        scrollState = listState.raw
-                    )
-                }
-            }
             threadListSegments += {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
@@ -21447,16 +21439,21 @@ private fun ThreadMessagesListContent(
             // task #37 overscroll: give both ends of the message list a stretchy pull before it
             // snaps back, so a drag at either edge has feedback instead of stopping dead.
             //
-            // The Kuikly primitive does NOT scroll the list: it expands and releases native content
-            // insets on the ScrollerView (verified by decompiling
-            // com.tencent.kuikly-open:compose-android:2.28.0-raft.9 -- the bytecode calls
-            // ScrollerView.setContentInset(l, t, r, b, ...) and never reads layoutInfo, so it is
-            // edge-based rather than anchor-based and works for a reversed list too).
+            // The primitive does NOT scroll the list: it expands and releases a native content inset
+            // on the ScrollerView (decompiled from com.tencent.kuikly-open:compose-android:
+            // 2.28.0-raft.9 -- it never reads layoutInfo, so it is edge-based, not anchor-based).
             //
-            // Placement: two items bracket threadListSegments, one before the first segment added
-            // and one after the last. The `asReversed()` below flips the whole list for bottom-up
-            // threads, so bracketing the segment list is what leaves one item at each PHYSICAL end.
-            // (A single item would cover only one edge: simulated the ordering before writing this.)
+            // SINGLE ENDED, in practice. `setContentInsetWhenEndDrag(top = inset)` in the Kuikly
+            // fork takes only `top` even though `setContentInset` accepts four edges, so two items
+            // would both drive the same edge rather than one each. That is why this is ONE item:
+            // an earlier revision of this file bracketed the segment list with two, on the wrong
+            // assumption that the four-edge signature meant four-edge behaviour.
+            //
+            // Appended last, which the `asReversed()` below turns into physical item 0 for a
+            // bottom-up thread. That placement is the probe: the device lane pulls from both ends and
+            // reports which end this actually stretches, because `isAtTop()` indexes by
+            // firstVisibleItemIndex while the inset targets the native top -- nobody has confirmed
+            // what native top means once the reverse patch is in play.
             if (threadOverscrollBounceEnabled) {
                 threadListSegments += {
                     threadOverscrollBounceItem(
