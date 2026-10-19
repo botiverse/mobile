@@ -56,15 +56,22 @@ build, or a different process — and got a **legitimate** answer about that thi
 in question. This is the most convincing of the five because it never errors: an empty result from
 the wrong copy looks exactly like an empty result from the right one.
 
-Three instances from one day:
+Three instances, all observed on this repo:
 
-- a diagnostic key read as absent, when the writer and the reader held **two different store handles**
-  in the same process;
-- a file confirmed "not in the repository" using a working-tree `ls`, when the file was on the branch —
-  `ls` answers about the worktree, `git show origin/main:` answers about the branch, and both look
-  like "I checked";
-- a channel task number `#185` that referred to three different items depending on which channel's
-  numbering was in view: referencing the number stayed *valid* while the referent changed.
+- **Worktree vs branch.** A file reported "not in the repository" from a working-tree `ls`, while it
+  was on the branch. `ls` answers about the worktree, `git show origin/main:` answers about the
+  branch, and both look like "I checked". This one cost two people two rounds.
+- **A truncated API response read as an empty one.** `gh api .../contents/<path>` returns an empty
+  `content` field for files above roughly 1 MB rather than an error, so a grep over it finds nothing
+  and reports "the symbol is not there". The file was fine; the fetch had not delivered it.
+- **Per-channel numbering.** A task number referring to three different items depending on which
+  channel's numbering was in view: the reference stayed *valid* while the referent changed, which is
+  more dangerous than a broken link because nothing looks wrong.
+
+A fourth case — two same-class store handles in one process — is currently a hypothesis in an open
+diagnosis, not an observation. It is listed here as *unverified* deliberately: writing a suspected
+mechanism into an article as an instance is the same defect this article is about, and it nearly
+shipped as one.
 
 **The tell is not in the answer, it is in the question you did not ask**: *which copy is this answer
 about?* Make the answer carry its own provenance — a store identity on the log line, a full ref on the
