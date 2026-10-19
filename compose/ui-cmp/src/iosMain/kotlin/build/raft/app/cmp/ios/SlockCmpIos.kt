@@ -5,21 +5,34 @@ import build.raft.app.cmp.SlockCmpRoot
 import build.raft.app.cmp.SlockCmpRouter
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.SlockCmpHost
 import build.raft.app.cmp.host.SlockCmpNavigator
 import build.raft.app.cmp.host.SlockCmpPageArgs
+import build.raft.app.parseSlockJsonObjectOrNull
 import build.raft.app.toSlockJsonString
 import kotlinx.serialization.json.JsonObject
+import platform.Foundation.NSThread
 import platform.UIKit.UIViewController
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
- * Implemented by the iOS app (Objective-C, `SlockCmpBridgeHost`): forwards one bridge call to an
- * `HRBridgeModule`, the same native implementation Kuikly pages use. [paramsJson] is the method's
- * param object; the host hands the result payload (JSON text, or nil) to [callback], possibly from
- * a background thread and, for streaming methods, more than once.
+ * Implemented by the iOS app (Objective-C, `SlockCmpBridgeHost`): forwards one bridge call to the
+ * page's `HRBridgeModule`. [paramsJson] is the method's param object; the host hands the result
+ * payload (JSON text, or nil) to [callback], possibly from a background thread and, for streaming
+ * methods, more than once.
  */
 interface SlockCmpIosBridge {
     fun call(method: String, paramsJson: String, callback: SlockCmpIosBridgeCallback?)
+
+    /**
+     * Synchronous bridge call (Kuikly `syncCall = true`): the method's return value as text, or
+     * null when the host has no synchronous path for [method]. Answered on the calling thread, so
+     * the host only serves cheap, thread-safe methods here (urlEncode, urlDecode, currentTimestamp,
+     * dateFormatter).
+     */
+    fun callSync(method: String, paramsJson: String): String?
 }
 
 /** Result sink for [SlockCmpIosBridge.call]. Implemented in Kotlin; the host only invokes it. */
@@ -29,12 +42,41 @@ interface SlockCmpIosBridgeCallback {
 
 /**
  * Implemented by the iOS app (Swift, `SlockCmpPageNavigator`): page navigation through the app's
- * `UINavigationController`. [openPage] goes through the same page factory as Kuikly routing.
+ * `UINavigationController`. [openPage] goes through the app's page router (`RaftPageRouter`).
  */
 interface SlockCmpIosNavigator {
     fun openPage(pageName: String, pageDataJson: String)
 
     fun closePage()
+}
+
+/** Implemented by the iOS page container (`RaftPageViewController`): page -> host notifications. */
+interface RaftIosPageListener {
+    /** The page's resolved appearance after each change (status bar style). */
+    fun onDarkThemeResolved(dark: Boolean)
+}
+
+/**
+ * One CMP page created for the iOS host: the Compose view controller the host embeds, plus the
+ * host -> page event channel (the Kuikly `sendWithEvent` counterpart: adaptive panes, window
+ * insets, theme changes, adaptive navigation receipts, conversation forward requests).
+ */
+class RaftIosPage internal constructor(
+    val viewController: UIViewController,
+    private val events: RaftHostEvents,
+) {
+    /**
+     * Delivers [event] with [dataJson] (a JSON object as text; blank or malformed -> `{}`) to the
+     * page as a pager event. Safe from any thread: delivery always happens on the main thread.
+     */
+    fun sendEvent(event: String, dataJson: String) {
+        val data = parseSlockJsonObjectOrNull(dataJson.takeIf { it.isNotBlank() }) ?: JsonObject(emptyMap())
+        if (NSThread.isMainThread) {
+            events.send(event, data)
+        } else {
+            dispatch_async(dispatch_get_main_queue()) { events.send(event, data) }
+        }
+    }
 }
 
 /** iOS entry points of the CMP layer, exported through the `shared` framework. */
@@ -44,32 +86,42 @@ object SlockCmpIos {
         SlockCmpRouter.configure(debugBuild = debugBuild)
     }
 
-    /** True when [pageName] must be pushed as [makeViewController] instead of a Kuikly page. */
+    /** True when [pageName] is a registered page (anything else renders the unknown-page surface). */
     fun rendersOnCmp(pageName: String): Boolean = SlockCmpRouter.rendersOnCmp(pageName)
 
     /**
-     * A view controller rendering [pageName] on CMP with [pageDataJson] (the same pageData the
-     * Kuikly page would get, as JSON text). Push it on the existing navigation controller.
+     * A page rendering [pageName] with [pageDataJson] (the page's pageData as JSON text). The host
+     * embeds [RaftIosPage.viewController] in its page container and pushes the container.
      */
-    fun makeViewController(
+    fun makePage(
         pageName: String,
         pageDataJson: String,
         bridge: SlockCmpIosBridge,
         navigator: SlockCmpIosNavigator,
-    ): UIViewController {
-        val transport =
-            HostBridgeTransport { method, paramsJson, callback ->
-                bridge.call(method, paramsJson, callback?.let(::BridgeCallback))
-            }
+        listener: RaftIosPageListener?,
+    ): RaftIosPage {
+        val transport = IosBridgeTransport(bridge)
+        val events = RaftHostEvents()
         val host =
             SlockCmpHost(
                 capabilities = BridgeWireHostCapabilities(transport),
                 navigator = IosNavigator(navigator),
                 bridgeTransport = transport,
+                events = events,
             )
         val args = SlockCmpPageArgs.fromJsonText(pageName, pageDataJson)
-        return ComposeUIViewController { SlockCmpRoot(args, host) }
+        val onDarkThemeResolved: ((Boolean) -> Unit)? = listener?.let { target -> { dark -> target.onDarkThemeResolved(dark) } }
+        val controller = ComposeUIViewController { SlockCmpRoot(args, host, onDarkThemeResolved) }
+        return RaftIosPage(controller, events)
     }
+}
+
+private class IosBridgeTransport(private val bridge: SlockCmpIosBridge) : HostBridgeTransport {
+    override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
+        bridge.call(method, paramsJson, callback?.let(::BridgeCallback))
+    }
+
+    override fun callSync(method: String, paramsJson: String): String? = bridge.callSync(method, paramsJson)
 }
 
 private class BridgeCallback(private val onResult: (String?) -> Unit) : SlockCmpIosBridgeCallback {
