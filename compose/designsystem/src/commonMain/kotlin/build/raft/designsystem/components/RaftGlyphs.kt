@@ -20,12 +20,18 @@ import build.raft.designsystem.theme.RaftTheme
 
 /**
  * The few Lucide icons (ISC licence, lucide.dev; the same SVGs the app ships) that the
- * components themselves draw: the banner intents, the list chevron, the @ marker. Each is
+ * components themselves draw: the banner intents, the list and select chevrons, the @ marker,
+ * the check of a checkbox and of a menu's current value, the dialog's close and a menu's search. Each is
  * the 24x24 outline drawn with Lucide's 2-unit round stroke. App icons are not this
  * module's business: pass them through the components' icon slots.
  */
 enum class RaftGlyph(internal vararg val paths: String) {
     ChevronRight("m9 18 6-6-6-6"),
+    ChevronDown("m6 9 6 6 6-6"),
+    Check("M20 6 9 17l-5-5"),
+    Minus("M5 12h14"),
+    X("M18 6 6 18", "m6 6 12 12"),
+    Search("m21 21-4.34-4.34", circle(11f, 11f, 8f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
     TriangleAlert(
         "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
