@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE = "2.28.0-raft.13"
+RELEASE = "2.28.0-raft.15"
 NORMAL = f"{RELEASE}-2.1.21"
 OHOS = f"{RELEASE}-2.0.21-ohos"
 
@@ -25,7 +25,7 @@ require(len(closure) == 37 and len(set(closure)) == 37, "closure must contain 37
 require(closure == sorted(closure), "closure must remain sorted")
 require(all(gav.startswith("com.tencent.kuikly-open:") for gav in closure), "closure group drifted")
 require(sum(gav.endswith(f":{NORMAL}") for gav in closure) == 28, "normal GAV count drifted")
-# The published 2.28.0-raft.13 release set still carries the 9 OHOS GAVs; main
+# The published 2.28.0-raft.15 release set still carries the 9 OHOS GAVs; main
 # no longer consumes them (OHOS froze at 1.14.x), but the manifest gate checks
 # the closure against the immutable published manifest, so they stay listed
 # until the next Kuikly release set drops the OHOS plane.
