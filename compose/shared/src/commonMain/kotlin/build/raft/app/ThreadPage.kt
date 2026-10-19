@@ -18331,7 +18331,7 @@ private fun ThreadMessagesListContent(
     // gesture or fling is active, to line up with the native thread_fling_frame lines. The
     // Kuikly content size only becomes exact once the last item is visible to Compose
     // (totalContentSize()), so lastItemVisible is printed explicitly. Budgeted per process.
-    // QA-only (task #37, Kuikly 2.28.0-raft.16-diag1): Kuikly's internal scroll / content-size
+    // QA-only (task #37, Kuikly 2.28.0-raft.16-diag2): Kuikly's internal scroll / content-size
     // trace into the same diagnostics JSONL, budgeted per process.
     DisposableEffect(Unit) {
         com.tencent.kuikly.compose.gestures.KuiklyScrollTrace.sink = { line ->
