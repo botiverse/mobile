@@ -89,9 +89,10 @@ jobs:
       - name: Validate no-local-Ktor dependency contract
         run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
 
-      # Task #373 / PR #2497: mermaid consumer confinement. The Android and
-      # iOS actuals must stay source-byte-identical; mermaid types stay out of
-      # commonMain/commonTest.
+      # Task #373 / PR #2497: mermaid consumer confinement. Since the CMP
+      # switch mermaid renders through one commonMain adapter
+      # (SlockMermaidDiagramBlock + RaftMermaidCanvas); per-platform actuals
+      # must not return and no other production source imports mermaid.
       - name: Validate mermaid plane confinement contract
         run: |
           python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
