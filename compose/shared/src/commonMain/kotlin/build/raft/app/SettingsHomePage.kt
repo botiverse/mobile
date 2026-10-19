@@ -32,6 +32,7 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.components.slockRaftActive
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
@@ -21740,6 +21741,9 @@ private fun SharedHomeSearchFilters(
     val sortActive = state.sort != SearchSort.Relevance
     val scopeLabel = stringResource(MR.strings.search_filter_scope)
     val channelLabel = stringResource(MR.strings.search_filter_channel)
+    // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
+    // (web `appliedFilterProps`); the brutal register keeps its yellow sticker.
+    val appliedFill = if (slockRaftActive()) SlockColor.InfoSoft else SlockColor.BrandYellow
     SharedHomeSearchControlsBlock {
         LazyRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
@@ -21756,7 +21760,7 @@ private fun SharedHomeSearchFilters(
                                 enabled = true,
                                 uppercase = !senderActive,
                                 iconName = SlockLucideIconName.CircleUser,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
@@ -21772,7 +21776,7 @@ private fun SharedHomeSearchFilters(
                                 enabled = true,
                                 uppercase = !scopeActive,
                                 iconName = SlockLucideIconName.AtSign,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
@@ -21788,7 +21792,7 @@ private fun SharedHomeSearchFilters(
                                 enabled = true,
                                 uppercase = selectedChannel == null,
                                 iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
@@ -21804,7 +21808,7 @@ private fun SharedHomeSearchFilters(
                                 enabled = true,
                                 uppercase = false,
                                 iconName = SlockLucideIconName.Calendar,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
@@ -21823,7 +21827,7 @@ private fun SharedHomeSearchFilters(
                     enabled = true,
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
-                    activeBackgroundColor = SlockColor.BrandYellow,
+                    activeBackgroundColor = appliedFill,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
