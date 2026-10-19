@@ -43,7 +43,13 @@ for retired in (
     "third_party/kuikly-ui",
 ):
     require(not (ROOT / retired).exists(), f"retired Kuikly UI plumbing returned: {retired}")
-require('submodule "third_party/kuikly-ui"' not in read(".gitmodules"), "Kuikly gitlink metadata remains")
+# The last submodule (the KuiklyUI reference tree) was removed with the Kuikly skills, so
+# .gitmodules may be gone entirely; that also satisfies this check.
+gitmodules = ROOT / ".gitmodules"
+require(
+    not gitmodules.exists() or 'submodule "third_party/kuikly-ui"' not in gitmodules.read_text(encoding="utf-8"),
+    "Kuikly gitlink metadata remains",
+)
 
 version_catalog = read("compose/gradle/libs.versions.toml")
 require("com.tencent.kuikly-open" not in version_catalog, "version catalog re-added a Kuikly UI artifact")
