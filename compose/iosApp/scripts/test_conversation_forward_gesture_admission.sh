@@ -4,7 +4,7 @@ set -euo pipefail
 IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/SlockConversationForwardGestureAdmission.h"
 NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.m"
-RENDER_SOURCE="$IOS_ROOT/iosApp/KuiklyExpand/KuiklyRenderViewController.m"
+RENDER_SOURCE="$IOS_ROOT/iosApp/Cmp/RaftPageViewController.m"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

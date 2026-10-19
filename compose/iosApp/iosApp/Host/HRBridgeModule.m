@@ -2,7 +2,7 @@
 #import "RaftDiagnosticsPathAdmission.h"
 #import "RaftDiagnosticsEnvironmentRows.h"
 
-#import "KuiklyRenderViewController.h"
+#import "RaftPageViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <Hands/Hands.h>
@@ -10,7 +10,6 @@
 #import <shared/shared.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
-#import <OpenKuiklyIOSRender/NSObject+KR.h>
 #import <mach/mach_time.h>
 #import <os/lock.h>
 #import <pthread.h>
@@ -141,10 +140,6 @@ static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
         return @{};
     }
     NSString *text = (NSString *)value;
-    NSDictionary *kuiklyDictionary = [text hr_stringToDictionary];
-    if ([kuiklyDictionary isKindOfClass:NSDictionary.class]) {
-        return kuiklyDictionary;
-    }
     NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
     if (!data) {
         return @{};
@@ -154,7 +149,7 @@ static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
 }
 
 static NSDictionary *SlockBridgeParams(NSDictionary *args) {
-    return SlockBridgeDictionaryFromValue(args[KR_PARAM_KEY]);
+    return SlockBridgeDictionaryFromValue(args[RaftBridgeParamKey]);
 }
 
 static NSString *SlockBridgeString(id value) {
@@ -2477,7 +2472,7 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 @interface SlockThreadImageCompressionOperation : NSObject
 
 @property(nonatomic, copy) NSString *requestId;
-@property(nonatomic, copy) KuiklyRenderCallback callback;
+@property(nonatomic, copy) RaftBridgeCallback callback;
 @property(nonatomic, strong) NSURL *outputURL;
 @property(nonatomic, strong) NSURL *partURL;
 @property(nonatomic, strong) NSRecursiveLock *lock;
@@ -3107,7 +3102,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 @property(nonatomic, copy) NSString *accountId;
 @property(nonatomic) long long sessionGeneration;
 @property(nonatomic) long long webViewGeneration;
-@property(nonatomic, copy) KuiklyRenderCallback callback;
+@property(nonatomic, copy) RaftBridgeCallback callback;
 @property(nonatomic, strong) NSURLSession *session;
 @property(nonatomic, strong) NSURLSessionUploadTask *uploadTask;
 @property(nonatomic, strong) NSURLSessionDataTask *presignTask;
@@ -3119,7 +3114,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 @property(nonatomic) BOOL cancelled;
 @property(nonatomic) BOOL terminal;
 @property(nonatomic, copy) void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *operation);
-- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(KuiklyRenderCallback)callback;
+- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(RaftBridgeCallback)callback;
 - (void)start;
 - (void)cancel;
 @end
@@ -3131,7 +3126,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     NSInteger _uploadStatus;
 }
 
-- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(KuiklyRenderCallback)callback {
+- (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(RaftBridgeCallback)callback {
     if (self = [super init]) {
         _requestId = [requestId copy];
         _accountId = [SlockBridgeString(binding[@"accountId"]) copy];
@@ -3154,7 +3149,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     [self.lock lock];
     if (self.cancelled || self.terminal) { [self.lock unlock]; return; }
     if (terminal) self.terminal = YES;
-    KuiklyRenderCallback callback = self.callback;
+    RaftBridgeCallback callback = self.callback;
     void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *) = terminal ? self.onTerminal : nil;
     [self.lock unlock];
     if (onTerminal) onTerminal(self);
@@ -3322,7 +3317,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, SharedAttachmentDownloadObserver>
 
-@property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
+@property(nonatomic, copy, nullable) RaftBridgeCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportDownloadId;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportOperationId;
@@ -3334,7 +3329,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
 @property(nonatomic, weak, nullable) UIViewController *slock_sharePresenterController;
-@property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
+@property(nonatomic, copy, nullable) RaftBridgeCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
 @property(nonatomic) BOOL slock_attachmentPickerCompressImages;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, SlockThreadImageCompressionOperation *> *slock_threadImageCompressionOperations;
@@ -3369,9 +3364,9 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 - (void)slock_removeThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
 - (BOOL)slock_isThreadImageCompressionDestroyed;
 - (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
-- (void)slock_dispatchThreadImageCompressionFailure:(KuiklyRenderCallback)callback;
-- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
-- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback;
+- (void)slock_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback;
+- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
+- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
 - (void)slock_cancelAllFeedbackDiagnosticsUploads;
 - (void)slock_destroyFeedbackDiagnosticsUploads;
 
@@ -3395,9 +3390,19 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
  * @brief Native暴露接口到kotlin侧，提供kotlin侧调用native能力
  */
 
+NSString *const RaftBridgeParamKey = @"param";
+NSString *const RaftBridgeCallbackKey = @"callback";
+
 @implementation HRBridgeModule
 
-@synthesize hr_rootView;
++ (BOOL)isSynchronousMethod:(NSString *)method {
+    static NSSet<NSString *> *methods;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        methods = [NSSet setWithArray:@[ @"urlEncode", @"urlDecode", @"currentTimestamp", @"dateFormatter" ]];
+    });
+    return method != nil && [methods containsObject:method];
+}
 
 - (instancetype)init {
     self = [super init];
@@ -3487,12 +3492,13 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 
 - (void)adaptiveNavigation:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     SlockBridgeRunOnMain(^{
-        UIViewController *controller = self.hr_rootView.kr_viewController;
+        // Only this module's own page may run the transaction; never the key window's top page.
+        UIViewController *controller = self.slockHostController;
         NSDictionary *result;
-        if ([controller isKindOfClass:KuiklyRenderViewController.class]) {
-            result = [(KuiklyRenderViewController *)controller slockAdaptiveNavigation:params root:self.hr_rootView];
+        if ([controller isKindOfClass:RaftPageViewController.class]) {
+            result = [(RaftPageViewController *)controller slockAdaptiveNavigation:params];
         } else {
             result = @{ @"requestId": SlockBridgeString(params[@"requestId"]),
                         @"status": @"rejected", @"reason": @"unsupported_source" };
@@ -3507,16 +3513,13 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
     NSDictionary *params = SlockBridgeParams(args);
     BOOL enabled = SlockBridgeBool(params[@"enabled"]);
     SlockBridgeRunOnMain(^{
-        // This module belongs to the AppShell render root. Do not follow a presented modal to
-        // decide ownership; modal presence is a separate gesture-admission veto.
-        UIViewController *controller = self.hr_rootView.kr_viewController;
-        if ([controller isKindOfClass:UINavigationController.class]) {
-            controller = ((UINavigationController *)controller).topViewController;
-        }
-        if ([controller isKindOfClass:KuiklyRenderViewController.class]) {
-            KuiklyRenderViewController *renderController = (KuiklyRenderViewController *)controller;
-            if (renderController.slockIsAppShellPage) {
-                renderController.slockConversationForwardGestureEnabled = enabled;
+        // This module belongs to the AppShell page. Do not follow a presented modal to decide
+        // ownership; modal presence is a separate gesture-admission veto.
+        UIViewController *controller = self.slockHostController;
+        if ([controller isKindOfClass:RaftPageViewController.class]) {
+            RaftPageViewController *page = (RaftPageViewController *)controller;
+            if (page.slockIsAppShellPage) {
+                page.slockConversationForwardGestureEnabled = enabled;
             }
         }
     });
@@ -3557,7 +3560,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 }
 
 - (void)exportThreadShareImage:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -3577,7 +3580,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
             image = SlockThreadShareStitchFragments(fragmentPaths);
             frame = YES;
         } else {
-            image = SlockThreadShareCaptureView(self.hr_rootView, params);
+            image = SlockThreadShareCaptureView(self.slockHostController.viewIfLoaded, params);
         }
         if (!image) {
             callback(SlockThreadShareImageFailure(@"Unable to capture image"));
@@ -3593,7 +3596,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 }
 
 - (void)probeThreadViewportPixels:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
         callback(@{
             @"status": @"unsupported",
@@ -3603,7 +3606,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 }
 
 - (void)saveThreadShareImage:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -3653,7 +3656,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 }
 
 - (void)localServeTime:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
         callback(@{ @"time" : @([[NSDate date] timeIntervalSince1970]) });
     }
@@ -3662,6 +3665,27 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 - (id)currentTimestamp:(NSDictionary *)args {
     long long timestamp = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
     return [NSString stringWithFormat:@"%lld", timestamp];
+}
+
+// Synchronous (see +isSynchronousMethod:). Form encoding, matching the Android host
+// (java.net.URLEncoder / URLDecoder, UTF-8): unreserved [A-Za-z0-9.*_-], space as '+'.
+- (id)urlEncode:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *value = SlockBridgeRawString(params[@"string"]);
+    static NSCharacterSet *allowed;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        allowed = [NSCharacterSet characterSetWithCharactersInString:
+            @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.*_- "];
+    });
+    NSString *encoded = [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+    return [encoded stringByReplacingOccurrencesOfString:@" " withString:@"+"];
+}
+
+- (id)urlDecode:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *value = [SlockBridgeRawString(params[@"string"]) stringByReplacingOccurrencesOfString:@"+" withString:@" "];
+    return [value stringByRemovingPercentEncoding] ?: value;
 }
 
 - (id)dateFormatter:(NSDictionary *)args {
@@ -3799,7 +3823,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 
 - (void)avatarCacheCapability:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
     [[SlockIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
         callback(result);
@@ -3808,7 +3832,7 @@ static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDicti
 
 - (void)settingsCapability:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -3900,7 +3924,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
               @"webViewGeneration" : @([binding[@"webViewGeneration"] longLongValue]) };
 }
 
-- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback {
+- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
     NSString *requestId = SlockBridgeString(params[@"requestId"]);
     NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
         ? params[@"binding"] : params;
@@ -3935,7 +3959,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     [operation start];
 }
 
-- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(KuiklyRenderCallback)callback {
+- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
     NSString *requestId = SlockBridgeString(params[@"requestId"]);
     NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
         ? params[@"binding"] : params;
@@ -4098,7 +4122,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 
 - (void)threadAttachmentUpload:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -4169,7 +4193,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 }
 
 - (void)compressThreadImage:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -4389,7 +4413,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     return current;
 }
 
-- (void)slock_dispatchThreadImageCompressionFailure:(KuiklyRenderCallback)callback {
+- (void)slock_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback {
     if (!callback) return;
     __weak typeof(self) weakSelf = self;
     SlockBridgeRunOnMain(^{
@@ -4454,7 +4478,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
             // observes DELIVERED and is a no-op; another thread waits until the callback has
             // returned before it can cancel or force-clean this operation.
             operation.state = SlockThreadImageCompressionOperationStateDelivered;
-            KuiklyRenderCallback callback = operation.callback;
+            RaftBridgeCallback callback = operation.callback;
             if (callback) {
                 callbackInvoked = YES;
                 @try {
@@ -4490,7 +4514,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 
 - (void)socialAuth:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -4819,7 +4843,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)openAttachment:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -4892,7 +4916,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)attachmentCacheStatus:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -4907,7 +4931,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)deleteAttachmentCache:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     NSDictionary *params = SlockBridgeParams(args);
     NSString *cachedDir = SlockAttachmentCacheDirectory(
         SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
@@ -4950,7 +4974,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
@@ -5183,7 +5207,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             // Open-with: the file is a persistent local copy — present the share sheet on it,
             // do NOT call slock_finishAttachmentExport (it deletes the parent dir) or the
             // save-to-files picker. Clear state and report success, keeping the file.
-            KuiklyRenderCallback openCallback = strongSelf.slock_attachmentExportCallback;
+            RaftBridgeCallback openCallback = strongSelf.slock_attachmentExportCallback;
             [strongSelf slock_presentShareItems:@[ targetURL ] attempt:1];
             strongSelf.slock_attachmentExportCallback = nil;
             strongSelf.slock_attachmentExportRequestId = nil;
@@ -5772,7 +5796,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_finishAttachmentPicker:(NSDictionary *)result {
-    KuiklyRenderCallback callback = self.slock_attachmentPickerCallback;
+    RaftBridgeCallback callback = self.slock_attachmentPickerCallback;
     NSString *channelId = self.slock_attachmentPickerChannelId;
     NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
     self.slock_attachmentPickerCallback = nil;
@@ -5792,7 +5816,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result {
-    KuiklyRenderCallback callback = self.slock_attachmentExportCallback;
+    RaftBridgeCallback callback = self.slock_attachmentExportCallback;
     NSURL *exportURL = self.slock_attachmentExportURL;
     self.slock_attachmentExportCallback = nil;
     self.slock_attachmentExportRequestId = nil;
@@ -5851,7 +5875,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)attachmentDownloadControl:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
     NSDictionary *params = SlockBridgeParams(args);
     NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
@@ -5873,7 +5897,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)relationalStore:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
         callback([self slock_unsupportedResultWithCode:@"relational_store_unavailable"
                                                message:@"Relational store is out of scope for iOS P0 host bridge"]);
@@ -5881,7 +5905,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)motionCapability:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
         callback([self slock_unsupportedResultWithCode:@"motion_capability_unavailable"
                                                message:@"Motion capability is out of scope for iOS P0 host bridge"]);
@@ -5964,7 +5988,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     };
 }
 
-- (void)slock_getNotificationPermissionStatusWithCallback:(KuiklyRenderCallback)callback {
+- (void)slock_getNotificationPermissionStatusWithCallback:(RaftBridgeCallback)callback {
     [[UNUserNotificationCenter currentNotificationCenter]
         getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
             NSDictionary *result = [self slock_notificationPermissionResultForSettings:settings];
@@ -5974,7 +5998,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }];
 }
 
-- (void)slock_requestNotificationPermissionWithCallback:(KuiklyRenderCallback)callback {
+- (void)slock_requestNotificationPermissionWithCallback:(RaftBridgeCallback)callback {
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
     [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
         if (settings.authorizationStatus != UNAuthorizationStatusNotDetermined &&
@@ -6009,7 +6033,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }];
 }
 
-- (void)slock_openNotificationSettingsWithCallback:(KuiklyRenderCallback)callback {
+- (void)slock_openNotificationSettingsWithCallback:(RaftBridgeCallback)callback {
     SlockBridgeRunOnMain(^{
         NSString *settingsUrlString = UIApplicationOpenSettingsURLString;
         if (@available(iOS 16.0, *)) {
@@ -6153,7 +6177,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             SlockDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
         }
         UIViewController *controller = [self slock_currentViewController];
-        // Kuikly or Compose Multiplatform by page name (SlockCmpRouter allowlist).
         UIViewController *renderViewController =
             [SlockPageControllerFactory controllerForPageName:pageName pageData:pageData ?: @{}];
         UINavigationController *navigationController = controller.navigationController;
@@ -6340,7 +6363,7 @@ UIViewController *SlockSharePresenterController(UIViewController *capturedPresen
         }
     }
     return SlockShareControllerFailureReason(
-        self.hr_rootView.window != nil, hasForegroundActiveScene);
+        self.slockHostController.viewIfLoaded.window != nil, hasForegroundActiveScene);
 }
 
 NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
@@ -6355,7 +6378,7 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 }
 
 - (UIViewController *)slock_currentViewController {
-    UIViewController *controller = self.hr_rootView.kr_viewController;
+    UIViewController *controller = self.slockHostController;
     if (!controller) {
         controller = [self slock_keyWindow].rootViewController;
     }
@@ -6376,8 +6399,9 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 }
 
 - (UIWindow *)slock_keyWindow {
-    if (self.hr_rootView.window) {
-        return self.hr_rootView.window;
+    UIWindow *hostWindow = self.slockHostController.viewIfLoaded.window;
+    if (hostWindow) {
+        return hostWindow;
     }
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {

@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import "../iosApp/KuiklyExpand/Modules/RaftDiagnosticsEnvironmentRows.h"
+#import "../iosApp/Host/RaftDiagnosticsEnvironmentRows.h"
 
 static void Require(BOOL condition, NSString *message) {
     if (!condition) {

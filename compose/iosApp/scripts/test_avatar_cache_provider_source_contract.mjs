@@ -9,8 +9,8 @@ const root = path.resolve(scriptDirectory, '../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replaceAll('\r\n', '\n');
 const provider = read('compose/iosApp/iosApp/SlockIosAvatarCacheProvider.swift');
 const app = read('compose/iosApp/iosApp/iOSApp.swift');
-const handler = read('compose/iosApp/iosApp/KuiklyExpand/Handler/KuiklyRenderComponentExpandHandler.m');
-const bridge = read('compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m');
+const hostHooks = read('compose/shared/src/iosMain/kotlin/build/raft/app/RaftIosHostHooks.kt');
+const bridge = read('compose/iosApp/iosApp/Host/HRBridgeModule.m');
 const project = read('compose/iosApp/iosApp.xcodeproj/project.pbxproj');
 
 function fail(message) {
@@ -62,10 +62,12 @@ const install = app.indexOf('SlockIosAvatarCacheHost.shared.install()');
 const firstPageOwner = app.indexOf('SlockIosAppScopeMMKV.install()');
 check(install >= 0 && firstPageOwner > install, 'provider must install before shared app scope starts');
 
-const managedRoute = handler.indexOf('isManagedRenderModel:url');
-const networkRoute = handler.indexOf('sd_setImageWithURL:resolvedURL');
-check(managedRoute >= 0 && networkRoute > managedRoute, 'managed descriptor must be intercepted before URL loading');
-check(handler.includes('imageForRenderModel:url'), 'render path must resolve exact committed native bytes');
+// CMP image loader: managed descriptors are read from the durable store, never downloaded.
+check(provider.includes('extension SlockIosAvatarCacheHost: RaftIosManagedImageStore'), 'host must serve managed reads to the CMP image loader');
+check(provider.includes('store.renderData('), 'managed read must resolve exact committed native bytes');
+check(hostHooks.includes('RaftImageHost.managedImageReader'), 'iOS host hooks must install the managed image reader');
+const hooksInstall = app.indexOf('RaftIosHostHooks.shared.install(managedImages: SlockIosAvatarCacheHost.shared)');
+check(hooksInstall > install, 'managed image reader must be installed after the provider');
 
 const bridgeStart = bridge.indexOf('- (void)avatarCacheCapability:(NSDictionary *)args {');
 const bridgeEnd = bridge.indexOf('\n- (void)settingsCapability:', bridgeStart);
