@@ -412,6 +412,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMinBeyondBoundsItemCount = 4
+private const val ThreadComposeFlingProbeLineBudget = 1500
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
 private const val ThreadPerformanceSlowThresholdMs = 4L
@@ -18325,6 +18326,38 @@ private fun ThreadMessagesListContent(
             if (reverseLayout) 0 else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
     val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
+    // Diagnostics only (task #37): Compose's own view of the list on every layout while a
+    // gesture or fling is active, to line up with the native thread_fling_frame lines. The
+    // Kuikly content size only becomes exact once the last item is visible to Compose
+    // (totalContentSize()), so lastItemVisible is printed explicitly. Budgeted per process.
+    LaunchedEffect(rawListState) {
+        var linesLeft = ThreadComposeFlingProbeLineBudget
+        snapshotFlow {
+            val info = rawListState.layoutInfo
+            if (!rawListState.isScrollInProgress) {
+                null
+            } else {
+                val last = info.visibleItemsInfo.lastOrNull()
+                val first = info.visibleItemsInfo.firstOrNull()
+                "thread_compose_fling_frame reverse=$reverseLayout " +
+                    "firstIndex=${rawListState.firstVisibleItemIndex} " +
+                    "firstOffset=${rawListState.firstVisibleItemScrollOffset} " +
+                    "visibleFirst=${first?.index ?: -1}:${first?.offset ?: 0} " +
+                    "visibleLast=${last?.index ?: -1}:${last?.offset ?: 0}+${last?.size ?: 0} " +
+                    "visibleCount=${info.visibleItemsInfo.size} total=${info.totalItemsCount} " +
+                    "lastItemVisible=${last != null && last.index == info.totalItemsCount - 1} " +
+                    "viewport=${info.viewportStartOffset}..${info.viewportEndOffset} " +
+                    "canBack=${rawListState.canScrollBackward} canFwd=${rawListState.canScrollForward}"
+            }
+        }
+            .distinctUntilChanged()
+            .collect { line ->
+                if (line != null && linesLeft > 0) {
+                    linesLeft -= 1
+                    diagnosticsLogger(line)
+                }
+            }
+    }
     var frozenReadAnchor by remember(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
         mutableStateOf(readAnchorOwner?.let(readAnchorStore::read))
     }
