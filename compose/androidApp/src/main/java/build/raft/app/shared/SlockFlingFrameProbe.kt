@@ -46,8 +46,18 @@ internal object SlockFlingFrameProbe {
     private var nextFlingId = 1
     private val location = IntArray(2)
 
+    private var reportedDisabled = false
+
     fun onPreDraw(root: View) {
-        if (!SlockPerformanceTraceRing.isEnabled()) return
+        if (!SlockPerformanceTraceRing.isEnabled()) {
+            // One line per process, so "no thread_fling_frame lines" can be told apart from a
+            // build whose trace switch is off.
+            if (!reportedDisabled) {
+                reportedDisabled = true
+                SlockAndroidLocalDiagnostics.recordLog("info", Tag, "thread_fling_probe_disabled traceRing=false")
+            }
+            return
+        }
         if (framesThisProcess >= MaxFramesPerProcess) return
         val now = SystemClock.elapsedRealtimeNanos()
         if (tracked.isEmpty() || now - lastScanNanos > RescanIntervalNanos) {
@@ -67,10 +77,25 @@ internal object SlockFlingFrameProbe {
         }
     }
 
+    private var lastReportedListCount = -1
+
     private fun rescan(root: View) {
         val known = tracked.mapNotNull { it.ref.get() }.toSet()
         collectLists(root) { list ->
             if (list !in known) tracked += Tracked(list)
+        }
+        // Self-check line: proves the probe is armed and which lists it sees, so an empty capture
+        // can be told apart from a probe that never ran (device check of 7062f560 found none).
+        if (tracked.size != lastReportedListCount) {
+            lastReportedListCount = tracked.size
+            val classes = tracked.mapNotNull { it.ref.get()?.javaClass?.simpleName }.distinct()
+            SlockAndroidLocalDiagnostics.recordLog(
+                level = "info",
+                tag = Tag,
+                message =
+                    "thread_fling_probe_scan lists=${tracked.size} classes=${classes.joinToString(",")} " +
+                        "root=${root.javaClass.simpleName} rootChildren=${(root as? ViewGroup)?.childCount ?: 0}"
+            )
         }
     }
 
