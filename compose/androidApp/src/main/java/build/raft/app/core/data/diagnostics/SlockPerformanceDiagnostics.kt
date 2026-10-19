@@ -2,7 +2,6 @@ package build.raft.app.core.data.diagnostics
 
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.SystemClock
 import android.os.Trace
 import android.view.FrameMetrics
 import android.view.View
@@ -29,9 +28,6 @@ object SlockPerformanceDiagnostics {
 
     private val route = AtomicReference("unknown")
     private val operation = AtomicReference("idle")
-    // When [operation] was last set: the label is sticky, so jank_frame prints its age to show
-    // whether it plausibly describes the frame or is just the last value nobody replaced.
-    private val operationSetAtNanos = AtomicLong(0L)
     private val pendingTabSwitchOperation = AtomicReference<TabSwitchOperation?>(null)
     private val pendingTabSwitchFrameTrace = AtomicReference<TabSwitchFrameTrace?>(null)
     private val pendingThreadHostFrameTrace = AtomicReference<ThreadHostFrameTrace?>(null)
@@ -81,7 +77,6 @@ object SlockPerformanceDiagnostics {
                         SlockAppLog.w(
                                 Tag,
                                 "jank_frame route=${route.get()} operation=${operation.get()} " +
-                                        "operationAgeMs=${operationAgeMs()} " +
                                         "durationMs=$durationMs totalJank=$total " +
                                         "longestFrameMs=${longestFrameMs.get()} " +
                                         "states=$states"
@@ -124,16 +119,10 @@ object SlockPerformanceDiagnostics {
         }
     }
 
-    private fun operationAgeMs(): Long {
-        val setAt = operationSetAtNanos.get()
-        return if (setAt == 0L) -1L else (SystemClock.elapsedRealtimeNanos() - setAt) / 1_000_000L
-    }
-
     fun updateOperation(view: View, nextOperation: String) {
         val sanitized = nextOperation.takeIf { it.isNotBlank() } ?: "idle"
         val effective = effectiveOperation(sanitized)
         operation.set(effective)
-        operationSetAtNanos.set(SystemClock.elapsedRealtimeNanos())
         runCatching {
             PerformanceMetricsState.getHolderForHierarchy(view)
                     .state
