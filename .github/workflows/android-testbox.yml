@@ -53,9 +53,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       - name: Run Testbox
         uses: useblacksmith/run-testbox@5ca05834db1d3813554d1dd109e5f2087a8d7cbc # v2
         env:

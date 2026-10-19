@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Static contract for the Mobile Kuikly immutable-Raft cutover."""
+"""Static contract for the Mobile Kuikly immutable-Raft cutover.
+
+Since the Compose Multiplatform switch only the iOS host consumes Kuikly (the
+OpenKuiklyIOSRender pod). This contract keeps that last consumer on the
+immutable Raft release and keeps Kuikly out of the Gradle build and the
+Android lanes.
+"""
 
 import json
+import re
 from pathlib import Path
 
 
@@ -9,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RELEASE = "2.28.0-raft.15"
 NORMAL = f"{RELEASE}-2.1.21"
 OHOS = f"{RELEASE}-2.0.21-ohos"
+KUIKLY_UI_COORDINATE = re.compile(r'["(]com\.tencent\.kuikly-open[:"]')
 
 
 def read(path: str) -> str:
@@ -35,26 +43,24 @@ require(
     "the independently versioned build plugin must not enter the runtime release closure",
 )
 
-version_source = read("compose/buildSrc/src/main/java/KotlinBuildVar.kt")
-require(f'KUIKLY_VERSION = "{RELEASE}"' in version_source, "buildSrc release pin drifted")
+# CMP switch: the Gradle build (Android host + :shared) no longer consumes Kuikly UI.
+# Keep it that way; only the iOS host's OpenKuiklyIOSRender pod remains (below).
 require(
-    "core-gradle-plugin" not in version_source,
-    "non-JS Mobile build must not retain the independently versioned Kuikly build plugin",
+    not (ROOT / "compose/buildSrc/src/main/java/KotlinBuildVar.kt").exists(),
+    "retired buildSrc Kuikly version pin returned",
 )
 version_catalog = read("compose/gradle/libs.versions.toml")
-require(f'kuiklyAndroid = "{NORMAL}"' in version_catalog, "Android catalog pin drifted")
+require("com.tencent.kuikly-open" not in version_catalog, "version catalog re-added a Kuikly UI artifact")
+require("kuiklyAndroid" not in version_catalog, "version catalog re-added the Kuikly Android pin")
 require("kuiklyOhos" not in version_catalog, "OHOS catalog pin must stay removed")
-
-for settings_path in ("compose/settings.gradle.kts",):
-    settings = read(settings_path)
-    require("RaftArtifactsKuiklyRelease" in settings, f"{settings_path} misses the Raft release repo")
-    require('includeGroup("com.tencent.kuikly-open")' in settings, f"{settings_path} misses Kuikly exclusivity")
-    require("exclusiveContent" in settings, f"{settings_path} must make the release repo exclusive")
-
-require(
-    'id("com.tencent.kuikly-open.kuikly")' not in read("compose/shared/build.gradle.kts"),
-    "non-JS Mobile shared module must not apply the Kuikly JS build plugin",
-)
+for gradle_path in sorted((ROOT / "compose").glob("**/*.gradle.kts")):
+    if "build" in gradle_path.relative_to(ROOT / "compose").parts[:-1]:
+        continue
+    rel = gradle_path.relative_to(ROOT).as_posix()
+    require(
+        not KUIKLY_UI_COORDINATE.search(read(rel)),
+        f"{rel} still declares or admits Kuikly UI artifacts",
+    )
 
 podfile = read("compose/iosApp/Podfile")
 require("fetch_kuikly_release_artifact.py" in podfile, "iOS podspec is not manifest-derived")
@@ -82,28 +88,40 @@ for release_script in (
 ):
     release_source = read(release_script)
     require("third_party/kuikly-ui" not in release_source, f"{release_script} retains the gitlink gate")
-require(
-    "verify_kuikly_release_manifest.sh" in read("scripts/release_android_preflight.sh"),
-    "Android release preflight does not verify the immutable Kuikly release",
-)
+    require(
+        "verify_kuikly_release_manifest.sh" not in release_source,
+        f"{release_script} still admits the retired Android Kuikly release",
+    )
 
-workflows = (
+# Workflows that build the iOS host, which still pods OpenKuiklyIOSRender.
+# TODO(cmp-switch): delete this contract, the manifest gate, the fetcher and the
+# closure once the iOS host migration drops the pod.
+ios_workflows = (
+    ".github/workflows/ios-release.yml",
+    ".github/workflows/ios-simulator-app.yml",
+    ".github/workflows/qa-acceptance-ios.yml",
+    ".github/workflows/test.yml",
+    ".github/workflows/visual-testing.yml",
+)
+android_only_workflows = (
     ".github/workflows/android-alpha.yml",
     ".github/workflows/android-release.yml",
     ".github/workflows/android-testbox.yml",
-    ".github/workflows/ios-release.yml",
-    ".github/workflows/qa-acceptance-ios.yml",
     ".github/workflows/qa-acceptance.yml",
-    ".github/workflows/test.yml",
     ".github/workflows/visual-android-testbox.yml",
-    ".github/workflows/visual-testing.yml",
 )
-for workflow_path in workflows:
+for workflow_path in ios_workflows + android_only_workflows:
     workflow = read(workflow_path)
-    require(
-        "verify_kuikly_release_manifest.sh" in workflow,
-        f"{workflow_path} misses the immutable manifest admission gate",
-    )
+    if workflow_path in ios_workflows:
+        require(
+            "verify_kuikly_release_manifest.sh" in workflow,
+            f"{workflow_path} misses the immutable manifest admission gate",
+        )
+    else:
+        require(
+            "verify_kuikly_release_manifest.sh" not in workflow,
+            f"{workflow_path} still admits the retired Android Kuikly release",
+        )
     for forbidden in ("third_party/kuikly-ui", "build_kuikly_fork.sh", "kuikly-fork-mavenlocal"):
         require(forbidden not in workflow, f"{workflow_path} retains local Kuikly fallback: {forbidden}")
 

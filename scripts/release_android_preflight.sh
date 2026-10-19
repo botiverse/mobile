@@ -133,9 +133,6 @@ git diff --quiet || die "working tree has unstaged tracked changes"
 git diff --cached --quiet || die "working tree has staged changes"
 [ -z "$(git status --porcelain --untracked-files=normal)" ] || die "working tree has untracked or submodule changes"
 
-scripts/ci/verify_kuikly_release_manifest.sh ||
-  die "immutable Kuikly release manifest admission is incomplete or conflicting"
-
 trap 'rm -f "${HANDS_RESPONSE:-}"' EXIT
 
 for pr in "${REQUIRED_PRS[@]}"; do
@@ -199,7 +196,6 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- Candidate version: `%s` (versionCode `%s`)\n' "${VERSION}" "${RELEASE_CODE}"
     printf -- '- Channel: `%s`\n' "${CHANNEL}"
     printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
-    printf -- '- Kuikly release: immutable Raft manifest admission verified\n'
     printf -- '- Required CI: Android Release is the candidate build/test gate\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
@@ -219,7 +215,6 @@ fi
 echo "Android release preflight passed"
 echo "  candidate: ${VERSION} (${RELEASE_CODE})"
 echo "  head: ${HEAD_SHA}"
-echo "  Kuikly: immutable Raft release manifest admission verified"
 if [ -n "${LIVE_CODE}" ]; then
   echo "  Hands active versionCode: ${LIVE_CODE}"
 else

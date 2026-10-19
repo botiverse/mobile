@@ -257,26 +257,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # The create-last manifest is the only admission signal for the immutable
-  # Kuikly release. Verify its exact 37-GAV closure before platform resolvers
-  # verify the bytes they consume; there is no gitlink/mavenLocal fallback.
-  kuikly-artifacts:
-    name: Kuikly release manifest (Raft)
-    needs: [plan]
-    if: ${{ needs.plan.outputs.run_android == 'true' || needs.plan.outputs.run_ios == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
   android:
     name: Android compile & tests
     runs-on: ubuntu-latest
-    needs: [plan, kuikly-artifacts]
+    needs: [plan]
     if: ${{ needs.plan.outputs.run_android == 'true' }}
     timeout-minutes: 40
     env:
@@ -925,13 +909,20 @@ jobs:
     # pushes: changes touching commonMain run Linux fast gates only; the full iOS
     # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
     # or on nightly/release readbacks.
-    needs: [plan, kuikly-artifacts]
+    needs: [plan]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # TODO(cmp-switch): the Android host no longer consumes Kuikly, but the
+      # iOS host still pods OpenKuiklyIOSRender from the immutable Raft release
+      # (compose/iosApp/Podfile). Admit that release here until the iOS host
+      # migration drops the pod; then delete this step and the manifest gate.
+      - name: Verify complete immutable Kuikly release
+        run: scripts/ci/verify_kuikly_release_manifest.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -1138,7 +1129,6 @@ jobs:
     timeout-minutes: 5
     needs:
       - plan
-      - kuikly-artifacts
       - android
       - android-device
       - android-minimum-supported-attachment-runtime
@@ -1150,7 +1140,7 @@ jobs:
 
       # Runs in the SAME job as the gate on purpose. The verifier carries a selfTest behind
       # `--self-test`, and nothing invoked it — so the expectation table could drift from
-      # test.yml and no CI job would go red. That is exactly how the kuikly-artifacts/iOS
+      # test.yml and no CI job would go red. That is exactly how a job-dependency/iOS
       # mismatch survived 18 days (#2294). Every other scripts/ci self-test in this repo is
       # called by CI; this one was the sole omission (@LiBai). Putting it beside the gate,
       # rather than in a paths-filtered lint workflow, means it cannot fall out of coverage

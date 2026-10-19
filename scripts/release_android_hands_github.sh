@@ -36,8 +36,7 @@ usage() {
 Usage: scripts/release_android_hands_github.sh [options]
 
 Verifies local Slock Android release inputs are already present on the protected
-remote release branch, verifies the immutable Kuikly release manifest, and
-dispatches .github/workflows/android-release.yml.
+remote release branch and dispatches .github/workflows/android-release.yml.
 
 Defaults create a Hands **draft** release with release preflight enforced:
   versionName=1.0.1
