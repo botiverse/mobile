@@ -1166,6 +1166,7 @@
     <string name="file_preview_crop_reset">リセット</string>
     <string name="file_preview_crop_apply">適用</string>
     <string name="file_preview_action_comments">コメント</string>
+    <string name="file_preview_action_copy_text">テキストをコピー</string>
     <string name="file_preview_action_download">ダウンロード</string>
     <string name="file_preview_action_install">インストール</string>
     <string name="file_preview_action_open">開く</string>
