@@ -4,6 +4,7 @@ import build.raft.app.base.BasePager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.getValue
@@ -107,13 +108,28 @@ internal fun SlockKuiklyChildPage(
                 "host_measure originKey=$originKey origin=$measured windowOrigin=" +
                     "${childPageOriginState.windowOrigin}"
             )
-        }
+        }.raftPlacedOnlyWhenActive(active)
     ) {
         if (factory != null) {
             RaftPagerHost(factory = factory, args = childArgs, active = active)
         }
     }
 }
+
+/**
+ * Kuikly hid an inactive child page natively (visibility=INVISIBLE): still measured and kept alive,
+ * but neither drawn nor hit-tested. CMP composes the child inline, so mirror that by measuring the
+ * content and skipping placement while inactive -- unplaced content is not drawn and receives no
+ * pointer input, while its composition and state survive. Without this every retained keep-alive
+ * tab stacks on top of the active one (e.g. Settings swallowing the Home tab's touches).
+ */
+private fun Modifier.raftPlacedOnlyWhenActive(active: Boolean): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) {
+            if (active) placeable.place(0, 0)
+        }
+    }
 
 /**
  * Stable key linking a child page's host measurement to the state read inside that page.
