@@ -82,13 +82,31 @@ component, recorded here because the mechanism is identical and the tell-tale sy
 value that does not exist yet at the moment it is handed over.** Found on a window-level menu host,
 not in a WebView.
 
-A menu overlay was moved to a window-level host. The host was registered with a closure carrying the
-reaction emoji atlas image. The atlas decodes asynchronously, so at registration time the reference was
-`null` — and it stayed `null`, because the host captured the value once rather than observing it. The
-emoji row rendered as empty boxes, in every layout, on every re-capture.
+A menu overlay was moved to a window-level host. The reaction emoji row rendered as empty boxes in
+three layouts at once, and **there were two independent causes** — which matters, because fixing only
+the second leaves the first broken:
 
-Two things had to change: the host decodes the atlas itself instead of receiving a bitmap across a page
-boundary, and the emoji row renders from the host's own provider.
+1. **The host was chosen for pages that should not have used it.** The routing condition was "this page
+   has an adaptive identity key", on the assumption that only a split-view detail pane carries one. A
+   phone opening a thread goes through the same adaptive workspace, so full-width single-column pages
+   carried it too and were routed to the window host. The condition is now "the page starts at x > 0
+   in the window", so full-width pages keep their in-page menu.
+2. **A reference was captured before it existed.** The host was registered with a closure carrying the
+   reaction atlas image. The atlas decodes asynchronously, so at registration the reference was `null`
+   — and it stayed `null`, because the host captured the value once rather than observing it. The host
+   now decodes the atlas itself via the atlas provider instead of receiving a bitmap across a page
+   boundary.
+
+**Status of the fix: implemented, not yet device-verified.** Both changes are in review head
+`916ce3ac`; the acceptance run had not happened when this section was written. Per
+`declaring-your-verification-ceiling.md`, "the code now does X" is not "X works on a device", so the
+wording here stays at layer 2 until the four-cell device table reports.
+
+**Attribution.** The regression was found on a real device, and the comparison that proved it came from
+this change — rather than from an alpha build variant — was run by the same person driving that device.
+The author believed at first that the alpha variant was at fault, and only found the two root causes
+after that hypothesis was eliminated. Separating "who found it" from "who fixed it" matters: merging
+them understates what device verification is worth.
 
 ### The shape
 
