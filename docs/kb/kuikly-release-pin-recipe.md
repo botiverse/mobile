@@ -27,7 +27,7 @@ Do **not** hand-edit `compose/iosApp/Podfile.lock` — it is regenerated in step
 
 ## 3. Regenerate the native lockfile for real
 
-- iOS: `cd compose && ./gradlew :shared:generateDummyFramework --no-daemon`, then `cd iosApp && pod install`. If `pod install` also rewrites `iosApp.xcodeproj/project.pbxproj`, revert that file — it is pre-existing drift, not part of the pin.
+- iOS: `cd compose && ./gradlew :shared:generateDummyFramework --no-daemon`, then `cd iosApp && pod install`. If `pod install` also rewrites `iosApp.xcodeproj/project.pbxproj`, revert that file — it is pre-existing drift, not part of the pin. Reverting is safe: CI builds only the `iosApp` and `iosAppUITests` schemes, and the `iosAppTests` target (whose `Pods_iosAppTests.framework` reference `pod install` adds) is not built anywhere.
 
 ## 4. Changeset and review
 
