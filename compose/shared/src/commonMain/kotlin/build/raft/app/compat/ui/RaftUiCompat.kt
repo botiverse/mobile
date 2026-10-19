@@ -25,6 +25,8 @@ import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 
 /*
  * TODO(cmp-switch): replacements for the Kuikly-only compose extensions
@@ -58,7 +60,8 @@ fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {
 // ---- Coroutines --------------------------------------------------------------------------------
 
 /** Kuikly ran [block] when its render thread was idle; CMP has no such phase. */
-suspend fun <T> withKuiklyIdleContext(block: suspend () -> T): T = block()
+suspend fun <T> withKuiklyIdleContext(pagerId: String, block: suspend CoroutineScope.() -> T): T =
+    coroutineScope(block)
 
 // ---- Keyboard ----------------------------------------------------------------------------------
 
@@ -213,3 +216,13 @@ enum class PlayState {
         fun fromInt(value: Int): PlayState = entries.firstOrNull { it.ordinal == value } ?: NONE
     }
 }
+
+// ---- Pointer -----------------------------------------------------------------------------------
+
+/**
+ * Kuikly `PointerEvent.nativeEvent` ("cancel" when the native touch sequence was cancelled).
+ * Upstream has no common equivalent; always null. TODO(cmp-switch): detect cancellation from the
+ * pointer changes (e.g. all changes consumed / pointer removed without release) where it matters.
+ */
+val androidx.compose.ui.input.pointer.PointerEvent.nativeEvent: Any?
+    get() = null

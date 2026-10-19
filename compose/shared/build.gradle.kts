@@ -64,14 +64,6 @@ val stageTmmCommonSources by tasks.registering(Sync::class) {
     into(generatedTmmCommonSourceDir.map { it.dir("src") })
 }
 
-// Compose resources: :shared ships none yet, but the plugin generates resource collectors once
-// components-resources is on the classpath, so give the (internal) Res class a package.
-compose.resources {
-    packageOfResClass = "build.raft.app.shared.resources"
-    publicResClass = false
-    generateResClass = always
-}
-
 multiplatformResources {
     multiplatformResourcesPackage = "build.raft.app.resources"
     multiplatformResourcesPrefix = "slock_"
@@ -91,7 +83,8 @@ kotlin {
 
     androidTarget {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            // Coil 3 ships JVM 11 bytecode with inline functions :shared calls.
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
         publishLibraryVariants("release")
     }
@@ -156,7 +149,6 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.ui)
                 implementation(compose.material3)
-                implementation(compose.components.resources)
                 implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composePlugin.get()}")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
@@ -372,6 +364,10 @@ android {
     namespace = "build.raft.app.shared"
     // Upstream Compose 1.8 (CMP 1.8.2) requires compileSdk 35, same as :ui-cmp.
     compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
     defaultConfig {
         minSdk = 21
         targetSdk = 34

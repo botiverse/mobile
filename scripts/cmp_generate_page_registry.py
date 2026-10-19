@@ -47,7 +47,10 @@ def collect_constants(roots: list[Path]) -> dict[str, str]:
 def collect_pages(root: Path, constants: dict[str, str]) -> list[tuple[str, str]]:
     pages: list[tuple[str, str]] = []
     for path in sorted(root.rglob("*.kt")):
-        text = path.read_text(encoding="utf-8")
+        if "compat" in path.relative_to(root).parts:
+            continue
+        # Ignore @Page mentions inside comments (KDoc examples).
+        text = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
         if "@Page(" not in text:
             continue
         package = PACKAGE.search(text)
