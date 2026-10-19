@@ -204,11 +204,12 @@ abstract class Pager : IPagerId {
 
 /** Kuikly `ComposeContainer`: a [Pager] whose UI is a composable set from `willInit()`. */
 abstract class ComposeContainer : Pager() {
-    internal var content: (@Composable () -> Unit)? by mutableStateOf(null)
+    // Not named `content`: its private setter would clash with setContent on the JVM.
+    internal var composedContent: (@Composable () -> Unit)? by mutableStateOf(null)
         private set
 
     open fun setContent(content: @Composable () -> Unit) {
-        this.content = content
+        composedContent = content
     }
 
     companion object {

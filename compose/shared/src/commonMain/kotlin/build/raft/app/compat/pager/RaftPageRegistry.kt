@@ -154,6 +154,6 @@ fun RaftPagerHost(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalSlockPageArgs provides args,
     ) {
-        (pager as? ComposeContainer)?.content?.invoke()
+        (pager as? ComposeContainer)?.composedContent?.invoke()
     }
 }
