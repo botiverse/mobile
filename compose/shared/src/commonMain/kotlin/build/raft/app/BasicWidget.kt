@@ -173,6 +173,9 @@ internal fun resolveSlockImagePreviewRenderIdentity(
     )
 }
 
+/** Decode bound of the dimensions-only read in the image preview (render identity). */
+internal const val RaftImagePreviewIdentityDecodeEdgePx = 64
+
 private class SlockImagePreviewIdentityHolder(
     var identity: SlockImagePreviewRenderIdentity
 )
@@ -321,7 +324,10 @@ internal fun SlockAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
-            val activeBitmap = rememberAsyncImageBitmap(activeSource)
+            // Only the decoded dimensions are read (render identity), so decode a small,
+            // subsampled copy instead of the full-resolution image per thumbnail.
+            // TODO(cmp-switch): read the dimensions from the image header without decoding.
+            val activeBitmap = rememberAsyncImageBitmap(activeSource, maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx)
             val currentSource = activeSource.orEmpty()
             val activeSucceeded = imageState is AsyncImagePainter.State.Success
             val identityHolder = remember(activeSource) {
