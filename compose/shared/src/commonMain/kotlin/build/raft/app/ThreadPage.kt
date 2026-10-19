@@ -22106,7 +22106,10 @@ internal fun threadOlderMessagesStatusSpec(
  * The realtime transport for this page's server (re)connected — that server is reachable again. An
  * event for another server, or with no server, is not this page's recovery (LiBai #2782).
  */
-internal fun isRealtimeTransportConnectedEvent(eventData: JSONObject, currentServerId: String?): Boolean {
+internal fun isRealtimeTransportConnectedEvent(
+    eventData: kotlinx.serialization.json.JsonObject,
+    currentServerId: String?,
+): Boolean {
     if (eventData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionPresenceTransportConnected) {
         return false
     }

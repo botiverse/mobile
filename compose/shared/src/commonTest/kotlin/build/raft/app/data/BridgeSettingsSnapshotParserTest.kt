@@ -1,19 +1,24 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.toSlockJsonString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class BridgeSettingsSnapshotParserTest {
     @Test
     fun storageParsesPrimitiveRowsJsonFallback() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("totalSizeLabel", "1.2 GB")
-                .put("rowsJson", storageRowsJson(target = "imageCache").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("totalSizeLabel", "1.2 GB")
+                put("rowsJson", storageRowsJson(target = "imageCache").toSlockJsonString())
+            }
 
         val snapshot = response.toStorageSnapshot()
 
@@ -28,10 +33,11 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun storageStructuredRowsTakePrecedenceForBackwardCompatibility() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("rows", storageRowsJson(target = "structured"))
-                .put("rowsJson", storageRowsJson(target = "fallback").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("rows", storageRowsJson(target = "structured"))
+                put("rowsJson", storageRowsJson(target = "fallback").toSlockJsonString())
+            }
 
         val snapshot = response.toStorageSnapshot()
 
@@ -40,7 +46,10 @@ class BridgeSettingsSnapshotParserTest {
 
     @Test
     fun storageMalformedRowsJsonProducesEmptyRows() {
-        val response = JSONObject().put("status", "ok").put("rowsJson", "not-json")
+        val response = buildJsonObject {
+            put("status", "ok")
+            put("rowsJson", "not-json")
+        }
 
         assertEquals(emptyList(), response.toStorageSnapshot().rows)
     }
@@ -48,10 +57,11 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerParsesPrimitiveOptionsJsonFallback() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("environmentKey", "staging")
-                .put("optionsJson", environmentOptionsJson(key = "staging").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("environmentKey", "staging")
+                put("optionsJson", environmentOptionsJson(key = "staging").toSlockJsonString())
+            }
 
         val snapshot = response.toDeveloperSnapshot()
 
@@ -64,10 +74,11 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerStructuredOptionsTakePrecedenceForBackwardCompatibility() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("options", environmentOptionsJson(key = "structured"))
-                .put("optionsJson", environmentOptionsJson(key = "fallback").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("options", environmentOptionsJson(key = "structured"))
+                put("optionsJson", environmentOptionsJson(key = "fallback").toSlockJsonString())
+            }
 
         val snapshot = response.toDeveloperSnapshot()
 
@@ -76,7 +87,10 @@ class BridgeSettingsSnapshotParserTest {
 
     @Test
     fun developerMalformedOptionsJsonFallsBackToDefaultOptions() {
-        val response = JSONObject().put("status", "ok").put("optionsJson", "not-json")
+        val response = buildJsonObject {
+            put("status", "ok")
+            put("optionsJson", "not-json")
+        }
 
         val snapshot = response.toDeveloperSnapshot()
 
@@ -87,11 +101,12 @@ class BridgeSettingsSnapshotParserTest {
     fun developerCarriesScopedHandsChangelogIntoUpdateSnapshot() {
         val markdown = "# D / 1000004\n\n- Dedicated Alpha notes"
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("updateAvailable", true)
-                .put("latestVersionCode", 1_000_004L)
-                .put("latestChangelog", markdown)
+            buildJsonObject {
+                put("status", "ok")
+                put("updateAvailable", true)
+                put("latestVersionCode", 1_000_004L)
+                put("latestChangelog", markdown)
+            }
 
         val update = response.toDeveloperSnapshot().updateCheck
 
@@ -102,12 +117,13 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerParsesHandsTransactionStateWithoutTrustingDisplayLabels() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("updateTransactionState", "ready_to_install")
-                .put("updateTransactionTargetVersionCode", 1_000_011L)
-                .put("updateTransactionRetryable", true)
-                .put("updateCheckStatusLabel", "已准备好")
+            buildJsonObject {
+                put("status", "ok")
+                put("updateTransactionState", "ready_to_install")
+                put("updateTransactionTargetVersionCode", 1_000_011L)
+                put("updateTransactionRetryable", true)
+                put("updateCheckStatusLabel", "已准备好")
+            }
 
         val update = response.toDeveloperSnapshot().updateCheck
 
@@ -120,11 +136,12 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerParsesResolvedPatchAndFullDownloadSizes() {
         val update =
-            JSONObject()
-                .put("status", "ok")
-                .put("updateDownloadSizesResolved", true)
-                .put("updatePatchDownloadSizeBytes", 95_256L)
-                .put("updateFullDownloadSizeBytes", 94_411_540L)
+            buildJsonObject {
+                put("status", "ok")
+                put("updateDownloadSizesResolved", true)
+                put("updatePatchDownloadSizeBytes", 95_256L)
+                put("updateFullDownloadSizeBytes", 94_411_540L)
+            }
                 .toDeveloperSnapshot()
                 .updateCheck
 
@@ -136,11 +153,12 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerClampsInvalidDownloadSizesToUnknown() {
         val update =
-            JSONObject()
-                .put("status", "ok")
-                .put("updateDownloadSizesResolved", true)
-                .put("updatePatchDownloadSizeBytes", -1L)
-                .put("updateFullDownloadSizeBytes", -2L)
+            buildJsonObject {
+                put("status", "ok")
+                put("updateDownloadSizesResolved", true)
+                put("updatePatchDownloadSizeBytes", -1L)
+                put("updateFullDownloadSizeBytes", -2L)
+            }
                 .toDeveloperSnapshot()
                 .updateCheck
 
@@ -151,36 +169,39 @@ class BridgeSettingsSnapshotParserTest {
     @Test
     fun developerFailsUnknownHandsTransactionStateClosedToLegacyMapping() {
         val update =
-            JSONObject()
-                .put("status", "ok")
-                .put("updateTransactionState", "future_state")
+            buildJsonObject {
+                put("status", "ok")
+                put("updateTransactionState", "future_state")
+            }
                 .toDeveloperSnapshot()
                 .updateCheck
 
         assertEquals(SharedSettingsUpdateTransactionState.Unknown, update.transactionState)
     }
 
-    private fun storageRowsJson(target: String): JSONArray =
-        JSONArray().apply {
-            put(
-                JSONObject()
-                    .put("target", target)
-                    .put("title", "Image cache")
-                    .put("detail", "Downloaded image previews kept for faster viewing.")
-                    .put("sizeLabel", "120 MB")
-                    .put("clearEnabled", true)
+    private fun storageRowsJson(target: String): JsonArray =
+        buildJsonArray {
+            add(
+                buildJsonObject {
+                    put("target", target)
+                    put("title", "Image cache")
+                    put("detail", "Downloaded image previews kept for faster viewing.")
+                    put("sizeLabel", "120 MB")
+                    put("clearEnabled", true)
+                }
             )
         }
 
-    private fun environmentOptionsJson(key: String): JSONArray =
-        JSONArray().apply {
-            put(
-                JSONObject()
-                    .put("key", key)
-                    .put("label", "Staging")
-                    .put("apiBaseUrl", "https://api.staging.example/api/")
-                    .put("socketBaseUrl", "wss://socket.staging.example")
-                    .put("webUrl", "https://staging.example")
+    private fun environmentOptionsJson(key: String): JsonArray =
+        buildJsonArray {
+            add(
+                buildJsonObject {
+                    put("key", key)
+                    put("label", "Staging")
+                    put("apiBaseUrl", "https://api.staging.example/api/")
+                    put("socketBaseUrl", "wss://socket.staging.example")
+                    put("webUrl", "https://staging.example")
+                }
             )
         }
 }

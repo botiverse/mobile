@@ -28,16 +28,19 @@ internal class SlockSqlDatabase(
     private val database: SlockDatabase = SlockDatabase(driver)
     val queries: SlockDatabaseQueries = database.slockDatabaseQueries
 
-    suspend fun execute(sql: String, bindArgs: List<RelationalValue> = emptyList()) {
+    // Driver calls block the calling thread; a store task reaching them is moved off the store
+    // dispatcher first so SQLite never stalls process-wide store writes.
+    suspend fun execute(sql: String, bindArgs: List<RelationalValue> = emptyList()): Unit = SlockStoreThreading.runOffStoreDispatcher {
         driver.execute(
             identifier = null,
             sql = sql,
             parameters = bindArgs.size,
             binders = { bind(bindArgs) }
         )
+        Unit
     }
 
-    suspend fun query(sql: String, bindArgs: List<RelationalValue> = emptyList()): RelationalRows {
+    suspend fun query(sql: String, bindArgs: List<RelationalValue> = emptyList()): RelationalRows = SlockStoreThreading.runOffStoreDispatcher {
         val rows = mutableListOf<List<RelationalValue>>()
         driver.executeQuery(
             identifier = null,
@@ -51,16 +54,17 @@ internal class SlockSqlDatabase(
             parameters = bindArgs.size,
             binders = { bind(bindArgs) }
         )
-        return RelationalRows(columns = emptyList(), rows = rows)
+        RelationalRows(columns = emptyList(), rows = rows)
     }
 
-    suspend fun transaction(block: suspend SlockSqlDatabase.() -> Unit) {
+    suspend fun transaction(block: suspend SlockSqlDatabase.() -> Unit): Unit = SlockStoreThreading.runOffStoreDispatcher {
         // Use SQLDelight's driver transaction API so every statement is pinned to the same physical
         // connection. Raw BEGIN/COMMIT execute calls are not sufficient for pooled file-backed JDBC: each
         // call may acquire a different connection, making COMMIT observe no active transaction. The store
         // block is synchronous SQL today; runBlocking keeps its suspend-shaped contract inside the driver's
         // thread-confined transaction callback on Android/JDBC/Native.
         database.transaction {
+            SlockStoreThreading.checkNotOnStoreDispatcher("SlockSqlDatabase.transaction")
             runBlocking {
                 block(this@SlockSqlDatabase)
             }
@@ -74,6 +78,7 @@ internal class SlockSqlDatabase(
      * commits; this helper still uses SQLDelight's real transaction boundary.
      */
     fun transactionBlocking(block: SlockSqlDatabase.() -> Unit) {
+        SlockStoreThreading.checkNotOnStoreDispatcher("SlockSqlDatabase.transactionBlocking")
         database.transaction { block(this@SlockSqlDatabase) }
     }
 

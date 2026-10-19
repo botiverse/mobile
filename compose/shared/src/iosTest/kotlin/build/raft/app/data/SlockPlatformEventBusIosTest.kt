@@ -1,16 +1,19 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.GeneratedRealtimeContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optString
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import platform.Foundation.NSNotificationCenter
 
 class SlockPlatformEventBusIosTest {
     @Test
     fun nativeRealtimeNotificationFlowsIntoSharedEventBus() {
         val eventBus = createSlockPlatformEventBus()
-        var received: JSONObject? = null
+        var received: JsonObject? = null
         val subscription =
             eventBus.observe(GeneratedRealtimeContract.Notify.EventName, crossProcess = true) {
                 received = it
@@ -51,9 +54,10 @@ class SlockPlatformEventBusIosTest {
         eventBus.post(
             eventName = GeneratedRealtimeContract.Notify.EventName,
             eventData =
-                JSONObject()
-                    .put(GeneratedRealtimeContract.PayloadKey.ServerId, "server-1")
-                    .put(GeneratedRealtimeContract.PayloadKey.EventName, GeneratedRealtimeContract.SocketEvent.Heartbeat),
+                buildJsonObject {
+                    put(GeneratedRealtimeContract.PayloadKey.ServerId, "server-1")
+                    put(GeneratedRealtimeContract.PayloadKey.EventName, GeneratedRealtimeContract.SocketEvent.Heartbeat)
+                },
             crossProcess = true,
             source = "test"
         )
@@ -65,7 +69,7 @@ class SlockPlatformEventBusIosTest {
     @Test
     fun nativeSystemNotificationOpenFlowsIntoSharedEventBus() {
         val eventBus = createSlockPlatformEventBus()
-        var received: JSONObject? = null
+        var received: JsonObject? = null
         val subscription =
             eventBus.observe(SlockSystemNotificationContract.OpenEventName) {
                 received = it

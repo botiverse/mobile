@@ -1,8 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
 
-internal expect fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase
+internal expect fun createSlockSqlDatabase(): SlockSqlDatabase
 
 /**
  * Reads SQLite's stored schema version without creating the database, running migrations, or

@@ -10,10 +10,12 @@ import build.raft.app.SlockAdaptiveWorkspaceIntent
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
 import build.raft.app.nextAdaptiveGeneration
+import build.raft.app.optString
 import build.raft.app.reduceSlockAdaptiveWorkspace
 import build.raft.app.toSlockAdaptiveDetailCloseRequestOrNull
 import build.raft.app.toSlockAdaptiveDetailIdentity
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.withEntry
+import kotlinx.serialization.json.JsonObject
 
 /**
  * task #36: below this window width the reply thread keeps replacing the channel in the detail
@@ -253,10 +255,10 @@ internal data class AdaptiveParentFocusRequest(
     val target: SlockAdaptiveDetailCloseRequest,
     val messageId: String,
 ) {
-    fun toJson(): JSONObject = target.toJson().put(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
+    fun toJson(): JsonObject = target.toJson().withEntry(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
 }
 
-internal fun JSONObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
+internal fun JsonObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
     val target = toSlockAdaptiveDetailCloseRequestOrNull() ?: return null
     val messageId = optString(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID).trim().takeIf(String::isNotBlank) ?: return null
     return AdaptiveParentFocusRequest(target, messageId)

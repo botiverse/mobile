@@ -3,6 +3,7 @@ package build.raft.app.base
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.host.HostCapabilities
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
 import build.raft.app.slockLogError
@@ -55,6 +56,9 @@ internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease):
 
 internal class BridgeModule : Module() {
     private val nextAttachmentDownloadId = atomic(0L)
+
+    /** This bridge as the pager-independent [HostCapabilities] the data layer consumes. */
+    val hostCapabilities: HostCapabilities by lazy { KuiklyHostCapabilities(this) }
 
     override fun moduleName(): String {
         return MODULE_NAME

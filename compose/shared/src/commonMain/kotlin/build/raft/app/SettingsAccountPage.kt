@@ -296,7 +296,7 @@ private fun SettingsAccountScreen() {
 }
 
 internal fun shouldReloadSettingsAccountAfterMobileOAuth(
-    event: com.tencent.kuikly.core.nvi.serialization.json.JSONObject?,
+    event: kotlinx.serialization.json.JsonObject?,
 ): Boolean = event?.optString("status") == "settings_account"
 
 /**

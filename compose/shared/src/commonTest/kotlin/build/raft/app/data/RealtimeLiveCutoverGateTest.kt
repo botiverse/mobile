@@ -1,14 +1,20 @@
 package build.raft.app.data
 
 import build.raft.app.applySelectedServerTerminalRealtimeTransition
-import build.raft.app.realtimeConnectionWitnessOrNull
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.realtimeConnectionWitnessOrNull
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,13 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class RealtimeLiveCutoverGateTest {
 
@@ -120,11 +121,12 @@ class RealtimeLiveCutoverGateTest {
         fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
         val first = assertNotNull(fixture.provider.authorityFlow("shell").value)
         val rawEnvelope =
-            JSONObject()
-                .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, first.witness.scopeLeaseId)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, first.witness.principalId)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, first.witness.authGeneration)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, first.witness.connectionFamilyId)
+            buildJsonObject {
+                put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, first.witness.scopeLeaseId)
+                put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, first.witness.principalId)
+                put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, first.witness.authGeneration)
+                put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, first.witness.connectionFamilyId)
+            }
 
         fixture.auth.replace(session(), AuthSessionEvent.TokensRotated(generation = 2))
         val parsedWitness = assertNotNull(rawEnvelope.realtimeConnectionWitnessOrNull())

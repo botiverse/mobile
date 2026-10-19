@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
+import build.raft.app.host.HostCapabilities
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
@@ -118,7 +118,7 @@ private const val PixelAvatarRefreshDelayMinMs = 10_000L
 private const val PixelAvatarRefreshDelayMaxMs = 60_000L
 private const val SharedCanonicalFinalSinkCapacity = 64
 
-private fun BridgeModule.logSharedAuthDiagnostic(
+private fun logSharedAuthDiagnostic(
     prefix: String,
     message: String,
     hint: SlockPlatformLogHint = SlockPlatformLogHint.None
@@ -248,7 +248,7 @@ internal class SlockSharedCanonicalFinalIntegrationFactoryScope internal constru
 internal data class SlockSharedStoreProviderRequest(
     val eventBus: SlockEventBus,
     val source: String,
-    val bridge: BridgeModule,
+    val host: HostCapabilities,
 )
 
 internal fun interface SlockSharedStoreProviderFactory {
@@ -357,7 +357,7 @@ internal fun CoroutineScope.observeProcessReadReceiptAuthLifecycle(
 }
 
 internal class SlockSharedStoreProvider private constructor(
-    private val bridge: BridgeModule,
+    private val host: HostCapabilities,
     private val sqlDatabase: SlockSqlDatabase,
     private val authKeyValueStore: SlockKeyValueStore,
     private val sharedPreferenceStore: SlockKeyValueStore,
@@ -687,7 +687,7 @@ internal class SlockSharedStoreProvider private constructor(
             authStore = authStore,
             environmentStore = apiEnvironmentStore,
             mapper = RealtimeEventMapper(messageShadowObserver = messageShadowObserver),
-            nativeHost = BridgeProcessRealtimeNativeHost(bridge),
+            nativeHost = BridgeProcessRealtimeNativeHost(host),
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
             // Task #168: the durable message canary records which connection has its member rooms joined;
@@ -1343,7 +1343,7 @@ internal class SlockSharedStoreProvider private constructor(
                 dataSource = dataSource,
                 scope =
                     homeStoreScopes.getOrPut(scope) {
-                        if (scope == SlockShellStoreScope.Legacy) homeStoreScope else CoroutineScope(SupervisorJob())
+                        if (scope == SlockShellStoreScope.Legacy) homeStoreScope else SlockStoreThreading.newScope()
                     },
                 diagnosticsLogger = diagnosticsLogger,
                 loadSidebarOrder = loadSidebarOrder,
@@ -1446,7 +1446,7 @@ internal class SlockSharedStoreProvider private constructor(
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
-                        if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
+                        if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else SlockStoreThreading.newScope()
                     },
                 diagnosticsLogger = diagnosticsLogger ?: {}
             )
@@ -1688,11 +1688,11 @@ internal class SlockSharedStoreProvider private constructor(
         fun create(
             eventBus: SlockEventBus,
             source: String,
-            bridge: BridgeModule,
+            host: HostCapabilities,
             canonicalFinalIntegrationFactory: SlockSharedCanonicalFinalIntegrationFactory? = null,
         ): SlockSharedStoreProvider {
             val eventBusRelay = SlockEventBusRelay(eventBus)
-            val database = createSlockSqlDatabase(bridge)
+            val database = createSlockSqlDatabase()
             val threadPendingSendJournal = ThreadPendingSendJournal(database)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore =
@@ -1707,7 +1707,7 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             val authKeyValueStoreBinding = SlockSharedAuthSessionKeyValueStoreProvider.create()
             val authKeyValueStore = authKeyValueStoreBinding.store
-            bridge.logSharedAuthDiagnostic(
+            logSharedAuthDiagnostic(
                 "shared_auth_session",
                 "auth_storage_scope scope=${authKeyValueStoreBinding.scope}"
             )
@@ -1715,10 +1715,10 @@ internal class SlockSharedStoreProvider private constructor(
                 KeyValueAuthSessionStore(
                     store = authKeyValueStore,
                     diagnosticsLogger = { message ->
-                        bridge.logSharedAuthDiagnostic("shared_auth_session", message)
+                        logSharedAuthDiagnostic("shared_auth_session", message)
                     },
                     criticalDiagnosticsLogger = { message ->
-                        bridge.logSharedAuthDiagnostic(
+                        logSharedAuthDiagnostic(
                             "shared_auth_session",
                             message,
                             SlockPlatformLogHint.AuthCritical
@@ -1741,7 +1741,7 @@ internal class SlockSharedStoreProvider private constructor(
             // variant). Bound before the transport controller exists so its first snapshot honours it.
             val http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore)
             SlockHttp3Policy.bindUserChoice { http3PreferenceStore.readHttp3UserChoiceSync() }
-            bridge.logSharedAuthDiagnostic(
+            logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=sharedPreference " +
                     "namespace=${SlockLocalPreferenceStore.KuiklyNamespace} " +
@@ -1751,7 +1751,7 @@ internal class SlockSharedStoreProvider private constructor(
                 SlockNetworkTransportController()
             installSlockNetworkTransportController(networkTransportController)
             networkTransportController.getPreferenceSync().let { snapshot ->
-                bridge.logSharedAuthDiagnostic(
+                logSharedAuthDiagnostic(
                     "shared_network_transport",
                     "requestedHttp3=${snapshot.requestedHttp3Enabled} " +
                         "effectiveHttp3=${snapshot.effectiveHttp3Enabled} " +
@@ -1765,7 +1765,7 @@ internal class SlockSharedStoreProvider private constructor(
                     storageName = "API environment"
                 )
             val apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStoreBinding.store
-            bridge.logSharedAuthDiagnostic(
+            logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=apiEnvironment " +
                     "namespace=${SharedApiEnvironmentStore.Namespace} " +
@@ -1798,7 +1798,7 @@ internal class SlockSharedStoreProvider private constructor(
             }
             val platformFileResolverBinding = SlockSharedPlatformFileResolverProvider.createBinding()
             val platformFileResolver = platformFileResolverBinding.resolver
-            bridge.logSharedAuthDiagnostic(
+            logSharedAuthDiagnostic(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
@@ -1931,7 +1931,7 @@ internal class SlockSharedStoreProvider private constructor(
             val networkClient = scopedNetworkClientFactory(authStore)
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
-                    scope = CoroutineScope(SupervisorJob()),
+                    scope = SlockStoreThreading.newScope(),
                     diagnosticsLogger = sharedInfoLogger("SlockMessageBodyFontSize", "store"),
                 )
             val processServerMembersRepository =
@@ -2178,6 +2178,9 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                 )
+            // Parallel on purpose: sends, realtime ingest/decode and authority work are not store-state
+            // writes. Only the stores built on SlockStoreThreading.newScope() (home, activity, translation,
+            // font size) run on the serial store dispatcher; their dispatch() hops intents onto it.
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityDiagnosticsLogger =
                 sharedInfoLogger("RealtimeAuthority", "realtime_authority")
@@ -2404,7 +2407,7 @@ internal class SlockSharedStoreProvider private constructor(
                     isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
             provider = SlockSharedStoreProvider(
-                bridge = bridge,
+                host = host,
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
@@ -2490,7 +2493,7 @@ internal class SlockSharedStoreProvider private constructor(
                     SharedMessageTranslationStore(
                         authStore = authStore,
                         api = NetworkSlockMessageTranslationApi(networkClient),
-                        scope = CoroutineScope(SupervisorJob()),
+                        scope = SlockStoreThreading.newScope(),
                         translationMode = {
                             KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationModeSync()
                         },
@@ -2509,8 +2512,8 @@ internal class SlockSharedStoreProvider private constructor(
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
-                homeStoreScope = CoroutineScope(SupervisorJob()),
-                homeActivityStoreScope = CoroutineScope(SupervisorJob()),
+                homeStoreScope = SlockStoreThreading.newScope(),
+                homeActivityStoreScope = SlockStoreThreading.newScope(),
                 threadSendScope = threadSendScope
             )
             return provider.also {
@@ -3504,7 +3507,7 @@ internal object SlockSharedStoreRegistry {
             SlockSharedStoreProvider.create(
                 eventBus = request.eventBus,
                 source = request.source,
-                bridge = request.bridge,
+                host = request.host,
             )
         }
     private val access =
@@ -3525,17 +3528,21 @@ internal object SlockSharedStoreRegistry {
     fun unbindFactoryBeforeFirstGet(handle: SlockSharedStoreFactoryBindingHandle): Boolean =
         access.unbindFactoryBeforeFirstGet(handle)
 
-    fun get(bridge: BridgeModule): SlockSharedStoreProvider {
+    /**
+     * The process-wide store provider for any host. The first caller's [host] backs the provider's
+     * native calls; Kuikly pages pass their bridge through `get(bridge: BridgeModule)`.
+     */
+    fun get(host: HostCapabilities): SlockSharedStoreProvider {
         val eventBus = SlockEventBuses.appScope()
-        return get(eventBus, "shared-store-provider", bridge)
+        return get(eventBus, "shared-store-provider", host)
     }
 
-    fun get(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider =
+    fun get(eventBus: SlockEventBus, source: String, host: HostCapabilities): SlockSharedStoreProvider =
         access.get(
             SlockSharedStoreProviderRequest(
                 eventBus = eventBus,
                 source = source,
-                bridge = bridge,
+                host = host,
             ),
         )
 }

@@ -1,7 +1,10 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optString
 import kotlin.concurrent.Volatile
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private const val AUTH_SESSION_CLEARED_EVENT = "raft.authSessionCleared"
 private const val KEY_SOURCE = "source"
@@ -48,15 +51,16 @@ internal class KuiklyAuthSessionEvents(
     override fun postSessionCleared(reason: String, previousSessionFingerprint: String) {
         currentEventBus.post(
             AUTH_SESSION_CLEARED_EVENT,
-            JSONObject()
-                .put(KEY_SOURCE, currentSource)
-                .put(KEY_REASON, reason)
-                .put(KEY_PREVIOUS_SESSION_FINGERPRINT, previousSessionFingerprint)
+            buildJsonObject {
+                put(KEY_SOURCE, currentSource)
+                put(KEY_REASON, reason)
+                put(KEY_PREVIOUS_SESSION_FINGERPRINT, previousSessionFingerprint)
+            }
         )
     }
 }
 
-private fun JSONObject.toAuthSessionClearedSignal(): AuthSessionClearedSignal? {
+private fun JsonObject.toAuthSessionClearedSignal(): AuthSessionClearedSignal? {
     val source = optString(KEY_SOURCE).takeIf { it.isNotBlank() } ?: return null
     val previousSessionFingerprint =
         optString(KEY_PREVIOUS_SESSION_FINGERPRINT).takeIf { it.isNotBlank() } ?: return null

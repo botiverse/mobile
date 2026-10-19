@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = Path(__file__).with_name("realtime_contract.json")
-KOTLIN_OUT = ROOT / "shared/src/commonMain/kotlin/build/raft/app/data/realtime/GeneratedRealtimeContract.kt"
+KOTLIN_OUT = ROOT / "core/src/commonMain/kotlin/build/raft/app/data/realtime/GeneratedRealtimeContract.kt"
 SWIFT_OUT = ROOT / "iosApp/iosApp/GeneratedRealtimeContract.swift"
 
 

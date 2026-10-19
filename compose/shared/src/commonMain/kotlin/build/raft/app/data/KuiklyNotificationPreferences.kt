@@ -1,6 +1,9 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optBoolean
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
 
 private const val NOTIFICATION_PREFERENCE_EVENT = "slock.notificationPreferenceChanged"
 private const val KEY_ENABLED = "enabled"
@@ -33,11 +36,12 @@ class KuiklyNotificationPreferenceEvents(
     fun postPreferenceChanged(snapshot: NotificationPreferenceSnapshot) {
         eventBus.post(
             NOTIFICATION_PREFERENCE_EVENT,
-            JSONObject()
-                .put(KEY_ENABLED, snapshot.enabled)
-                .put(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, snapshot.foregroundKeepAliveEnabled)
-                .put(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED, snapshot.offlineComputerAlertsEnabled)
-                .put(KEY_SOURCE, source)
+            buildJsonObject {
+                put(KEY_ENABLED, snapshot.enabled)
+                put(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, snapshot.foregroundKeepAliveEnabled)
+                put(KEY_OFFLINE_COMPUTER_ALERTS_ENABLED, snapshot.offlineComputerAlertsEnabled)
+                put(KEY_SOURCE, source)
+            }
         )
     }
 }

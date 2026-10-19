@@ -1,17 +1,22 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.toSlockJsonString
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class BridgeSettingsDiagnosticsParserTest {
     @Test
     fun parsesPrimitiveEntriesJsonFallback() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("entriesJson", entriesJson(tag = "SlockAuth/refresh").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("entriesJson", entriesJson(tag = "SlockAuth/refresh").toSlockJsonString())
+            }
 
         val snapshot = response.toDiagnosticsHostSnapshot()
 
@@ -24,10 +29,11 @@ class BridgeSettingsDiagnosticsParserTest {
     @Test
     fun structuredEntriesTakePrecedenceForBackwardCompatibility() {
         val response =
-            JSONObject()
-                .put("status", "ok")
-                .put("entries", entriesJson(tag = "structured"))
-                .put("entriesJson", entriesJson(tag = "fallback").toString())
+            buildJsonObject {
+                put("status", "ok")
+                put("entries", entriesJson(tag = "structured"))
+                put("entriesJson", entriesJson(tag = "fallback").toSlockJsonString())
+            }
 
         val snapshot = response.toDiagnosticsHostSnapshot()
 
@@ -36,7 +42,10 @@ class BridgeSettingsDiagnosticsParserTest {
 
     @Test
     fun malformedEntriesJsonProducesEmptySnapshot() {
-        val response = JSONObject().put("status", "ok").put("entriesJson", "not-json")
+        val response = buildJsonObject {
+            put("status", "ok")
+            put("entriesJson", "not-json")
+        }
 
         assertEquals(emptyList(), response.toDiagnosticsHostSnapshot().entries)
     }
@@ -44,31 +53,33 @@ class BridgeSettingsDiagnosticsParserTest {
     @Test
     fun parsesMultipleDiagnosticFeatureFlagOverrides() {
         val flags =
-            JSONArray().apply {
-                put(
-                    JSONObject()
-                        .put("key", "sync_core_read_state_v1")
-                        .put("supported", true)
-                        .put("scopeKind", "ChannelExact")
-                        .put("entitled", true)
-                        .put("clientOverride", "ForceOn")
-                        .put("observedScope", "env/account/server/channel")
-                        .put("finalEffective", true)
-                        .put("precedence", "diagnostic_override_force_on")
-                        .put("evidence", "witnessGeneration=7")
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("key", "sync_core_read_state_v1")
+                        put("supported", true)
+                        put("scopeKind", "ChannelExact")
+                        put("entitled", true)
+                        put("clientOverride", "ForceOn")
+                        put("observedScope", "env/account/server/channel")
+                        put("finalEffective", true)
+                        put("precedence", "diagnostic_override_force_on")
+                        put("evidence", "witnessGeneration=7")
+                    }
                 )
-                put(
-                    JSONObject()
-                        .put("key", "mobile_activity_stable_order_v1")
-                        .put("supported", true)
-                        .put("scopeKind", "ServerExact")
-                        .put("clientOverride", "Server")
-                        .put("serverEffective", false)
-                        .put("finalEffective", false)
-                        .put("precedence", "server")
+                add(
+                    buildJsonObject {
+                        put("key", "mobile_activity_stable_order_v1")
+                        put("supported", true)
+                        put("scopeKind", "ServerExact")
+                        put("clientOverride", "Server")
+                        put("serverEffective", false)
+                        put("finalEffective", false)
+                        put("precedence", "server")
+                    }
                 )
             }
-        val response = JSONObject().put("diagnosticFeatureFlagOverridesJson", flags.toString())
+        val response = buildJsonObject { put("diagnosticFeatureFlagOverridesJson", flags.toSlockJsonString()) }
 
         val parsed = response.toDiagnosticsHostSnapshot().featureFlagOverrides
 
@@ -80,13 +91,14 @@ class BridgeSettingsDiagnosticsParserTest {
         assertEquals(false, parsed[1].serverEffective)
     }
 
-    private fun entriesJson(tag: String): JSONArray =
-        JSONArray().apply {
-            put(
-                JSONObject()
-                    .put("timestampLabel", "2026-07-10T03:00:00Z")
-                    .put("tag", tag)
-                    .put("message", "refresh_success requestId=req-1")
+    private fun entriesJson(tag: String): JsonArray =
+        buildJsonArray {
+            add(
+                buildJsonObject {
+                    put("timestampLabel", "2026-07-10T03:00:00Z")
+                    put("tag", tag)
+                    put("message", "refresh_success requestId=req-1")
+                }
             )
         }
 }

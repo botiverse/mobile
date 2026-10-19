@@ -149,7 +149,7 @@ internal class SharedHomeStore(
     private val conversationIdentityPublicationSink:
         (SharedConversationIdentityCandidatePublication) -> Unit = {},
 ) : SharedConversationIdentityProvider {
-    private val _state = MutableStateFlow(SharedHomeState())
+    private val _state = slockStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
     private val homeConversationIdentityStates = linkedMapOf<String, SharedConversationDirectoryState>()
     private val supplementalConversationIdentityStates =

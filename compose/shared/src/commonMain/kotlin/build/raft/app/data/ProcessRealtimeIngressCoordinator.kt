@@ -1,21 +1,23 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
 import build.raft.app.data.realtime.GeneratedRealtimeContract
-import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeCursorPolicy
+import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
+import build.raft.app.host.HostRealtimeCapability
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerPlanUpdated
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optLong
+import build.raft.app.optString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Process-lifetime adapter for the normal native realtime topic. It owns no authority, queue, dedup, or
@@ -37,10 +39,8 @@ internal class ProcessRealtimeIngressCoordinator(
     private val onRoomsJoined: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
 ) {
     fun start() {
-        events.addListener { raw ->
-            val snapshot = raw.toString()
-            scope.launch { accept(JSONObject(snapshot)) }
-        }
+        // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
+        events.addListener { event -> scope.launch { accept(event) } }
         scope.launch {
             authorityFlow.collect { authority -> reconcile(authority) }
         }
@@ -59,7 +59,7 @@ internal class ProcessRealtimeIngressCoordinator(
         nativeHost.reconcile(authority, desired, environment.socketBaseUrl)
     }
 
-    private suspend fun accept(eventData: JSONObject) {
+    private suspend fun accept(eventData: JsonObject) {
         val transportSignal =
             when (eventData.optString(SlockRealtimeNotifyContract.KeyAction)) {
                 SlockRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
@@ -134,7 +134,7 @@ internal class ProcessRealtimeIngressCoordinator(
         }
     }
 
-    private fun decode(eventData: JSONObject): RealtimeEvent? {
+    private fun decode(eventData: JsonObject): RealtimeEvent? {
         val eventName = eventData.optString(SlockRealtimeNotifyContract.KeyEventName).trim()
         val rawPayload = eventData.optString(SlockRealtimeNotifyContract.KeyRawPayload).trim()
         if (eventName.isEmpty() || rawPayload.isEmpty()) return null
@@ -155,7 +155,7 @@ internal interface ProcessRealtimeNativeHost {
 }
 
 internal class BridgeProcessRealtimeNativeHost(
-    private val bridge: BridgeModule,
+    private val bridge: HostRealtimeCapability,
 ) : ProcessRealtimeNativeHost {
     override fun reconcile(
         authority: RealtimeScopeAuthority?,
@@ -197,7 +197,7 @@ internal class BridgeProcessRealtimeNativeHost(
     }
 }
 
-private fun JSONObject.processRealtimeWitnessOrNull(): RealtimeConnectionWitness? {
+private fun JsonObject.processRealtimeWitnessOrNull(): RealtimeConnectionWitness? {
     val scopeLeaseId = optString(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
     val principalId = optString(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
     val authGeneration = optLong(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)

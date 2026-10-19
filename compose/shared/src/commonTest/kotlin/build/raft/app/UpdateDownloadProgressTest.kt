@@ -1,13 +1,18 @@
 package build.raft.app
 
 import build.raft.app.data.*
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.*
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class UpdateDownloadProgressTest {
-    private fun payload(total: Long, downloaded: Long = 25L) = JSONObject()
-        .put("status", "ok").put("token", "42").put("phase", "downloading")
-        .put("totalBytes", total).put("downloadedBytes", downloaded)
+    private fun payload(total: Long, downloaded: Long = 25L) = buildJsonObject {
+        put("status", "ok")
+        put("token", "42")
+        put("phase", "downloading")
+        put("totalBytes", total)
+        put("downloadedBytes", downloaded)
+    }
 
     @Test fun realByteCountsProduceBoundedPercent() {
         assertEquals(25, payload(100).toSharedUpdateDownloadProgress()?.percent)
@@ -26,12 +31,12 @@ class UpdateDownloadProgressTest {
 
     @Test fun terminalAndInvalidRepliesDoNotContinuePolling() {
         for (phase in listOf("ready", "failed")) {
-            assertFalse(assertNotNull(payload(100).put("phase", phase).toSharedUpdateDownloadProgress()).active)
+            assertFalse(assertNotNull(payload(100).withEntry("phase", phase).toSharedUpdateDownloadProgress()).active)
         }
-        assertNull(payload(100).put("status", "unavailable").toSharedUpdateDownloadProgress())
-        assertNull(payload(100).put("token", "").toSharedUpdateDownloadProgress())
-        assertNull(payload(100).put("phase", "alien").toSharedUpdateDownloadProgress())
-        assertTrue(assertNotNull(payload(100).put("phase", "paused").toSharedUpdateDownloadProgress()).active)
+        assertNull(payload(100).withEntry("status", "unavailable").toSharedUpdateDownloadProgress())
+        assertNull(payload(100).withEntry("token", "").toSharedUpdateDownloadProgress())
+        assertNull(payload(100).withEntry("phase", "alien").toSharedUpdateDownloadProgress())
+        assertTrue(assertNotNull(payload(100).withEntry("phase", "paused").toSharedUpdateDownloadProgress()).active)
     }
 
     @Test fun failedDownloadOffersRetry() {

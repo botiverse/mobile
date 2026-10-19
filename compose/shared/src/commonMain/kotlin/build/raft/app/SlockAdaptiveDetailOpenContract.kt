@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.SlockEventBus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT = "slockAdaptiveDetailOpen"
 internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT = "slockAdaptiveDetailOpenAck"
@@ -25,6 +28,7 @@ internal fun SlockEventBus.postAdaptiveTrace(
     identityKey: String,
     generation: Long,
     requestId: String? = null,
+    // Kuikly receiver kept so page call sites' `{ put(...) }` trace extras compile unchanged.
     extra: JSONObject.() -> Unit = {},
 ) {
     val data =
@@ -37,7 +41,7 @@ internal fun SlockEventBus.postAdaptiveTrace(
             .apply(extra)
     post(
         eventName = SLOCK_ADAPTIVE_TRACE_EVENT,
-        eventData = data,
+        eventData = data.toJsonObject(),
         crossProcess = true,
         source = "adaptive_trace",
     )
@@ -127,13 +131,14 @@ internal data class SlockAdaptiveOpenWindowFact(
     val posture: String,
     val capturedAtMillis: Long,
 ) {
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(KEY_WIDTH_PX, widthPx)
-            .put(KEY_HEIGHT_PX, heightPx)
-            .put(KEY_DENSITY, density.toDouble())
-            .put(KEY_POSTURE, posture)
-            .put(KEY_CAPTURED_AT_MS, capturedAtMillis.toDouble())
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(KEY_WIDTH_PX, widthPx)
+            put(KEY_HEIGHT_PX, heightPx)
+            put(KEY_DENSITY, density.toDouble())
+            put(KEY_POSTURE, posture)
+            put(KEY_CAPTURED_AT_MS, capturedAtMillis.toDouble())
+        }
 
     fun isValid(): Boolean =
         widthPx > 0 && heightPx > 0 && density > 0f && capturedAtMillis > 0L
@@ -161,7 +166,7 @@ internal data class SlockAdaptiveOpenWindowFact(
     }
 }
 
-internal fun JSONObject.toSlockAdaptiveOpenWindowFactOrNull(): SlockAdaptiveOpenWindowFact? {
+internal fun JsonObject.toSlockAdaptiveOpenWindowFactOrNull(): SlockAdaptiveOpenWindowFact? {
     val widthPx = optDouble(SlockAdaptiveOpenWindowFact.KEY_WIDTH_PX, 0.0).toInt()
     val heightPx = optDouble(SlockAdaptiveOpenWindowFact.KEY_HEIGHT_PX, 0.0).toInt()
     val density = optDouble(SlockAdaptiveOpenWindowFact.KEY_DENSITY, 0.0).toFloat()
@@ -203,21 +208,22 @@ internal data class SlockAdaptiveDetailOpenRequest(
         require(windowFact.isValid()) { "Adaptive open requires a valid window fact" }
     }
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(KEY_SHELL_ID, shellInstanceId)
-            .put(KEY_REQUEST_ID, requestId)
-            .put(KEY_HOST_ID, hostId)
-            .put(KEY_SERVER_ID, identity.serverId)
-            .put(KEY_THREAD_ID, identity.threadId)
-            .put(KEY_SURFACE_KIND, identity.surfaceKind)
-            .put(KEY_CHANNEL_ID, identity.channelId.orEmpty())
-            .put(KEY_STREAM_CHANNEL_ID, identity.streamChannelId.orEmpty())
-            .put(KEY_PARENT_CHANNEL_ID, identity.parentChannelId.orEmpty())
-            .put(KEY_PARENT_MESSAGE_ID, identity.parentMessageId.orEmpty())
-            .put(KEY_FOCUSED_MESSAGE_ID, identity.focusedMessageId.orEmpty())
-            .put(KEY_LAUNCH_PAYLOAD, launchPayloadJson)
-            .put(KEY_WINDOW_FACT, windowFact.toJson())
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(KEY_SHELL_ID, shellInstanceId)
+            put(KEY_REQUEST_ID, requestId)
+            put(KEY_HOST_ID, hostId)
+            put(KEY_SERVER_ID, identity.serverId)
+            put(KEY_THREAD_ID, identity.threadId)
+            put(KEY_SURFACE_KIND, identity.surfaceKind)
+            put(KEY_CHANNEL_ID, identity.channelId.orEmpty())
+            put(KEY_STREAM_CHANNEL_ID, identity.streamChannelId.orEmpty())
+            put(KEY_PARENT_CHANNEL_ID, identity.parentChannelId.orEmpty())
+            put(KEY_PARENT_MESSAGE_ID, identity.parentMessageId.orEmpty())
+            put(KEY_FOCUSED_MESSAGE_ID, identity.focusedMessageId.orEmpty())
+            put(KEY_LAUNCH_PAYLOAD, launchPayloadJson)
+            put(KEY_WINDOW_FACT, windowFact.toJson())
+        }
 
     companion object {
         internal const val KEY_SHELL_ID = "shellInstanceId"
@@ -236,7 +242,7 @@ internal data class SlockAdaptiveDetailOpenRequest(
     }
 }
 
-internal fun JSONObject.toSlockAdaptiveDetailOpenRequestOrNull(): SlockAdaptiveDetailOpenRequest? {
+internal fun JsonObject.toSlockAdaptiveDetailOpenRequestOrNull(): SlockAdaptiveDetailOpenRequest? {
     val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
     val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
     val hostId = optString(SlockAdaptiveDetailOpenRequest.KEY_HOST_ID).trim()
@@ -245,7 +251,7 @@ internal fun JSONObject.toSlockAdaptiveDetailOpenRequestOrNull(): SlockAdaptiveD
     val surfaceKind = optString(SlockAdaptiveDetailOpenRequest.KEY_SURFACE_KIND).trim()
     val launchPayloadJson = optString(SlockAdaptiveDetailOpenRequest.KEY_LAUNCH_PAYLOAD).trim()
     val windowFactJson =
-        optJSONObject(SlockAdaptiveDetailOpenRequest.KEY_WINDOW_FACT) ?: return null
+        optJsonObject(SlockAdaptiveDetailOpenRequest.KEY_WINDOW_FACT) ?: return null
     val windowFact = windowFactJson.toSlockAdaptiveOpenWindowFactOrNull() ?: return null
     if (
         shellInstanceId.isBlank() || requestId.isBlank() || hostId.isBlank() ||
@@ -341,13 +347,14 @@ internal data class SlockAdaptiveDetailOpenAck(
         require(requestId.isNotBlank()) { "Adaptive open ack requires a request id" }
     }
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
-            .put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
-            .put(KEY_ACCEPTED, accepted)
-            .put(KEY_GENERATION, generation.toDouble())
-            .put(KEY_REASON, reason)
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
+            put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
+            put(KEY_ACCEPTED, accepted)
+            put(KEY_GENERATION, generation.toDouble())
+            put(KEY_REASON, reason)
+        }
 
     companion object {
         internal const val KEY_ACCEPTED = "accepted"
@@ -356,7 +363,7 @@ internal data class SlockAdaptiveDetailOpenAck(
     }
 }
 
-internal fun JSONObject.toSlockAdaptiveDetailOpenAckOrNull(): SlockAdaptiveDetailOpenAck? {
+internal fun JsonObject.toSlockAdaptiveDetailOpenAckOrNull(): SlockAdaptiveDetailOpenAck? {
     val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
     val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
     if (shellInstanceId.isBlank() || requestId.isBlank()) return null
@@ -390,15 +397,16 @@ internal data class SlockAdaptiveDetailCancel(
         require(requestId.isNotBlank()) { "Adaptive cancel requires a request id" }
     }
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
-            .put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
-            .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, generation.toDouble())
-            .put(SlockAdaptiveDetailOpenAck.KEY_REASON, reason)
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
+            put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
+            put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, generation.toDouble())
+            put(SlockAdaptiveDetailOpenAck.KEY_REASON, reason)
+        }
 }
 
-internal fun JSONObject.toSlockAdaptiveDetailCancelOrNull(): SlockAdaptiveDetailCancel? {
+internal fun JsonObject.toSlockAdaptiveDetailCancelOrNull(): SlockAdaptiveDetailCancel? {
     val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
     val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
     if (shellInstanceId.isBlank() || requestId.isBlank()) return null
@@ -426,12 +434,13 @@ internal data class SlockAdaptiveDetailPrepared(
         require(requestId.isNotBlank()) { "Adaptive prepared requires a request id" }
     }
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
-            .put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
-            .put(KEY_SOURCE_TOKEN, sourceControllerToken)
-            .put(KEY_TARGET_TOKEN, targetControllerToken)
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
+            put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
+            put(KEY_SOURCE_TOKEN, sourceControllerToken)
+            put(KEY_TARGET_TOKEN, targetControllerToken)
+        }
 
     companion object {
         internal const val KEY_SOURCE_TOKEN = "sourceControllerToken"
@@ -439,7 +448,7 @@ internal data class SlockAdaptiveDetailPrepared(
     }
 }
 
-internal fun JSONObject.toSlockAdaptiveDetailPreparedOrNull(): SlockAdaptiveDetailPrepared? {
+internal fun JsonObject.toSlockAdaptiveDetailPreparedOrNull(): SlockAdaptiveDetailPrepared? {
     val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
     val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
     if (shellInstanceId.isBlank() || requestId.isBlank()) return null
@@ -478,7 +487,7 @@ internal data class SlockAdaptiveNativeCommitResult(
     }
 }
 
-internal fun JSONObject.toSlockAdaptiveNativeCommitResultOrNull(): SlockAdaptiveNativeCommitResult? {
+internal fun JsonObject.toSlockAdaptiveNativeCommitResultOrNull(): SlockAdaptiveNativeCommitResult? {
     val requestId = optString(SlockAdaptiveNativeCommitResult.KEY_REQUEST_ID).trim()
     if (requestId.isBlank()) return null
     return SlockAdaptiveNativeCommitResult(

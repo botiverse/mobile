@@ -3079,7 +3079,7 @@ private fun SlockAppShellReadyContent(
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellDesktopShortcutEventNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellDesktopShortcutEventNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
                     return@observe
@@ -3115,7 +3115,7 @@ private fun SlockAppShellReadyContent(
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellSystemNotificationNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
@@ -5341,7 +5341,7 @@ private fun SlockAppShellReadyContent(
         }
     }
 
-    fun handleRealtimeAuthRefreshRequest(eventData: JSONObject) {
+    fun handleRealtimeAuthRefreshRequest(eventData: JsonObject) {
         val requestedServerId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
         val reason = eventData.optString("reason").takeIf { it.isNotBlank() } ?: "reconnect"
         val currentSession =
@@ -5399,7 +5399,7 @@ private fun SlockAppShellReadyContent(
             }
         }
     }
-    val latestRealtimeAuthRefreshHandler by rememberUpdatedState<(JSONObject) -> Unit>(
+    val latestRealtimeAuthRefreshHandler by rememberUpdatedState<(JsonObject) -> Unit>(
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
@@ -5504,22 +5504,24 @@ private fun SlockAppShellReadyContent(
         authoritativeHomeStartAllowed,
     ) {
         var suppressedVisibleRefreshCount = 0
-        val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
+        // Events arrive as immutable kotlinx JsonObjects, so they are shared with the launched
+        // coroutine as-is: no snapshot copy, no Kuikly JSONObject round trip.
+        val onRealtimeEvent: (JsonObject) -> Unit = onRealtimeEvent@{ eventData ->
             if (!latestAuthoritativeHomeStartAllowed) return@onRealtimeEvent
             if (
-                rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
+                eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
                     SlockRealtimeNotifyContract.ActionPresenceTransportConnected
             ) {
                 val serverId =
-                    rawEventData
+                    eventData
                         .optString(SlockRealtimeNotifyContract.KeyServerId)
                         .trim()
                         .takeIf { it.isNotBlank() }
                 val transportEpoch =
-                    rawEventData
+                    eventData
                         .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
                         .takeIf { it > 0L }
-                val witness = rawEventData.realtimeConnectionWitnessOrNull()
+                val witness = eventData.realtimeConnectionWitnessOrNull()
                 val authority = processRealtimeAuthorityFlow.value
                 val shellServerId =
                     selectedServerStore.selectedServerId.value
@@ -5552,10 +5554,8 @@ private fun SlockAppShellReadyContent(
                 }
                 return@onRealtimeEvent
             }
-                val eventDataSnapshot = rawEventData.toString()
                 val appearanceGenerationAtDelivery = latestVisibleAppearanceGeneration
                 appShellCoroutineScope.launch {
-                    val eventData = JSONObject(eventDataSnapshot)
                     if (
                         eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
                         SlockRealtimeNotifyContract.ActionAppLifecycle
@@ -24830,7 +24830,7 @@ private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =
     this !is Heartbeat && this !is MemberPresenceUpdated
 
 internal fun decodeSharedShellRealtimeEvent(
-    eventData: JSONObject,
+    eventData: JsonObject,
     mapper: RealtimeEventMapper,
     log: (String) -> Unit
 ): RealtimeEvent? {
@@ -24854,7 +24854,7 @@ internal fun decodeSharedShellRealtimeEvent(
 }
 
 internal fun resolveSharedShellRealtimeServerId(
-    eventData: JSONObject,
+    eventData: JsonObject,
     event: RealtimeEvent,
     @Suppress("UNUSED_PARAMETER") session: StoredAuthSession?,
 ): String? =
@@ -24883,7 +24883,7 @@ internal suspend fun applySelectedServerTerminalRealtimeTransition(
     return accepted && applied
 }
 
-internal fun JSONObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {
+internal fun JsonObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {
     val scopeLeaseId = optString(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
     val principalId = optString(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
     val authGeneration = optLong(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)

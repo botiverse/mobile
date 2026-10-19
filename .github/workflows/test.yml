@@ -406,8 +406,8 @@ jobs:
         working-directory: compose
         run: |
           HASH=$(git ls-files -s \
-            shared/src androidApp/src \
-            shared/build.gradle.kts androidApp/build.gradle.kts \
+            core/src shared/src androidApp/src \
+            core/build.gradle.kts shared/build.gradle.kts androidApp/build.gradle.kts \
             gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties \
             gradle.properties buildSrc \
             build.gradle.kts settings.gradle.kts \
@@ -420,6 +420,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: |
+            compose/core/build
             compose/shared/build
             compose/androidApp/build
           key: build-output-${{ steps.build-input-hash.outputs.hash }}
@@ -429,6 +430,7 @@ jobs:
         working-directory: compose
         run: |
           ./gradlew \
+            :core:compileDebugUnitTestKotlinAndroid \
             :shared:compileDebugKotlinAndroid \
             :shared:compileDebugUnitTestKotlinAndroid \
             :androidApp:compileDebugKotlin \
@@ -441,6 +443,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: |
+            compose/core/build
             compose/shared/build
             compose/androidApp/build
           key: build-output-${{ steps.build-input-hash.outputs.hash }}
@@ -490,9 +493,9 @@ jobs:
       # Android host tests cannot stay hidden until a local developer run.
       # :designsystem:desktopTest is the CMP design system's unit tests plus its
       # screenshot goldens in verify mode (compose/designsystem/README.md).
-      - name: Run shared + Android app unit tests
+      - name: Run core + shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :core:testDebugUnitTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
 
       - name: Upload design system screenshot diffs
         if: failure()
@@ -540,6 +543,8 @@ jobs:
         with:
           name: android-unit-test-reports
           path: |
+            compose/core/build/reports/tests/testDebugUnitTest/
+            compose/core/build/test-results/testDebugUnitTest/
             compose/shared/build/reports/tests/testDebugUnitTest/
             compose/shared/build/test-results/testDebugUnitTest/
             compose/androidApp/build/reports/tests/testDebugUnitTest/

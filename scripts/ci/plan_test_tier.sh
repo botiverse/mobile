@@ -48,7 +48,7 @@ change_keeps_ios() {
       return 0
     fi
     case "$path" in
-      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*)
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/core/src/iosTest/*)
         return 0
         ;;
     esac

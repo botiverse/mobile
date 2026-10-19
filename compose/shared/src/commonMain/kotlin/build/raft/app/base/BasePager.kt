@@ -4,9 +4,11 @@ import build.raft.app.SlockEnvironmentIndicatorHost
 import build.raft.app.slockEnvironmentIndicatorEnabledForPage
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
+import build.raft.app.toJsonObject
 import build.raft.app.SlockAdaptivePanePagerEvent
 import build.raft.app.SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.SlockEnhancedNotifyCenter
+import build.raft.app.data.SlockStoreThreading
 import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -103,7 +105,7 @@ internal abstract class BasePager : ComposeContainer() {
             // shell's settle subscription sees it. Token/authority checks stay in the settle path.
             SlockEnhancedNotifyCenter.post(
                 eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
-                eventData = eventData,
+                eventData = eventData.toJsonObject(),
                 crossProcess = true,
                 source = "pager_commit_result_forward",
             )
@@ -147,6 +149,11 @@ internal abstract class BasePager : ComposeContainer() {
                     "type=${exception::class.simpleName} message=${exception.message.orEmpty()}"
             )
             throw exception
+        }
+        if (verifyThread) {
+            // Debug thread verification also reports process-wide store writes made outside the
+            // store dispatcher (logged, not thrown: see SlockStoreThreading for the known gaps).
+            SlockStoreThreading.installViolationHandler { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
         }
         slockLogInfo(
             TAG_VERIFY,

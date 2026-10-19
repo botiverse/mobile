@@ -277,7 +277,7 @@ internal class RealtimeCanonicalFinalActualHostPage : BasePager() {
                     SlockSharedStoreProvider.create(
                         eventBus = request.eventBus,
                         source = request.source,
-                        bridge = request.bridge,
+                        host = request.host,
                         canonicalFinalIntegrationFactory =
                             SlockSharedCanonicalFinalIntegrationFactory { dependencies ->
                                 run.recordIntegrationFactoryCall(dependencies)

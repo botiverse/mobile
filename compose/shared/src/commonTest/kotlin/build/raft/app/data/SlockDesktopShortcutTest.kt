@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toKuiklyJson
 import build.raft.app.ConversationOpenSource
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.SlockHomeConversationItem
@@ -14,12 +15,13 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SlockDesktopShortcutTest {
 
@@ -202,13 +204,13 @@ class SlockDesktopShortcutTest {
 
     @Test
     fun appShellDesktopShortcutNavigationIntent_reconstructsNavigationWithDistinctLaunchKeys() {
-        val params1 = JSONObject().apply {
+        val params1 = buildJsonObject {
             put(SlockDesktopShortcutContract.KeyServerId, "srv-1")
             put(SlockDesktopShortcutContract.KeyTargetId, "chan-1")
             put(SlockDesktopShortcutContract.KeyTargetKind, "channel")
             put(SlockDesktopShortcutContract.KeyLaunchId, "launch-1001")
         }
-        val intent1 = params1.appShellDesktopShortcutNavigationIntent(fallbackServerId = null)
+        val intent1 = params1.toKuiklyJson().appShellDesktopShortcutNavigationIntent(fallbackServerId = null)
         assertNotNull(intent1)
         assertEquals("srv-1", intent1.serverId)
         assertEquals("chan-1", intent1.sourceIdentity.channelId)
@@ -217,13 +219,13 @@ class SlockDesktopShortcutTest {
         assertNull(intent1.sourceIdentity.messageId) // Resolves anchor message id to null
         assertEquals("launch-1001", intent1.launchId)
 
-        val params2 = JSONObject().apply {
+        val params2 = buildJsonObject {
             put(SlockDesktopShortcutContract.KeyServerId, "srv-1")
             put(SlockDesktopShortcutContract.KeyTargetId, "chan-1")
             put(SlockDesktopShortcutContract.KeyTargetKind, "channel")
             put(SlockDesktopShortcutContract.KeyLaunchId, "launch-1002")
         }
-        val intent2 = params2.appShellDesktopShortcutNavigationIntent(fallbackServerId = null)
+        val intent2 = params2.toKuiklyJson().appShellDesktopShortcutNavigationIntent(fallbackServerId = null)
         assertNotNull(intent2)
 
         // Launch IDs make the deduplication keys unique so consecutive taps on the shortcut open
@@ -234,20 +236,20 @@ class SlockDesktopShortcutTest {
 
     @Test
     fun appShellDesktopShortcutNavigationIntent_fallsBackToServerIdWhenMissing() {
-        val params = JSONObject().apply {
+        val params = buildJsonObject {
             put(SlockDesktopShortcutContract.KeyTargetId, "chan-1")
             put(SlockDesktopShortcutContract.KeyTargetKind, "channel")
         }
-        val intent = params.appShellDesktopShortcutNavigationIntent(fallbackServerId = "fallback-srv")
+        val intent = params.toKuiklyJson().appShellDesktopShortcutNavigationIntent(fallbackServerId = "fallback-srv")
         assertNotNull(intent)
         assertEquals("fallback-srv", intent.serverId)
     }
 
     @Test
     fun appShellDesktopShortcutNavigationIntent_returnsNullWhenTargetIdIsMissing() {
-        val params = JSONObject().apply {
+        val params = buildJsonObject {
             put(SlockDesktopShortcutContract.KeyServerId, "srv-1")
         }
-        assertNull(params.appShellDesktopShortcutNavigationIntent(fallbackServerId = null))
+        assertNull(params.toKuiklyJson().appShellDesktopShortcutNavigationIntent(fallbackServerId = null))
     }
 }

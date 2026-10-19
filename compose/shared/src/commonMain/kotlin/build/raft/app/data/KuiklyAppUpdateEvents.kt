@@ -1,6 +1,8 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
 
 const val SLOCK_APP_UPDATE_EVENT = "slock.appUpdateStatus"
 
@@ -19,7 +21,7 @@ class KuiklyAppUpdateEvents(
     fun notifyStatusChanged() {
         eventBus.post(
             eventName = SLOCK_APP_UPDATE_EVENT,
-            eventData = JSONObject(),
+            eventData = buildJsonObject {},
             source = "shared-app-update"
         )
     }

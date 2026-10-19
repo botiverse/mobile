@@ -85,7 +85,7 @@ raise "attachment authority is not API-level selected" unless
   jobs.dig("android-minimum-supported-attachment-runtime", "if").include?("attachment_api_levels")
 android_steps = jobs.fetch("android").fetch("steps")
 fixture_build_index = android_steps.index { |step| step["name"] == "Build Android connected-test APKs" }
-unit_test_index = android_steps.index { |step| step["name"] == "Run shared + Android app unit tests" }
+unit_test_index = android_steps.index { |step| step["name"] == "Run core + shared + Android app unit tests" }
 raise "Android visual-fixture build step missing" unless fixture_build_index
 raise "Android unit-test step missing" unless unit_test_index
 raise "unit-test failures can mask visual-fixture compilation" unless fixture_build_index < unit_test_index

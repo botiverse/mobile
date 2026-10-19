@@ -1,10 +1,16 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optBoolean
+import build.raft.app.optInt
+import build.raft.app.optJsonObject
+import build.raft.app.optString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SlockEventBusTest {
     @Test
@@ -17,9 +23,9 @@ class SlockEventBusTest {
                 received += data?.optString("value").orEmpty()
             }
 
-        eventBus.post(eventName, JSONObject().put("value", "platform"))
+        eventBus.post(eventName, buildJsonObject { put("value", "platform") })
         subscription.close()
-        eventBus.post(eventName, JSONObject().put("value", "ignored"))
+        eventBus.post(eventName, buildJsonObject { put("value", "ignored") })
 
         assertEquals(listOf("platform"), received)
     }
@@ -34,9 +40,9 @@ class SlockEventBusTest {
                 received += data?.optString("value").orEmpty()
             }
 
-        eventBus.post(eventName, JSONObject().put("value", "first"))
+        eventBus.post(eventName, buildJsonObject { put("value", "first") })
         subscription.close()
-        eventBus.post(eventName, JSONObject().put("value", "second"))
+        eventBus.post(eventName, buildJsonObject { put("value", "second") })
 
         assertEquals(listOf("first"), received)
     }
@@ -85,8 +91,8 @@ class SlockEventBusTest {
                 received += "second"
             }
 
-        eventBus.post(eventName, JSONObject())
-        eventBus.post(eventName, JSONObject())
+        eventBus.post(eventName, buildJsonObject {})
+        eventBus.post(eventName, buildJsonObject {})
         secondSubscription.close()
 
         assertEquals(listOf("first", "second", "second"), received)
@@ -102,7 +108,7 @@ class SlockEventBusTest {
                 val value = data?.optInt("value") ?: return@observe
                 received += "first:$value"
                 if (value == 1) {
-                    eventBus.post(eventName, JSONObject().put("value", 2))
+                    eventBus.post(eventName, buildJsonObject { put("value", 2) })
                 }
             }
         val secondSubscription =
@@ -110,7 +116,7 @@ class SlockEventBusTest {
                 received += "second:${data?.optInt("value") ?: return@observe}"
             }
 
-        eventBus.post(eventName, JSONObject().put("value", 1))
+        eventBus.post(eventName, buildJsonObject { put("value", 1) })
         firstSubscription.close()
         secondSubscription.close()
 
@@ -121,7 +127,7 @@ class SlockEventBusTest {
     fun inProcessEventBusPublishesEnhancedNotifyEnvelope() {
         val eventBus = SlockEventBuses.inProcess()
         val eventName = "test.inProcessEventBusPublishesEnhancedNotifyEnvelope"
-        val received = mutableListOf<JSONObject>()
+        val received = mutableListOf<JsonObject>()
         val subscription =
             eventBus.observe(SlockEnhancedNotifyContract.EventName) { data ->
                 data?.let(received::add)
@@ -129,7 +135,7 @@ class SlockEventBusTest {
 
         eventBus.post(
             eventName,
-            JSONObject().put("value", "payload"),
+            buildJsonObject { put("value", "payload") },
             crossProcess = true,
             source = "unit-test"
         )
@@ -137,7 +143,7 @@ class SlockEventBusTest {
 
         val envelope = received.single()
         assertEquals(eventName, envelope.optString(SlockEnhancedNotifyContract.KeyEventName))
-        assertEquals("payload", envelope.optJSONObject(SlockEnhancedNotifyContract.KeyData)?.optString("value"))
+        assertEquals("payload", envelope.optJsonObject(SlockEnhancedNotifyContract.KeyData)?.optString("value"))
         assertTrue(envelope.optBoolean(SlockEnhancedNotifyContract.KeyCrossProcess))
         assertEquals("unit-test", envelope.optString(SlockEnhancedNotifyContract.KeySource))
     }
@@ -157,7 +163,7 @@ class SlockEventBusTest {
 
         eventBus.post(
             eventName,
-            JSONObject().put("value", "platform"),
+            buildJsonObject { put("value", "platform") },
             crossProcess = true,
             source = "platform-test"
         )
@@ -204,9 +210,11 @@ class SlockEventBusTest {
         val subscription = events.addAuthoritativeOnlineListener { recoveries += 1 }
 
         fun post(status: String?, online: Boolean?) {
-            val data = JSONObject()
-            status?.let { data.put(SlockHostNetworkNotifyContract.KeyStatus, it) }
-            online?.let { data.put(SlockHostNetworkNotifyContract.KeyOnline, it) }
+            val data =
+                buildJsonObject {
+                    status?.let { put(SlockHostNetworkNotifyContract.KeyStatus, it) }
+                    online?.let { put(SlockHostNetworkNotifyContract.KeyOnline, it) }
+                }
             eventBus.post(SlockHostNetworkNotifyContract.EventName, data)
         }
 

@@ -1,13 +1,19 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.GeneratedRealtimeContract
-import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeCursorPolicy
+import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeProcessDesiredSession
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.withEntry
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,12 +23,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ProcessRealtimeIngressCoordinatorTest {
     @Test
@@ -83,7 +86,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         bus.post(
             SlockRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 4L)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+                .withEntry(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
         )
         yield()
         assertEquals(
@@ -95,18 +98,18 @@ class ProcessRealtimeIngressCoordinatorTest {
         bus.post(
             SlockRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 3L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+                .withEntry(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
         )
         bus.post(
             SlockRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 0L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+                .withEntry(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
         )
         bus.post(
             SlockRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 5L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+                .withEntry(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
+                .withEntry(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
         )
         yield()
         assertEquals(
@@ -163,45 +166,47 @@ class ProcessRealtimeIngressCoordinatorTest {
         authority: RealtimeScopeAuthority,
         eventName: String,
         rawPayload: String,
-    ): JSONObject =
-        JSONObject()
-            .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
-            .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload)
-            .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
-            .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+    ): JsonObject =
+        buildJsonObject {
+            put(SlockRealtimeNotifyContract.KeyEventName, eventName)
+            put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload)
+            put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
+            put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
+            put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
+            put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
+            put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+        }
 
     private fun presenceTransportEnvelope(
         authority: RealtimeScopeAuthority,
         epoch: Long,
-    ): JSONObject =
-        JSONObject()
-            .put(
+    ): JsonObject =
+        buildJsonObject {
+            put(
                 SlockRealtimeNotifyContract.KeyAction,
                 SlockRealtimeNotifyContract.ActionPresenceTransportConnected,
             )
-            .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
-            .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+            put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
+            put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+            put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
+            put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
+            put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
+            put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+        }
 
     private class FakeEventBus : SlockEventBus {
-        private val listeners = mutableMapOf<String, MutableList<(JSONObject?) -> Unit>>()
+        private val listeners = mutableMapOf<String, MutableList<(JsonObject?) -> Unit>>()
 
         override fun observe(
             eventName: String,
             crossProcess: Boolean,
-            listener: (JSONObject?) -> Unit,
+            listener: (JsonObject?) -> Unit,
         ): RealtimeSubscription {
             listeners.getOrPut(eventName) { mutableListOf() } += listener
             return RealtimeSubscription { listeners[eventName]?.remove(listener) }
         }
 
-        override fun post(eventName: String, eventData: JSONObject, crossProcess: Boolean, source: String) {
+        override fun post(eventName: String, eventData: JsonObject, crossProcess: Boolean, source: String) {
             listeners[eventName].orEmpty().toList().forEach { it(eventData) }
         }
     }

@@ -2,11 +2,10 @@ package build.raft.app.data
 
 import android.content.Context
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import build.raft.app.base.BridgeModule
 import java.io.File
 import java.io.RandomAccessFile
 
-internal actual fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase =
+internal actual fun createSlockSqlDatabase(): SlockSqlDatabase =
     SlockSqlDatabase(
         AndroidSqliteDriver(
             schema = SlockSqlDatabase.Schema,

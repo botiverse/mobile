@@ -5,7 +5,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject as KuiklyJSONObject
+import build.raft.app.optString
+import build.raft.app.parseSlockJsonObject
+import build.raft.app.toSlockJsonString
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.json.JSONObject as AndroidJSONObject
 
 private const val EVENT_LOG_TAG = "SlockPlatformEvent"
@@ -44,7 +48,7 @@ internal object AndroidSlockPlatformEventDispatcher {
             // Hands 143077f5). One serialization: the same immutable string
             // is handed to every listener and spliced (not re-encoded) into
             // the envelope.
-            val payload = event.eventData.toString()
+            val payload = event.eventData.toSlockJsonString()
             diagnosticsLogger(event.dispatchDiagnostics(payload.utf8ByteCount()))
             SlockKuiklyEventHub.publish(event.eventName, payload)
             // Raw-ingest events (the potentially multi-MiB realtime fanout)
@@ -72,11 +76,11 @@ internal object AndroidSlockPlatformEventDispatcher {
  */
 internal fun SlockEnhancedNotifyEvent.envelopeJsonAround(payload: String): String {
     val wrapper =
-        KuiklyJSONObject()
-            .put(SlockEnhancedNotifyContract.KeyEventName, eventName)
-            .put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
-            .put(SlockEnhancedNotifyContract.KeySource, source)
-            .toString()
+        buildJsonObject {
+            put(SlockEnhancedNotifyContract.KeyEventName, eventName)
+            put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
+            put(SlockEnhancedNotifyContract.KeySource, source)
+        }.toSlockJsonString()
     return wrapper.dropLast(1) +
         ",\"" + SlockEnhancedNotifyContract.KeyData + "\":" + payload + "}"
 }
@@ -132,7 +136,7 @@ fun postAndroidAppScopeEvent(
     val post = {
         SlockEventBuses.appScope().post(
             eventName = eventName,
-            eventData = KuiklyJSONObject(eventDataJson),
+            eventData = parseSlockJsonObject(eventDataJson),
             crossProcess = crossProcess,
             source = source
         )

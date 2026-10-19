@@ -1,16 +1,17 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.data.DataResult
+import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEnhancedNotifyCenter
 import build.raft.app.data.SlockEnhancedNotifyEvent
 import build.raft.app.data.SlockEnhancedNotifyEventBus
-import build.raft.app.data.DataResult
-import build.raft.app.data.RealtimeSubscription
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
+import build.raft.app.optString
 
 interface SlockRealtimeAppScopeConnection {
     val state: RealtimeConnectionState

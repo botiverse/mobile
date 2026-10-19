@@ -3,21 +3,23 @@ package build.raft.app.data
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class KuiklyChatLayoutPreferencesTest {
     @Test
     fun partialSnapshotEventFailsClosedInsteadOfResettingUnspecifiedPreferences() {
         val partial =
-            JSONObject()
-                .put("myMessageAlignment", "right")
-                .put("conversationForwardGestureEnabled", true)
+            buildJsonObject {
+                put("myMessageAlignment", "right")
+                put("conversationForwardGestureEnabled", true)
+            }
 
         assertNull(partial.toChatLayoutPreferenceSnapshotOrNull())
     }

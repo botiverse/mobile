@@ -8,18 +8,20 @@ import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SettingsHomePageRealtimeTest {
     @Test
     fun announcementRealtimeWithoutAnAuthoritativeServerFailsClosed() {
         val eventData =
-            JSONObject().apply {
+            buildJsonObject {
                 put("eventName", RealtimeSocketEvents.AnnouncementNew)
                 put("rawPayload", "{}")
             }
@@ -45,14 +47,14 @@ class SettingsHomePageRealtimeTest {
         assertEquals(
             "wrapper-server",
             resolveSharedShellRealtimeServerId(
-                JSONObject().apply { put("serverId", "wrapper-server") },
+                buildJsonObject { put("serverId", "wrapper-server") },
                 event,
                 sampleSession(),
             )
         )
         assertEquals(
             "event-server",
-            resolveSharedShellRealtimeServerId(JSONObject(), event, sampleSession())
+            resolveSharedShellRealtimeServerId(JsonObject(emptyMap()), event, sampleSession())
         )
     }
 

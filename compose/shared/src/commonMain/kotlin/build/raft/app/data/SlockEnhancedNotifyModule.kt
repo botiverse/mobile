@@ -1,12 +1,15 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.parseSlockJsonObject
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 data class SlockEnhancedNotifyEvent(
     val eventName: String,
-    val eventData: JSONObject,
+    val eventData: JsonObject,
     val crossProcess: Boolean = false,
     val source: String = "shared"
 )
@@ -27,12 +30,12 @@ interface SlockEventBus {
     fun observe(
         eventName: String,
         crossProcess: Boolean = false,
-        listener: (JSONObject?) -> Unit
+        listener: (JsonObject?) -> Unit
     ): RealtimeSubscription
 
     fun post(
         eventName: String,
-        eventData: JSONObject,
+        eventData: JsonObject,
         crossProcess: Boolean = false,
         source: String = "shared"
     )
@@ -41,7 +44,7 @@ interface SlockEventBus {
 object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
     private val listenersLock = SynchronizedObject()
     private val enhancedListeners = mutableListOf<(SlockEnhancedNotifyEvent) -> Unit>()
-    private val listenersByEvent = mutableMapOf<String, MutableList<(JSONObject?) -> Unit>>()
+    private val listenersByEvent = mutableMapOf<String, MutableList<(JsonObject?) -> Unit>>()
     private val pendingEvents = ArrayDeque<SlockEnhancedNotifyEvent>()
     private var deliveringEvents = false
 
@@ -59,7 +62,7 @@ object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
     override fun observe(
         eventName: String,
         crossProcess: Boolean,
-        listener: (JSONObject?) -> Unit
+        listener: (JsonObject?) -> Unit
     ): RealtimeSubscription {
         synchronized(listenersLock) {
             listenersByEvent.getOrPut(eventName) { mutableListOf() } += listener
@@ -78,7 +81,7 @@ object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
 
     override fun post(
         eventName: String,
-        eventData: JSONObject,
+        eventData: JsonObject,
         crossProcess: Boolean,
         source: String
     ) {
@@ -156,18 +159,19 @@ object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
     )
 
     private data class ListenerSnapshot(
-        val event: List<(JSONObject?) -> Unit>,
-        val envelope: List<(JSONObject?) -> Unit>,
+        val event: List<(JsonObject?) -> Unit>,
+        val envelope: List<(JsonObject?) -> Unit>,
         val enhanced: List<(SlockEnhancedNotifyEvent) -> Unit>
     )
 }
 
-internal fun SlockEnhancedNotifyEvent.toEnvelopeJson(): JSONObject =
-    JSONObject()
-        .put(SlockEnhancedNotifyContract.KeyEventName, eventName)
-        .put(SlockEnhancedNotifyContract.KeyData, eventData)
-        .put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
-        .put(SlockEnhancedNotifyContract.KeySource, source)
+internal fun SlockEnhancedNotifyEvent.toEnvelopeJson(): JsonObject =
+    buildJsonObject {
+        put(SlockEnhancedNotifyContract.KeyEventName, eventName)
+        put(SlockEnhancedNotifyContract.KeyData, eventData)
+        put(SlockEnhancedNotifyContract.KeyCrossProcess, crossProcess)
+        put(SlockEnhancedNotifyContract.KeySource, source)
+    }
 
 internal class SlockPlatformDispatchingEventBus(
     private val dispatchToPlatform: (SlockEnhancedNotifyEvent) -> Unit
@@ -178,13 +182,13 @@ internal class SlockPlatformDispatchingEventBus(
     override fun observe(
         eventName: String,
         crossProcess: Boolean,
-        listener: (JSONObject?) -> Unit
+        listener: (JsonObject?) -> Unit
     ): RealtimeSubscription =
         SlockEnhancedNotifyCenter.observe(eventName, crossProcess, listener)
 
     override fun post(
         eventName: String,
-        eventData: JSONObject,
+        eventData: JsonObject,
         crossProcess: Boolean,
         source: String
     ) {
@@ -212,13 +216,13 @@ internal class SlockEventBusRelay(
     override fun observe(
         eventName: String,
         crossProcess: Boolean,
-        listener: (JSONObject?) -> Unit
+        listener: (JsonObject?) -> Unit
     ): RealtimeSubscription =
         delegate.observe(eventName, crossProcess, listener)
 
     override fun post(
         eventName: String,
-        eventData: JSONObject,
+        eventData: JsonObject,
         crossProcess: Boolean,
         source: String
     ) {
@@ -247,7 +251,7 @@ internal fun postSlockInProcessJsonEvent(
         require(eventDataJson.isNotBlank())
         SlockEventBuses.inProcess().post(
             eventName = eventName,
-            eventData = JSONObject(eventDataJson),
+            eventData = parseSlockJsonObject(eventDataJson),
             crossProcess = true,
             source = source,
         )

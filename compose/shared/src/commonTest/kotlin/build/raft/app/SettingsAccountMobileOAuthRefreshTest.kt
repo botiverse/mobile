@@ -1,24 +1,25 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SettingsAccountMobileOAuthRefreshTest {
     @Test
     fun onlySuccessfulAccountLinkCompletionReloadsCanonicalSettingsState() {
         assertTrue(
             shouldReloadSettingsAccountAfterMobileOAuth(
-                JSONObject().put("status", "settings_account")
+                buildJsonObject { put("status", "settings_account") }
             )
         )
         assertFalse(
             shouldReloadSettingsAccountAfterMobileOAuth(
-                JSONObject().put("status", "login_error")
+                buildJsonObject { put("status", "login_error") }
             )
         )
-        assertFalse(shouldReloadSettingsAccountAfterMobileOAuth(JSONObject()))
+        assertFalse(shouldReloadSettingsAccountAfterMobileOAuth(buildJsonObject {}))
         assertFalse(shouldReloadSettingsAccountAfterMobileOAuth(null))
     }
 }

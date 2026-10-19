@@ -181,7 +181,7 @@ class ThreadOfflineLastKnownTipTest {
             com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
                 put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction, action)
                 if (serverId != null) put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyServerId, serverId)
-            }
+            }.toJsonObject()
         val connected = build.raft.app.data.realtime.SlockRealtimeNotifyContract.ActionPresenceTransportConnected
         assertTrue(isRealtimeTransportConnectedEvent(event(connected, "server-a"), "server-a"))
         assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-b"), "server-a"), "another server's reconnect")
