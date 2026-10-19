@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,29 +30,42 @@ enum class RaftAppearance {
  * holder, so changing [appearance] (or the OS setting under [RaftAppearance.System])
  * recomposes every [RaftTheme] that reads it.
  *
- * Unlike the Kuikly state, hosts do not have to report the OS setting: [RaftTheme]
- * reads `isSystemInDarkTheme()` itself. [App] is the process-wide instance app screens
- * share; fixtures and tests create their own.
+ * It defaults to [RaftAppearance.Light]: the app pins light until every screen supports
+ * dark. [RaftTheme] reports the OS setting through [onSystemDarkChanged], so hosts do
+ * not have to. [App] is the process-wide instance app screens share; fixtures and tests
+ * create their own.
  */
 @Stable
-class RaftThemeState(appearance: RaftAppearance = RaftAppearance.System) {
+class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
     var appearance: RaftAppearance by mutableStateOf(appearance)
         private set
 
-    /** @return true when the stored choice changed. */
+    /** The OS light/dark setting, used under [RaftAppearance.System]. */
+    var systemDark: Boolean by mutableStateOf(false)
+        private set
+
+    /** Whether the resolved theme is dark. */
+    val isDark: Boolean
+        get() =
+            when (appearance) {
+                RaftAppearance.Light -> false
+                RaftAppearance.Dark -> true
+                RaftAppearance.System -> systemDark
+            }
+
+    /** @return true when the resolved theme changed, as `SlockThemeState.apply` does. */
     fun apply(next: RaftAppearance): Boolean {
-        if (next == appearance) return false
+        val wasDark = isDark
         appearance = next
-        return true
+        return wasDark != isDark
     }
 
-    /** Resolved dark flag for an OS setting of [systemDark]. */
-    fun isDark(systemDark: Boolean): Boolean =
-        when (appearance) {
-            RaftAppearance.Light -> false
-            RaftAppearance.Dark -> true
-            RaftAppearance.System -> systemDark
-        }
+    /** Records the OS setting; @return true when the resolved theme changed. */
+    fun onSystemDarkChanged(dark: Boolean): Boolean {
+        val wasDark = isDark
+        systemDark = dark
+        return wasDark != isDark
+    }
 
     companion object {
         /** Process-wide state app screens follow (the SlockThemeState counterpart). */
@@ -103,7 +117,8 @@ fun RaftTheme(
     systemDark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val dark = state.isDark(systemDark)
+    SideEffect { state.onSystemDarkChanged(systemDark) }
+    val dark = if (state.appearance == RaftAppearance.System) systemDark else state.isDark
     val colors = if (dark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
     val fonts = rememberRaftFonts()
     val typography = remember(fonts) { RaftTypography.from(fonts) }

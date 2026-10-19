@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -22,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
+import kotlinx.coroutines.delay
 
 /** raft-ui Spinner `size`: a 2x2 grid of [pixel] squares [gap] apart (`--spinner-pixel` / `--spinner-gap`). */
 enum class RaftSpinnerSize(val pixel: Dp, val gap: Dp) {
@@ -55,11 +55,6 @@ const val RaftSpinnerRestAlpha = 0.2f
  */
 fun raftSpinnerLitCell(step: Int): Int = ClockwiseCells[((step % 4) + 4) % 4]
 
-/** Animation step at [elapsedMillis] into the animation. */
-fun raftSpinnerStepAt(elapsedMillis: Long): Int =
-    (((elapsedMillis % RaftSpinnerCycleMillis) + RaftSpinnerCycleMillis) % RaftSpinnerCycleMillis).toInt() /
-        RaftSpinnerStepMillis
-
 private val ClockwiseCells = intArrayOf(0, 1, 3, 2)
 
 /**
@@ -89,10 +84,11 @@ fun RaftSpinner(
     var animatedStep by remember { mutableIntStateOf(0) }
     if (stillStep == null) {
         LaunchedEffect(Unit) {
-            val start = withFrameMillis { it }
+            // Sleep between steps instead of waiting on every frame, so the frame clock
+            // is only woken 4 times a second.
             while (true) {
-                // Only a step change writes the state, so the canvas redraws 4 times a second.
-                withFrameMillis { now -> animatedStep = raftSpinnerStepAt(now - start) }
+                delay(RaftSpinnerStepMillis.toLong())
+                animatedStep = (animatedStep + 1) % 4
             }
         }
     }

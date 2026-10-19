@@ -47,27 +47,34 @@ See `tools/design-tokens/README.md` for bumping raft-ui.
 ## Theme
 
 ```kotlin
-// App root: follows RaftThemeState.App (System by default) and the OS setting.
+// App root: follows RaftThemeState.App (Light by default; the app pins light until
+// every screen supports dark).
 RaftTheme {
     RaftText("Loading messages", style = RaftTheme.typography.body)
 }
 
 // Settings > Appearance
-RaftThemeState.App.apply(RaftAppearance.Dark)   // returns true when it changed
+RaftThemeState.App.apply(RaftAppearance.Dark)   // true when the resolved theme changed
 
 // Fixtures and previews pin one appearance.
 RaftTheme(appearance = RaftAppearance.Light) { ... }
 ```
 
 - `RaftThemeState` is an observable Compose state holder modelled on `SlockThemeState`
-  (`Light` / `Dark` / `System`). Unlike Kuikly, hosts don't report the OS setting:
-  `RaftTheme` reads `isSystemInDarkTheme()`.
+  (`Light` / `Dark` / `System`, default `Light`). As there, `apply()` and
+  `onSystemDarkChanged()` return whether the resolved theme changed, not whether the
+  stored choice did. Unlike Kuikly, hosts don't report the OS setting: `RaftTheme` reads
+  `isSystemInDarkTheme()` and records it on the state.
 - `RaftTheme { }` provides `LocalRaftColors`, `LocalRaftTypography`, `LocalRaftShapes`,
   `LocalRaftIsDark` and `LocalRaftContentColor` (CSS `currentColor`, `--foreground` at the
   root). Read them through `RaftTheme.colors` / `.typography` / `.shapes` / `.isDark`.
 - Fonts: Space Grotesk 300–700 and Space Mono 400/700 from `composeResources/font`
   (copies of `androidApp/src/main/res/font`, SIL OFL 1.1, see `THIRD_PARTY_NOTICES.md`),
   loaded with `Font(Res.font.…)`, so every platform measures the same TTFs.
+  **iOS:** `compose.ios.resources.sync=false` in compose/gradle.properties applies to this
+  module too, so nothing copies `composeResources` (the fonts) into an iOS app bundle yet.
+  No iOS host links this module today; wiring the iOS shell to it must also set up the
+  resource copy.
 - `RaftText` is built on `BasicText`, not Material `Text`, so no Material
   `LocalTextStyle` / `LocalContentColor` can shift colour or line height. Every style
   centres the line box like CSS half-leading (`LineHeightStyle.Alignment.Center`, no trim).
