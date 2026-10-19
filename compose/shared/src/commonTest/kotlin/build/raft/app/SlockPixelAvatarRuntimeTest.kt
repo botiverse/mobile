@@ -168,15 +168,47 @@ class SlockPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun holderAcceptsSameVersionAsBundled() {
+    fun holderSkipsSameVersionAsBundled() {
         try {
+            // Same version as the active table: version is the table identity,
+            // so the document is skipped without swapping `current` — a swap is
+            // what makes every pixel avatar recompose and flash its placeholder.
             val applied =
                 SlockPixelAvatarRuntime.applyRuntimeJson(
                     sampleJson(version = SlockPixelAvatarRuntime.bundled.version),
                     source = "fetch"
                 )
+            assertNull(applied)
+            assertSame(SlockPixelAvatarRuntime.bundled, SlockPixelAvatarRuntime.current)
+        } finally {
+            SlockPixelAvatarRuntime.resetForTest()
+        }
+    }
+
+    @Test
+    fun holderSkipsSameVersionEvenWhenContentDiffers() {
+        try {
+            val applied =
+                SlockPixelAvatarRuntime.applyRuntimeJson(
+                    sampleJson(version = SlockPixelAvatarRuntime.bundled.version + 1),
+                    source = "fetch"
+                )
             assertNotNull(applied)
-            assertEquals(SlockPixelAvatarRuntime.bundled.version, SlockPixelAvatarRuntime.current.version)
+            assertSame(applied, SlockPixelAvatarRuntime.current)
+
+            // A fetched document with the same version but different content is
+            // still skipped: version, not payload, is the table identity.
+            val reapplied =
+                SlockPixelAvatarRuntime.applyRuntimeJson(
+                    sampleJson(
+                        version = SlockPixelAvatarRuntime.bundled.version + 1,
+                        defaultKey = "mug",
+                        reservedKeys = "[]"
+                    ),
+                    source = "fetch"
+                )
+            assertNull(reapplied)
+            assertSame(applied, SlockPixelAvatarRuntime.current)
         } finally {
             SlockPixelAvatarRuntime.resetForTest()
         }
