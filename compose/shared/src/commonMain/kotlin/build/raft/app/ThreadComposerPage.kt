@@ -123,17 +123,26 @@ private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
 private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
+// raft-ui 0.6.0 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1.5`, opening
+// `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
+// title/meta content row; `px-2.5 pt-2 pb-1` caption group labels; 19dp compact avatars
+// and framed channel tiles (11dp glyph).
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionPopoverGap = 6.dp
-private val ComposerSuggestionHeaderEstimatedHeight = 30.dp
-private val ComposerMemberSuggestionRowMinHeight = 38.dp
-private val ComposerChannelSuggestionRowMinHeight = 34.dp
-private val ComposerSuggestionStatusRowMinHeight = 42.dp
-private val ComposerMemberSuggestionAvatarSize = 20.dp
-private val ComposerMemberSuggestionAvatarNameGap = 8.dp
+private val ComposerSuggestionPanelInset = 6.dp
+private val ComposerSuggestionPopoverGap = 8.dp
+private val ComposerSuggestionHeaderEstimatedHeight = 28.dp
+private val ComposerMemberSuggestionRowMinHeight = 36.dp
+private val ComposerChannelSuggestionRowMinHeight = 36.dp
+private val ComposerSuggestionStatusRowMinHeight = 36.dp
+private val ComposerSuggestionItemPaddingHorizontal = 10.dp
+private val ComposerSuggestionItemPaddingVertical = 4.dp
+private val ComposerSuggestionItemGap = 10.dp
+private val ComposerSuggestionContentGap = 6.dp
+private val ComposerMemberSuggestionAvatarSize = 19.dp
+private val ComposerMemberSuggestionAvatarNameGap = ComposerSuggestionItemGap
 private val ComposerAgentActivityDotSize = 10.dp
-private val ComposerChannelSuggestionIconSize = 20.dp
-private val ComposerChannelSuggestionGlyphSize = 12.dp
+private val ComposerChannelSuggestionIconSize = 19.dp
+private val ComposerChannelSuggestionGlyphSize = 11.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
@@ -2995,7 +3004,8 @@ internal fun composerSuggestionPanelContentHeight(
     includeHeader: Boolean = true
 ): Dp {
     val headerHeight = if (includeHeader) ComposerSuggestionHeaderEstimatedHeight else 0.dp
-    val estimated = headerHeight + rowMinHeight * itemCount.coerceAtLeast(1)
+    val estimated =
+        ComposerSuggestionPanelInset * 2 + headerHeight + rowMinHeight * itemCount.coerceAtLeast(1)
     return if (estimated > ComposerSuggestionPanelMaxHeight) ComposerSuggestionPanelMaxHeight else estimated
 }
 
@@ -3517,7 +3527,7 @@ private fun ComposerSuggestionStatusRow(message: String) {
                 .fillMaxWidth()
                 .heightIn(min = ComposerSuggestionStatusRowMinHeight)
                 .clickable(onClick = {})
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
@@ -3544,19 +3554,34 @@ private fun ComposerSuggestionHeader(
                 .clickable(onClick = {})
     ) {
         if (topDivider) {
+            // web: `<Separator className="mt-1" />` then `<ComposerSuggestionGroup
+            // className="pt-1">` -- the hairline spans the list's p-1.5 content box.
+            Spacer(modifier = Modifier.height(4.dp))
             ComposerSuggestionDivider()
+            Spacer(modifier = Modifier.height(4.dp))
         }
-        // raft-ui menu `groupLabel`: text-caption bold on foreground-hint in
-        // source case, px-2.5 pt-2 pb-1.
-        Text(
-            text = text,
-            style =
-                SlockType.Caption
-                    .withSlockFontWeight(FontWeight.Bold)
-                    .copy(color = SlockColor.ForegroundHint),
-            color = SlockColor.ForegroundHint,
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp)
-        )
+        // raft-ui `ComposerSuggestionGroupLabel`: text-caption bold on foreground-hint
+        // in source case, px-2.5 pt-2 pb-1 inside the list's p-1.5 inset.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal,
+                        top = 8.dp,
+                        end = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal,
+                        bottom = 4.dp
+                    )
+        ) {
+            Text(
+                text = text,
+                style =
+                    SlockType.Caption
+                        .withSlockFontWeight(FontWeight.Bold)
+                        .copy(color = SlockColor.ForegroundHint),
+                color = SlockColor.ForegroundHint
+            )
+        }
         if (bottomDivider) {
             ComposerSuggestionDivider()
         }
@@ -3625,7 +3650,7 @@ private fun ComposerMemberSuggestionRow(
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
             ) {
                 if (muted) {
                     SlockLucideIcon(
@@ -4651,6 +4676,10 @@ private fun ComposerSuggestionPanel(
         LazyColumn(
             modifier = Modifier.fillMaxWidth().height(panelHeight)
         ) {
+            // `p-1.5` block inset; the side inset lives on the rows and labels.
+            item(key = "inset-top", contentType = "inset") {
+                Spacer(modifier = Modifier.height(ComposerSuggestionPanelInset))
+            }
             if (title != null) {
                 item(key = "header-$title", contentType = "header") {
                     ComposerSuggestionHeader(
@@ -4661,6 +4690,9 @@ private fun ComposerSuggestionPanel(
             }
             items(itemCount, key = itemKey) { index ->
                 itemContent(index)
+            }
+            item(key = "inset-bottom", contentType = "inset") {
+                Spacer(modifier = Modifier.height(ComposerSuggestionPanelInset))
             }
         }
     }
@@ -4681,8 +4713,7 @@ private fun ComposerChannelSuggestionRow(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier =
@@ -4698,23 +4729,30 @@ private fun ComposerChannelSuggestionRow(
                     color = slockArgbHex(SlockColor.TextMuted)
                 )
             }
-            Text(
-                text = channel.name,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack, fontSize = 14.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            channel.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
+            Spacer(modifier = Modifier.width(ComposerSuggestionItemGap))
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
+            ) {
                 Text(
-                    text = subtitle,
-                    style = SlockType.Caption.copy(color = SlockColor.ForegroundHint),
-                    color = SlockColor.ForegroundHint,
-                    modifier = Modifier.weight(1f),
+                    text = channel.name,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            } ?: Box(modifier = Modifier.weight(1f))
+                channel.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
+                    Text(
+                        text = subtitle,
+                        style = SlockType.Caption.copy(color = SlockColor.ForegroundHint),
+                        color = SlockColor.ForegroundHint,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }
@@ -4740,7 +4778,7 @@ private fun ComposerSuggestionInteractiveRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp)
+                .padding(horizontal = ComposerSuggestionPanelInset)
                 .background(background, RoundedCornerShape(SlockRadius.Control))
     ) {
         Box(
@@ -4749,7 +4787,10 @@ private fun ComposerSuggestionInteractiveRow(
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(
+                        horizontal = ComposerSuggestionItemPaddingHorizontal,
+                        vertical = ComposerSuggestionItemPaddingVertical
+                    ),
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
@@ -4763,7 +4804,8 @@ private fun ComposerSuggestionInteractiveRow(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(SlockColor.Popover.copy(alpha = 0.52f))
+                            // web `opacity-60` on not-in-channel options.
+                            .background(SlockColor.Popover.copy(alpha = 0.40f))
                 )
             }
         }
@@ -4772,7 +4814,14 @@ private fun ComposerSuggestionInteractiveRow(
 
 @Composable
 private fun ComposerSuggestionDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
+    Box(
+        modifier =
+            Modifier
+                .padding(horizontal = ComposerSuggestionPanelInset)
+                .fillMaxWidth()
+                .height(SlockStroke.Thin)
+                .background(SlockColor.LineMuted)
+    )
 }
 
 @Composable

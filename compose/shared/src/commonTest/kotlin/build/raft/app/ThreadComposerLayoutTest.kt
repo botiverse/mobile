@@ -630,8 +630,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelContentHeightReservesRoomForMultipleRows() {
+        // p-1.5 inset (2 x 6) + 28dp group label + 3 x 38.
         assertEquals(
-            144.dp,
+            154.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 38.dp
@@ -663,8 +664,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelHeightCanOmitMemberHeaderForDirectMessages() {
+        // p-1.5 inset (2 x 6) + 3 x 36 (min-h-9).
         assertEquals(
-            114.dp,
+            120.dp,
             composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
@@ -703,7 +705,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
         assertEquals(
-            102.dp,
+            114.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 34.dp,
