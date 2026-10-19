@@ -1187,6 +1187,7 @@
     <string name="file_preview_crop_reset">重置</string>
     <string name="file_preview_crop_apply">应用</string>
     <string name="file_preview_action_comments">评论</string>
+    <string name="file_preview_action_copy_text">复制文本</string>
     <string name="file_preview_action_download">下载</string>
     <string name="file_preview_action_install">安装</string>
     <string name="file_preview_action_open">打开</string>
