@@ -99,6 +99,29 @@ fun slockRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
         build.raft.app.SlockFontFaceState.apply(stored)
     }
 
+/**
+ * Task #521 diagnostic: what the cold-start restore actually reads. Codex raised a competing
+ * hypothesis that the restore may be reading a default because the value is not reachable from
+ * this store/instance at all — in which case restoring earlier would fix nothing. One cold start
+ * with this line settles which hypothesis holds.
+ *
+ * Returns the RAW stored string (or null when absent/unreadable) plus the parsed face, so a device
+ * log distinguishes "key missing", "key present but unparsed", and "key present and parsed".
+ */
+fun slockReadStoredFontPreferenceForDiagnostics(): String =
+    runCatching {
+        val binding = SlockSharedKeyValueStoreProvider.create(
+            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+            storageName = "local preference"
+        )
+        val raw = binding.store.getString(KEY_FONT_PREFERENCE_STORAGE_KEY)
+        val parsed = FontPreference.fromStorageKey(raw)
+        "font_preference_coldstart scope=${binding.scope} raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
+    }.getOrElse { error -> "font_preference_coldstart store_unavailable=${error.message}" }
+
+/** Storage key of the font face inside the `slockLocal` app-scope store. */
+internal const val KEY_FONT_PREFERENCE_STORAGE_KEY = "appearance:font_preference"
+
 fun SharedPreferenceStore.getBoolean(key: String, defaultValue: Boolean = false): Boolean =
     when (getString(key)) {
         "true" -> true
