@@ -18,7 +18,7 @@ const ordered = [
   'initializeSlockOhosAppScopeMMKV(this.context);',
   "setup('libshared.so', BuildProfile.DEBUG);",
   'init();',
-  "invoke<boolean>('slockOhosRestoreStoredFontPreferenceOnColdStart')",
+  "invoke<string>('slockOhosRestoreStoredFontPreferenceOnColdStart')",
 ];
 let previous = -1;
 for (const marker of ordered) {
@@ -27,7 +27,9 @@ for (const marker of ordered) {
   previous = index;
 }
 assert.ok(!setup.includes('await ') && !setup.includes('setTimeout('), 'restore must finish synchronously before setup returns');
-assert.match(bridge, /@KNExport\s+fun slockOhosRestoreStoredFontPreferenceOnColdStart\(\): Boolean\s*=\s*slockRestoreStoredFontPreferenceOnColdStart\(\) != null/);
+assert.match(bridge, /@KNExport\s+fun slockOhosRestoreStoredFontPreferenceOnColdStart\(\): String\s*\{\s*slockRestoreStoredFontPreferenceOnColdStart\(\)\s+return slockReadStoredFontPreferenceForDiagnostics\(\)/);
+assert.match(setup, /hilog\.info\(0x0000, SLOCK_KNOI_LOG_TAG, '%\{public\}s', fontDiagnostic\)/,
+  'raw/parsed store diagnostic must reach the native cold-start log');
 assert.match(shared, /fun slockRestoreStoredFontPreferenceOnColdStart\(\)[\s\S]*?readFontPreferenceSync\(\)/,
   'cold-start restore must force a synchronous read, rather than leave lazy MMKV untouched');
 assert.match(store, /override fun getString\(key: String\): String\?[\s\S]*?mmkv_c_contains_key\(mmkvHandle,/,

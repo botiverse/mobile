@@ -385,10 +385,8 @@ export default class EntryAbility extends UIAbility {
     // MMKV is already initialized and KNOI is live. Read synchronously here so
     // the lazy shared store publishes the font before loadContent creates pages.
     // Native bottom-bar font restoration is separate and cannot restore shared state.
-    const fontRestored = invoke<boolean>('slockOhosRestoreStoredFontPreferenceOnColdStart');
-    if (!fontRestored) {
-      hilog.warn(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'Stored shared font preference unavailable');
-    }
+    const fontDiagnostic = invoke<string>('slockOhosRestoreStoredFontPreferenceOnColdStart');
+    hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', fontDiagnostic);
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 
