@@ -67,6 +67,11 @@ MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router,
 Sources were instanced to static weights with `fonttools varLib.instancer`. Details:
 `compose/androidApp/FONTS-PROVENANCE.md`.
 
+## Bundled icon data (compose/designsystem)
+| Source | Use | License |
+| --- | --- | --- |
+| Lucide (lucide.dev) | SVG path data of 8 icons drawn by `RaftGlyph` (chevron-right, info, triangle-alert, octagon-alert, circle-check, at-sign, plus, copy) | ISC |
+
 ## Copyleft check
 No GPL / LGPL / AGPL / MPL component found in any ecosystem. EPL-1.0 (junit) is test-only. The only non-OSI terms are the KuiklyUI license (permissive + no-hot-update clause) and Google's Android SDK license (binary dependency).
 

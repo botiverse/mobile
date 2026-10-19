@@ -43,6 +43,9 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(kotlin("test-junit"))
+                // Semantics and input tests (runComposeUiTest).
+                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
             }
         }
     }

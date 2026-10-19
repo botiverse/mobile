@@ -15,6 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.isSpecified
+import build.raft.designsystem.components.LocalRaftPulseClock
+import build.raft.designsystem.components.rememberRaftPulseClock
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiThemeColors
 
@@ -105,6 +108,17 @@ val LocalRaftIsDark = staticCompositionLocalOf { false }
 val LocalRaftContentColor = staticCompositionLocalOf { Color.Unspecified }
 
 /**
+ * The opaque colour of the surface the content sits on: what a cut-out (an avatar's
+ * presence light, the ring round each face of an avatar stack) is cut out of. [RaftTheme]
+ * provides `layer-canvas`; every component with a fill of its own provides that fill to
+ * its content ([build.raft.designsystem.components.RaftCard] and
+ * [build.raft.designsystem.components.RaftListRowGroup] `layer-card`, a selected row its
+ * `info-soft` wash over the card). A screen that paints its own surface (a `layer-panel`
+ * side panel) provides it too. Read it through [RaftTheme.surfaceColor].
+ */
+val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
+
+/**
  * Root of every Raft CMP surface. Resolves light/dark from [state] (and the OS setting
  * under [RaftAppearance.System]), loads the bundled fonts and provides colours,
  * typography, shapes and the content colour.
@@ -128,6 +142,8 @@ fun RaftTheme(
         LocalRaftShapes provides RaftShapes(),
         LocalRaftIsDark provides dark,
         LocalRaftContentColor provides colors.foreground,
+        LocalRaftSurfaceColor provides colors.layerCanvas,
+        LocalRaftPulseClock provides rememberRaftPulseClock(),
         content = content,
     )
 }
@@ -160,4 +176,9 @@ object RaftTheme {
     val isDark: Boolean
         @Composable @ReadOnlyComposable
         get() = LocalRaftIsDark.current
+
+    /** [LocalRaftSurfaceColor], or `layer-canvas` outside any surface. */
+    val surfaceColor: Color
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftSurfaceColor.current.takeIf { it.isSpecified } ?: colors.layerCanvas
 }

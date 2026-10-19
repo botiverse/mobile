@@ -14,12 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -192,23 +187,10 @@ fun RaftBadge(
             fontFeatureSettings = if (appearance == RaftBadgeAppearance.Solid) "tnum" else null,
         )
     val shape = RoundedCornerShape(look.radius)
-    val outerRing = look.outerRing
     Row(
         modifier =
             modifier
-                .drawBehind {
-                    if (outerRing.alpha > 0f) {
-                        val ring = RaftStroke.Control.toPx()
-                        val radius = look.radius.toPx() + ring / 2f
-                        drawRoundRect(
-                            color = outerRing,
-                            topLeft = Offset(-ring / 2f, -ring / 2f),
-                            size = Size(size.width + ring, size.height + ring),
-                            cornerRadius = CornerRadius(radius),
-                            style = Stroke(width = ring),
-                        )
-                    }
-                }
+                .raftDieCutEdge(look.outerRing, look.radius)
                 .height(look.height)
                 .widthIn(min = look.minWidth)
                 .background(look.fill, shape)
@@ -222,13 +204,15 @@ fun RaftBadge(
                 Box(Modifier.size(look.iconSize), contentAlignment = Alignment.Center) { icon() }
             }
         }
-        RaftText(
-            text = text,
-            style = textStyle,
-            color = look.ink,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-        )
+        if (text.isNotEmpty()) {
+            RaftText(
+                text = text,
+                style = textStyle,
+                color = look.ink,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+            )
+        }
     }
 }
