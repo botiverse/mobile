@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.cmp.host.LocalSlockHost
 import build.raft.app.cmp.host.LocalSlockPageArgs
@@ -54,7 +55,7 @@ internal fun CmpHelloPage() {
             .padding(horizontal = RaftSpacing.Md, vertical = RaftSpacing.Lg),
         verticalArrangement = Arrangement.spacedBy(RaftSpacing.Md),
     ) {
-        RaftText("Compose Multiplatform", style = type.pageTitle)
+        RaftText("Compose Multiplatform", style = type.title)
         RaftText(
             "This page renders on the CMP host while every other page stays on Kuikly.",
             style = type.body,
@@ -68,9 +69,9 @@ internal fun CmpHelloPage() {
             Swatch(colors.dangerSoft)
         }
         Column(verticalArrangement = Arrangement.spacedBy(RaftSpacing.Xs)) {
-            RaftText("pageName", style = type.sectionLabel, color = colors.foregroundMuted)
+            RaftText("pageName", style = type.footnote.copy(fontWeight = FontWeight.Bold), color = colors.foregroundMuted)
             RaftText(args.pageName, style = type.monoCode)
-            RaftText("pageData", style = type.sectionLabel, color = colors.foregroundMuted)
+            RaftText("pageData", style = type.footnote.copy(fontWeight = FontWeight.Bold), color = colors.foregroundMuted)
             RaftText(args.pageData.toSlockJsonString(), style = type.monoCode)
         }
         HelloButton("Show toast", primary = true) {
@@ -104,6 +105,6 @@ private fun HelloButton(label: String, primary: Boolean = false, onClick: () -> 
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        RaftText(label, style = RaftTheme.typography.button, color = colors.ink)
+        RaftText(label, style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.ink)
     }
 }
