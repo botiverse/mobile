@@ -59,7 +59,13 @@ Two long-message recomposes sit immediately before the two longest stalls in the
 
 Shorter messages in the same trace show **no frame above 110 ms**, so the pairing has a negative control.
 
-**What this excludes:** the stall does **not** begin during composition. `thread_markdown_body_recompose` is emitted from a `SideEffect`, which runs **after** composition commits, and the implied frame start is 1 ms and 41 ms *after* that log. So composition for that message had already finished when the long frame began. The cost is in what happens **to the composed output next** — first measure / layout / draw — not in building it.
+Two separate facts, and only one of them needs the arithmetic:
+
+**Structural (no timing needed):** Compose composition runs on Kuikly's context thread, not on the Android main thread (see `SlockKuiklyThreading.kt`). So a main-thread frame cannot be composition itself. That conclusion holds regardless of any timestamps.
+
+**Temporal (this is what the arithmetic buys):** the stall *begins* 1 ms and 41 ms **after** that row's composition completed. `thread_markdown_body_recompose` is emitted from a `SideEffect`, which runs after composition commits, and the implied frame start follows it. So the cost is in what happens **to the composed output next** — first measure / layout / draw — not in building it, and the ordering is what rules out "the stall overlaps composition."
+
+Keep the two apart: the structural fact is a property of the runtime; the 1 ms / 41 ms ordering is an observation about this trace.
 
 **Metadata a reader needs to re-derive this:**
 
