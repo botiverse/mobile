@@ -300,7 +300,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
      */
     private fun revealUnobstructedRetryRow(
         instrumentation: Instrumentation,
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
     ): RetryRevealState {
         var gestureCount = 0
         var state = retryRevealState(instrumentation)
