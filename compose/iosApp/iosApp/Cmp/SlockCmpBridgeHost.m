@@ -39,9 +39,11 @@ static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
     _module.slockHostController = hostController;
 }
 
+// Kotlin/Native exports SlockCmpIosBridge.call(method:paramsJson:callback:) with a mangled
+// `callback_:` label (the CI crash "unrecognized selector callMethod:paramsJson:callback_:").
 - (void)callMethod:(NSString *)method
         paramsJson:(NSString *)paramsJson
-          callback:(id<SharedSlockCmpIosBridgeCallback> _Nullable)callback {
+         callback_:(id<SharedSlockCmpIosBridgeCallback> _Nullable)callback {
     dispatch_block_t invoke = ^{
         SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
         if (![self->_module respondsToSelector:selector]) {
