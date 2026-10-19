@@ -260,6 +260,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.draw.drawWithContent
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
@@ -354,6 +355,9 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
         setContent { ThreadMessageVisualScreen() }
     }
 }
+private val ThreadMessageMenuVisualViewportWidth = 390.dp
+private val ThreadMessageMenuVisualViewportHeight = 844.dp
+
 @Composable
 internal fun ThreadMessageVisualScreen() {
     ThreadReactionAtlasProvider {
@@ -634,6 +638,7 @@ internal fun ThreadMessageVisualScreenContent() {
     var compactMenuAnchor by remember(visualFixture, message?.id) {
         mutableStateOf<SlockPopoverAnchor?>(null)
     }
+    var menuRowBounds by remember(visualFixture, message?.id) { mutableStateOf<Rect?>(null) }
     val menuActions =
         remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
             if (message == null || !actionsMenuVisible) {
@@ -854,6 +859,20 @@ internal fun ThreadMessageVisualScreenContent() {
                                 )
                     )
                 }
+                Box(
+                    modifier =
+                        Modifier.onGloballyPositioned { coordinates ->
+                            val origin = coordinates.positionInRoot()
+                            val bounds =
+                                Rect(
+                                    left = origin.x,
+                                    top = origin.y,
+                                    right = origin.x + coordinates.size.width,
+                                    bottom = origin.y + coordinates.size.height
+                                )
+                            if (bounds != menuRowBounds) menuRowBounds = bounds
+                        }
+                ) {
                 ThreadMessageCard(
                     memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                     message = message,
@@ -861,6 +880,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     agentStatusResolver = agentStatusResolver,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
+                    popupOpen = menuActions.isNotEmpty(),
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
@@ -903,6 +923,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     onLongPressInputReady = onLongPressInputReady,
                     outerPadding = SlockSpacing.Sm
                 )
+                }
                 compactMenuAnchor?.let { anchor ->
                     ThreadNewMessageMenu(
                         anchor = anchor,
@@ -924,8 +945,38 @@ internal fun ThreadMessageVisualScreenContent() {
                         onMore = { compactMenuAnchor = null }
                     )
                 }
-                if (menuActions.isNotEmpty()) {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
+            }
+            }
+            // web opens the message context menu at the right-click point -- the
+            // capture's `contextmenu` interaction lands on the row's center -- and
+            // places its top-left corner there through `placeFloatingOverlay` in the
+            // 390x844 viewport (8px inset), over the pressed row.
+            menuRowBounds?.takeIf { menuActions.isNotEmpty() }?.let { rowBounds ->
+                val density = LocalDensity.current
+                val menuWidthPx = with(density) { threadMessageMenuWidthDp(payload.showReactionActions).dp.toPx() }
+                val menuHeightPx =
+                    with(density) {
+                        threadMessageMenuContentHeightDp(
+                            actionGroups = menuActions.map { it.group },
+                            showReactionActions = payload.showReactionActions
+                        ).dp.toPx()
+                    }
+                val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
+                val menuX =
+                    slockContextMenuAxisPosition(
+                        anchor = rowBounds.center.x,
+                        contentSize = menuWidthPx,
+                        viewportSize = with(density) { ThreadMessageMenuVisualViewportWidth.toPx() },
+                        viewportGap = viewportGapPx
+                    )
+                val menuY =
+                    slockContextMenuAxisPosition(
+                        anchor = rowBounds.center.y,
+                        contentSize = menuHeightPx,
+                        viewportSize = with(density) { ThreadMessageMenuVisualViewportHeight.toPx() },
+                        viewportGap = viewportGapPx
+                    )
+                Box(modifier = Modifier.offset { IntOffset(menuX.toInt(), menuY.toInt()) }) {
                     ThreadMessageMenuChrome(
                         actions = menuActions,
                         showReactionActions = payload.showReactionActions,
@@ -934,7 +985,6 @@ internal fun ThreadMessageVisualScreenContent() {
                         modifier = Modifier
                     )
                 }
-            }
             }
             inlineReplyTimestampBounds?.let { bounds ->
                 val density = LocalDensity.current.density

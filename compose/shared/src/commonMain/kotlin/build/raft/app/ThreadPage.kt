@@ -21310,6 +21310,7 @@ private fun ThreadMessagesListContent(
                                 memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
+                                popupOpen = actionMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
@@ -24010,6 +24011,8 @@ private data class ThreadMessageCardData(
     val currentServerSlug: String?,
     val richContentEnabled: Boolean,
     val focused: Boolean,
+    /** web MessageItem `data-popup-open`: this row's context menu is open. */
+    val popupOpen: Boolean = false,
     val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
     val shareSelectionActive: Boolean,
     val selectedForShare: Boolean,
@@ -24107,6 +24110,7 @@ fun ThreadMessageCard(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
+    popupOpen: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
@@ -24160,6 +24164,7 @@ fun ThreadMessageCard(
                 currentServerSlug = currentServerSlug,
                 richContentEnabled = richContentEnabled,
                 focused = focused,
+                popupOpen = popupOpen,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 shareSelectionActive = shareSelectionActive,
                 selectedForShare = selectedForShare,
@@ -24262,6 +24267,7 @@ private fun ThreadMessageCardContent(
     val onMentionAuthor = callbacks.onMentionAuthor
     val richContentEnabled = data.richContentEnabled
     val focused = data.focused
+    val popupOpen = data.popupOpen
     val isMessageListScrolling = callbacks.isMessageListScrolling
     val memberAvatarResolver = callbacks.memberAvatarResolver
     val memberModelLabelResolver = callbacks.memberModelLabelResolver
@@ -24516,6 +24522,10 @@ private fun ThreadMessageCardContent(
                         // raft-ui MessageItem: a checked multi-select row washes info-soft.
                         if (shareSelectionActive && selectedForShare) {
                             SlockColor.InfoSoft
+                        } else if (popupOpen) {
+                            // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
+                            // under an open context menu stays pressed.
+                            SlockColor.FillPressed
                         } else {
                             threadMessageFocusHighlightColor(focusAlpha)
                         }
@@ -27938,12 +27948,31 @@ internal data class ThreadMessageMenuAction(
     val onClick: () -> Unit
 )
 
-private val ThreadMessageMenuWidth = 240.dp
-private val ThreadMessageMenuRowHeight = 44.dp
+// Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
+// popup, 36dp `min-h-9` rows with lucide 14 icons, and a `h-9 gap-1 px-2` quick-reaction
+// row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
+// the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
+private val ThreadMessageMenuMinWidth = 240.dp
+private val ThreadMessageMenuRowHeight = 36.dp
+private val ThreadMessageMenuIconSize = 14.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
-private val ThreadMessageMenuAnchorGap = 8.dp
-private val ThreadMessageMenuHorizontalNudge = 16.dp
+private val ThreadMessageMenuReactionButtonSize = 28.dp
+private val ThreadMessageMenuReactionGap = 4.dp
+private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
+// Web places a touch context menu's top-left corner at the press point
+// (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
+private val ThreadMessageMenuViewportGap = 8.dp
 private val ThreadMessageMenuShadowOffset = 4.dp
+
+internal fun threadMessageMenuWidthDp(showReactionActions: Boolean): Float {
+    if (!showReactionActions) return ThreadMessageMenuMinWidth.value
+    val reactionCount = ThreadQuickReactionEmojis.size
+    val reactionRowWidth =
+        reactionCount * ThreadMessageMenuReactionButtonSize.value +
+            (reactionCount - 1).coerceAtLeast(0) * ThreadMessageMenuReactionGap.value +
+            ThreadMessageMenuReactionPaddingHorizontal.value * 2
+    return maxOf(ThreadMessageMenuMinWidth.value, reactionRowWidth + SlockRaftMetrics.PopupPadding.value * 2)
+}
 
 internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
@@ -28254,7 +28283,7 @@ private fun ThreadMessageActionMenu(
             )
         }
     val density = LocalDensity.current
-    val menuWidth = with(density) { ThreadMessageMenuWidth.toPx() }
+    val menuWidth = with(density) { threadMessageMenuWidthDp(showReactionActions).dp.toPx() }
     val menuHeight =
         with(density) {
             threadMessageMenuContentHeightDp(
@@ -28262,8 +28291,7 @@ private fun ThreadMessageActionMenu(
                 showReactionActions = showReactionActions
             ).dp.toPx()
         }
-    val anchorGapPx = with(density) { ThreadMessageMenuAnchorGap.toPx() }
-    val horizontalNudgePx = with(density) { ThreadMessageMenuHorizontalNudge.toPx() }
+    val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
     val contentSize = Size(
         width = menuWidth,
         height = menuHeight
@@ -28292,11 +28320,12 @@ private fun ThreadMessageActionMenu(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
-            viewportGap = anchorGapPx,
-            horizontalOffset = -horizontalNudgePx,
-            verticalOffset = anchorGapPx,
-            horizontalAutoFlip = true,
-            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            viewportGap = viewportGapPx,
+            horizontalOffset = 0f,
+            verticalOffset = 0f,
+            verticalOffsetAbove = 0f,
+            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
         ) {
             LaunchedEffect(message.id, anchor) {
                 diagnosticsLogger(
@@ -28365,11 +28394,12 @@ private fun ThreadMessageActionMenu(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
-            viewportGap = anchorGapPx,
-            horizontalOffset = -horizontalNudgePx,
-            verticalOffset = anchorGapPx,
-            horizontalAutoFlip = true,
-            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            viewportGap = viewportGapPx,
+            horizontalOffset = 0f,
+            verticalOffset = 0f,
+            verticalOffsetAbove = 0f,
+            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
         ) {
             ThreadMessageMenuChrome(
                 actions = actions,
@@ -28385,9 +28415,9 @@ private fun ThreadMessageActionMenu(
                 SlockShellOverlayContentEntry(
                     requestId = requestId,
                     contentSize = contentSize,
-                    viewportGap = anchorGapPx,
-                    horizontalOffset = -horizontalNudgePx,
-                    verticalOffset = anchorGapPx,
+                    viewportGap = viewportGapPx,
+                    horizontalOffset = 0f,
+                    verticalOffset = 0f,
                     content = { onSelected ->
                         // The shell host composes this in its own page. Decode the reaction atlas
                         // there instead of capturing this page's `reactionAtlasImage`: the atlas
@@ -28526,13 +28556,13 @@ internal fun ThreadMessageMenuChrome(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
-        width = ThreadMessageMenuWidth,
-        // Keep the message menu's 44dp mobile tap target; visual language
-        // (press wash, icon box, label style) is the shared row's.
+        width = threadMessageMenuWidthDp(showReactionActions).dp,
+        // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
         rowHeight = ThreadMessageMenuRowHeight,
         shadowOffset = ThreadMessageMenuShadowOffset,
         showDividers = false,
         dividerBeforeIds = groupDividerIds,
+        iconSize = ThreadMessageMenuIconSize,
         headerContent =
             if (showReactionActions) {
                 {
@@ -28552,18 +28582,19 @@ private fun ThreadMessageReactionRow(
     reactionAtlasImage: ImageBitmap?,
     onReact: (String) -> Unit,
     rowHeight: Dp = ThreadMessageMenuReactionRowHeight,
-    buttonSize: Dp = 28.dp,
+    buttonSize: Dp = ThreadMessageMenuReactionButtonSize,
     glyphSize: Dp = 18.dp,
-    horizontalPadding: Dp = 12.dp,
+    horizontalPadding: Dp = ThreadMessageMenuReactionPaddingHorizontal,
     enabled: Boolean = true
 ) {
+    // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(rowHeight)
             .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
     ) {
         ThreadQuickReactionEmojis.forEach { reaction ->
             Button(
