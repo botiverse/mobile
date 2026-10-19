@@ -117,14 +117,26 @@ internal fun SlockFilterPopover(
             searchField =
                 if (searchable) {
                     {
-                        TextField(
+                        SlockBrutalInputField(
                             value = searchText,
                             onValueChange = onSearchChange,
                             placeholder = searchPlaceholder,
-                            placeholderColor = SlockColor.ForegroundHint,
                             autoFocus = false,
                             maxLines = 1,
                             textStyle = SlockRaftFilterPopoverInputStyle(),
+                            fieldMinHeight = SlockRaftFilterSearchHeight,
+                            horizontalPadding = SlockRaftFilterSearchPaddingHorizontal,
+                            verticalPadding = 0.dp,
+                            showShadow = false,
+                            // The search row is chromeless: only the hairline below it.
+                            borderColor = Color.Transparent,
+                            enabledBackgroundColor = Color.Transparent,
+                            placeholderColor = SlockColor.ForegroundHint,
+                            // Same as the brutal field above: the whole 40dp row focuses the
+                            // editor (iOS's native hit region is smaller than the row).
+                            containerTapRequestsFocus = true,
+                            showClearWhenNotEmpty = true,
+                            onClear = { onSearchChange("") },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -349,14 +361,26 @@ internal fun SlockFilterPopover(
             searchField =
                 if (searchable) {
                     {
-                        TextField(
+                        SlockBrutalInputField(
                             value = searchText,
                             onValueChange = onSearchChange,
                             placeholder = searchPlaceholder,
-                            placeholderColor = SlockColor.ForegroundHint,
                             autoFocus = false,
                             maxLines = 1,
                             textStyle = SlockRaftFilterPopoverInputStyle(),
+                            fieldMinHeight = SlockRaftFilterSearchHeight,
+                            horizontalPadding = SlockRaftFilterSearchPaddingHorizontal,
+                            verticalPadding = 0.dp,
+                            showShadow = false,
+                            // The search row is chromeless: only the hairline below it.
+                            borderColor = Color.Transparent,
+                            enabledBackgroundColor = Color.Transparent,
+                            placeholderColor = SlockColor.ForegroundHint,
+                            // Same as the brutal field above: the whole 40dp row focuses the
+                            // editor (iOS's native hit region is smaller than the row).
+                            containerTapRequestsFocus = true,
+                            showClearWhenNotEmpty = true,
+                            onClear = { onSearchChange(TextFieldValue("")) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -543,6 +567,8 @@ internal fun SlockFilterPopover(
 // the selected row bold with a trailing 16dp check. No row dividers, no selected fill.
 private val SlockRaftFilterHeaderHeight = 28.dp
 private val SlockRaftFilterSearchHeight = 40.dp
+private val SlockRaftFilterSearchPaddingHorizontal = 12.dp
+private val SlockRaftFilterHeaderSlotHeight = 24.dp
 private val SlockRaftFilterListMaxHeight = 256.dp
 private val SlockRaftFilterMinWidth = 220.dp
 
@@ -578,7 +604,9 @@ private fun SlockRaftFilterPopover(
     val popoverHeight =
         SlockRaftFilterHeaderHeight + SlockStroke.Thin +
             (if (searchField != null) SlockRaftFilterSearchHeight + SlockStroke.Thin else 0.dp) +
-            listHeight
+            listHeight +
+            // A header slot is a caption-height status line padded 4dp top and bottom.
+            (if (headerSlot != null) SlockRaftFilterHeaderSlotHeight else 0.dp)
     SlockModalAnchoredPopover(
         anchor = anchor,
         // raft overlays float on a shadow that takes no layout space.
@@ -635,24 +663,17 @@ private fun SlockRaftFilterPopover(
             }
             SlockRaftSeparator()
             if (searchField != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(SlockRaftFilterSearchHeight)
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    searchField()
-                }
+                searchField()
                 SlockRaftSeparator()
             }
             if (filtered.isEmpty()) {
-                Text(
-                    text = stringResource(MR.strings.common_no_matches),
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.ForegroundHint,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)
-                )
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text(
+                        text = stringResource(MR.strings.common_no_matches),
+                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                        color = SlockColor.ForegroundHint
+                    )
+                }
             } else {
                 Box(modifier = Modifier.fillMaxWidth().heightIn(max = SlockRaftFilterListMaxHeight)) {
                     LazyColumn(modifier = Modifier.padding(SlockRaftMetrics.PopupPadding)) {
