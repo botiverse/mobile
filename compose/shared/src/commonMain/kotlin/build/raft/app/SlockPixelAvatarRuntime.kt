@@ -187,6 +187,12 @@ internal object SlockPixelAvatarRuntime {
      * (the bundled version by default — a downloaded document must never roll the table back).
      * Returns the accepted data, or null when the table was left unchanged. Never throws —
      * rendering must not crash on bad cached/downloaded data.
+     *
+     * A document whose version equals the already-active table's is NOT swapped: the version
+     * is the publisher's identity for the whole table, so an equal version is byte-identical
+     * for every spec the renderer resolves. Re-swapping it would recompose every pixel avatar
+     * and reopen the painter placeholder window for no change — the startup "cache then fetch"
+     * path does this on every launch (Hands 9ea07421, visible as avatars flashing blank).
      */
     fun applyRuntimeJson(
         jsonText: String?,
@@ -199,6 +205,13 @@ internal object SlockPixelAvatarRuntime {
             slockLogInfo(
                 PixelAvatarRuntimeLogTag,
                 "pixel_avatar_runtime stale source=$source version=${data.version} minimum=$minimumVersion"
+            )
+            return null
+        }
+        if (data.version == current.version) {
+            slockLogInfo(
+                PixelAvatarRuntimeLogTag,
+                "pixel_avatar_runtime unchanged source=$source version=${data.version}"
             )
             return null
         }
