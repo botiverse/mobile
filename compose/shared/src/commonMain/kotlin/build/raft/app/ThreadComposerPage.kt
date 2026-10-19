@@ -56,6 +56,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -3745,6 +3751,7 @@ private fun MentionActionNotice(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PendingMentionActionBanner(
     actions: List<KuiklyPendingMentionActionItem>,
@@ -3832,12 +3839,24 @@ private fun PendingMentionActionBanner(
         }
     }
     val mentionSheetBottomSafeArea = slockBottomSafeAreaPadding()
-    ModalBottomSheet(
-        visible = detailsVisible,
+    val mentionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val mentionSheetScope = rememberCoroutineScope()
+    val closeMentionSheet: () -> Unit = {
+        mentionSheetScope
+            .launch { mentionSheetState.hide() }
+            .invokeOnCompletion { detailsVisible = false }
+    }
+    // Kuikly's sheet took `visible`/`dismissOnDrag`; the M3 sheet is shown while composed and
+    // swipe-to-dismiss is on by default. Kuikly drew no drag handle, surface or insets.
+    if (detailsVisible) ModalBottomSheet(
         onDismissRequest = { detailsVisible = false },
+        sheetState = mentionSheetState,
         modifier = Modifier.padding(horizontal = 12.dp),
+        shape = RectangleShape,
         containerColor = Color.Transparent,
-        dismissOnDrag = true
+        tonalElevation = 0.dp,
+        dragHandle = null,
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         // task #176: ModalBottomSheet applies no insets; lift the card (and its
         // Add all / Done buttons) above the system navigation bar.
@@ -3866,7 +3885,7 @@ private fun PendingMentionActionBanner(
                     onNotify = onNotify,
                     onDismiss = onDismiss,
                     onAddAll = onAddAll,
-                    onClose = { detailsVisible = false }
+                    onClose = closeMentionSheet
                 )
             }
         }

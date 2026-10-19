@@ -248,7 +248,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import build.raft.app.compat.ui.SelectableText
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
 import androidx.compose.material3.Text

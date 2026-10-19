@@ -498,7 +498,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.compat.ui.withKuiklyIdleContext
-import build.raft.app.compat.ui.MakeKuiklyComposeNode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -536,10 +535,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import build.raft.app.compat.ui.drawer.MoveableDrawer
-import build.raft.app.compat.ui.drawer.rememberMoveableDrawerState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import build.raft.app.compat.ui.rememberSelectionContainerState
 import androidx.compose.material3.Text
 import build.raft.app.compat.ui.rememberPullToRefreshState
 import androidx.compose.ui.Alignment
@@ -582,11 +578,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.compat.pager.Page
-import com.tencent.kuikly.core.base.event.ClickParams
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.kuikly.core.views.DivView
 import build.raft.app.compat.ui.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -7513,7 +7507,7 @@ private fun AppShellServerDrawerHost(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         val drawerState =
-            rememberMoveableDrawerState(
+            rememberRaftMoveableDrawerState(
                 initiallyOpen = false,
                 drawerWidth = drawerWidth
             )
@@ -7544,9 +7538,6 @@ private fun AppShellServerDrawerHost(
         DisposableEffect(programmaticCloseFence, onProgrammaticCloseFenceChanged) {
             onProgrammaticCloseFenceChanged(programmaticCloseFence)
             onDispose { onProgrammaticCloseFenceChanged(null) }
-        }
-        val closeDrawerEvent = remember(programmaticCloseFence) {
-            { _: ClickParams -> programmaticCloseFence("scrim_native") }
         }
 
         LaunchedEffect(drawerState, projection.commandIntent.generation) {
@@ -7606,7 +7597,7 @@ private fun AppShellServerDrawerHost(
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            MoveableDrawer(
+            RaftMoveableDrawer(
                 state = drawerState,
                 scrimColor = Color.Transparent,
                 userScrollEnabled = pointerPolicy.nativePagerEnabled,
@@ -7706,8 +7697,7 @@ private fun AppShellServerDrawerHost(
                 }
             )
             if (drawerState.progress > 0.01f) {
-                MakeKuiklyComposeNode<DivView>(
-                    factory = { DivView() },
+                Box(
                     modifier =
                         Modifier
                             .align(Alignment.CenterEnd)
@@ -7724,10 +7714,7 @@ private fun AppShellServerDrawerHost(
                                 role = Role.Button
                             ) {
                                 requestProgrammaticClose("scrim_compose")
-                            },
-                    viewInit = {
-                        getViewEvent().click(closeDrawerEvent)
-                    }
+                            }
                 )
             }
         }
@@ -15388,7 +15375,6 @@ private fun SettingsHandsFeedbackConversationRow(
             )
             entry.detail?.takeIf { it.isNotBlank() }?.let { detail ->
                 SelectionContainer(
-                    state = rememberSelectionContainerState(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
