@@ -28250,28 +28250,168 @@ private fun ThreadMessageActionMenu(
         width = menuWidth + shadowOffsetPx,
         height = menuHeight
     )
-    SlockModalAnchoredPopover(
-        anchor = anchor,
-        contentSize = contentSize,
-        onDismiss = onDismiss,
-        viewportGap = anchorGapPx,
-        horizontalOffset = -horizontalNudgePx,
-        verticalOffset = anchorGapPx,
-        horizontalAutoFlip = true,
-        verticalPlacement = SlockFloatingVerticalPlacement.Auto
-    ) {
-        LaunchedEffect(message.id, anchor) {
-            diagnosticsLogger(
-                "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
+    // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
+    // its 400dp child surface. Everywhere else (single-pane phones, full-width pages) keep the
+    // original in-page Modal path unchanged; only the clipping case goes through the shell host.
+    // The adaptive identity key alone is not enough: phones open threads through the same adaptive
+    // workspace, so it is also set on a full-width single-pane page (device check of 6de03d9a took
+    // the shell path in 720x1280 portrait). Only a page that starts right of the window's left
+    // edge sits in a narrower pane whose Modal surface can clip the menu. Until the page has been
+    // measured its origin reads as zero, which would look full-width; route an unmeasured adaptive
+    // page through the shell host, which renders the menu whole in every geometry, rather than
+    // risk one clipped in-page menu (review: CC-Cata, 沈括).
+    val adaptiveDetailPage =
+        LocalActivity.current.pageData.params
+            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .isNotBlank()
+    val pageOriginState =
+        SlockChildPageOriginRegistry
+            .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
+    val clippingChildPage =
+        adaptiveDetailPage && (!pageOriginState.measured || pageOriginState.windowOrigin.x > 0f)
+    if (!clippingChildPage) {
+        SlockModalAnchoredPopover(
+            anchor = anchor,
+            contentSize = contentSize,
+            onDismiss = onDismiss,
+            viewportGap = anchorGapPx,
+            horizontalOffset = -horizontalNudgePx,
+            verticalOffset = anchorGapPx,
+            horizontalAutoFlip = true,
+            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+        ) {
+            LaunchedEffect(message.id, anchor) {
+                diagnosticsLogger(
+                    "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
+                )
+            }
+            ThreadMessageMenuChrome(
+                actions = actions,
+                showReactionActions = showReactionActions,
+                reactionAtlasImage = reactionAtlasImage,
+                onReact = onReact,
+                modifier = Modifier
             )
         }
-        ThreadMessageMenuChrome(
-            actions = actions,
-            showReactionActions = showReactionActions,
-            reactionAtlasImage = reactionAtlasImage,
-            onReact = onReact,
-            modifier = Modifier
-        )
+        return
+    }
+    // A thread message is often rendered in a 400dp child page. A Modal created here therefore
+    // receives that page's native surface and clips the right side of the menu. Register the full
+    // composable with the app-shell host instead; the shell owns a window-sized surface while the
+    // action callbacks and reaction bitmap remain in this page's process-local state.
+    val localPager = LocalActivity.current.getPager() as Pager
+    val pageEventBus: build.raft.app.data.SlockEventBus =
+        remember(localPager.pagerId) {
+            SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+        }
+    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+    val pageKey =
+        LocalActivity.current.pageData.params
+            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .trim()
+            .ifEmpty { "thread-panel" }
+    val pageRootAnchor = anchor.rootOffsetOrNull()
+    val pageWindowAnchor =
+        pageRootAnchor?.plus(SlockChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
+    val requestId =
+        "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
+    val shellItems =
+        actions.mapIndexed { index, action ->
+            SlockShellOverlayItem(
+                id = index.toString(),
+                label = action.label.localized(),
+                iconName = action.icon.name,
+                enabled = action.enabled
+            )
+        }
+    DisposableEffect(pageEventBus, requestId) {
+        val subscription =
+            pageEventBus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                if (slockShouldApplyShellOverlayResult(requestId, eventData)) {
+                    onDismiss()
+                }
+            }
+        onDispose {
+            subscription.close()
+            SlockShellOverlayContentRegistry.remove(requestId)
+            pageEventBus.post(
+                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
+                cancelSlockShellOverlayJson(requestId)
+            )
+        }
+    }
+    if (pageWindowAnchor == null) {
+        // Keep an in-page fallback for fixtures that intentionally omit layout coordinates. A real
+        // child page always has a root anchor before its long-press action menu is shown.
+        SlockModalAnchoredPopover(
+            anchor = anchor,
+            contentSize = contentSize,
+            onDismiss = onDismiss,
+            viewportGap = anchorGapPx,
+            horizontalOffset = -horizontalNudgePx,
+            verticalOffset = anchorGapPx,
+            horizontalAutoFlip = true,
+            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+        ) {
+            ThreadMessageMenuChrome(
+                actions = actions,
+                showReactionActions = showReactionActions,
+                reactionAtlasImage = reactionAtlasImage,
+                onReact = onReact,
+                modifier = Modifier
+            )
+        }
+    } else {
+        LaunchedEffect(requestId, pageWindowAnchor, showReactionActions, shellItems) {
+            SlockShellOverlayContentRegistry.register(
+                SlockShellOverlayContentEntry(
+                    requestId = requestId,
+                    contentSize = contentSize,
+                    viewportGap = anchorGapPx,
+                    horizontalOffset = -horizontalNudgePx,
+                    verticalOffset = anchorGapPx,
+                    content = { onSelected ->
+                        // The shell host composes this in its own page. Decode the reaction atlas
+                        // there instead of capturing this page's `reactionAtlasImage`: the atlas
+                        // loads asynchronously, so a lambda registered before it was ready kept
+                        // the first-frame null forever and every reaction rendered as an empty
+                        // box (HuaTuo device check of 6de03d9a, all layouts).
+                        ThreadReactionAtlasProvider {
+                            ThreadMessageMenuChrome(
+                                actions = actions.mapIndexed { index, action ->
+                                    action.copy(onClick = { onSelected(index.toString()) })
+                                },
+                                showReactionActions = showReactionActions,
+                                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                                onReact = { emoji ->
+                                    onReact(emoji)
+                                },
+                                modifier = Modifier
+                            )
+                        }
+                    },
+                    onSelected = { id ->
+                        actions.getOrNull(id.toIntOrNull() ?: -1)
+                            ?.takeIf { it.enabled }
+                            ?.onClick
+                            ?.invoke()
+                    },
+                )
+            )
+            pageEventBus.post(
+                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
+                SlockShellOverlayRequest(
+                    requestId = requestId,
+                    pageKey = pageKey,
+                    anchor = pageWindowAnchor,
+                    items = shellItems
+                ).toJson()
+            )
+            diagnosticsLogger(
+                "thread_message_menu_shell_request messageId=${message.id} requestId=$requestId " +
+                    "anchor=$pageWindowAnchor menuW=$menuWidth menuH=$menuHeight"
+            )
+        }
     }
 }
 
