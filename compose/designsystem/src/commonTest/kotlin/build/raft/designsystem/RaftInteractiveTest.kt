@@ -2,9 +2,15 @@ package build.raft.designsystem
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.key.Key
 import build.raft.designsystem.components.RaftPopupMargins
 import build.raft.designsystem.components.RaftSafeArea
@@ -12,13 +18,16 @@ import build.raft.designsystem.components.RaftToastSurface
 import build.raft.designsystem.components.raftCheckboxLook
 import build.raft.designsystem.components.raftCounterAlarm
 import build.raft.designsystem.components.raftFieldBoxLook
+import build.raft.designsystem.components.raftLineHeightDp
 import build.raft.designsystem.components.raftMenuKeyTarget
+import build.raft.designsystem.components.raftMenuMaxSurfaceHeight
 import build.raft.designsystem.components.raftMenuPosition
 import build.raft.designsystem.components.raftNormalCdf
 import build.raft.designsystem.components.raftPickerTriggerLook
 import build.raft.designsystem.components.raftRadioLook
 import build.raft.designsystem.components.raftRevealScrollTarget
 import build.raft.designsystem.components.raftSelectTriggerLook
+import build.raft.designsystem.components.raftSheetConstraints
 import build.raft.designsystem.components.raftStickerItemLook
 import build.raft.designsystem.components.raftSwitchLook
 import build.raft.designsystem.components.raftToastLook
@@ -160,6 +169,16 @@ class RaftNavigationItemTest {
     }
 
     @Test
+    fun aChoiceRowLineHeightResolvesEveryUnit() {
+        val density = Density(2f, fontScale = 1.5f)
+        assertEquals(30f, raftLineHeightDp(20.sp, 15.sp, density).value, 0.01f, "sp, font-scaled")
+        assertEquals(27f, raftLineHeightDp(1.2.em, 15.sp, density).value, 0.01f, "em of an sp font size")
+        assertEquals(22.5f, raftLineHeightDp(TextUnit.Unspecified, 15.sp, density).value, 0.01f, "no line height: the font size")
+        assertEquals(20.dp, raftLineHeightDp(1.2.em, 1.em, density), "unresolvable: the control's own size")
+        assertEquals(20.dp, raftLineHeightDp(TextUnit.Unspecified, TextUnit.Unspecified, density))
+    }
+
+    @Test
     fun aTabStripScrollsOnlyAsFarAsTheSelectedTabNeeds() {
         // A 200px strip scrolled to 100, content scrolls up to 500; 8px room round the tab.
         fun target(start: Int, end: Int) = raftRevealScrollTarget(start, end, room = 8, viewport = 200, current = 100, max = 500)
@@ -221,6 +240,27 @@ class RaftOverlayTest {
         val anchor = IntRect(260, 100, 380, 132)
         val at = raftMenuPosition(anchor, window, popup(240, 200), gap = 6, windowMargin = 8, insets = insets, rtl = true)
         assertEquals(IntOffset(380 - 240 - 16, 138 - 8), at)
+    }
+
+    @Test
+    fun aMenuIsNoTallerThanTheSafeAreaAboveTheKeyboard() {
+        // A 640px window with a 300px keyboard and a 40px status bar: 8px inside both.
+        val keyboard = RaftSafeArea(top = 40, bottom = 300)
+        assertEquals(640 - 300 - 8 - (40 + 8), raftMenuMaxSurfaceHeight(640, windowMargin = 8, insets = insets, safeArea = keyboard))
+        // No insets: the shadow room (8 above, 24 below) stays inside the window too.
+        assertEquals(640 - 24 - 8, raftMenuMaxSurfaceHeight(640, windowMargin = 8, insets = insets, safeArea = RaftSafeArea()))
+        // A capped popup placed under an anchor ends above the keyboard.
+        val surface = raftMenuMaxSurfaceHeight(640, windowMargin = 8, insets = insets, safeArea = keyboard)
+        val at = raftMenuPosition(IntRect(20, 60, 140, 92), IntSize(400, 640), popup(240, surface), gap = 6, windowMargin = 8, insets = insets, safeArea = keyboard)
+        assertTrue(at.y + insets.top + surface <= 640 - 300 - 8, "surface ends at ${at.y + insets.top + surface}")
+    }
+
+    @Test
+    fun aSheetCapNeverGoesBelowTheIncomingMinimum() {
+        assertEquals(656, raftSheetConstraints(Constraints(minHeight = 0, maxHeight = 800)).maxHeight)
+        // A caller's heightIn(min = 700) on an 800px window: the cap gives way, no crash.
+        assertEquals(700, raftSheetConstraints(Constraints(minHeight = 700, maxHeight = 800)).maxHeight)
+        assertFalse(raftSheetConstraints(Constraints(minHeight = 0)).hasBoundedHeight)
     }
 
     @Test

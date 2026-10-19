@@ -33,11 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
@@ -119,7 +116,7 @@ fun RaftTabStrip(
             Modifier
                 .fillMaxWidth()
                 // Read in the draw phase: reaching an edge redraws, the modifiers stay.
-                .raftEdgeFade(start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
+                .raftEdgeFade(colors.layerCanvas, start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
                 .horizontalScroll(scroll),
         ) {
             CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
@@ -141,36 +138,35 @@ private val RaftEdgeFadeWidth = 24.dp
 
 /**
  * Fades the content out towards the start / end edge while [start] / [end] say so (CSS
- * `mask-image` gradient). The layer and the draw step are always attached; only the
- * fade's width changes (0 at an edge with nothing past it), so the layer tree stays the
- * same as the strip scrolls.
+ * `mask-image` gradient), by drawing a [fill] gradient over it: the strip is all [fill],
+ * so that looks the same as the mask, and with no offscreen layer nothing clips the
+ * focus ring that a tab draws outside the strip (an underline tab's ring runs 4dp above
+ * and below it). The draw step is always attached; only the fade's width changes (0 at
+ * an edge with nothing past it), read in the draw phase.
  */
-private fun Modifier.raftEdgeFade(start: () -> Boolean, end: () -> Boolean): Modifier =
-    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            val full = RaftEdgeFadeWidth.toPx().coerceAtMost(size.width / 2f)
-            val rtl = layoutDirection == LayoutDirection.Rtl
-            val startWidth = if (start()) full else 0f
-            val endWidth = if (end()) full else 0f
-            val left = if (rtl) endWidth else startWidth
-            val right = if (rtl) startWidth else endWidth
-            if (left > 0f) {
-                drawRect(
-                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = left),
-                    size = Size(left, size.height),
-                    blendMode = BlendMode.DstIn,
-                )
-            }
-            if (right > 0f) {
-                drawRect(
-                    Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - right, endX = size.width),
-                    topLeft = Offset(size.width - right, 0f),
-                    size = Size(right, size.height),
-                    blendMode = BlendMode.DstIn,
-                )
-            }
+private fun Modifier.raftEdgeFade(fill: Color, start: () -> Boolean, end: () -> Boolean): Modifier =
+    drawWithContent {
+        drawContent()
+        val full = RaftEdgeFadeWidth.toPx().coerceAtMost(size.width / 2f)
+        val rtl = layoutDirection == LayoutDirection.Rtl
+        val startWidth = if (start()) full else 0f
+        val endWidth = if (end()) full else 0f
+        val left = if (rtl) endWidth else startWidth
+        val right = if (rtl) startWidth else endWidth
+        if (left > 0f) {
+            drawRect(
+                Brush.horizontalGradient(listOf(fill, fill.copy(alpha = 0f)), startX = 0f, endX = left),
+                size = Size(left, size.height),
+            )
         }
+        if (right > 0f) {
+            drawRect(
+                Brush.horizontalGradient(listOf(fill.copy(alpha = 0f), fill), startX = size.width - right, endX = size.width),
+                topLeft = Offset(size.width - right, 0f),
+                size = Size(right, size.height),
+            )
+        }
+    }
 
 /** A [RaftTabStrip]'s scroll, for its tabs to scroll themselves into view. */
 private class RaftTabStripScroll(val scroll: ScrollState) {

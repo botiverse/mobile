@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -17,9 +18,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -27,18 +30,27 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.components.RaftPopupMargins
+import build.raft.designsystem.components.RaftSafeArea
+import build.raft.designsystem.components.raftMenuHeightCap
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
@@ -282,5 +294,37 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             onNodeWithText("Claude Code").assertDoesNotExist()
             trigger.assertIsFocused()
+        }
+
+    /**
+     * A popup measured against a 640px window with a 300px keyboard: the menu (surface and
+     * shadow room) is capped to the safe area less 8px each side, and its rows scroll.
+     */
+    @Test
+    fun aLongMenuStopsAboveTheKeyboardAndScrolls() =
+        runSkikoComposeUiTest(size = Size(400f, 640f), density = Density(1f)) {
+            val insets = RaftPopupMargins(horizontal = 16, top = 8, bottom = 24)
+            setContent(
+                themed {
+                    // Stands in for the popup window: loose constraints the window's size.
+                    Box(Modifier.size(400.dp, 640.dp)) {
+                        Box(
+                            Modifier
+                                .raftMenuHeightCap(windowMargin = 8, insets = insets, safeArea = RaftSafeArea(bottom = 300))
+                                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                        ) {
+                            RaftMenuSurface(Modifier.testTag("surface")) {
+                                Column(Modifier.verticalScroll(rememberScrollState())) {
+                                    (1..20).forEach { RaftMenuItem("Row $it", {}) }
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+            val surface = onNodeWithTag("surface").fetchSemanticsNode().boundsInRoot
+            // 640 - 300 (keyboard) - 8 below, - 8 above.
+            assertEquals(324f, surface.height, 0.5f, "surface height")
+            onNodeWithText("Row 20").performScrollTo().assertIsDisplayed()
         }
 }
