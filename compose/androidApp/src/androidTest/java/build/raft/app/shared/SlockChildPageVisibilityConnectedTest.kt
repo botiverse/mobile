@@ -74,13 +74,13 @@ class SlockChildPageVisibilityConnectedTest {
         ensureInteractiveDisplay(instrumentation)
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SLOCK_CHILD_PAGE_VISIBILITY_PROBE_PAGE)
                 .putExtra("pageData", "{}")
         var bitmap: Bitmap? = null
         val powerManager = instrumentation.targetContext.getSystemService(PowerManager::class.java)
         val launchedAt = SystemClock.elapsedRealtime()
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             // Use the host's production load callbacks as the readiness barrier.
             // A display screenshot alone cannot tell a cold Kuikly init from a

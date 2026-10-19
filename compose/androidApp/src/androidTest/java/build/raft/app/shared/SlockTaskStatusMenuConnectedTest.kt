@@ -26,7 +26,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_message_row_visual")
                 .putExtra(
                     "pageData",
@@ -38,7 +38,7 @@ class SlockTaskStatusMenuConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -68,7 +68,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -79,7 +79,7 @@ class SlockTaskStatusMenuConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -106,7 +106,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -117,7 +117,7 @@ class SlockTaskStatusMenuConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -186,7 +186,7 @@ class SlockTaskStatusMenuConnectedTest {
         }
     }
 
-    private fun captureActivity(scenario: ActivityScenario<SlockKuiklyActivity>): RootCapture {
+    private fun captureActivity(scenario: ActivityScenario<SlockCmpActivity>): RootCapture {
         var capture: RootCapture? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

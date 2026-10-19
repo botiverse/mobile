@@ -24,7 +24,7 @@ class SlockFloatingOverlayTouchGuardConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -34,7 +34,7 @@ class SlockFloatingOverlayTouchGuardConnectedTest {
                 )
                 .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForTouchGuardTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -67,7 +67,7 @@ class SlockFloatingOverlayTouchGuardConnectedTest {
         instrumentation.waitForIdleSync()
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

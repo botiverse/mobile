@@ -8,7 +8,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockCmpActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -23,11 +22,11 @@ class KmpHomeScrollBoundsConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockCmpActivity.PAGE_HOME)
                 .putExtra("pageData", longHomePageData().toString())
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     activity.window.insetsController?.let { controller ->

@@ -694,7 +694,6 @@ jobs:
             attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
-            inactive-host-rendering-instrumentation.txt
             login-transition-routing-instrumentation.txt
             child-page-visibility-instrumentation.txt
             child-page-visibility-accepted.png

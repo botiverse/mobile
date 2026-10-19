@@ -58,7 +58,7 @@ class BaselineProfileGeneratorTest {
                 val nonce = "bp-gen-$iteration-${SystemClock.uptimeMillis()}"
                 val intent =
                     Intent()
-                        .setClassName(targetPackage, KuiklyActivityClassName)
+                        .setClassName(targetPackage, CmpActivityClassName)
                         .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                         .putExtra(
                             SlockCmpActivity.KEY_PAGE_DATA,
@@ -94,7 +94,7 @@ class BaselineProfileGeneratorTest {
 
     private companion object {
         private const val PageName = "compose_thread_newer_auto_pagination_visual"
-        private const val KuiklyActivityClassName = "build.raft.app.shared.SlockKuiklyActivity"
+        private const val CmpActivityClassName = "build.raft.app.shared.SlockCmpActivity"
         private const val InitialContentMarker = "AUTO-MSG-0008"
         private const val JourneyIterations = 3
         private const val ContentWaitMs = 8_000L

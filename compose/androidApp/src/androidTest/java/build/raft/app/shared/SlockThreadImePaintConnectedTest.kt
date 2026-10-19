@@ -44,7 +44,7 @@ class SlockThreadImePaintConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
-            Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
+            Intent(instrumentation.targetContext, SlockCmpActivity::class.java)
                 .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                 .putExtra(
                     SlockCmpActivity.KEY_PAGE_DATA,
@@ -54,7 +54,7 @@ class SlockThreadImePaintConnectedTest {
                         .toString(),
                 )
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             dismissAndroidCompatibilityDialog()
             waitUntil(RenderTimeoutMs, "initial editor") {
                 scenario.currentComposerEditText() != null
@@ -210,7 +210,7 @@ class SlockThreadImePaintConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
-            Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
+            Intent(instrumentation.targetContext, SlockCmpActivity::class.java)
                 .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                 .putExtra(
                     SlockCmpActivity.KEY_PAGE_DATA,
@@ -220,7 +220,7 @@ class SlockThreadImePaintConnectedTest {
                         .toString(),
                 )
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             dismissAndroidCompatibilityDialog()
             try {
                 waitUntil(RenderTimeoutMs, "initial Thread rows and editable composer") {
@@ -363,7 +363,7 @@ class SlockThreadImePaintConnectedTest {
     }
 
     private fun tapSendButton(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         editor: AccessibilityNodeInfo,
     ) {
         val editorBounds = Rect().also(editor::getBoundsInScreen)
@@ -484,7 +484,7 @@ class SlockThreadImePaintConnectedTest {
         frame.await(remaining, TimeUnit.MILLISECONDS)
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.waitForRetiredEditorImeSetup(
+    private fun ActivityScenario<SlockCmpActivity>.waitForRetiredEditorImeSetup(
         retiredEditor: EditText,
     ) {
         waitForComposerImeSetup(ImeTransitionTimeoutMs) {
@@ -566,7 +566,7 @@ class SlockThreadImePaintConnectedTest {
         )
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.composerImeSetupSnapshot(
+    private fun ActivityScenario<SlockCmpActivity>.composerImeSetupSnapshot(
         retiredEditor: EditText,
     ): ComposerImeSetupSnapshot {
         var snapshot = ComposerImeSetupSnapshot.missingEditor()
@@ -599,13 +599,13 @@ class SlockThreadImePaintConnectedTest {
         return snapshot
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.currentComposerEditText(): EditText? {
+    private fun ActivityScenario<SlockCmpActivity>.currentComposerEditText(): EditText? {
         var editor: EditText? = null
         onActivity { activity -> editor = activity.window.decorView.findAttachedComposerEditText() }
         return editor
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.isImeVisible(): Boolean {
+    private fun ActivityScenario<SlockCmpActivity>.isImeVisible(): Boolean {
         var visible = false
         onActivity { activity ->
             visible =
@@ -618,7 +618,7 @@ class SlockThreadImePaintConnectedTest {
         return visible
     }
 
-    private fun ActivityScenario<SlockKuiklyActivity>.composerRetirementDiagnostics(
+    private fun ActivityScenario<SlockCmpActivity>.composerRetirementDiagnostics(
         nonce: String,
         retiredEditor: EditText,
     ): String {
