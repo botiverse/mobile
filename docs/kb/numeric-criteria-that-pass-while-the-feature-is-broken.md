@@ -18,7 +18,10 @@ at 100%. On a 720px phone the user saw about 480px of the page and no way to tel
 Every number was correct. The feature was broken on the **default** case (pages shipping their own
 viewport meta).
 
-Fix: stop assuming the scale. Inject `width=1280` alone and let the WebView's overview mode fit it.
+Fix: stop assuming the scale — inject `width=1280` and no `initial-scale`, and drive the fit
+explicitly with `setInitialScale` from the real view width. Dropping `initial-scale` alone is not
+enough: overview mode will not fit a page that declares its own width. See
+`webview-document-start-injection-pitfalls.md` §5 for the mechanism.
 
 **2. The criterion measured a proxy the implementation satisfies cheaply.**
 Next criterion: *the heading is fully visible, so the page fits.* It was, and it did not fit — the

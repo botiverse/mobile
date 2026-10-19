@@ -20,9 +20,14 @@ For any cross-platform client change:
 | Visible on device | the UI element exists where expected | whoever has a device |
 | Works on device | the user-facing outcome happens | whoever has a device and a scenario that triggers it |
 
-Each is a strictly necessary condition for the next, and none implies the next. "I read all three
-platforms' injection paths" is layer 1 on three platforms. "All three verified" is layer 4 on three
-platforms. The distance between those two sentences is where regressions ship.
+The layers are ordered by what they can prove, not by dependency: **each layer can be reached
+without the one above it, and none implies the next.** Code nobody has reviewed still compiles; code
+that compiles can still crash on launch; a screen that renders can still be wrong. What travels
+downward is not necessity but *evaporation* — a claim at layer 4 says nothing about layers 1–3
+having been done deliberately, and a claim at layer 1 says nothing about 2–4 being true at all.
+
+"I read all three platforms' injection paths" is layer 1 on three platforms. "All three verified" is
+layer 4 on three platforms. The distance between those two sentences is where regressions ship.
 
 Concretely: a feature was reported as implemented on three platforms. It was layer 1 on iOS and
 OHOS (the injection timing was read and confirmed), layer 2 on OHOS (CI compiled it), and layer 4 on
