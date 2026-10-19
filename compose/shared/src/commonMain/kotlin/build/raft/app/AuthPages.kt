@@ -93,6 +93,8 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
@@ -1142,7 +1144,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         pendingEnvironment = null
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
         SlockTopPageHeader(
             title =
                 when (destination) {
@@ -2059,11 +2061,13 @@ internal fun AuthTermsAgreement(
                 .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
                 .padding(top = 2.dp)
                 .size(18.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
+                // foreground and an inverse check.
+                .background(if (checked) SlockColor.TextBlack else SlockColor.Card, RoundedCornerShape(SlockRadius.Sticker))
+                .border(SlockStroke.Control, if (checked) SlockColor.TextBlack else SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
-            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp))
+            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp), color = slockArgbHex(SlockColor.ForegroundInverse))
         }
         Spacer(Modifier.width(10.dp))
         Text(
@@ -2114,14 +2118,14 @@ internal fun authTermsAgreementText(
 // the last policy word to the following connector and sentence at layout time.
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
-private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
+private val AuthLegalNoticeTextColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.60f)
 // Task #179: getter, not val -- a captured style would keep the face active at class-init and
 // ignore the Settings font option.
 private val AuthLegalNoticeTextStyle: TextStyle
     get() = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
 private val AuthLegalNoticeLinkStyle: TextStyle
     get() = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
-private val AuthTermsTextColor = SlockColor.TextBlack.copy(alpha = 0.70f)
+private val AuthTermsTextColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.70f)
 private val AuthTermsTextStyle: TextStyle
     get() = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle

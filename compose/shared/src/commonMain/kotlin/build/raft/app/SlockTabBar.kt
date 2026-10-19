@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
@@ -151,11 +152,12 @@ internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
 internal fun slockFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
 
-internal val SlockVerticalTabSectionTextStyle =
-    SlockType.TabLabel.copy(
-        letterSpacing = 1.sp,
-        color = SlockColor.TextBlack.copy(alpha = 0.4f)
-    )
+internal val SlockVerticalTabSectionTextStyle: TextStyle
+    get() =
+        SlockType.TabLabel.copy(
+            letterSpacing = 1.sp,
+            color = SlockColor.TextBlack.copy(alpha = 0.4f)
+        )
 internal val SlockVerticalTabSectionBottomPadding = 4.dp
 
 @Composable
@@ -208,45 +210,73 @@ internal fun SlockBottomTabBar(
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
     traceMarkdownSection(SlockTabBarTraceNames.BOTTOM_TAB_RENDER, items.size) {
+    // raft-ui `MobileNav` (Raft DS > TabBar): an edge bar on the card layer
+    // with a seam on top; the selected tab wears the yellow sticker behind its
+    // icon and a bold label, the rest sit on foreground-hint.
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(53.dp)
-            .background(SlockColor.SurfaceWhite)
+            .background(SlockColor.Card)
     ) {
-        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-            items.forEachIndexed { index, item ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(start = 8.dp, top = SlockStroke.Thin + 6.dp, end = 8.dp)
+        ) {
+            items.forEach { item ->
                 val selected = item.selected
-                val label = remember(item.label) { item.label.slockDisplayUppercase() }
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                        .clickable(enabled = item.enabled) { onSelect(item.key) }
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                        .clickable(enabled = item.enabled) { onSelect(item.key) },
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    SlockLucideIcon(
-                        name = item.iconName,
-                        color = if (item.enabled) "#FF000000" else "#FF737373",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = label,
-                        style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (index < items.lastIndex) {
+                    // 56x30 sticker plus its 1.5dp sticker-edge ring drawn
+                    // outside it (ring-[1.5px]); the label sits 3dp below the
+                    // sticker, i.e. 7dp below the 22dp icon.
                     Box(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .width(SlockStroke.Default)
-                            .background(SlockColor.BorderBlack)
+                            .width(56.dp + SlockStroke.Control * 2)
+                            .height(30.dp + SlockStroke.Control * 2)
+                            .offset(y = -SlockStroke.Control)
+                            .then(
+                                if (selected) {
+                                    Modifier
+                                        .border(SlockStroke.Control, SlockColor.StickerEdge, RoundedCornerShape(SlockRadius.Control + SlockStroke.Control))
+                                        .padding(SlockStroke.Control)
+                                        .background(SlockColor.Primary, RoundedCornerShape(SlockRadius.Control))
+                                        .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Control))
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(
+                            name = item.iconName,
+                            color =
+                                when {
+                                    !item.enabled -> slockArgbHex(SlockColor.ForegroundDisabled)
+                                    selected -> slockArgbHex(SlockColor.StickerInk)
+                                    else -> slockArgbHex(SlockColor.ForegroundHint)
+                                },
+                            strokeWidth = 2f,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = item.label,
+                        style =
+                            SlockType.TabLabel
+                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                                .copy(color = if (selected) SlockColor.TextBlack else SlockColor.ForegroundHint),
+                        color = if (selected) SlockColor.TextBlack else SlockColor.ForegroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -254,16 +284,9 @@ internal fun SlockBottomTabBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
+                .height(SlockStroke.Thin)
+                .background(SlockColor.BorderSeam)
                 .align(Alignment.TopCenter)
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
-                .align(Alignment.BottomCenter)
         )
     }
     }
@@ -322,7 +345,7 @@ internal fun SlockAppBottomTabBarHost(
         modifier = hostModifier
             .fillMaxWidth()
             .height(slockSharedBottomTabBarHostHeight(bottomSafeArea))
-            .background(SlockColor.SurfaceWhite)
+            .background(SlockColor.Card)
             .clickable(onClick = {})
     ) {
         SlockBottomTabBar(

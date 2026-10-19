@@ -11,6 +11,8 @@ import build.raft.app.components.SlockPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
@@ -80,7 +82,9 @@ import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.clip
 import com.tencent.kuikly.compose.ui.draw.clipToBounds
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
@@ -4420,8 +4424,9 @@ private fun HomeTitlebar(
     onBlankClick: (() -> Unit)? = null,
     onNotificationToggle: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(SlockColor.BrandYellow)) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
+    // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam.
+    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(SlockColor.Frame)) {
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam).align(Alignment.BottomCenter))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
@@ -4523,10 +4528,12 @@ private fun SlockLogoBadge(
         return
     }
 
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+    Box(modifier = modifier) {
         com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
+            modifier = Modifier
+                .background(SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
+                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
+                .padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
@@ -4700,21 +4707,14 @@ private fun HomeNotificationCenter(
     val hasUnread = visibleNotifications.isNotEmpty()
     Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            if (open) {
-                Box(
-                    modifier = Modifier
-                        .size(HomeNotificationTriggerSize)
-                        .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-                )
-            }
+            // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
             Button(
                 onClick = onToggle,
+                pressOffset = 0.dp,
                 modifier =
                     Modifier
                         .size(HomeNotificationTriggerSize)
-                        .background(if (open) SlockColor.SurfaceWhite else Color.Transparent)
-                        .border(SlockStroke.Default, if (open) SlockColor.BorderBlack else Color.Transparent)
+                        .background(if (open) SlockColor.FillPressed else Color.Transparent, RoundedCornerShape(SlockRadius.Control))
             ) {
                 // Web parity (task #113 / artin 2026-08-06): the pink dot sits
                 // directly at the Bell icon's top-right corner (web: dot on the
@@ -4764,7 +4764,7 @@ private fun HomeAppUpdateBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Inset)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -4773,7 +4773,7 @@ private fun HomeAppUpdateBanner(
         SlockLucideIcon(
             SlockLucideIconName.CircleArrowUp,
             modifier = Modifier.size(16.dp),
-            color = "#FF000000"
+            color = SlockColor.TextBlackArgb
         )
         Text(
             text = notification.title.ifBlank { notification.body },
@@ -4789,14 +4789,14 @@ private fun HomeAppUpdateBanner(
             color = SlockColor.TextBlack,
             maxLines = 1
         )
-        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF000000")
+        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
     }
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
 }
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.Inset).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(MR.strings.home_notification_center_title), style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text(
                 if (notifications.isEmpty()) {
@@ -4811,13 +4811,13 @@ private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationIte
                 maxLines = 1
             )
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
         if (notifications.isEmpty()) {
             HomeNotificationCenterEmptyState()
         } else {
             notifications.forEachIndexed { index, notification ->
                 if (index > 0) {
-                    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
                 }
                 HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
             }
@@ -4861,7 +4861,7 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
     val title = notification.title.ifBlank { notification.body }
     val body = if (notification.title.isBlank()) "" else notification.body
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-        Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor()).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor(), RoundedCornerShape(SlockRadius.Sticker)).border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)), contentAlignment = Alignment.Center) {
             SlockLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp))
         }
         Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
@@ -4946,8 +4946,7 @@ internal fun HomeInlineErrorCard(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockRaftCardSurface()
                 .padding(SlockSpacing.Md)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
@@ -5014,8 +5013,8 @@ private fun HomeServerDrawerPanel(
                 Modifier
                     .width(drawerWidth)
                     .height(maxHeight)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(SlockColor.Panel)
+                    .border(SlockStroke.Thin, SlockColor.BorderSeam)
                     .clickable(onClick = {})
                     .pointerInput(onDismiss) {
                         detectHorizontalDragGestures(
@@ -5038,8 +5037,7 @@ private fun HomeServerDrawerPanel(
                     Modifier
                         .fillMaxWidth()
                         .height(HomeServerDrawerHeaderHeight)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(SlockColor.Frame)
                         .padding(horizontal = SlockSpacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -5098,7 +5096,7 @@ private fun HomeServerDrawerPanel(
                     }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
             ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
         }
     }
@@ -5143,7 +5141,7 @@ internal fun HomeServerDrawerHostedPanel(
                     Modifier
                         .fillMaxWidth()
                         .height(homeShellHeaderHeight(topSafeArea))
-                        .background(SlockColor.BrandYellow)
+                        .background(SlockColor.Frame)
             ) {
                 Row(
                     modifier =
@@ -5174,8 +5172,8 @@ internal fun HomeServerDrawerHostedPanel(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
+                        .height(SlockStroke.Thin)
+                        .background(SlockColor.BorderSeam)
                 )
             }
             if (sections.isEmpty()) {
@@ -5321,8 +5319,8 @@ internal fun HomeServerDrawerHostedPanel(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
+                    .width(SlockStroke.Thin)
+                    .background(SlockColor.BorderSeam)
         )
     }
 }
@@ -5371,7 +5369,7 @@ private fun HomeServerDrawerServerHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (section.expanded) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .background(if (section.expanded) SlockColor.Inset else SlockColor.Panel)
                 .alpha(if (unavailable) 0.3f else 1f)
                 .semantics {
                     if (unavailable) stateDescription = unavailableDescription
@@ -5464,11 +5462,12 @@ private fun HomeServerDrawerSectionHeader(
             Modifier
                 .fillMaxWidth()
                 .height(HomeServerDrawerSectionHeaderHeight)
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Inset)
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label.slockDisplayUppercase(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.weight(1f), maxLines = 1)
+        // raft-ui section titles keep source case (`normal-case`).
+        Text(label, style = SlockType.Caption, color = SlockColor.ForegroundHint, modifier = Modifier.weight(1f), maxLines = 1)
         Text(count.toString(), style = SlockType.Caption, color = SlockColor.TextMutedGray, maxLines = 1)
     }
 }
@@ -5540,7 +5539,7 @@ private fun HomeServerDrawerErrorRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (row.hasCache) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .background(if (row.hasCache) SlockColor.Inset else SlockColor.Panel)
                 .clickable(onClick = onRetry)
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -5783,7 +5782,7 @@ internal fun ServerSwitcherPanel(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
         joinCommunityActions.forEach { action ->
             ServerSwitcherActionRow(action.label, onCreateServerClick)
         }
@@ -5825,9 +5824,11 @@ private fun ServerSwitcherRow(
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(
                     when {
-                        selected || pressed -> SlockColor.BrandYellow
-                        else -> SlockColor.SurfaceWhite
-                    }
+                        selected -> SlockColor.Primary
+                        pressed -> SlockColor.FillPressed
+                        else -> Color.Transparent
+                    },
+                    RoundedCornerShape(SlockRadius.Control)
                 )
                 .then(clickModifier)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -5896,8 +5897,10 @@ internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
         modifier =
             Modifier
                 .size(32.dp)
-                .background(SlockColor.TextBlack)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                // raft-ui square avatar: sticker radius (4dp), ink tile.
+                .slockThemedCorners(SlockRadius.Sticker)
+                .background(SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
+                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
         if (presentation.avatarWireValue == null) {
@@ -6093,16 +6096,18 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
         isHovered -> ChannelRowInteractionState.Hovered
         else -> ChannelRowInteractionState.Default
     }
+    // raft-ui `SidebarItem`: the current location is the Source Yellow sticker
+    // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
-        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
+        ChannelRowInteractionState.Focused -> SlockColor.FillPressed
+        ChannelRowInteractionState.Pressed -> SlockColor.FillPressed
     }
     val borderColor = when (effectiveInteractionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+        ChannelRowInteractionState.Selected -> SlockColor.StickerInk
+        else -> Color.Transparent
     }
     val gestureOwner =
         rememberSlockGestureOwner(
@@ -6144,27 +6149,18 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
             .then(clickModifier)
             .hoverable(hoverInteractionSource)
     ) {
-        if (selected || pressed) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(SidebarActionRowHeight)
-                    .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
-                    .background(SlockColor.ShadowBlack)
-            )
-        }
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(SidebarActionRowHeight)
-                    .background(rowBackground)
-                    .border(SlockStroke.Default, borderColor)
+                    .background(rowBackground, RoundedCornerShape(SlockRadius.Control))
+                    .border(SlockStroke.Control, borderColor, RoundedCornerShape(SlockRadius.Control))
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = SlockType.ListItem, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = SlockType.ListItem, color = if (selected) SlockColor.StickerInk else SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -6256,16 +6252,18 @@ private fun ChannelRow(
         isHovered -> ChannelRowInteractionState.Hovered
         else -> interactionState
     }
+    // raft-ui `SidebarItem`: the current location is the Source Yellow sticker
+    // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
-        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
+        ChannelRowInteractionState.Focused -> SlockColor.FillPressed
+        ChannelRowInteractionState.Pressed -> SlockColor.FillPressed
     }
     val borderColor = when (effectiveInteractionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+        ChannelRowInteractionState.Selected -> SlockColor.StickerInk
+        else -> Color.Transparent
     }
     val titleColor = homeConversationTitleColor(muted = content.muted, joined = content.joined)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(content.muted)
@@ -6421,23 +6419,13 @@ private fun ChannelRow(
                     .then(rowDragModifier)
                     .then(hoverableModifier)
         ) {
-        if (selected || pressed) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(ChannelRowHeight)
-                        .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(ChannelRowHeight)
-                    .background(rowBackground)
-                    .border(SlockStroke.Default, borderColor)
+                    .background(rowBackground, RoundedCornerShape(SlockRadius.Control))
+                    .border(SlockStroke.Control, borderColor, RoundedCornerShape(SlockRadius.Control))
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -6457,24 +6445,24 @@ private fun ChannelRow(
                     SlockLucideIcon(
                         "hash",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = when { selected -> slockArgbHex(SlockColor.StickerInk); content.joined -> SlockColor.TextBlackArgb; else -> slockArgbHex(SlockColor.ForegroundHint) }
                     )
                 } else if (content.symbol == HomeChannelSymbolHashGlobe) {
                     SlockHashGlobeIcon(
                         size = ChannelSymbolIconSize,
-                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = when { selected -> slockArgbHex(SlockColor.StickerInk); content.joined -> SlockColor.TextBlackArgb; else -> slockArgbHex(SlockColor.ForegroundHint) }
                     )
                 } else if (content.symbol == "git-branch") {
                     SlockLucideIcon(
                         "git-branch",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = when { selected -> slockArgbHex(SlockColor.StickerInk); content.joined -> SlockColor.TextBlackArgb; else -> slockArgbHex(SlockColor.ForegroundHint) }
                     )
                 } else if (content.symbol == "lock") {
                     SlockLucideIcon(
                         "lock",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = when { selected -> slockArgbHex(SlockColor.StickerInk); content.joined -> SlockColor.TextBlackArgb; else -> slockArgbHex(SlockColor.ForegroundHint) }
                     )
                 } else {
                     Text(content.symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (content.joined) 1f else 0.46f), textAlign = TextAlign.Center)
@@ -6495,7 +6483,7 @@ private fun ChannelRow(
                             hasUnread = content.badge != null,
                             badgeTone = content.badgeTone,
                         ),
-                    color = titleColor,
+                    color = if (selected) SlockColor.StickerInk else titleColor,
                     modifier = Modifier.weight(1f, fill = false),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -6877,16 +6865,18 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         isHovered -> ChannelRowInteractionState.Hovered
         else -> interactionState
     }
+    // raft-ui `SidebarItem`: the current location is the Source Yellow sticker
+    // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
-        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
+        ChannelRowInteractionState.Focused -> SlockColor.FillPressed
+        ChannelRowInteractionState.Pressed -> SlockColor.FillPressed
     }
-    val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+    val borderColor = when (effectiveInteractionState) {
+        ChannelRowInteractionState.Selected -> SlockColor.StickerInk
+        else -> Color.Transparent
     }
     val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
@@ -6971,23 +6961,13 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .then(clickModifier)
                     .then(hoverableModifier)
         ) {
-        if (selected || pressed) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(ChannelRowHeight)
-                        .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(ChannelRowHeight)
-                    .background(rowBackground)
-                    .border(SlockStroke.Default, borderColor)
+                    .background(rowBackground, RoundedCornerShape(SlockRadius.Control))
+                    .border(SlockStroke.Control, borderColor, RoundedCornerShape(SlockRadius.Control))
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -7009,7 +6989,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 Text(
                     name,
                     style = if (unread) SlockType.ListItemBold else SlockType.ListItem,
-                    color = titleColor,
+                    color = if (selected) SlockColor.StickerInk else titleColor,
                     modifier =
                         if (descriptionText != null) {
                             Modifier.widthIn(max = 260.dp)
@@ -7156,12 +7136,16 @@ internal fun SlockAvatar(
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
     }
+    // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
+    // never circles; brutal keeps square corners.
+    val frameModifier =
+        if (slockRaftActive()) modifier.clip(RoundedCornerShape(SlockRadius.Sticker)) else modifier
     when {
         pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
-            PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
+            PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
         }
         httpAvatarSource != null -> Box(
-            modifier = modifier
+            modifier = frameModifier
                 .size(width = avatarSize, height = avatarSize)
                 .background(SlockColor.AccentLavender)
                 .border(borderWidth, SlockColor.BorderBlack),
@@ -7183,7 +7167,7 @@ internal fun SlockAvatar(
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(modifier, avatarSize, borderWidth)
+            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
         }
     }
 }
@@ -7881,16 +7865,17 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) 
             Modifier
                 .height(CountPillHeight)
                 .widthIn(min = CountPillMinWidth)
-                .borderRadius(HomeUnreadBadgeRadius)
-                .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                // raft-ui `SidebarItemCount`: the pink sticker — sticker radius, 1.5dp
+                // sticker-ink edge, bold mono ink numerals.
+                .background(color, RoundedCornerShape(HomeUnreadBadgeRadius))
+                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(HomeUnreadBadgeRadius))
                 .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
-            color = SlockColor.SurfaceWhite,
+            style = SlockType.Caption.copy(fontFamily = slockMonoFamilyForWeight(FontWeight.Bold), fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Normal),
+            color = SlockColor.StickerInk,
             maxLines = 1,
             textAlign = TextAlign.Center,
             modifier = Modifier.offset(y = HomeUnreadBadgeTextOffsetY)

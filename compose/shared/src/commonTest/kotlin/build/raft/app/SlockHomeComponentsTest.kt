@@ -55,7 +55,7 @@ class SlockHomeComponentsTest {
     @Test
     fun homeTitlebarAndHostedDrawerShareAppShellSafeAreaAndPageHeaderHeight() {
         assertEquals(SlockSize.PageHeaderHeight, homeShellHeaderHeight(0.dp))
-        assertEquals(86.dp, homeShellHeaderHeight(24.dp))
+        assertEquals(80.dp, homeShellHeaderHeight(24.dp))
 
         val appShellSafeArea = 24.dp
         val laterResolvedSafeArea = 22.dp
@@ -66,7 +66,7 @@ class SlockHomeComponentsTest {
                 topSafeAreaOverride = appShellSafeArea,
             )
         assertEquals(appShellSafeArea, sharedSafeArea)
-        assertEquals(86.dp, homeShellHeaderHeight(sharedSafeArea))
+        assertEquals(80.dp, homeShellHeaderHeight(sharedSafeArea))
         assertEquals(
             laterResolvedSafeArea,
             homeShellTopSafeArea(
@@ -2098,8 +2098,9 @@ class SlockHomeComponentsTest {
 
     @Test
     fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
-        assertEquals(66.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
-        assertEquals(90.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
+        // 56dp raft panel head + the 4dp popover gap.
+        assertEquals(60.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
+        assertEquals(84.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
     }
 
     @Test

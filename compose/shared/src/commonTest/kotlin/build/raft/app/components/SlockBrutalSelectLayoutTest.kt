@@ -22,9 +22,27 @@ class SlockBrutalSelectLayoutTest {
             220.dp,
             slockBrutalSelectListHeight(optionCount = 30, rowHeight = 36.dp, maxMenuHeight = 220.dp)
         )
+        // 3 rows of 36dp + the 6dp popup inset top and bottom.
         assertEquals(
-            110.dp,
+            120.dp,
             slockBrutalSelectListHeight(optionCount = 3, rowHeight = 36.dp, maxMenuHeight = 220.dp)
+        )
+    }
+
+    @Test
+    fun raftSelectGroupLabelsTakeTheirOwnHeight() {
+        // 6 (p-1.5) + 28 (group label px-2.5 pt-2 pb-1) + 2 x 36 (min-h-9) + 6.
+        assertEquals(
+            112.dp,
+            slockRaftSelectListHeight(
+                options =
+                    listOf(
+                        SlockBrutalSelectOption("group", "Group", header = true),
+                        SlockBrutalSelectOption("a", "A"),
+                        SlockBrutalSelectOption("b", "B")
+                    ),
+                maxMenuHeight = 220.dp
+            )
         )
     }
 

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftActive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,12 +36,36 @@ internal data class SlockFloatingOverlayLayout(
 internal enum class SlockFloatingVerticalPlacement {
     Below,
     Above,
-    Auto
+    Auto,
+    /** Web `placeFloatingOverlay` axis: see [slockContextMenuAxisPosition]. */
+    ContextMenu
 }
 
 internal enum class SlockFloatingHorizontalPlacement {
     Anchor,
-    Center
+    Center,
+    /** Web `placeFloatingOverlay` axis: see [slockContextMenuAxisPosition]. */
+    ContextMenu
+}
+
+/**
+ * One axis of web `placeFloatingOverlay` (context menus): the overlay's leading edge sits
+ * on the anchor when it fits; otherwise it flips to end at the anchor when that fits;
+ * otherwise the anchor is clamped [viewportGap] inside the viewport.
+ */
+internal fun slockContextMenuAxisPosition(
+    anchor: Float,
+    contentSize: Float,
+    viewportSize: Float,
+    viewportGap: Float
+): Float {
+    val min = viewportGap
+    val max = (viewportSize - contentSize - viewportGap).coerceAtLeast(min)
+    return when {
+        anchor + contentSize <= viewportSize - viewportGap -> anchor.coerceIn(min, max)
+        anchor - contentSize >= min -> anchor - contentSize
+        else -> anchor.coerceIn(min, max)
+    }
 }
 
 internal enum class SlockFloatingOverlayOutsidePointerMode {
@@ -218,11 +243,19 @@ internal fun SlockModalDismissBarrier(
     dismissEnabled: Boolean = true
 ) {
     val currentOnDismiss = rememberUpdatedState(onDismiss)
+    // raft-ui dialogs dim with the `--layer-backdrop` token (black 65% light /
+    // 60% dark); lighter, sheet-style veils keep their own alpha.
+    val veil =
+        if (slockRaftActive() && overlayAlpha >= 0.5f) {
+            SlockColor.Backdrop
+        } else {
+            SlockColor.TextBlack.copy(alpha = overlayAlpha)
+        }
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
+                .background(veil)
                 .slockNativeDispatchCapture()
                 .slockModalDismissPointerBarrier(dismissEnabled) {
                     currentOnDismiss.value.invoke()
@@ -333,6 +366,9 @@ internal fun slockHorizontalPosition(
     autoFlip: Boolean = false
 ): Float {
     val maxX = (viewportWidth - contentWidth - viewportGap).coerceAtLeast(viewportGap)
+    if (horizontalPlacement == SlockFloatingHorizontalPlacement.ContextMenu) {
+        return slockContextMenuAxisPosition(localAnchorX + horizontalOffset, contentWidth, viewportWidth, viewportGap)
+    }
     if (horizontalPlacement == SlockFloatingHorizontalPlacement.Center) {
         val centerX = ((viewportWidth - contentWidth) / 2f) + horizontalOffset
         return centerX.coerceIn(viewportGap, maxX)
@@ -381,6 +417,9 @@ internal fun slockVerticalPosition(
     val maxY = (viewportHeight - contentHeight - viewportGap).coerceAtLeast(viewportGap)
     val aboveY = localAnchorY - contentHeight - verticalOffsetAbove
     val belowY = localAnchorY + verticalOffset
+    if (verticalPlacement == SlockFloatingVerticalPlacement.ContextMenu) {
+        return slockContextMenuAxisPosition(belowY, contentHeight, viewportHeight, viewportGap)
+    }
     if (verticalPlacement == SlockFloatingVerticalPlacement.Below) {
         return belowY.coerceIn(viewportGap, maxY)
     }

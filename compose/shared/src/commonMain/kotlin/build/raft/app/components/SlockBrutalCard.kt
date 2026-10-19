@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.isAmbient
 import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockThemeFamily
 import build.raft.app.slockThemedCorners
@@ -58,36 +59,15 @@ internal fun SlockBrutalCard(
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Reads the brutal|elegant register from LocalSlockTheme. brutalTheme keeps the shipping
-    // look byte-identical (ShadowBlack@4dp offset-box, square corners, 2dp black border, white
-    // surface). elegantTheme renders the ambient register: real 8dp rounded corners + a soft
-    // elevation shadow via Kuikly Modifier.shadow(clip = true) — the same fix the button used,
-    // because the borderRadius-prop slockThemedCorners does not round at runtime and the
-    // offset-box cannot blur (verified via #1894 captures; owner-accepted shadow profile).
+    // raft-ui 0.6.0 Card (`variant="default"`): container radius 10dp, `--layer-card` fill,
+    // 1dp `--line-muted` hairline, no shadow (content surfaces never lift). The brutal
+    // register below keeps its offset-box shadow.
     val theme = LocalSlockTheme.current
-    if (theme.family == SlockThemeFamily.Elegant) {
-        val shape = RoundedCornerShape(theme.cornerRadius)
+    if (theme.isAmbient) {
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                // Card-specific shadow tuning (XiShi actual-capture audit, run 30820954442):
-                // at 3dp the Kuikly elevation shadow was materially darker at contact (bottom
-                // peak 37 vs React 22) and much shorter/more bottom-concentrated (bottom tail
-                // 16px vs 26, right tail 11px vs 23, right integrated -44%) than the React
-                // `0 1px 8px rgba(0,0,0,.15)` halo. 5dp widens the blur so both tails lengthen
-                // and the bottom peak drops (same ink spread over more rows), and the larger
-                // ambient component fills the offset-starved right side. Kuikly couples the
-                // spot Y-offset to elevation, so a small bottom bias remains (the fundamental
-                // floor vs React's near-symmetric CSS halo).
-                .shadow(
-                    elevation = 5.dp,
-                    shape = shape,
-                    clip = true,
-                    ambientColor = theme.shadow.color,
-                    spotColor = theme.shadow.color,
-                )
-                .background(theme.surface, shape)
-                .border(theme.lineWidth, theme.line, shape)
+                .slockRaftCardSurface()
                 .padding(contentPadding),
             verticalArrangement = verticalArrangement,
             content = content
@@ -134,9 +114,21 @@ internal fun SlockBrutalPanel(
     contentModifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Same register read as SlockBrutalCard: brutal byte-identical, elegant rounds +
-    // softens + thin gray hairline. shadowOffset==null defers to the register.
+    // raft: the panel is a floating popover surface (server switcher and friends):
+    // container radius, `--layer-popover`, 1dp seam ring and the overlay float shadow.
+    // Brutal keeps its offset-box shadow; shadowOffset==null defers to the register.
     val theme = LocalSlockTheme.current
+    if (theme.isAmbient) {
+        Column(
+            modifier = modifier
+                .widthIn(min = minWidth, max = maxWidth)
+                .slockRaftOverlaySurface()
+                .then(contentModifier)
+                .fillMaxWidth(),
+            content = content
+        )
+        return
+    }
     val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
     Box(
         modifier = modifier

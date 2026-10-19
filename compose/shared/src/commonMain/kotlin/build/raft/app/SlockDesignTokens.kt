@@ -16,6 +16,7 @@ import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
 // Colours that exist on Web come from the generated tokens (tools/design-tokens), so a Web
 // palette change shows up as a regenerated diff instead of silent drift. The remaining
@@ -41,23 +42,107 @@ internal object SlockColor {
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
-    // Web brutal `--foreground` (body text, #141110 — a warm near-black, not pure black).
-    val TextBlack = RaftUiThemeColors.Brutal.foreground
+    // Themed tokens below read [SlockThemeState], so they follow light/dark at runtime.
+    // Web raft `--foreground` (body text; light #141111, a warm near-black).
+    val TextBlack: Color get() = SlockThemeState.colors.foreground
     // Tailwind neutral-500.
     val TextMutedGray = RaftUiPalette.neutral500
-    // Web brutal `--line` (#141110).
-    val BorderBlack = RaftUiThemeColors.Brutal.line
-    val ShadowBlack = RaftUiPalette.brutalBlack
+    // Web raft `--line-strong` (control ink).
+    val BorderBlack: Color get() = SlockThemeState.colors.lineStrong
+    // Web raft `--line-hairline` (ink at 15%): quiet separators.
+    val BorderHairline: Color get() = SlockThemeState.colors.lineHairline
+    // Web raft `--line-seam` (ink at 45%): structural seams between panels.
+    val BorderSeam: Color get() = SlockThemeState.colors.lineSeam
+    // Sticker ink (`--theme-shadow-sticker` colour); the only hard shadow left in raft.
+    val ShadowBlack: Color get() = SlockThemeState.colors.ink
+    // Web raft surfaces and secondary ink, for primitives migrating off the fixed
+    // SurfaceWhite / TextMutedGray literals.
+    val Canvas: Color get() = SlockThemeState.colors.layerCanvas
+    val Card: Color get() = SlockThemeState.colors.layerCard
+    val Panel: Color get() = SlockThemeState.colors.layerPanel
+    val Inset: Color get() = SlockThemeState.colors.layerInset
+    val Popover: Color get() = SlockThemeState.colors.layerPopover
+    val TextMuted: Color get() = SlockThemeState.colors.foregroundMuted
+
+    // raft-ui 0.6.0 semantic roles the primitives draw with (foundation.css). Themed ones
+    // follow light/dark through [SlockThemeState]; the solid "sticker" fills are the same
+    // colour in both modes, so they read straight from the palette.
+    // Text and icon ink ladder.
+    val ForegroundStrong: Color get() = SlockThemeState.colors.foregroundStrong
+    val ForegroundHint: Color get() = SlockThemeState.colors.foregroundHint
+    val ForegroundIcon: Color get() = SlockThemeState.colors.foregroundIcon
+    val ForegroundPlaceholder: Color get() = SlockThemeState.colors.foregroundPlaceholder
+    val ForegroundDisabled: Color get() = SlockThemeState.colors.foregroundDisabled
+    val ForegroundInverse: Color get() = SlockThemeState.colors.foregroundInverse
+    // Opaque neutral fills: resting/disabled control fill and the 8% pressed wash.
+    val FillMuted: Color get() = SlockThemeState.colors.fillMuted
+    val FillStrong: Color get() = SlockThemeState.colors.fillStrong
+    val FillPressed: Color get() = SlockThemeState.colors.fillPressed
+    // `--line-muted` (card edges, menu separators) and `--line-field` (input ink).
+    val LineMuted: Color get() = SlockThemeState.colors.lineMuted
+    val LineField: Color get() = SlockThemeState.colors.lineField
+    // The yellow frame (`--layer-frame`) and the overlay backdrop.
+    val Frame: Color get() = SlockThemeState.colors.layerFrame
+    val Backdrop: Color get() = SlockThemeState.colors.layerBackdrop
+    // State washes (`-soft`) and readable state ink (`-strong`).
+    val PrimarySoft: Color get() = SlockThemeState.colors.primarySoft
+    val PrimaryStrong: Color get() = SlockThemeState.colors.primaryStrong
+    val AccentSoft: Color get() = SlockThemeState.colors.accentSoft
+    val AccentStrong: Color get() = SlockThemeState.colors.accentStrong
+    val InfoSoft: Color get() = SlockThemeState.colors.infoSoft
+    val InfoStrong: Color get() = SlockThemeState.colors.infoStrong
+    val SuccessSoft: Color get() = SlockThemeState.colors.successSoft
+    val SuccessStrong: Color get() = SlockThemeState.colors.successStrong
+    val WarningSoft: Color get() = SlockThemeState.colors.warningSoft
+    val WarningStrong: Color get() = SlockThemeState.colors.warningStrong
+    val DangerSoft: Color get() = SlockThemeState.colors.dangerSoft
+    val DangerStrong: Color get() = SlockThemeState.colors.dangerStrong
+    val InactiveSoft: Color get() = SlockThemeState.colors.inactiveSoft
+    // Sticker solids (`bg-primary`, `bg-accent`, ...): ink type on colour in both modes.
+    val Primary = RaftUiPalette.primary
+    val Accent = RaftUiPalette.accent
+    val Info = RaftUiPalette.info
+    val Success = RaftUiPalette.success
+    val Warning = RaftUiPalette.warning
+    val Danger = RaftUiPalette.danger
+    val Inactive = RaftUiPalette.inactive
+    val StickerInk = RaftUiPalette.stickerInk
+    val StickerPaper = RaftUiPalette.stickerPaper
+    // 12% ink laid over a pressed sticker (`press-overlay-sticker`).
+    val StickerPressed = RaftUiPalette.stickerPressed
+    // Die-cut edge around stickers: transparent in light, a 35% paper ring in dark.
+    val StickerEdge: Color get() = SlockThemeState.colors.stickerEdge
+    // Presence lights (`--presence-*`): fixed meanings, same in both modes.
+    val PresenceOnline = RaftUiPalette.presenceOnline
+    val PresenceBusy = RaftUiPalette.presenceBusy
+    val PresenceError = RaftUiPalette.presenceError
+    val PresenceOffline = RaftUiPalette.presenceOffline
+    val PresenceExternal = RaftUiPalette.presenceExternal
+    // Colour of the overlay float shadow (`--theme-shadow-float`): ink at 32% in light,
+    // black at 80% in dark. Only overlays (menus, popovers, dialogs) cast it.
+    val OverlayShadow: Color
+        get() =
+            if (SlockThemeState.isDark) {
+                RaftUiPalette.black.copy(alpha = 0.8f)
+            } else {
+                SlockThemeState.colors.ink.copy(alpha = 0.32f)
+            }
 
     const val BrandYellowArgb = "#FFFFD440"
     const val SurfaceWhiteArgb = "#FFFFFFFF"
-    // Must equal TextBlack; Kuikly string-colour callsites.
-    const val TextBlackArgb = "#FF141110"
+    // Kuikly string-colour callsites; themed ones derive from their Color token.
+    val TextBlackArgb: String get() = slockArgbHex(TextBlack)
     const val TextMutedGrayArgb = "#FF737373"
-    const val BorderBlackArgb = "#FF141110"
-    const val ShadowBlackArgb = "#FF141111"
+    val BorderBlackArgb: String get() = slockArgbHex(BorderBlack)
+    val ShadowBlackArgb: String get() = slockArgbHex(ShadowBlack)
     const val AccentOrangeArgb = "#FFF8A16F"
     const val AccentRedArgb = "#FFF97264"
+}
+
+/** `#AARRGGBB` for Kuikly APIs that take a colour string. */
+internal fun slockArgbHex(color: Color): String {
+    fun channel(value: Float): String = (value * 255f).roundToInt().coerceIn(0, 255).toString(16).padStart(2, '0').uppercase()
+    return "#" + channel(color.alpha) + channel(color.red) + channel(color.green) + channel(color.blue)
 }
 
 internal object SlockSpacing {
@@ -69,33 +154,48 @@ internal object SlockSpacing {
     val Xl = 32.dp
 }
 
+// raft-ui 0.6.0 has three line weights: hairline (1dp at 15% ink), seam (1dp at 45%
+// ink) and control ink (1.5dp). Default/Strong map onto control ink so existing
+// brutal 2dp/3dp borders come out at the raft weight.
 internal object SlockStroke {
     val Thin = 1.dp
-    val Default = 2.dp
-    val Strong = 3.dp
+    val Control = 1.5.dp
+    val Default = Control
+    val Strong = 2.dp
 }
 
+// raft-ui 0.6.0 radii (styles.css --radius-*).
 internal object SlockRadius {
     val None = 0.dp
     val Xs = 2.dp
     val Sm = 4.dp
+    val Sticker = 4.dp
+    val Chip = 6.dp
+    val Control = 8.dp
+    val Container = 10.dp
+    val Dialog = 16.dp
 }
 
 internal object SlockSize {
     val MinTouchTarget = 48.dp
     val IconButton = 44.dp
     val HeaderIcon = 36.dp
-    val PageHeaderHeight = 62.dp
+    // raft panel heads are 56px (48px under 600px window height).
+    val PageHeaderHeight = 56.dp
     val PageHeaderContentHeight = PageHeaderHeight - SlockStroke.Default
     val PageHeaderCompactHeight = 48.dp
     val BottomBarHeight = 53.dp
 }
 
+// raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0); only
+// stickers keep a hard 4px offset and only overlays float. The brutal offsets are
+// therefore zero; [Sticker] is the one remaining hard offset.
 internal object SlockShadow {
-    val Brutal = 4.dp
-    val BrutalSmall = 2.dp
-    val BrutalLarge = 6.dp
-    val BrutalActive = 1.dp
+    val Brutal = 0.dp
+    val BrutalSmall = 0.dp
+    val BrutalLarge = 0.dp
+    val BrutalActive = 0.dp
+    val Sticker = 4.dp
 }
 
 // Kuikly serializes FontFamily as comma-joined font names WITHOUT weight info.
@@ -321,8 +421,10 @@ internal object SlockType {
     // re-resolves against SlockFontFaceState.preference on every read, so a change reaches them all.
     val PageTitle: TextStyle
         get() = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
+    // raft-ui group/section labels are source case at `tracking-normal`; the 1.2sp
+    // tracking only ever served the retired ALL-CAPS brutal labels.
     val SectionLabel: TextStyle
-        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
+        get() = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 0.sp)
     val Body: TextStyle
         get() = slockTextStyle(FontWeight.Normal, SlockTextSize.Content, SlockTextSize.ContentLineHeight, 0.sp)
     val Caption: TextStyle

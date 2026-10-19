@@ -8,8 +8,10 @@ import kotlin.test.assertEquals
 class ThreadMessageMenuLayoutTest {
     @Test
     fun contentHeightIsExactBeforeFirstPlacement() {
+        // web MessageItem context menu: 8 rows x 36 + 2 group separators (my-1.5 + 1dp
+        // hairline) x 13 + reaction header (h-9 + 13) + 2 x 6 (p-1.5) inset.
         assertEquals(
-            400f,
+            375f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "copy", "message", "message", "task", "task", "task"),
                 showReactionActions = true
@@ -19,15 +21,16 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun contentHeightTracksRowsGroupDividersAndOptionalReactionHeader() {
+        // 3 rows x 36 + 1 group separator x 13 + 2 x 6 inset.
         assertEquals(
-            141f,
+            133f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = false
             )
         )
         assertEquals(
-            179f,
+            182f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = true
@@ -64,6 +67,36 @@ class ThreadMessageMenuLayoutTest {
                 horizontalAutoFlip = true
             )?.y
         )
+    }
+
+    @Test
+    fun menuWidthIsMinW60OrTheQuickReactionRow() {
+        // 7 x 28 (size-7) + 6 x 4 (gap-1) + 2 x 8 (px-2) + 2 x 6 (p-1.5) = 248.
+        assertEquals(248f, threadMessageMenuWidthDp(showReactionActions = true))
+        assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
+    }
+
+    @Test
+    fun contextMenuPlacementMatchesWebPlaceFloatingOverlay() {
+        val viewport = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        fun place(anchor: Offset, content: Size) =
+            viewport.positionContent(
+                anchor = anchor,
+                contentSize = content,
+                viewportGap = 8f,
+                horizontalOffset = 0f,
+                verticalOffset = 0f,
+                verticalOffsetAbove = 0f,
+                verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
+                horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
+            )
+        // Fits right/below: the top-left corner sits on the press point.
+        assertEquals(Offset(40f, 100f), place(Offset(40f, 100f), Size(248f, 375f)))
+        // Neither side fits horizontally (the web capture's row-center press):
+        // clamp the anchor 8 inside the viewport -> 390 - 8 - 248 = 134.
+        assertEquals(Offset(134f, 86f), place(Offset(211f, 86f), Size(248f, 375f)))
+        // Fits only to the left/above: end at the press point.
+        assertEquals(Offset(32f, 325f), place(Offset(280f, 700f), Size(248f, 375f)))
     }
 
     @Test

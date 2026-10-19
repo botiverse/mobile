@@ -67,14 +67,43 @@ internal fun slockSelectMenuWidth(
         fallbackWidth
     }
 
+/**
+ * raft-ui select popup height: the rows (at least one, so an empty list still shows its
+ * row) plus the popup's `p-1.5` inset on both edges, capped at [maxMenuHeight]. The seam
+ * ring is drawn over the content and adds no height.
+ */
 internal fun slockBrutalSelectListHeight(
     optionCount: Int,
     rowHeight: Dp,
     maxMenuHeight: Dp
 ): Dp =
-    ((optionCount.coerceAtLeast(0) * rowHeight.value) + SlockStroke.Default.value)
-        .dp
+    ((optionCount.coerceAtLeast(1) * rowHeight.value).dp + SlockRaftMetrics.PopupPadding * 2)
         .coerceAtMost(maxMenuHeight)
+
+/** raft-ui `SelectGroupLabel`: `px-2.5 pt-2 pb-1` around a 12/16 caption = 28dp. */
+internal val SlockRaftSelectGroupLabelHeight = 28.dp
+
+/** raft-ui select popup minimum width (`min-w-[max(var(--anchor-width),220px)]`). */
+internal val SlockRaftSelectMinWidth = 220.dp
+
+/**
+ * raft select popup height: 36dp items and 28dp group labels plus the `p-1.5` inset on
+ * both edges, capped at [maxMenuHeight].
+ */
+internal fun slockRaftSelectListHeight(
+    options: List<SlockBrutalSelectOption>,
+    maxMenuHeight: Dp
+): Dp {
+    val rows =
+        if (options.isEmpty()) {
+            SlockRaftMetrics.MenuRowHeight.value
+        } else {
+            options.sumOf { option ->
+                (if (option.header) SlockRaftSelectGroupLabelHeight else SlockRaftMetrics.MenuRowHeight).value.toDouble()
+            }.toFloat()
+        }
+    return (rows.dp + SlockRaftMetrics.PopupPadding * 2).coerceAtMost(maxMenuHeight)
+}
 
 @Composable
 internal fun SlockBrutalSelectField(
@@ -100,6 +129,20 @@ internal fun SlockBrutalSelectField(
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     val menuShadowOffset = SlockShadow.Brutal
     val listHeight = slockBrutalSelectListHeight(options.size, rowHeight, maxMenuHeight)
+    if (slockRaftActive()) {
+        SlockRaftSelectField(
+            options = options,
+            selectedId = selectedId,
+            onSelect = onSelect,
+            modifier = modifier,
+            displayLabel = displayLabel,
+            placeholder = selectedLabel.isBlank() && selectedOption == null,
+            enabled = enabled,
+            triggerHeight = slockRaftFieldHeight(triggerHeight),
+            maxMenuHeight = maxMenuHeight
+        )
+        return
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             modifier =
@@ -185,6 +228,153 @@ internal fun SlockBrutalSelectField(
                         onSelect(option)
                     }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * raft-ui 0.6.0 Select: [SlockRaftSelectTrigger] plus a popup on the overlay surface
+ * (container radius, popover layer, seam ring, float shadow, 6dp inset). Items are 36dp
+ * control-radius rows in callout 14/20 medium; the selected item is bold with a trailing
+ * 16dp check (no fill), group headers are 12/16 bold hint captions, disabled rows take
+ * the disabled ink. The popup opens 4dp below the trigger, at least as wide as it.
+ */
+@Composable
+private fun SlockRaftSelectField(
+    options: List<SlockBrutalSelectOption>,
+    selectedId: String,
+    onSelect: (SlockBrutalSelectOption) -> Unit,
+    modifier: Modifier,
+    displayLabel: String,
+    placeholder: Boolean,
+    enabled: Boolean,
+    triggerHeight: Dp,
+    maxMenuHeight: Dp
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var triggerAnchorValue by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var triggerRootWidthPx by remember { mutableStateOf(0f) }
+    val triggerAnchor = remember { SlockLiveRootAnchorRef(identity = "raft_select") }
+    val density = LocalDensity.current
+    val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density).coerceAtLeast(SlockRaftSelectMinWidth)
+    val rowHeight = SlockRaftMetrics.MenuRowHeight
+    val popupInset = SlockRaftMetrics.PopupPadding
+    val listHeight = slockRaftSelectListHeight(options, maxMenuHeight)
+    val sideOffset = 4.dp
+    Column(modifier = modifier.fillMaxWidth()) {
+        SlockRaftSelectTrigger(
+            label = displayLabel,
+            placeholder = placeholder,
+            modifier =
+                Modifier.slockCaptureLiveRootAnchor(triggerAnchor) { size ->
+                    triggerRootWidthPx = size.width.toFloat()
+                },
+            enabled = enabled,
+            expanded = expanded,
+            height = triggerHeight,
+            onClick = {
+                if (expanded) {
+                    expanded = false
+                } else {
+                    triggerAnchor.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
+                        triggerAnchorValue = anchor
+                        expanded = true
+                    }
+                }
+            }
+        )
+        if (expanded && enabled && triggerAnchorValue != null) {
+            val contentSize =
+                with(density) {
+                    Size(
+                        width = menuWidth.toPx(),
+                        height = listHeight.toPx()
+                    )
+                }
+            SlockModalAnchoredPopover(
+                anchor = triggerAnchorValue!!,
+                contentSize = contentSize,
+                onDismiss = { expanded = false },
+                viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
+                verticalOffset = with(density) { (triggerHeight + sideOffset).toPx() },
+                verticalOffsetAbove = with(density) { sideOffset.toPx() },
+                verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .width(menuWidth)
+                            .height(listHeight)
+                            // Keeps taps on empty popup space off the dismiss barrier while
+                            // letting the rows and the list's scroll win (see the brutal menu).
+                            .clickable(onClick = {})
+                            .slockRaftOverlaySurface()
+                ) {
+                    LazyColumn(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(listHeight)
+                                .padding(popupInset)
+                                .nestedScroll(
+                                    scrollUp = NestedScrollMode.SELF_ONLY,
+                                    scrollDown = NestedScrollMode.SELF_ONLY
+                                )
+                    ) {
+                        items(options.size, key = { idx -> options[idx].id }) { idx ->
+                            val option = options[idx]
+                            val selected = selectedId == option.id
+                            val rowEnabled = option.enabled && !option.header
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(if (option.header) SlockRaftSelectGroupLabelHeight else rowHeight)
+                                        .clickable(enabled = rowEnabled) {
+                                            expanded = false
+                                            onSelect(option)
+                                        }
+                                        .padding(
+                                            start = SlockRaftMetrics.MenuItemPaddingHorizontal,
+                                            end = SlockRaftMetrics.MenuItemPaddingHorizontal,
+                                            top = if (option.header) SlockRaftMetrics.MenuLabelPaddingTop else 0.dp,
+                                            bottom = if (option.header) SlockRaftMetrics.MenuLabelPaddingBottom else 0.dp
+                                        ),
+                                horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = option.label,
+                                    style =
+                                        if (option.header) {
+                                            SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold)
+                                        } else {
+                                            SlockType.Body
+                                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium)
+                                        },
+                                    color =
+                                        when {
+                                            option.header -> SlockColor.ForegroundHint
+                                            rowEnabled -> SlockColor.TextBlack
+                                            else -> SlockColor.ForegroundDisabled
+                                        },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (selected) {
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.Check,
+                                        modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
+                                        color = SlockColor.TextBlackArgb,
+                                        strokeWidth = 2f
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

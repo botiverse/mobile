@@ -3,10 +3,9 @@ package build.raft.app
 import build.raft.app.components.SlockLinkButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockDisabledActionBorder
-import build.raft.app.components.SlockDisabledActionContent
-import build.raft.app.components.SlockDisabledActionShadow
-import build.raft.app.components.slockDisabledActionBackgroundFor
+import build.raft.app.components.slockRaftButtonChrome
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -48,6 +47,7 @@ import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.lerp
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -95,7 +95,7 @@ private val AuthInputTextStyle =
         color = SlockColor.TextBlack
     ).withSlockFontWeight(FontWeight.Normal)
 
-private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+private val AuthInputPlaceholderColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val AuthTopBarHeight = 62.dp
 private val AuthTopBarBrandWidth = 81.dp
 private val AuthTopBarBrandHeight = 20.dp
@@ -231,7 +231,8 @@ internal fun AuthScaffold(
                 modifier = modifier
                     .then(focusDismissModifier)
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
+                    // raft-ui auth shell: the canvas layer.
+                    .background(SlockColor.Canvas)
             ) {
                 AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
                 Box(
@@ -301,9 +302,10 @@ private fun AuthTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(statusBarHeight.dp + AuthTopBarHeight)
-            .background(SlockColor.BrandYellow)
+            // raft-ui auth top bar: the frame layer with a 1dp seam.
+            .background(SlockColor.Frame)
     ) {
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam).align(Alignment.BottomCenter))
         Row(
             modifier = Modifier
                 .padding(top = statusBarHeight.dp)
@@ -380,9 +382,9 @@ internal fun AuthCenterMark(modifier: Modifier = Modifier, size: Dp = 36.dp) {
 @Composable
 internal fun AuthLogoBadge(text: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier.width(166.dp).height(64.dp).padding(end = 4.dp, bottom = 4.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 4.dp, y = 4.dp).background(SlockColor.ShadowBlack))
+        // Brand mark: an ink sticker (sticker radius), no offset shadow.
         Box(
-            modifier = Modifier.fillMaxSize().background(SlockColor.TextBlack),
+            modifier = Modifier.fillMaxSize().background(SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -453,7 +455,7 @@ internal fun AuthTextField(
             verticalPadding = 8.dp,
             forceFocused = forceFocused,
             borderColor = borderColor,
-            enabledBackgroundColor = SlockColor.SurfaceWhite,
+            enabledBackgroundColor = SlockColor.Card,
             disabledBackgroundColor = SlockColor.EmptyStateGray,
             placeholderColor = AuthInputPlaceholderColor,
             visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -551,38 +553,36 @@ internal fun AuthActionButton(
         AuthButtonTone.Black -> SlockColor.TextBlack
         AuthButtonTone.Disabled -> SlockColor.EmptyStateGray
     }
-    val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
+    // raft-ui 0.6.0 Button: pink/yellow tones are the accent sticker (sticker-ink edge and
+    // type), the paper tones the outline button (1.5dp line-strong edge); Black stays an
+    // ink fill with inverse type. Control radius, no offset shadow.
+    val raftChrome = slockRaftButtonChrome(background)
+    val activeFill = if (tone == AuthButtonTone.Black) SlockColor.TextBlack else raftChrome.fill
+    val activeBorder = if (tone == AuthButtonTone.Black) SlockColor.TextBlack else raftChrome.border
+    val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.ForegroundInverse else raftChrome.content
     val disabledAlpha = 0.50f
-    // React parity for disabled:opacity-50 during signing. An earlier fix used a
-    // group Modifier.alpha, but Kuikly's alpha modifier drops the offset shadow
-    // child entirely (shadow vanished on android vs react's dimmed gray, task
-    // #372/#382). Instead PRE-COMPOSITE each color 50% onto white — the opaque
-    // pale-pink face still occludes the shadow (no bleed-through), and the shadow
-    // stays visible as the same gray react's opacity-50 produces. No group alpha.
+    // React parity for disabled:opacity-50 during signing: pre-composite each colour 50%
+    // onto the card layer instead of a group alpha (Kuikly's alpha modifier is unreliable
+    // on this render path, task #372/#382).
     val dimWholeButton = !enabled && preserveDisabledVisual
-    val dimOntoWhite = { c: Color -> lerp(SlockColor.SurfaceWhite, c, disabledAlpha) }
+    val dimOntoCard = { c: Color -> lerp(SlockColor.Card, c, disabledAlpha) }
     val contentColor = when {
-        dimWholeButton -> dimOntoWhite(activeContentColor)
+        dimWholeButton -> dimOntoCard(activeContentColor)
         enabled || preserveDisabledVisual -> activeContentColor
-        else -> SlockDisabledActionContent
+        else -> SlockColor.ForegroundDisabled
     }
+    // raft disabled controls are opaque: fill-muted, line-muted edge, foreground-disabled type.
     val buttonBackground = when {
-        dimWholeButton -> dimOntoWhite(background)
-        enabled || preserveDisabledVisual -> background
-        else -> slockDisabledActionBackgroundFor(background)
+        dimWholeButton -> dimOntoCard(activeFill)
+        enabled || preserveDisabledVisual -> activeFill
+        else -> SlockColor.FillMuted
     }
     val borderColor = when {
-        dimWholeButton -> dimOntoWhite(SlockColor.BorderBlack)
-        enabled || preserveDisabledVisual -> SlockColor.BorderBlack
-        else -> SlockDisabledActionBorder
-    }
-    val shadowColor = when {
-        dimWholeButton -> dimOntoWhite(SlockColor.ShadowBlack)
-        enabled || preserveDisabledVisual -> SlockColor.ShadowBlack
-        else -> SlockDisabledActionShadow
+        dimWholeButton -> dimOntoCard(activeBorder)
+        enabled || preserveDisabledVisual -> activeBorder
+        else -> SlockColor.LineMuted
     }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
-    val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
@@ -590,17 +590,11 @@ internal fun AuthActionButton(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
-            // No group alpha: dimming is baked into the pre-composited colors above
-            // so the offset shadow (which Kuikly's Modifier.alpha would drop) stays
-            // drawn as the dimmed gray, matching react's opacity-50 (task #382).
-            .padding(end = shadowOffset, bottom = shadowOffset)
     ) {
-        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(shadowColor))
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(buttonBackground)
-                .border(SlockStroke.Default, borderColor)
+                .slockRaftControlSurface(fill = buttonBackground, border = borderColor)
                 .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center
@@ -645,14 +639,14 @@ internal fun AuthDivider() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(Modifier.weight(1f).height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.LineMuted))
         Text(
             text = stringResource(MR.strings.auth_social_divider_or),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.authStaticTextFocus()
         )
-        Box(Modifier.weight(1f).height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.LineMuted))
     }
 }
 
@@ -713,8 +707,8 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SlockColor.AccentCyan)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            // raft-ui info Banner chrome: info-soft fill, hairline, container radius.
+            .slockRaftCardSurface(fill = SlockColor.InfoSoft)
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {

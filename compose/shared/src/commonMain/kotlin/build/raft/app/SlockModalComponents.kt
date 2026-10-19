@@ -9,6 +9,8 @@ import build.raft.app.components.SlockBrutalModalHeader
 import build.raft.app.components.SlockBrutalModalLayer
 import build.raft.app.components.SlockActionSheetRowModel
 import build.raft.app.components.SlockModalShellModel
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -60,6 +62,9 @@ import kotlin.math.floor
 import kotlinx.coroutines.Job
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
+// The brutal dialog defaults (p-6, 18sp title); raft swaps them for p-5 and the 17/22 headline.
+private val SlockUnifiedDialogLegacyPadding = 24.dp
+private const val SlockUnifiedDialogLegacyTitleSize = 18
 
 /**
  * Keeps the dialog card on Compose's pointer hit path without advertising the card itself as an
@@ -389,7 +394,8 @@ internal fun SlockUnifiedDialog(
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val displayTitle = if (uppercaseTitle) title.slockDisplayUppercase() else title
+    // raft-ui dialog titles keep the source case (never ALL CAPS).
+    val displayTitle = if (uppercaseTitle && !slockRaftActive()) title.slockDisplayUppercase() else title
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
@@ -484,12 +490,14 @@ internal fun SlockDialogFooter(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
+    CompositionLocalProvider(build.raft.app.components.LocalSlockRaftDialogFooter provides true) {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -531,6 +539,14 @@ private fun SlockUnifiedDialogSurface(
             topInset = topInset,
             bottomInset = effectiveBottomInset
         )
+    // raft-ui 0.6.0 Dialog: 16dp dialog radius, `--layer-popover`, 1dp seam ring and the
+    // overlay float shadow (which takes no layout space); 20dp (`p-5`) insets, a 17/22 bold
+    // source-case title and a ghost 32dp close. The brutal register keeps its offset slab.
+    val raft = slockRaftActive()
+    val shadowReserve = if (raft) 0.dp else SlockUnifiedDialogShadowOffset
+    val resolvedContentPadding = if (raft && contentPadding == SlockUnifiedDialogLegacyPadding) 20.dp else contentPadding
+    val resolvedHeaderPadding = if (raft && headerPadding == SlockUnifiedDialogLegacyPadding) 20.dp else headerPadding
+    val raftDefaultTitle = raft && titleFontSize == SlockUnifiedDialogLegacyTitleSize
     Box(
         modifier =
             Modifier
@@ -551,24 +567,33 @@ private fun SlockUnifiedDialogSurface(
                         end = outerClearance.end,
                         bottom = outerClearance.bottom
                     )
-                    .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
+                    .padding(end = shadowReserve, bottom = shadowReserve)
                     .widthIn(min = minWidth, max = maxWidth)
                     .slockDialogContentPointerBarrier()
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SlockUnifiedDialogShadowOffset, y = SlockUnifiedDialogShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
+            if (!raft) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = SlockUnifiedDialogShadowOffset, y = SlockUnifiedDialogShadowOffset)
+                            .background(SlockColor.ShadowBlack)
+                )
+            }
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(contentPadding),
+                        .then(
+                            if (raft) {
+                                Modifier.slockRaftOverlaySurface(radius = SlockRadius.Dialog)
+                            } else {
+                                Modifier
+                                    .background(SlockColor.SurfaceWhite)
+                                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            }
+                        )
+                        .padding(resolvedContentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
                 Row(
@@ -580,9 +605,9 @@ private fun SlockUnifiedDialogSurface(
                                 // edge-bleed body, the header would otherwise sit
                                 // flush against the top and left borders; restore
                                 // its inset to headerPadding on both axes.
-                                start = (headerPadding - contentPadding).coerceAtLeast(0.dp),
-                                end = (headerPadding - contentPadding).coerceAtLeast(0.dp),
-                                top = (headerPadding - contentPadding).coerceAtLeast(0.dp)
+                                start = (resolvedHeaderPadding - resolvedContentPadding).coerceAtLeast(0.dp),
+                                end = (resolvedHeaderPadding - resolvedContentPadding).coerceAtLeast(0.dp),
+                                top = (resolvedHeaderPadding - resolvedContentPadding).coerceAtLeast(0.dp)
                             ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -592,11 +617,11 @@ private fun SlockUnifiedDialogSurface(
                             Text(
                                 text = overlineText,
                                 style = SlockType.Caption.copy(
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.sp,
-                                    letterSpacing = 0.6.sp
+                                    fontSize = if (raft) 12.sp else 11.sp,
+                                    lineHeight = if (raft) 16.sp else 14.sp,
+                                    letterSpacing = if (raft) 0.sp else 0.6.sp
                                 ),
-                                color = SlockColor.TextMutedGray,
+                                color = if (raft) SlockColor.ForegroundHint else SlockColor.TextMutedGray,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
@@ -605,11 +630,17 @@ private fun SlockUnifiedDialogSurface(
                         Text(
                             text = title,
                             style =
-                                SlockType.PageTitle.copy(
-                                    fontSize = titleFontSize.sp,
-                                    lineHeight = titleLineHeight.sp,
-                                    color = SlockColor.TextBlack
-                                ),
+                                if (raftDefaultTitle) {
+                                    SlockType.PageTitle
+                                        .copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack)
+                                        .withSlockFontWeight(FontWeight.Bold)
+                                } else {
+                                    SlockType.PageTitle.copy(
+                                        fontSize = titleFontSize.sp,
+                                        lineHeight = titleLineHeight.sp,
+                                        color = SlockColor.TextBlack
+                                    )
+                                },
                             color = SlockColor.TextBlack,
                             modifier = Modifier.fillMaxWidth(),
                             maxLines = titleMaxLines,
@@ -620,7 +651,9 @@ private fun SlockUnifiedDialogSurface(
                         enabled = dismissEnabled,
                         iconName = SlockLucideIconName.X,
                         onClick = onDismiss,
-                        size = 34.dp,
+                        backgroundColor = if (raft) Color.Transparent else SlockColor.SurfaceWhite,
+                        size = if (raft) 32.dp else 34.dp,
+                        iconSize = if (raft) 18.dp else 17.dp,
                         shadowOffset = 3.dp
                     )
                 }
@@ -664,6 +697,7 @@ internal fun SlockActionSheetRow(
     subtitle: String = "",
     icon: SlockLucideIconName,
     destructive: Boolean = false,
+    menuItemPadding: Boolean = false,
     onClick: () -> Unit
 ) {
     SlockBrutalActionSheetRow(
@@ -674,7 +708,8 @@ internal fun SlockActionSheetRow(
                 icon = icon,
                 destructive = destructive
             ),
-        onClick = onClick
+        onClick = onClick,
+        menuItemPadding = menuItemPadding
     )
 }
 
@@ -710,6 +745,20 @@ internal fun SlockModalFullWidthActionButton(
     enabled: Boolean = true,
     iconSpinning: Boolean = icon == SlockLucideIconName.Loader || icon == SlockLucideIconName.LoaderCircle
 ) {
+    if (slockRaftActive()) {
+        // raft: a full-width `lg` Button (44dp) with the variant mapped from [color].
+        SlockBrutalActionButton(
+            label = label,
+            onClick = onClick,
+            modifier = modifier.fillMaxWidth(),
+            enabled = enabled,
+            backgroundColor = color,
+            minHeight = 44.dp,
+            leadingIcon = icon,
+            leadingIconSpinning = iconSpinning
+        )
+        return
+    }
     val shadowOffset = 3.dp
     Box(
         modifier =

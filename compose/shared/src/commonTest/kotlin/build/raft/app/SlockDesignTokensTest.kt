@@ -126,11 +126,14 @@ class SlockDesignTokensTest {
     }
 
     @Test
-    fun brutalShadowTokensMatchReactCssScale() {
-        assertEquals(1.dp, SlockShadow.BrutalActive)
-        assertEquals(2.dp, SlockShadow.BrutalSmall)
-        assertEquals(4.dp, SlockShadow.Brutal)
-        assertEquals(6.dp, SlockShadow.BrutalLarge)
+    fun shadowTokensMatchRaftUiScale() {
+        // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0);
+        // only stickers keep the hard 4px offset.
+        assertEquals(0.dp, SlockShadow.BrutalActive)
+        assertEquals(0.dp, SlockShadow.BrutalSmall)
+        assertEquals(0.dp, SlockShadow.Brutal)
+        assertEquals(0.dp, SlockShadow.BrutalLarge)
+        assertEquals(4.dp, SlockShadow.Sticker)
     }
 
     @Test

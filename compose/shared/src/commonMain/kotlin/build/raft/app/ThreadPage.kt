@@ -42,6 +42,10 @@ import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.slockRaftOverlaySurface
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
+import build.raft.app.components.SlockRaftMetrics
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
@@ -1667,8 +1671,9 @@ internal const val ThreadReplyEmptyDetail = ""
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
 private val ThreadHeaderActionSize = 30.dp
-private val ThreadHeaderActionShadowOffset = 2.dp
-private val ThreadHeaderActionGroupSpacing = 4.dp
+// raft head actions cast no shadow, so the group gap alone carries the former
+// 4dp gap + 2dp shadow inset.
+private val ThreadHeaderActionGroupSpacing = 6.dp
 private val ThreadHeaderActionIconSize = 16.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
@@ -4906,7 +4911,7 @@ internal fun ThreadMembersPageContent(
                 onValueChange = onQueryChange,
             )
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
         if (removalGate.failure != null) {
             Text(
                 text =
@@ -5018,7 +5023,7 @@ internal fun ThreadMembersPageContent(
             }
         }
         if (canAddMembers) {
-            Box(Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
             Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp + bottomSafeArea)) {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.thread_action_add_member),
@@ -12785,7 +12790,7 @@ private fun ThreadMarkdownTaskCandidateRow(
     onClick: () -> Unit
 ) {
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-    val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.18f) else SlockColor.SurfaceWhite
+    val background = if (currentChannel) SlockColor.PrimarySoft else SlockColor.Card
     Box(
         modifier =
             Modifier
@@ -12797,10 +12802,11 @@ private fun ThreadMarkdownTaskCandidateRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 82.dp)
-                    .background(background)
-                    .border(
-                        SlockStroke.Default,
-                        if (currentChannel) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.26f)
+                    .slockRaftControlSurface(
+                        fill = background,
+                        border = if (currentChannel) SlockColor.BorderBlack else SlockColor.LineMuted,
+                        radius = SlockRadius.Container,
+                        borderWidth = if (currentChannel) SlockStroke.Control else SlockStroke.Thin
                     )
                     .clickable(onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -13367,7 +13373,7 @@ private fun ThreadImagePreviewOverlay(
                 title = stringResource(MR.strings.thread_image_preview_title),
                 subtitle = null,
                 iconName = SlockLucideIconName.Image,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = SlockColor.Panel,
                 leadingContent = {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.ArrowLeft,
@@ -13400,8 +13406,9 @@ private fun ThreadImagePreviewOverlay(
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            .background(SlockImagePreviewLetterboxColor)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .slockThemedCorners(SlockRadius.Container)
+                            .background(SlockImagePreviewLetterboxColor, RoundedCornerShape(SlockRadius.Container))
+                            .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Container))
                             .then(
                                 if (hasMultiple) {
                                     Modifier.pointerInput(state.currentIndex, state.images.size) {
@@ -13517,8 +13524,7 @@ private fun ThreadImagePreviewOverlay(
 private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
     Column(
         modifier = Modifier.widthIn(max = 260.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .slockRaftCardSurface()
             .padding(18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -13545,8 +13551,7 @@ private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
 private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .slockRaftCardSurface()
             .padding(horizontal = 10.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -13570,8 +13575,7 @@ private fun ThreadImagePreviewNavigationPill(
 ) {
     Row(
         modifier = modifier
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .slockRaftCardSurface()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -13624,14 +13628,15 @@ private fun ThreadImagePreviewThumbnail(
         onClick = onClick,
         pressOffset = 2.dp,
         modifier = Modifier.size(54.dp)
-            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+            .background(if (selected) SlockColor.Primary else SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
+            .border(SlockStroke.Control, if (selected) SlockColor.StickerInk else SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
             .padding(if (selected) 3.dp else 1.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
-                .background(SlockImagePreviewLetterboxColor)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                .slockThemedCorners(SlockRadius.Chip)
+                .background(SlockImagePreviewLetterboxColor, RoundedCornerShape(SlockRadius.Chip))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Chip)),
             contentAlignment = Alignment.Center
         ) {
             if (source != null) {
@@ -15464,8 +15469,7 @@ private fun ThreadPageContentContent(
                 Column(
                     modifier =
                         Modifier.fillMaxWidth()
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
+                            .slockRaftCardSurface()
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Text(
@@ -15583,8 +15587,8 @@ private fun ThreadPageContentContent(
                     )
                 }
             } else if (showComposerForSelectedTab) {
-                Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                Column(modifier = Modifier.fillMaxWidth().background(SlockColor.Panel)) {
+                    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
                     Box(
                         modifier = Modifier.fillMaxWidth()
                             .padding(
@@ -16042,7 +16046,7 @@ internal fun ThreadPageHeader(
             )
     SlockTopPageHeader(
         title = localizedHeaderTitle,
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = SlockColor.Panel,
         topSafeAreaOverride = topSafeArea,
         contentSpacing = ThreadHeaderContentSpacing,
         leadingContent = {
@@ -16087,7 +16091,8 @@ internal fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        // raft-ui `PanelTitle`: text-headline (17/22 bold).
+                        style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -16104,8 +16109,9 @@ internal fun ThreadPageHeader(
                 headerSubtitle?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                        // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
+                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -16154,11 +16160,11 @@ internal fun ThreadPageHeader(
 
 @Composable
 private fun ThreadActivityMutedBadge() {
+    // raft-ui `PanelStatus`: a bare attribute (no edge, no fill), caption medium in
+    // source case on foreground-hint.
     Row(
         modifier =
             Modifier
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.AccentOrange.copy(alpha = 0.25f))
                 .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -16166,12 +16172,12 @@ private fun ThreadActivityMutedBadge() {
         SlockLucideIcon(
             SlockLucideIconName.BellOff,
             Modifier.size(11.dp),
-            color = SlockColor.TextBlackArgb
+            color = slockArgbHex(SlockColor.ForegroundHint)
         )
         Text(
-            text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = SlockColor.TextBlack,
+            text = stringResource(MR.strings.member_label_muted),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
+            color = SlockColor.ForegroundHint,
             maxLines = 1
         )
     }
@@ -16223,10 +16229,10 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
             text = state.label,
             style =
                 SlockType.Caption.copy(
-                    color = SlockColor.TextMutedGray,
+                    color = SlockColor.ForegroundHint,
                     fontFamily = SlockMonoFamily
                 ),
-            color = SlockColor.TextMutedGray,
+            color = SlockColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -16240,19 +16246,21 @@ internal fun SlockChannelIdentityTile(
     iconSize: Dp = ThreadHeaderChannelIconSize,
     onPublicPage: Boolean = false
 ) {
+    // raft-ui `PanelHeaderIcon`: Source Yellow sticker, sticker radius, 1.5dp sticker-ink edge.
+    val shape = RoundedCornerShape(SlockRadius.Sticker)
     Box(
         modifier = Modifier.size(tileSize)
-            .background(SlockColor.BrandYellow)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .background(SlockColor.Primary, shape)
+            .border(SlockStroke.Control, SlockColor.StickerInk, shape),
         contentAlignment = Alignment.Center
     ) {
         if (onPublicPage) {
-            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = "#FF141111")
+            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = slockArgbHex(SlockColor.StickerInk))
         } else {
             SlockLucideIcon(
                 channelKind.threadChannelHeaderIcon(),
                 modifier = Modifier.size(iconSize),
-                color = "#FF141111"
+                color = slockArgbHex(SlockColor.StickerInk)
             )
         }
     }
@@ -16818,18 +16826,14 @@ internal fun ThreadHeaderActionButton(
     horizontalPadding: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
-    Box(modifier = modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
-        Box(Modifier.matchParentSize()
-            .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
-            .background(SlockColor.ShadowBlack))
-        Button(
-            onClick = onClick,
-            modifier = Modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = horizontalPadding),
-            content = content,
-        )
+    // raft-ui `PanelAction`: ghost head action, no edge and no offset shadow.
+    SlockRaftPanelAction(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth),
+    ) {
+        Box(modifier = Modifier.padding(horizontal = horizontalPadding), contentAlignment = Alignment.Center) {
+            content()
+        }
     }
 }
 
@@ -16848,7 +16852,7 @@ private fun ThreadHeaderCompactAction(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = "#FF000000")
+            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = slockArgbHex(SlockColor.ForegroundIcon))
             label?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -16858,7 +16862,7 @@ private fun ThreadHeaderCompactAction(
 }
 
 internal fun threadHeaderVisibleActionGapDp(): Float =
-    (ThreadHeaderActionGroupSpacing + ThreadHeaderActionShadowOffset).value
+    ThreadHeaderActionGroupSpacing.value
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
 
@@ -21306,6 +21310,7 @@ private fun ThreadMessagesListContent(
                                 memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
+                                popupOpen = actionMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
@@ -21881,8 +21886,8 @@ private fun ThreadInlineSearchBar(
     modifier: Modifier = Modifier
 ) {
     val normalizedCurrent = if (matchCount > 0) currentIndex.coerceIn(0, matchCount - 1) + 1 else 0
-    Column(modifier = modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    Column(modifier = modifier.fillMaxWidth().background(SlockColor.Panel)) {
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
         Row(
             modifier =
                 Modifier
@@ -22182,7 +22187,7 @@ private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
             modifier
                 .fillMaxWidth()
                 .height(ThreadOfflineLastKnownTipHeight)
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Inset)
                 .padding(horizontal = SlockSpacing.Md, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -23708,8 +23713,8 @@ private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
 private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
 private const val ThreadShareCaptureGeometryTolerancePx = 2f
-private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
+private val ThreadSystemMessageTimeColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
+private val ThreadSystemMessageBodyColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
 private fun ThreadSystemMessageRow(
@@ -23940,8 +23945,8 @@ private fun ThreadQuotedPermalinkCard(
     Row(
         modifier =
             modifier
-                .background(SlockColor.SurfaceCream, RoundedCornerShape(SlockRadius.Sm))
-                .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                // raft-ui quoted preview: inset layer, hairline, control radius.
+                .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
                 .clickable(enabled = state is ThreadQuotedPermalinkUiState.Loaded, onClick = onOpen)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -24030,6 +24035,8 @@ private data class ThreadMessageCardData(
     val currentServerSlug: String?,
     val richContentEnabled: Boolean,
     val focused: Boolean,
+    /** web MessageItem `data-popup-open`: this row's context menu is open. */
+    val popupOpen: Boolean = false,
     val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
     val shareSelectionActive: Boolean,
     val selectedForShare: Boolean,
@@ -24127,6 +24134,7 @@ fun ThreadMessageCard(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
+    popupOpen: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
@@ -24180,6 +24188,7 @@ fun ThreadMessageCard(
                 currentServerSlug = currentServerSlug,
                 richContentEnabled = richContentEnabled,
                 focused = focused,
+                popupOpen = popupOpen,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 shareSelectionActive = shareSelectionActive,
                 selectedForShare = selectedForShare,
@@ -24282,6 +24291,7 @@ private fun ThreadMessageCardContent(
     val onMentionAuthor = callbacks.onMentionAuthor
     val richContentEnabled = data.richContentEnabled
     val focused = data.focused
+    val popupOpen = data.popupOpen
     val isMessageListScrolling = callbacks.isMessageListScrolling
     val memberAvatarResolver = callbacks.memberAvatarResolver
     val memberModelLabelResolver = callbacks.memberModelLabelResolver
@@ -24501,7 +24511,7 @@ private fun ThreadMessageCardContent(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Panel)
                 .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -24530,9 +24540,21 @@ private fun ThreadMessageCardContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
-                    .background(threadMessageFocusHighlightColor(focusAlpha))
-                    .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
+                    // raft-ui `MessageItem` root: the row wash spans the whole
+                    // row and the content sits at px-2 py-2 inside it.
+                    .background(
+                        // raft-ui MessageItem: a checked multi-select row washes info-soft.
+                        if (shareSelectionActive && selectedForShare) {
+                            SlockColor.InfoSoft
+                        } else if (popupOpen) {
+                            // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
+                            // under an open context menu stays pressed.
+                            SlockColor.FillPressed
+                        } else {
+                            threadMessageFocusHighlightColor(focusAlpha)
+                        }
+                    )
+                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -24602,16 +24624,18 @@ private fun ThreadMessageCardContent(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
+                                    // raft-ui `MessageItemHeader`: gap-1.5.
                                     horizontalArrangement =
                                         if (alignOwnMessageRight) {
-                                            Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                                            Arrangement.spacedBy(6.dp, Alignment.End)
                                         } else {
-                                            Arrangement.spacedBy(SlockSpacing.Sm)
+                                            Arrangement.spacedBy(6.dp)
                                         }
                                 ) {
                                     Text(
                                         text = localizedAuthorName,
-                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
+                                        // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -24621,16 +24645,15 @@ private fun ThreadMessageCardContent(
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
                                     // task #392 (port of Web PR #7545): agent
-                                    // model name, 11sp mono at 40% opacity,
-                                    // after the name, before badge/subtitle.
+                                    // model name after the name, before
+                                    // badge/subtitle; raft-ui MessageItemMeta.
                                     authorModelLabel?.let { modelLabel ->
                                         Text(
                                             text = modelLabel,
                                             style =
                                                 SlockType.Caption.copy(
-                                                    fontFamily = SlockMonoFamily,
-                                                    fontSize = 11.sp,
-                                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = SlockColor.ForegroundHint,
                                                 ),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -25024,24 +25047,13 @@ internal fun ThreadNewMessageMenuChrome(
     onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier =
-            modifier
-                .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
-                    .background(SlockColor.ShadowBlack)
-        )
+    // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
+    Box(modifier = modifier) {
         Column(
             modifier =
                 Modifier
                     .width(ThreadNewMessageMenuWidth)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .slockRaftOverlaySurface()
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
             ThreadMessageReactionRow(
@@ -25051,14 +25063,15 @@ internal fun ThreadNewMessageMenuChrome(
                 buttonSize = ThreadNewMessageMenuReactionButtonSize,
                 glyphSize = ThreadNewMessageMenuReactionGlyphSize,
                 horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
-                enabled = availability.reactions
+                enabled = availability.reactions,
+                horizontalArrangement = Arrangement.SpaceBetween
             )
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .height(SlockStroke.Thin)
-                        .background(SlockColor.BorderBlack)
+                        .background(SlockColor.LineMuted)
             )
             ThreadNewMessageMenuToolRow(
                 onCopy = onCopy,
@@ -25173,7 +25186,7 @@ private fun ThreadNewMessageMenuToolButton(
         modifier =
             modifier
                 .height(ThreadNewMessageMenuToolRowHeight)
-                .background(if (pressed && enabled) SlockColor.BrandYellow else Color.Transparent)
+                .background(if (pressed && enabled) SlockColor.FillPressed else Color.Transparent, RoundedCornerShape(SlockRadius.Control))
                 .clickable(
                     enabled = enabled,
                     interactionSource = interactionSource,
@@ -25216,7 +25229,7 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
         // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
         SlockColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
     } else {
-        SlockColor.SurfaceWhite
+        SlockColor.Panel
     }
 }
 
@@ -25253,15 +25266,17 @@ private fun ThreadMessageSelectionToggle(
             modifier =
                 Modifier
                     .size(22.dp)
-                    .background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
+                    // foreground and an inverse check.
+                    .background(if (checked) SlockColor.TextBlack else SlockColor.Card, RoundedCornerShape(SlockRadius.Sticker))
+                    .border(SlockStroke.Control, if (checked) SlockColor.TextBlack else SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
                 SlockLucideIcon(
                     SlockLucideIconName.Check,
                     modifier = Modifier.size(14.dp),
-                    color = "#FF000000"
+                    color = slockArgbHex(SlockColor.ForegroundInverse)
                 )
             }
         }
@@ -25348,8 +25363,7 @@ private fun ThreadMessageLocalSendStatus(
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
+                    .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
                     .padding(8.dp)
             )
         }
@@ -25454,8 +25468,7 @@ private fun ThreadActionCardView(
     Column(
         modifier =
             modifier
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-                .background(SlockColor.SurfaceWhite)
+                .slockRaftCardSurface()
                 .padding(SlockSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -25646,8 +25659,7 @@ private fun ThreadIntegrationScopeCard(scope: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
-                .background(SlockColor.SurfaceWhite)
+                .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -25675,8 +25687,9 @@ private fun ThreadActionCardDoneBadge() {
     Row(
         modifier =
             Modifier
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.AccentLime)
+                // raft-ui success badge: sticker radius, sticker-ink edge.
+                .background(SlockColor.AccentLime, RoundedCornerShape(SlockRadius.Sticker))
+                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
                 .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -26274,8 +26287,7 @@ private fun ThreadReactionDetailsTooltip(
     ) {
         Row(
             modifier = Modifier
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockRaftOverlaySurface()
                 .slockFloatingContentClickTarget()
                 .height(ThreadReactionDetailsHeight)
                 .padding(horizontal = ThreadReactionDetailsHorizontalPadding),
@@ -26376,24 +26388,12 @@ private fun ThreadAuthorDescriptionPopover(
         dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
         outsidePointerMode = SlockFloatingOverlayOutsidePointerMode.Dismiss
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
-                        .background(SlockColor.ShadowBlack)
-            )
+        Box {
             Box(
                 modifier =
                     Modifier
                         .widthIn(min = ThreadAuthorDescriptionPopoverMinWidthDp.dp, max = ThreadAuthorDescriptionPopoverMaxWidthDp.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftOverlaySurface()
                         .slockFloatingContentClickTarget()
                         .padding(
                             horizontal = ThreadAuthorDescriptionPopoverHorizontalPaddingDp.dp,
@@ -26431,7 +26431,7 @@ private fun ThreadReactionAddChipChrome() {
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(SlockLucideIconName.Plus, modifier = Modifier.size(13.dp), color = "#FF000000")
+        SlockLucideIcon(SlockLucideIconName.Plus, modifier = Modifier.size(13.dp), color = SlockColor.TextBlackArgb)
     }
 }
 
@@ -27093,8 +27093,8 @@ private fun ThreadMessageAuthorBadge(label: String) {
         modifier =
             Modifier
                 .heightIn(min = 18.dp)
-                .background(SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+                // raft muted badge: fill-muted on the chip radius, no ink edge.
+                .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
                 .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -27103,8 +27103,8 @@ private fun ThreadMessageAuthorBadge(label: String) {
             style =
                 SlockType.Caption
                     .withSlockFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = SlockColor.TextBlack.copy(alpha = 0.6f)),
-            color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    .copy(fontSize = 10.sp, color = SlockColor.TextMuted),
+            color = SlockColor.TextMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -27633,11 +27633,19 @@ internal fun ThreadMessageFooterMeta(
                     taskStatusActionsEnabled = taskStatusActionsEnabled,
                     taskOpenEnabled = taskOpenEnabled
                 )
+            // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
+            // soft fill with a status-strong glyph and a 12/16 label.
             SlockAnchoredMetaChip(
                 label = label,
                 iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
-                color = selectedStatus.color,
+                color = selectedStatus.status.threadTaskChipSoftFill(),
+                iconColorArgb = slockArgbHex(selectedStatus.status.threadTaskChipStrong()),
+                borderWidth = 0.dp,
+                minHeight = 22.dp,
+                horizontalPadding = 7.dp,
+                labelFontSize = 12.sp,
+                labelLineHeight = 16.sp,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
@@ -27678,6 +27686,24 @@ internal fun ThreadMessageFooterMeta(
         }
     }
 }
+
+private fun TaskStatus.threadTaskChipSoftFill(): Color =
+    when (this) {
+        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoSoft
+        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressSoft
+        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewSoft
+        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneSoft
+        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedSoft
+    }
+
+private fun TaskStatus.threadTaskChipStrong(): Color =
+    when (this) {
+        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoStrong
+        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressStrong
+        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewStrong
+        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneStrong
+        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedStrong
+    }
 
 internal data class ThreadReactionPendingKey(
     val messageId: String,
@@ -27947,12 +27973,31 @@ internal data class ThreadMessageMenuAction(
     val onClick: () -> Unit
 )
 
-private val ThreadMessageMenuWidth = 240.dp
-private val ThreadMessageMenuRowHeight = 44.dp
+// Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
+// popup, 36dp `min-h-9` rows with lucide 14 icons, and a `h-9 gap-1 px-2` quick-reaction
+// row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
+// the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
+private val ThreadMessageMenuMinWidth = 240.dp
+private val ThreadMessageMenuRowHeight = 36.dp
+private val ThreadMessageMenuIconSize = 14.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
-private val ThreadMessageMenuAnchorGap = 8.dp
-private val ThreadMessageMenuHorizontalNudge = 16.dp
+private val ThreadMessageMenuReactionButtonSize = 28.dp
+private val ThreadMessageMenuReactionGap = 4.dp
+private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
+// Web places a touch context menu's top-left corner at the press point
+// (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
+private val ThreadMessageMenuViewportGap = 8.dp
 private val ThreadMessageMenuShadowOffset = 4.dp
+
+internal fun threadMessageMenuWidthDp(showReactionActions: Boolean): Float {
+    if (!showReactionActions) return ThreadMessageMenuMinWidth.value
+    val reactionCount = ThreadQuickReactionEmojis.size
+    val reactionRowWidth =
+        reactionCount * ThreadMessageMenuReactionButtonSize.value +
+            (reactionCount - 1).coerceAtLeast(0) * ThreadMessageMenuReactionGap.value +
+            ThreadMessageMenuReactionPaddingHorizontal.value * 2
+    return maxOf(ThreadMessageMenuMinWidth.value, reactionRowWidth + SlockRaftMetrics.PopupPadding.value * 2)
+}
 
 internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
@@ -27963,20 +28008,24 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
+    // raft-ui menu (SlockBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
+    // both edges, a hairline separator with a 6dp inset either side between groups and
+    // under the reaction header; the seam ring is drawn over the content and the float
+    // shadow takes no layout space.
     val effectiveRowCount = actionGroups.size.coerceAtLeast(1)
     val groupDividerCount =
         actionGroups.zipWithNext().count { (previous, next) -> previous != next }
+    val separatorHeight = SlockStroke.Thin.value + SlockRaftMetrics.MenuSeparatorInset.value * 2
     val reactionHeaderHeight =
         if (showReactionActions) {
-            ThreadMessageMenuReactionRowHeight.value + SlockStroke.Default.value
+            ThreadMessageMenuReactionRowHeight.value + separatorHeight
         } else {
             0f
         }
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
-        groupDividerCount * SlockStroke.Thin.value +
+        groupDividerCount * separatorHeight +
         reactionHeaderHeight +
-        SlockStroke.Default.value * 2 +
-        ThreadMessageMenuShadowOffset.value
+        SlockRaftMetrics.PopupPadding.value * 2
 }
 
 internal fun shouldShowThreadFollowAction(
@@ -28259,7 +28308,7 @@ private fun ThreadMessageActionMenu(
             )
         }
     val density = LocalDensity.current
-    val menuWidth = with(density) { ThreadMessageMenuWidth.toPx() }
+    val menuWidth = with(density) { threadMessageMenuWidthDp(showReactionActions).dp.toPx() }
     val menuHeight =
         with(density) {
             threadMessageMenuContentHeightDp(
@@ -28267,11 +28316,9 @@ private fun ThreadMessageActionMenu(
                 showReactionActions = showReactionActions
             ).dp.toPx()
         }
-    val anchorGapPx = with(density) { ThreadMessageMenuAnchorGap.toPx() }
-    val horizontalNudgePx = with(density) { ThreadMessageMenuHorizontalNudge.toPx() }
-    val shadowOffsetPx = with(density) { ThreadMessageMenuShadowOffset.toPx() }
+    val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
     val contentSize = Size(
-        width = menuWidth + shadowOffsetPx,
+        width = menuWidth,
         height = menuHeight
     )
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
@@ -28302,11 +28349,12 @@ private fun ThreadMessageActionMenu(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
-            viewportGap = anchorGapPx,
-            horizontalOffset = -horizontalNudgePx,
-            verticalOffset = anchorGapPx,
-            horizontalAutoFlip = true,
-            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            viewportGap = viewportGapPx,
+            horizontalOffset = 0f,
+            verticalOffset = 0f,
+            verticalOffsetAbove = 0f,
+            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
         ) {
             LaunchedEffect(message.id, anchor) {
                 diagnosticsLogger(
@@ -28375,11 +28423,12 @@ private fun ThreadMessageActionMenu(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
-            viewportGap = anchorGapPx,
-            horizontalOffset = -horizontalNudgePx,
-            verticalOffset = anchorGapPx,
-            horizontalAutoFlip = true,
-            verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            viewportGap = viewportGapPx,
+            horizontalOffset = 0f,
+            verticalOffset = 0f,
+            verticalOffsetAbove = 0f,
+            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
         ) {
             ThreadMessageMenuChrome(
                 actions = actions,
@@ -28395,9 +28444,9 @@ private fun ThreadMessageActionMenu(
                 SlockShellOverlayContentEntry(
                     requestId = requestId,
                     contentSize = contentSize,
-                    viewportGap = anchorGapPx,
-                    horizontalOffset = -horizontalNudgePx,
-                    verticalOffset = anchorGapPx,
+                    viewportGap = viewportGapPx,
+                    horizontalOffset = 0f,
+                    verticalOffset = 0f,
                     content = { onSelected ->
                         // The shell host composes this in its own page. Decode the reaction atlas
                         // there instead of capturing this page's `reactionAtlasImage`: the atlas
@@ -28487,8 +28536,7 @@ private fun ThreadMessageTextSelectionDialog(
                         .fillMaxWidth()
                         .weight(1f)
                         .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftCardSurface()
                 ) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -28537,13 +28585,13 @@ internal fun ThreadMessageMenuChrome(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
-        width = ThreadMessageMenuWidth,
-        // Keep the message menu's 44dp mobile tap target; visual language
-        // (press wash, icon box, label style) is the shared row's.
+        width = threadMessageMenuWidthDp(showReactionActions).dp,
+        // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
         rowHeight = ThreadMessageMenuRowHeight,
         shadowOffset = ThreadMessageMenuShadowOffset,
         showDividers = false,
         dividerBeforeIds = groupDividerIds,
+        iconSize = ThreadMessageMenuIconSize,
         headerContent =
             if (showReactionActions) {
                 {
@@ -28563,18 +28611,21 @@ private fun ThreadMessageReactionRow(
     reactionAtlasImage: ImageBitmap?,
     onReact: (String) -> Unit,
     rowHeight: Dp = ThreadMessageMenuReactionRowHeight,
-    buttonSize: Dp = 28.dp,
+    buttonSize: Dp = ThreadMessageMenuReactionButtonSize,
     glyphSize: Dp = 18.dp,
-    horizontalPadding: Dp = 12.dp,
-    enabled: Boolean = true
+    horizontalPadding: Dp = ThreadMessageMenuReactionPaddingHorizontal,
+    enabled: Boolean = true,
+    // The context menu packs web's `gap-1`; the wider compact menu spreads the buttons.
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
 ) {
+    // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(rowHeight)
             .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = horizontalArrangement
     ) {
         ThreadQuickReactionEmojis.forEach { reaction ->
             Button(
@@ -28888,7 +28939,7 @@ private fun ThreadOriginCard(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
     }
 }
 
@@ -28914,14 +28965,16 @@ private fun ThreadMessageAuthorSubtitle(
         } else {
             clickableModifier
         }
+    // raft-ui `MessageItemMeta`: text-caption (12/16, medium) on
+    // foreground-hint in the sans family; only the time is mono.
     Text(
         text = description,
         style =
             SlockType.Caption.copy(
-                fontFamily = SlockMonoFamily,
-                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                fontWeight = FontWeight.Medium,
+                color = SlockColor.ForegroundHint
             ),
-        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        color = SlockColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = anchoredModifier
@@ -28939,9 +28992,9 @@ private fun ThreadMessageTimestampLabel(
         style =
             SlockType.Caption.copy(
                 fontFamily = SlockMonoFamily,
-                color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                color = SlockColor.ForegroundHint
             ),
-        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+        color = SlockColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
@@ -29352,8 +29405,8 @@ private fun ThreadInlineMetaTag(label: String) {
     Box(
         modifier =
             Modifier
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceCream)
+                // raft muted chip: fill-muted on the chip radius, no ink edge.
+                .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
                 .padding(horizontal = ThreadInlineMetaTagHorizontalPadding, vertical = 2.dp)
     ) {
         Text(
@@ -29389,8 +29442,13 @@ private fun ThreadMessageCommentRefChip(
         modifier =
             modifier
                 .then(if (enabled) Modifier.clickable(onClick = onOpen) else Modifier)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceCream.copy(alpha = if (enabled) 1f else 0.7f))
+                // raft reference chip: fill-muted on the chip radius with a hairline.
+                .slockRaftControlSurface(
+                    fill = SlockColor.FillMuted.copy(alpha = if (enabled) 1f else 0.7f),
+                    border = SlockColor.LineMuted,
+                    radius = SlockRadius.Chip,
+                    borderWidth = SlockStroke.Thin
+                )
                 .padding(horizontal = SlockSpacing.Xs, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -29804,22 +29862,14 @@ internal fun ThreadAttachmentCommentsSheet(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + SlockSpacing.Sm)
-                        .padding(end = 4.dp, bottom = 4.dp)
                         .slockDialogContentPointerBarrier()
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
+                // raft-ui dialog surface: dialog radius, popover layer, seam ring, float shadow.
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .slockRaftOverlaySurface(SlockRadius.Dialog)
                             .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -29829,7 +29879,7 @@ internal fun ThreadAttachmentCommentsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stringResource(MR.strings.thread_comments_title).slockDisplayUppercase(),
+                            text = stringResource(MR.strings.thread_comments_title),
                             style =
                                 SlockType.PageTitle.copy(
                                     fontSize = 18.sp,
@@ -29986,13 +30036,13 @@ internal fun ThreadAttachmentCommentsContent(
 @Composable
 private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentItem) {
     Row(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceCream)
+        modifier = Modifier.fillMaxWidth()
+            .slockRaftCardSurface(fill = SlockColor.Inset, radius = SlockRadius.Control)
             .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.FileText, modifier = Modifier.size(15.dp), color = "#FF111827")
+        SlockLucideIcon(SlockLucideIconName.FileText, modifier = Modifier.size(15.dp), color = SlockColor.TextBlackArgb)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = attachment.name,
@@ -30336,8 +30386,8 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     // keeps clear of the system navigation bar.
     val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxWidth()
+            .background(SlockColor.Panel)
             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -30370,8 +30420,12 @@ private fun ThreadForwardAttachmentChips(item: ForwardMessageItem, modifier: Mod
                 Row(
                     modifier =
                         Modifier
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                            .background(SlockColor.SurfaceWhite)
+                            .slockRaftControlSurface(
+                                fill = SlockColor.Card,
+                                border = SlockColor.LineMuted,
+                                radius = SlockRadius.Chip,
+                                borderWidth = SlockStroke.Thin
+                            )
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -30431,8 +30485,7 @@ internal fun ThreadForwardBundleCard(
     // text). Space Mono stays on the timestamp only. See visual case components.thread.forward-bundle.
     Column(
         modifier = modifier
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .slockRaftCardSurface()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -30467,7 +30520,7 @@ internal fun ThreadForwardBundleCard(
         val liveTimeContext = LocalSlockTimeContextProvider.current?.current
         previewMessages.forEach { preview ->
             val item = preview.item
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -30523,7 +30576,7 @@ internal fun ThreadForwardBundleCard(
             }
         }
         if (onOpenAll != null) {
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
             Row(
                 modifier =
                     Modifier
@@ -31062,7 +31115,7 @@ private fun ThreadForwardBundleScreen() {
         SlockTopPageHeader(
             title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
             iconName = SlockLucideIconName.Share2,
-            backgroundColor = SlockColor.SurfaceWhite,
+            backgroundColor = SlockColor.Panel,
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -31312,7 +31365,7 @@ internal fun <T> SlockForwardTargetPicker(
                 title = stringResource(MR.strings.thread_action_forward),
                 subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
                 iconName = SlockLucideIconName.Send,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = SlockColor.Panel,
                 leadingContent = {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.ArrowLeft,
@@ -31331,9 +31384,9 @@ internal fun <T> SlockForwardTargetPicker(
                         Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, top = 12.dp, end = 16.dp)
-                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-                            .background(SlockColor.BrandYellow.copy(alpha = 0.18f))
-                            .border(SlockStroke.Default, SlockColor.BrandYellow)
+                            // raft-ui warning Banner chrome: warning-soft fill, hairline, container radius.
+                            .background(SlockColor.WarningSoft, RoundedCornerShape(SlockRadius.Container))
+                            .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Container))
                             .padding(10.dp)
                 ) {
                     Text(
@@ -31380,7 +31433,7 @@ internal fun <T> SlockForwardTargetPicker(
                         detail =
                             when {
                                 state.errorCode != null ->
-                                    userFacingErrorLabels.forErrorCode(state.errorCode)?.slockDisplayUppercase()
+                                    userFacingErrorLabels.forErrorCode(state.errorCode)
                                         ?: stringResource(MR.strings.common_error)
                                 state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
                                 else -> stringResource(MR.strings.thread_add_member_try_different_search)
@@ -31464,7 +31517,7 @@ internal fun <T> SlockForwardTargetPicker(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(SlockColor.Panel)
                             .padding(
                                 start = 12.dp,
                                 top = 12.dp,
@@ -31589,16 +31642,15 @@ private fun ThreadForwardSearchingSkeletonRow() {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
                 .height(60.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.08f))
+                .slockRaftCardSurface()
                 .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(modifier = Modifier.size(38.dp).background(SlockColor.BorderBlack.copy(alpha = 0.08f)))
+            Box(modifier = Modifier.size(38.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(modifier = Modifier.width(144.dp).height(12.dp).background(SlockColor.BorderBlack.copy(alpha = 0.10f)))
-                Box(modifier = Modifier.width(92.dp).height(9.dp).background(SlockColor.BorderBlack.copy(alpha = 0.06f)))
+                Box(modifier = Modifier.width(144.dp).height(12.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Xs)))
+                Box(modifier = Modifier.width(92.dp).height(9.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Xs)))
             }
         }
     }
@@ -31619,10 +31671,12 @@ private fun <T> ThreadForwardTargetRow(
                 .fillMaxWidth()
                 .alpha(if (interactive) 1f else 0.72f)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
-                .background(if (selected) SlockColor.BrandYellow.copy(alpha = 0.22f) else SlockColor.SurfaceWhite)
-                .border(
-                    SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.12f)
+                // raft selection row: primary-soft when selected, ink edge marks the choice.
+                .slockRaftControlSurface(
+                    fill = if (selected) SlockColor.PrimarySoft else SlockColor.Card,
+                    border = if (selected) SlockColor.BorderBlack else SlockColor.LineMuted,
+                    radius = SlockRadius.Container,
+                    borderWidth = if (selected) SlockStroke.Control else SlockStroke.Thin
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
@@ -31652,8 +31706,8 @@ private fun <T> ThreadForwardTargetRow(
                         modifier =
                             Modifier
                                 .size(38.dp)
-                                .background(SlockColor.BrandYellow)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                                .background(SlockColor.Primary, RoundedCornerShape(SlockRadius.Sticker))
+                                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
                         contentAlignment = Alignment.Center
                     ) {
                         SlockLucideIcon(
@@ -31723,9 +31777,9 @@ internal fun ThreadShareSelectionToolbar(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.BrandYellow)
+                .background(SlockColor.Panel)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
         Row(
             modifier =
                 Modifier
@@ -31742,7 +31796,7 @@ internal fun ThreadShareSelectionToolbar(
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.Normal
                 ),
-                color = SlockColor.TextBlack.copy(alpha = 0.70f),
+                color = SlockColor.TextMuted,
                 maxLines = 1
             )
             Row(
@@ -31868,8 +31922,7 @@ internal fun ThreadSharePreviewModal(
                         Modifier
                             .fillMaxWidth()
                             .height(threadSharePreviewImageHeight(image).dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .slockRaftCardSurface()
                             .padding(8.dp)
                 ) {
                     SlockCachedImage(
@@ -32061,7 +32114,7 @@ private fun ThreadAddMemberModal(
             addMemberStatus == "failed" ->
                 "$addFailedLabel: " +
                     (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
-                        ?: genericErrorLabel).slockDisplayUppercase()
+                        ?: genericErrorLabel)
             else -> null
         }
     val content: @Composable () -> Unit = {
@@ -32670,7 +32723,7 @@ private fun ThreadDirectMessageSettingsModal(
                 enabled = activityMuteState != null && onToggleActivityMute != null,
                 onClick = { onToggleActivityMute?.invoke() }
             )
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
             ThreadDirectMessagePreferenceRow(
                 title = stringResource(MR.strings.thread_dm_settings_pin_person),
                 detail = stringResource(MR.strings.thread_dm_settings_pin_person_detail),
@@ -32846,7 +32899,7 @@ internal fun ThreadSettingsModal(
                         dangerActions.isNotEmpty()
                 ) {
                     item {
-                        Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+                        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
                     }
                     item {
                         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -32953,8 +33006,8 @@ private fun ThreadChannelActionWarning(
             Modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-                .background(action.color.copy(alpha = 0.22f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(action.color.copy(alpha = 0.22f), RoundedCornerShape(SlockRadius.Container))
+                .border(SlockStroke.Thin, SlockColor.LineMuted, RoundedCornerShape(SlockRadius.Container))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically

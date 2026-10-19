@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.isAmbient
 import build.raft.app.slockDisplayUppercase
 import build.raft.app.Button as SlockAnchorButton
 import build.raft.app.SlockColor
@@ -11,6 +12,7 @@ import build.raft.app.SlockPopoverAnchor
 import build.raft.app.SlockPopoverAnchorResolver
 import build.raft.app.SlockPopoverLocalPoint
 import build.raft.app.SlockModalDismissBarrier
+import build.raft.app.SlockRadius
 import build.raft.app.SlockShadow
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
@@ -23,6 +25,7 @@ import build.raft.app.slockThemedCorners
 import build.raft.app.LocalSlockTheme
 import build.raft.app.SlockThemeFamily
 import build.raft.app.withSlockFontWeight
+import build.raft.app.slockArgbHex
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +47,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -68,6 +72,7 @@ import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -104,6 +109,9 @@ internal data class SegmentedControlOption(
     val iconName: SlockLucideIconName? = null,
     val count: Int? = null
 )
+
+// Brutal error-field wash (react `bg-red-50`-ish); raft fields keep the card fill on error.
+internal val SlockFieldErrorTint = Color(0xFFFFF4F4)
 
 internal val SlockDisabledActionBackground = Color(0xFFFFD8E5)
 internal val SlockDisabledDestructiveActionBackground = Color(0xFFFFE5E5)
@@ -187,12 +195,15 @@ internal fun SlockAnchoredMetaChip(
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "anchored_meta_chip:$label"
     val geometryAnchor =
         remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
+    // raft: chips are 6dp-radius tags (`rounded-chip`); a colour block keeps its ink edge.
+    val raftChip = slockRaftActive()
+    val chipShape = if (raftChip) RoundedCornerShape(SlockRadius.Chip) else RectangleShape
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
-            .border(borderWidth, SlockColor.BorderBlack, RectangleShape)
-            .background(color, RectangleShape)
-            .slockSquareCorners()
+            .border(borderWidth, SlockColor.BorderBlack, chipShape)
+            .background(color, chipShape)
+            .then(if (raftChip) Modifier else Modifier.slockSquareCorners())
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
                 if (
@@ -266,6 +277,16 @@ internal fun SlockBrutalSectionLabel(
     size: SlockFormFieldSize = SlockFormFieldSize.Default,
     modifier: Modifier = Modifier
 ) {
+    if (slockRaftActive()) {
+        SlockRaftFieldLabel(
+            label = label,
+            required = required,
+            optional = optional,
+            compact = size == SlockFormFieldSize.Compact,
+            modifier = modifier
+        )
+        return
+    }
     val compact = size == SlockFormFieldSize.Compact
     val labelFontSize = if (compact) 11.sp else 14.sp
     val labelLineHeight = if (compact) 14.sp else 18.sp
@@ -308,6 +329,48 @@ internal fun SlockBrutalModalHeader(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (slockRaftActive()) {
+        // raft DialogHeader: px-5 pt-5, headline 17/22 bold title, subhead 15/20 muted
+        // description, ghost icon-md close (32dp, 18dp X) pulled into the corner.
+        Row(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 14.dp, top = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f).padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = model.title,
+                    style = SlockType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (model.subtitle.isNotBlank()) {
+                    Text(
+                        text = model.subtitle,
+                        style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                        color = SlockColor.TextMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            SlockBrutalIconButton(
+                iconName = model.dismissIcon,
+                onClick = onDismiss,
+                backgroundColor = Color.Transparent,
+                size = 32.dp,
+                iconSize = 18.dp
+            )
+        }
+        return
+    }
     Row(
         modifier =
             modifier
@@ -365,6 +428,21 @@ internal fun SlockBrutalModalLayer(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
+            if (slockRaftActive()) {
+                // raft Dialog content: dialog radius 16, popover layer, seam ring, float shadow.
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = model.maxWidth)
+                            .slockFloatingContentClickTarget()
+                            .slockRaftOverlaySurface(radius = SlockRadius.Dialog)
+                ) {
+                    SlockBrutalModalHeader(model = model, onDismiss = onDismiss)
+                    content()
+                }
+                return@Box
+            }
             Box(
                 modifier =
                     Modifier
@@ -394,13 +472,19 @@ internal fun SlockBrutalModalLayer(
 internal fun SlockBrutalActionSheetRow(
     model: SlockActionSheetRowModel,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // raft: the row sits in a menu popup, so it takes the menu item's `px-2.5 py-1.5`.
+    menuItemPadding: Boolean = false
 ) {
     // The bare material3 Button paints the theme's default filled container
     // (purple in this build) over the sheet's surface and disables text via the
     // default content color. Give the row explicit register-aware colors so the
     // parent's selected/unselected surface shows through and ink stays readable.
     val theme = LocalSlockTheme.current
+    if (theme.isAmbient) {
+        SlockRaftActionSheetRow(model = model, onClick = onClick, modifier = modifier, menuItemPadding = menuItemPadding)
+        return
+    }
     Button(
         onClick = onClick,
         shape = RectangleShape,
@@ -446,6 +530,73 @@ internal fun SlockBrutalActionSheetRow(
                         text = model.subtitle,
                         style = SlockType.Caption,
                         color = theme.inkMuted,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * raft action-sheet row: a menu-item row (control radius, pressed wash, no ink box) with
+ * a soft icon tile. Destructive rows switch to the danger soft tile and danger-strong ink.
+ */
+@Composable
+private fun SlockRaftActionSheetRow(
+    model: SlockActionSheetRowModel,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    menuItemPadding: Boolean = false
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    val titleColor = if (model.destructive) SlockColor.DangerStrong else SlockColor.TextBlack
+    SlockAnchorButton(
+        onClick = onClick,
+        pressOffset = 0.dp,
+        onPressedChange = { pressed = it },
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(if (pressed) SlockColor.FillPressed else Color.Transparent, shape)
+                .padding(
+                    horizontal = if (menuItemPadding) SlockRaftMetrics.MenuItemPaddingHorizontal else 12.dp,
+                    vertical = if (menuItemPadding) 6.dp else 10.dp
+                )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(32.dp)
+                        .background(if (model.destructive) SlockColor.DangerSoft else SlockColor.FillMuted, shape),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    model.icon,
+                    modifier = Modifier.size(18.dp),
+                    color = slockArgbHex(if (model.destructive) SlockColor.DangerStrong else SlockColor.ForegroundIcon)
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = model.title,
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.SemiBold),
+                    color = titleColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (model.subtitle.isNotBlank()) {
+                    Text(
+                        text = model.subtitle,
+                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        color = SlockColor.TextMuted,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -506,7 +657,7 @@ internal fun SlockBrutalTextField(
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
-            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
+            enabledBackgroundColor = if (hasError) SlockFieldErrorTint else SlockColor.SurfaceWhite,
             onFocusChanged = onFocusChanged
         )
     }
@@ -565,7 +716,7 @@ internal fun SlockBrutalTextField(
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
-            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
+            enabledBackgroundColor = if (hasError) SlockFieldErrorTint else SlockColor.SurfaceWhite,
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions =
                 if (password) {
@@ -616,15 +767,17 @@ private fun TextStyle.slockLineHeightDp(): Dp =
  *
  * Brutal register (unchanged, byte-identical shipping look): the outer Box reserves a bottom/right
  * shadow gutter, a hard offset `ShadowBlack` box sits behind, and the foreground is square
- * (`slockSquareCorners`) with a 2px black border on the white/cream surface. Elegant register: a
- * flat product-grade field — real 8dp rounded corners + 1px `#CACACE` hairline + surface fill, no
- * offset shadow and no reserved gutter (the borderRadius-prop path does not round at runtime, so
- * the rounded shape is applied straight to `background`/`border`). An explicit non-default
- * [borderColor] (e.g. the AccentRed error border) passes through in both registers.
+ * (`slockSquareCorners`) with a 2px black border on the white/cream surface. Raft register
+ * (raft-ui 0.6.0 Input/Textarea): 8dp control radius + 1.5dp `--line-field` edge on the card
+ * layer, no offset shadow and no reserved gutter (the borderRadius-prop path does not round at
+ * runtime, so the rounded shape is applied straight to `background`/`border`). The brutal error
+ * pair (AccentRed edge + pink wash) maps to the `--danger-strong` edge on the card fill; any
+ * other explicit [borderColor] passes through.
  */
 @Composable
 private fun SlockBrutalInputFieldFrame(
     modifier: Modifier,
+    enabled: Boolean,
     focusPolicy: SlockBrutalInputFocusPolicy,
     focused: Boolean,
     forceFocused: Boolean,
@@ -647,16 +800,33 @@ private fun SlockBrutalInputFieldFrame(
         } else {
             Modifier
         }
-    if (theme.family == SlockThemeFamily.Elegant) {
-        val shape = RoundedCornerShape(theme.cornerRadius)
-        val elegantBorderColor = if (borderColor == SlockColor.BorderBlack) theme.line else borderColor
+    if (theme.isAmbient) {
+        // raft-ui Input / Textarea: control radius 8, 1.5dp `--line-strong` (`--line-field`)
+        // edge on the card layer, no shadow. Invalid swaps the edge to `--danger-strong`
+        // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-muted` pair.
+        // Read-only fields keep the resting look, like web `<Input readOnly>`.
+        val shape = RoundedCornerShape(SlockRadius.Control)
+        val raftBorderColor =
+            when {
+                !enabled -> SlockColor.LineMuted
+                borderColor == SlockColor.BorderBlack -> SlockColor.LineField
+                borderColor == SlockColor.AccentRed -> SlockColor.DangerStrong
+                else -> borderColor
+            }
+        val raftSurfaceColor =
+            when {
+                !enabled ->
+                    if (disabledBackgroundColor == SlockColor.SurfaceCream) SlockColor.FillMuted else disabledBackgroundColor
+                enabledBackgroundColor == SlockColor.SurfaceWhite || enabledBackgroundColor == SlockFieldErrorTint -> SlockColor.Card
+                else -> enabledBackgroundColor
+            }
         Box(
             modifier =
                 modifier
                     .fillMaxWidth()
                     .height(fieldMinHeight)
-                    .background(surfaceColor, shape)
-                    .border(theme.lineWidth, elegantBorderColor, shape)
+                    .background(raftSurfaceColor, shape)
+                    .border(SlockStroke.Control, raftBorderColor, shape)
                     .then(tapModifier)
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = contentAlignment,
@@ -714,10 +884,10 @@ internal fun SlockBrutalInputField(
     readOnly: Boolean = false,
     autoFocus: Boolean = false,
     maxLines: Int = 1,
-    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+    textStyle: TextStyle = SlockBrutalInputDefaultTextStyle,
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
-    horizontalPadding: Dp = 10.dp,
+    horizontalPadding: Dp = SlockBrutalInputLegacyHorizontalPadding,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
     forceFocused: Boolean = false,
@@ -741,21 +911,43 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalSlockTheme.current
-    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    val raft = theme.isAmbient
+    // raft-ui fields: 44dp tall, 12dp side padding, `text-field` 16/24 type, placeholder
+    // ink. Only the legacy brutal defaults are remapped; explicit caller metrics stay.
+    val resolvedTextStyle =
+        when {
+            !raft -> textStyle
+            textStyle == SlockBrutalInputDefaultTextStyle ->
+                textStyle.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
+                )
+            else -> textStyle.copy(color = if (enabled) theme.ink else SlockColor.ForegroundDisabled)
+        }
+    val resolvedHorizontalPadding =
+        if (raft && horizontalPadding == SlockBrutalInputLegacyHorizontalPadding) {
+            SlockRaftMetrics.FieldPaddingHorizontal
+        } else {
+            horizontalPadding
+        }
+    val resolvedPlaceholderColor =
+        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor
     SlockBrutalInputFieldFrame(
         modifier = modifier,
+        enabled = enabled,
         focusPolicy = focusPolicy,
         focused = focused,
         forceFocused = forceFocused,
         showShadow = showShadow,
         fieldMinHeight =
             slockBrutalInputFieldFrameMinHeight(
-                fieldMinHeight = fieldMinHeight,
+                fieldMinHeight = slockRaftFieldHeight(fieldMinHeight),
                 maxLines = maxLines,
                 lineHeight = resolvedTextStyle.slockLineHeightDp(),
                 verticalPadding = verticalPadding
             ),
-        horizontalPadding = horizontalPadding,
+        horizontalPadding = resolvedHorizontalPadding,
         verticalPadding = verticalPadding,
         borderColor = borderColor,
         enabledBackgroundColor = enabledBackgroundColor,
@@ -781,7 +973,7 @@ internal fun SlockBrutalInputField(
                     )
                 },
                 placeholder = placeholder,
-                placeholderColor = placeholderColor,
+                placeholderColor = resolvedPlaceholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
                 onFocus = {
                     focused = true
@@ -811,6 +1003,7 @@ internal fun SlockBrutalInputField(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange("") },
+                    backgroundColor = if (raft) Color.Transparent else SlockColor.SurfaceWhite,
                     size = 18.dp,
                     shadowOffset = 2.dp
                 )
@@ -830,10 +1023,10 @@ internal fun SlockBrutalInputField(
     readOnly: Boolean = false,
     autoFocus: Boolean = false,
     maxLines: Int = 1,
-    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+    textStyle: TextStyle = SlockBrutalInputDefaultTextStyle,
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
-    horizontalPadding: Dp = 10.dp,
+    horizontalPadding: Dp = SlockBrutalInputLegacyHorizontalPadding,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
     forceFocused: Boolean = false,
@@ -857,21 +1050,43 @@ internal fun SlockBrutalInputField(
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalSlockTheme.current
-    val resolvedTextStyle = if (theme.family == SlockThemeFamily.Elegant) textStyle.copy(color = theme.ink) else textStyle
+    val raft = theme.isAmbient
+    // raft-ui fields: 44dp tall, 12dp side padding, `text-field` 16/24 type, placeholder
+    // ink. Only the legacy brutal defaults are remapped; explicit caller metrics stay.
+    val resolvedTextStyle =
+        when {
+            !raft -> textStyle
+            textStyle == SlockBrutalInputDefaultTextStyle ->
+                textStyle.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
+                )
+            else -> textStyle.copy(color = if (enabled) theme.ink else SlockColor.ForegroundDisabled)
+        }
+    val resolvedHorizontalPadding =
+        if (raft && horizontalPadding == SlockBrutalInputLegacyHorizontalPadding) {
+            SlockRaftMetrics.FieldPaddingHorizontal
+        } else {
+            horizontalPadding
+        }
+    val resolvedPlaceholderColor =
+        if (raft && placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor
     SlockBrutalInputFieldFrame(
         modifier = modifier,
+        enabled = enabled,
         focusPolicy = focusPolicy,
         focused = focused,
         forceFocused = forceFocused,
         showShadow = showShadow,
         fieldMinHeight =
             slockBrutalInputFieldFrameMinHeight(
-                fieldMinHeight = fieldMinHeight,
+                fieldMinHeight = slockRaftFieldHeight(fieldMinHeight),
                 maxLines = maxLines,
                 lineHeight = resolvedTextStyle.slockLineHeightDp(),
                 verticalPadding = verticalPadding
             ),
-        horizontalPadding = horizontalPadding,
+        horizontalPadding = resolvedHorizontalPadding,
         verticalPadding = verticalPadding,
         borderColor = borderColor,
         enabledBackgroundColor = enabledBackgroundColor,
@@ -897,7 +1112,7 @@ internal fun SlockBrutalInputField(
                     )
                 },
                 placeholder = placeholder,
-                placeholderColor = placeholderColor,
+                placeholderColor = resolvedPlaceholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
                 onFocus = {
                     focused = true
@@ -927,6 +1142,7 @@ internal fun SlockBrutalInputField(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
+                    backgroundColor = if (raft) Color.Transparent else SlockColor.SurfaceWhite,
                     size = 18.dp,
                     shadowOffset = 2.dp
                 )
@@ -935,6 +1151,12 @@ internal fun SlockBrutalInputField(
         }
     }
 }
+
+/** The brutal field type (14/18); raft swaps a field still on it for `text-field` 16/24. */
+internal val SlockBrutalInputDefaultTextStyle: TextStyle
+    get() = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+
+internal val SlockBrutalInputLegacyHorizontalPadding = 10.dp
 
 internal data class SlockBrutalInputFocusPolicy(
     val acceptsFocus: Boolean,
@@ -1005,6 +1227,9 @@ internal fun SlockBrutalReadOnlyField(
     }
 }
 
+// Brutal read-only fill (Tailwind gray-50).
+internal val SlockReadOnlyFieldLegacyBackground = Color(0xFFF9FAFB)
+
 @Composable
 internal fun SlockBrutalReadOnlyValueField(
     value: String,
@@ -1013,24 +1238,31 @@ internal fun SlockBrutalReadOnlyValueField(
     fieldMinHeight: Dp = 42.dp,
     horizontalPadding: Dp = 12.dp,
     verticalPadding: Dp = 8.dp,
-    backgroundColor: Color = Color(0xFFF9FAFB),
+    backgroundColor: Color = SlockReadOnlyFieldLegacyBackground,
     borderColor: Color = SlockColor.BorderBlack.copy(alpha = 0.30f),
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
     textColor: Color = SlockColor.TextMutedGray
 ) {
+    val raft = slockRaftActive()
+    val shape = if (raft) RoundedCornerShape(SlockRadius.Control) else RectangleShape
+    // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
+    // 1.5dp `--line-muted` edge, muted ink) at the 44dp field height.
+    val resolvedBackground = if (raft && backgroundColor == SlockReadOnlyFieldLegacyBackground) SlockColor.FillMuted else backgroundColor
+    val resolvedBorder = if (raft && borderColor == SlockColor.BorderBlack.copy(alpha = 0.30f)) SlockColor.LineMuted else borderColor
+    val resolvedTextColor = if (raft && textColor == SlockColor.TextMutedGray) SlockColor.TextMuted else textColor
     Box(
         modifier =
             modifier
-                .heightIn(min = fieldMinHeight)
-                .background(backgroundColor)
-                .border(SlockStroke.Default, borderColor)
+                .heightIn(min = slockRaftFieldHeight(fieldMinHeight))
+                .background(resolvedBackground, shape)
+                .border(SlockStroke.Default, resolvedBorder, shape)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = value,
-            style = textStyle.copy(color = textColor),
-            color = textColor,
+            style = textStyle.copy(color = resolvedTextColor),
+            color = resolvedTextColor,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
@@ -1048,11 +1280,40 @@ internal fun SlockBrutalSearchField(
     leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
     showClearWhenNotEmpty: Boolean = false,
     onClear: () -> Unit = { onValueChange("") },
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+    textStyle: TextStyle = SlockBrutalSearchDefaultTextStyle,
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
+    if (slockRaftActive()) {
+        SlockRaftSearchFieldFrame(
+            modifier = modifier,
+            enabled = enabled,
+            leadingIcon = leadingIcon,
+            showClear = showClearWhenNotEmpty && value.isNotEmpty(),
+            onClear = onClear
+        ) {
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = SlockColor.ForegroundPlaceholder,
+                autoFocus = false,
+                onFocus = {
+                    focused = true
+                    onFocus()
+                },
+                onBlur = {
+                    focused = false
+                    onBlur()
+                },
+                maxLines = 1,
+                textStyle = slockRaftSearchTextStyle(textStyle, enabled),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        return
+    }
     val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
     Box(
         modifier =
@@ -1124,11 +1385,40 @@ internal fun SlockBrutalSearchField(
     leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
     showClearWhenNotEmpty: Boolean = false,
     onClear: () -> Unit = { onValueChange(TextFieldValue("")) },
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+    textStyle: TextStyle = SlockBrutalSearchDefaultTextStyle,
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
+    if (slockRaftActive()) {
+        SlockRaftSearchFieldFrame(
+            modifier = modifier,
+            enabled = enabled,
+            leadingIcon = leadingIcon,
+            showClear = showClearWhenNotEmpty && value.text.isNotEmpty(),
+            onClear = onClear
+        ) {
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = SlockColor.ForegroundPlaceholder,
+                autoFocus = false,
+                onFocus = {
+                    focused = true
+                    onFocus()
+                },
+                onBlur = {
+                    focused = false
+                    onBlur()
+                },
+                maxLines = 1,
+                textStyle = slockRaftSearchTextStyle(textStyle, enabled),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        return
+    }
     val shadowOffset = if (focused && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
     Box(
         modifier =
@@ -1186,6 +1476,61 @@ internal fun SlockBrutalSearchField(
                             .clickable(enabled = enabled, onClick = onClear)
                 )
             }
+        }
+    }
+}
+
+/** The brutal search type (13/16); raft swaps a field still on it for `text-field` 16/24. */
+internal val SlockBrutalSearchDefaultTextStyle: TextStyle
+    get() = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+
+private fun slockRaftSearchTextStyle(textStyle: TextStyle, enabled: Boolean): TextStyle {
+    val ink = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
+    return if (textStyle == SlockBrutalSearchDefaultTextStyle) {
+        SlockType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = ink)
+    } else {
+        textStyle.copy(color = ink)
+    }
+}
+
+/**
+ * raft-ui InputGroup with an inline-start search addon: 44dp, control radius, 1.5dp
+ * `--line-strong` edge on the card layer, no shadow; the 18dp addon icon and the clear
+ * affordance use the hint ink. Disabled is the opaque `--fill-muted` / `--line-muted` pair.
+ */
+@Composable
+private fun SlockRaftSearchFieldFrame(
+    modifier: Modifier,
+    enabled: Boolean,
+    leadingIcon: SlockLucideIconName,
+    showClear: Boolean,
+    onClear: () -> Unit,
+    field: @Composable RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    val hintArgb = slockArgbHex(if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled)
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(SlockRaftMetrics.FieldHeight)
+                .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
+                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.LineMuted, shape)
+                .padding(horizontal = SlockRaftMetrics.FieldPaddingHorizontal),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(leadingIcon, color = hintArgb, modifier = Modifier.size(18.dp))
+        field()
+        if (showClear) {
+            SlockLucideIcon(
+                SlockLucideIconName.X,
+                color = hintArgb,
+                modifier =
+                    Modifier
+                        .size(16.dp)
+                        .clickable(enabled = enabled, onClick = onClear)
+            )
         }
     }
 }
@@ -1263,68 +1608,28 @@ internal fun SlockBrutalActionButton(
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    // The enabled register (border, corner radius, shadow, ink) is read from
-    // LocalSlockTheme. brutalTheme reproduces every value this button hard-coded, so the
-    // default path renders byte-identically (hard structural offset-box shadow + square).
-    // elegantTheme renders the *ambient* register: rounded corners + a soft elevation
-    // shadow via Kuikly Modifier.shadow (which draws a blurred shadow AND clips to the
-    // rounded shape — the reliable rounding path, since the borderRadius-prop
-    // slockThemedCorners did not actually round at runtime) + a thin gray hairline +
-    // near-black ink. Verified against the real capture, not just source (#5916 audit).
+    // The register is read from LocalSlockTheme. The raft themes render raft-ui 0.6.0's
+    // Button ([SlockRaftActionButton]: control radius, 1.5dp edge, sticker/outline/ghost
+    // variants from [backgroundColor], press overlay, no shadow); the disabled*/shadow*
+    // parameters only shape the legacy brutal register below (hard offset-box shadow).
     val theme = LocalSlockTheme.current
     val borderColor = if (enabled) theme.line else disabledBorderColor
     val surfaceBackground = if (enabled) backgroundColor else disabledBackgroundColor
-    if (theme.family == SlockThemeFamily.Elegant) {
-        // Ambient register: no offset-box, no reserved offset padding. Rounding is
-        // enforced by Modifier.shadow(clip = true) so it holds even if Kuikly ignores the
-        // background/border Shape. Shadow is TUNED to React's subtle 0 1px 8px rgba(0,0,0,
-        // .15): Kuikly couples elevation -> Y offset (~e/2) + blur (~e), so a low 3dp
-        // elevation keeps the halo short, and ambient/spot = theme.shadow.color pins the
-        // 15% darkness (vs Kuikly's ~19% default) — the #5916/#1894 captures measured the
-        // 8dp default as 2.62x too dark and 40px vs 26px too tall.
-        // Disabled mirrors React's `.btn:disabled { opacity: .4 }`: the SAME elegant chrome
-        // (theme.line hairline, tone fill, soft shadow, 8dp round) faded by alpha(0.4) — not
-        // the brutal opaque #999/#E6E3E0/2dp disabled constants (which measured too dark).
-        val shape = RoundedCornerShape(theme.cornerRadius)
-        SlockAnchorButton(
+    if (theme.isAmbient) {
+        SlockRaftActionButton(
+            label = label,
             onClick = onClick,
             onClick2 = onClick2,
+            modifier = modifier,
             enabled = enabled,
-            pressFeedback = enabled,
-            modifier =
-                modifier
-                    .widthIn(min = minWidth)
-                    .heightIn(min = minHeight)
-                    // Always apply alpha and vary its value: a removed modifier leaves the
-                    // stale native alpha behind on Kuikly, so a re-enabled button stayed dim.
-                    .alpha(if (enabled) 1f else 0.4f)
-                    .shadow(
-                        elevation = 3.dp,
-                        shape = shape,
-                        clip = true,
-                        ambientColor = theme.shadow.color,
-                        spotColor = theme.shadow.color,
-                    )
-                    .background(backgroundColor, shape)
-                    .border(theme.lineWidth, theme.line, shape)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            SlockBrutalActionButtonInnerContent(
-                label = label,
-                leadingIcon = leadingIcon,
-                leadingIconSpinning = leadingIconSpinning,
-                leadingIconSize = leadingIconSize,
-                contentSpacing = contentSpacing,
-                textStyle = textStyle,
-                // Elegant disabled fades the whole button via alpha(0.4) above, so the
-                // content keeps the enabled near-black ink (faded), matching React's
-                // opacity approach rather than switching to the #999 disabled ink.
-                enabled = true,
-                disabledContentColor = disabledContentColor,
-                disabledIconColor = disabledIconColor,
-                trailingContent = trailingContent
-            )
-        }
+            backgroundColor = backgroundColor,
+            minWidth = minWidth,
+            minHeight = minHeight,
+            leadingIcon = leadingIcon,
+            leadingIconSpinning = leadingIconSpinning,
+            textStyle = textStyle,
+            trailingContent = trailingContent
+        )
         return
     }
     // Brutal register (unchanged, byte-identical): a hard structural offset-box shadow
@@ -1381,6 +1686,125 @@ internal fun SlockBrutalActionButton(
 internal val SlockBrutalActionButtonDefaultTextStyle =
     SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
 
+// The brutal button's default min width; raft buttons have none (they hug the label).
+private val SlockBrutalActionButtonLegacyMinWidth = 82.dp
+
+/**
+ * raft-ui 0.6.0 `Button` (dist/components button recipe):
+ *  - sizes: `md` h-8 / px-3 / 13/18 bold / 16dp icons (raft renders `xs`/`sm` as `md`),
+ *    `lg` h-11 / px-4 / 15/20, `xl` h-13 / px-5 / 16/24; control radius 8dp;
+ *  - variants from the caller's fill ([slockRaftButtonChrome]): pink accent / danger /
+ *    warning stickers with a 1.5dp sticker-ink edge and ink type, or the paper outline
+ *    button with a 1.5dp `--line-strong` edge, or ghost;
+ *  - press lays `--sticker-pressed` / `--fill-pressed` over the fill (no offset, no
+ *    shadow: controls never cast one);
+ *  - disabled is opaque: `--fill-muted` fill, `--line-muted` edge, `--foreground-disabled` ink.
+ * A [minHeight] below 38dp picks `md`, up to 52dp `lg`, beyond that `xl`.
+ */
+@Composable
+private fun SlockRaftActionButton(
+    label: String,
+    onClick: () -> Unit,
+    onClick2: ((SlockPopoverAnchor) -> Unit)?,
+    modifier: Modifier,
+    enabled: Boolean,
+    backgroundColor: Color,
+    minWidth: Dp,
+    minHeight: Dp,
+    leadingIcon: SlockLucideIconName?,
+    leadingIconSpinning: Boolean,
+    textStyle: TextStyle,
+    trailingContent: (@Composable () -> Unit)?
+) {
+    // raft-ui dialog footers pair the primary sticker with a ghost Cancel; a
+    // paper (white) button inside SlockDialogFooter is that ghost secondary.
+    val chrome =
+        slockRaftButtonChrome(
+            if (LocalSlockRaftDialogFooter.current && backgroundColor == SlockColor.SurfaceWhite) {
+                Color.Transparent
+            } else {
+                backgroundColor
+            }
+        )
+    var pressed by remember { mutableStateOf(false) }
+    val height: Dp
+    val horizontalPadding: Dp
+    val fontSize: TextUnit
+    val lineHeight: TextUnit
+    val iconSize: Dp
+    when {
+        minHeight >= SlockRaftMetrics.ControlHeightXl -> {
+            height = SlockRaftMetrics.ControlHeightXl
+            horizontalPadding = 20.dp
+            fontSize = 16.sp
+            lineHeight = 24.sp
+            iconSize = 18.dp
+        }
+        minHeight >= 38.dp -> {
+            height = SlockRaftMetrics.ControlHeightLg
+            horizontalPadding = 16.dp
+            fontSize = 15.sp
+            lineHeight = 20.sp
+            iconSize = 18.dp
+        }
+        else -> {
+            height = SlockRaftMetrics.ControlHeightMd
+            horizontalPadding = 12.dp
+            fontSize = 13.sp
+            lineHeight = 18.sp
+            iconSize = 16.dp
+        }
+    }
+    // `has-data-[icon=inline-start]:pl-2.5` (md) / `pl-3.5` (lg): an icon pulls its edge in by 2dp.
+    val startPadding = if (leadingIcon != null) horizontalPadding - 2.dp else horizontalPadding
+    val fill =
+        when {
+            !enabled -> SlockColor.FillMuted
+            pressed -> slockRaftOverlay(chrome.pressedOverlay, chrome.fill)
+            else -> chrome.fill
+        }
+    val border = if (enabled) chrome.border else SlockColor.LineMuted
+    val content = if (enabled) chrome.content else SlockColor.ForegroundDisabled
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    SlockAnchorButton(
+        onClick = onClick,
+        onClick2 = onClick2,
+        enabled = enabled,
+        pressFeedback = enabled,
+        pressOffset = 0.dp,
+        onPressedChange = { pressed = it },
+        modifier =
+            modifier
+                .widthIn(min = if (minWidth == SlockBrutalActionButtonLegacyMinWidth) 0.dp else minWidth)
+                .heightIn(min = height)
+                .background(fill, shape)
+                .border(SlockStroke.Control, border, shape)
+                .padding(start = startPadding, end = horizontalPadding)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) {
+                SlockLucideIcon(
+                    leadingIcon,
+                    modifier = Modifier.size(iconSize),
+                    color = slockArgbHex(content),
+                    spinning = leadingIconSpinning
+                )
+            }
+            Text(
+                text = label,
+                style = textStyle.copy(fontSize = fontSize, lineHeight = lineHeight).withSlockFontWeight(FontWeight.Bold),
+                color = content,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            trailingContent?.invoke()
+        }
+    }
+}
+
 @Composable
 internal fun SegmentedControl(
     selectedValue: String,
@@ -1389,6 +1813,30 @@ internal fun SegmentedControl(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
+    if (slockRaftActive()) {
+        // raft-ui SegmentedControl: a `--fill-muted` tray (radius 11, 3dp inset, 2dp gap);
+        // the checked item is the yellow sticker with an ink edge.
+        Row(
+            modifier =
+                modifier
+                    .background(SlockColor.FillMuted, RoundedCornerShape(11.dp))
+                    .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEach { option ->
+                SlockRaftSegmentedItem(
+                    label = option.label,
+                    iconName = option.iconName,
+                    count = option.count,
+                    selected = option.value == selectedValue,
+                    enabled = enabled,
+                    onClick = { onValueSelected(option.value) }
+                )
+            }
+        }
+        return
+    }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(SegmentedControlItemGap),
@@ -1462,6 +1910,76 @@ private fun SegmentedControlItem(
     }
 }
 
+/**
+ * One raft-ui segmented / tab item (`segmented-control` item, `tabs` default tab): 32dp,
+ * control radius, 1.5dp edge that is transparent at rest and sticker ink when checked,
+ * checked fill = the yellow `--primary` sticker with bold ink type, pressed = fill wash.
+ */
+@Composable
+internal fun SlockRaftSegmentedItem(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    iconName: SlockLucideIconName? = null,
+    count: Int? = null
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    val fill =
+        when {
+            selected -> if (pressed) slockRaftOverlay(SlockColor.StickerPressed, SlockColor.Primary) else SlockColor.Primary
+            pressed && enabled -> SlockColor.FillPressed
+            else -> Color.Transparent
+        }
+    val ink =
+        when {
+            !enabled -> SlockColor.ForegroundDisabled
+            selected -> SlockColor.StickerInk
+            else -> SlockColor.TextMuted
+        }
+    SlockAnchorButton(
+        onClick = onClick,
+        enabled = enabled,
+        pressFeedback = enabled,
+        pressOffset = 0.dp,
+        onPressedChange = { pressed = it },
+        modifier =
+            Modifier
+                .height(SlockRaftMetrics.ControlHeightMd)
+                .background(fill, shape)
+                .border(SlockStroke.Control, if (selected) SlockColor.StickerInk else Color.Transparent, shape)
+                .padding(horizontal = 12.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            iconName?.let {
+                SlockLucideIcon(name = it, modifier = Modifier.size(16.dp), color = slockArgbHex(ink))
+            }
+            Text(
+                text = label,
+                style =
+                    SlockType.Body
+                        .copy(fontSize = 14.sp, lineHeight = 20.sp)
+                        .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold),
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            count?.takeIf { it > 0 }?.let {
+                Text(
+                    text = it.toString(),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = ink,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
 // Chip box is 32px tall with a 12px gap between chips in react
 // (components.ui.segmented-control.states: chips y 48..144, gap 12px @3x) — task #370.
 private val SegmentedControlItemHeight = 32.dp
@@ -1488,6 +2006,21 @@ internal fun SlockToolbarChip(
     reserveActiveShadowSpace: Boolean = false,
     activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
+    if (slockRaftActive()) {
+        SlockRaftPickerChip(
+            label = label,
+            onClick = onClick,
+            modifier = modifier,
+            iconName = iconName,
+            trailingIconName = trailingIconName,
+            active = active,
+            enabled = enabled,
+            count = count,
+            activeBackgroundColor =
+                if (activeBackgroundColor == SlockColor.AccentCyan) SlockColor.InfoSoft else activeBackgroundColor
+        )
+        return
+    }
     val shouldDrawShadow = enabled && active && activeShadowOffset > 0.dp
     val reservedShadowOffset =
         if (shouldDrawShadow || reserveActiveShadowSpace) {
@@ -1561,6 +2094,87 @@ internal fun SlockToolbarChip(
                 trailingIconName?.let {
                     SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
                 }
+            }
+        }
+    }
+}
+
+/**
+ * raft-ui `PickerTriggerButton` (filter / toolbar chip): 32dp, control radius, 1dp
+ * `--line-seam` ring at rest, 13/18 semibold muted type in sentence case; a chip with a
+ * value is `--info-soft` with ink type and no ring; pressed lays the fill wash; disabled
+ * is `--fill-muted` with disabled ink. Counts are mono meta text, not a boxed badge.
+ */
+@Composable
+private fun SlockRaftPickerChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    iconName: SlockLucideIconName?,
+    trailingIconName: SlockLucideIconName?,
+    active: Boolean,
+    enabled: Boolean,
+    count: Int?,
+    activeBackgroundColor: Color
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    val restingFill = if (active) activeBackgroundColor else Color.Transparent
+    val fill =
+        when {
+            !enabled -> SlockColor.FillMuted
+            pressed -> slockRaftOverlay(SlockColor.FillPressed, restingFill)
+            else -> restingFill
+        }
+    val ink =
+        when {
+            !enabled -> SlockColor.ForegroundDisabled
+            active -> SlockColor.TextBlack
+            else -> SlockColor.TextMuted
+        }
+    val ring = if (!enabled || active) Color.Transparent else SlockColor.BorderSeam
+    SlockAnchorButton(
+        onClick = onClick,
+        enabled = enabled,
+        pressFeedback = enabled,
+        pressOffset = 0.dp,
+        onPressedChange = { pressed = it },
+        modifier =
+            modifier
+                .height(SlockRaftMetrics.ControlHeightMd)
+                .background(fill, shape)
+                .border(SlockStroke.Thin, ring, shape)
+                .padding(horizontal = 10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            iconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = slockArgbHex(ink), strokeWidth = 2f)
+            }
+            Text(
+                text = label,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.SemiBold),
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            count?.let {
+                Text(
+                    text = it.toString(),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled,
+                    maxLines = 1
+                )
+            }
+            trailingIconName?.let {
+                SlockLucideIcon(
+                    it,
+                    modifier = Modifier.size(14.dp),
+                    color = slockArgbHex(if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled),
+                    strokeWidth = 2f
+                )
             }
         }
     }
@@ -1646,6 +2260,24 @@ internal fun SlockBrutalIconButton(
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
 ) {
+    if (slockRaftActive()) {
+        SlockRaftIconButton(
+            iconName = iconName,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            longClickLabel = longClickLabel,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            clickIdentity = clickIdentity,
+            enabled = enabled,
+            backgroundColor = backgroundColor,
+            iconColor = iconColor,
+            size = size,
+            iconSize = iconSize,
+            iconSpinning = iconSpinning
+        )
+        return
+    }
     val resolvedBackground = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
     val resolvedBorder = if (enabled) borderColor else disabledBorderColor.copy(alpha = disabledAlpha)
     val resolvedShadow = if (enabled) shadowColor else disabledShadowColor.copy(alpha = disabledAlpha)
@@ -1696,12 +2328,94 @@ internal fun SlockBrutalIconButton(
     }
 }
 
+/**
+ * raft-ui 0.6.0 icon button (`size="icon-md"` 32dp / `icon-lg` 44dp): the same variant
+ * chrome as [SlockRaftActionButton] on a square control-radius box, no shadow and no
+ * reserved shadow gutter, press = overlay wash. The default black icon ink follows the
+ * variant's ink so it reads in dark mode; an explicit [iconColor] is kept.
+ */
+@Composable
+private fun SlockRaftIconButton(
+    iconName: SlockLucideIconName,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    longClickLabel: String?,
+    contentDescription: String?,
+    modifier: Modifier,
+    clickIdentity: Any?,
+    enabled: Boolean,
+    backgroundColor: Color,
+    iconColor: String,
+    size: Dp,
+    iconSize: Dp,
+    iconSpinning: Boolean
+) {
+    val chrome = slockRaftButtonChrome(backgroundColor)
+    var pressed by remember { mutableStateOf(false) }
+    val fill =
+        when {
+            !enabled -> if (chrome.kind == SlockRaftButtonKind.Ghost) Color.Transparent else SlockColor.FillMuted
+            pressed -> slockRaftOverlay(chrome.pressedOverlay, chrome.fill)
+            else -> chrome.fill
+        }
+    val border =
+        when {
+            chrome.kind == SlockRaftButtonKind.Ghost -> Color.Transparent
+            enabled -> chrome.border
+            else -> SlockColor.LineMuted
+        }
+    val resolvedIconColor =
+        when {
+            !enabled -> slockArgbHex(SlockColor.ForegroundDisabled)
+            iconColor == SlockRaftLegacyIconInkArgb -> slockArgbHex(chrome.content)
+            else -> iconColor
+        }
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    SlockAnchorButton(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel,
+        enabled = enabled,
+        pressFeedback = enabled,
+        pressOffset = 0.dp,
+        clickIdentity = clickIdentity,
+        onPressedChange = { pressed = it },
+        modifier =
+            modifier
+                .size(size)
+                .then(
+                    if (contentDescription.isNullOrBlank()) {
+                        Modifier
+                    } else {
+                        Modifier.semantics {
+                            this.contentDescription = contentDescription
+                        }
+                    }
+                )
+                .background(fill, shape)
+                .border(SlockStroke.Control, border, shape)
+    ) {
+        SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
+    }
+}
+
+// The brutal primitives' hard-coded black icon ink; raft swaps it for the themed ink.
+internal const val SlockRaftLegacyIconInkArgb = "#FF000000"
+
 @Composable
 internal fun SlockBrutalPanelShell(
     modifier: Modifier = Modifier,
     shadowOffset: Dp = SlockShadow.Brutal,
     content: @Composable BoxScope.() -> Unit
 ) {
+    if (slockRaftActive()) {
+        // raft Card: container radius, card layer, hairline edge, no shadow.
+        Box(
+            modifier = modifier.fillMaxWidth().slockRaftCardSurface(),
+            content = content
+        )
+        return
+    }
     Box(
         modifier =
             modifier
@@ -1733,6 +2447,28 @@ internal fun SlockBrutalListShell(
     listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
+    if (slockRaftActive()) {
+        // raft Card surface around the list: container radius, hairline, no shadow.
+        Box(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .slockRaftCardSurface()
+                    .clipToBounds()
+        ) {
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(height)
+                        .then(listModifier),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+                content = content
+            )
+        }
+        return
+    }
     // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on
     // right + bottom via padding; shadow Box inside is matchParentSize() +
     // offset(shadowOffset) so the dark slab peeks out uniformly. Foreground
@@ -1773,18 +2509,29 @@ internal fun SlockBrutalListSectionHeader(
     label: String,
     modifier: Modifier = Modifier
 ) {
+    val raft = slockRaftActive()
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite.copy(alpha = 0.5f))
+                .background(if (raft) Color.Transparent else SlockColor.SurfaceWhite.copy(alpha = 0.5f))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
+        if (raft) {
+            // raft section title (`rf-section`): 13/18 bold hint ink, sentence case.
+            Text(
+                text = label,
+                style = SlockType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.ForegroundHint
+            )
+        } else {
+            Text(
+                text = label,
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack
+            )
+        }
     }
 }

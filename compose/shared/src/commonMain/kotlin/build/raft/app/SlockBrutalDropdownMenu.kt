@@ -21,6 +21,11 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.ui.graphics.Color
+import build.raft.app.components.SlockRaftMetrics
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftOverlaySurface
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -81,12 +86,16 @@ internal fun SlockBrutalDropdownMenu(
     modifier: Modifier = Modifier,
     widthDp: Float = SlockBrutalDropdownMenuWidthValue,
     horizontalOffsetDp: Float = 0f,
-    verticalOffsetDp: Float = SlockBrutalDropdownMenuVerticalOffsetValue,
+    // null = the register default: raft-ui DropdownMenuContent's `sideOffset ?? 6`, the
+    // brutal register's 16dp (#71).
+    verticalOffsetDp: Float? = null,
     horizontalAutoFlip: Boolean = true,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto
 ) {
     val density = LocalDensity.current
-    val popoverWidth = widthDp.dp
+    val raft = slockRaftActive()
+    // raft-ui DropdownMenu content is `min-w-60`.
+    val popoverWidth = if (raft) slockRaftMenuWidth(widthDp.dp) else widthDp.dp
     val shadowOffsetDp = SlockBrutalDropdownMenuShadowOffsetValue.dp
     val rowHeight = SlockBrutalDropdownMenuRowHeightValue.dp
     // Card height = max(n * rowHeight, rowHeight) for a visible "no actions" placeholder
@@ -98,18 +107,32 @@ internal fun SlockBrutalDropdownMenu(
     val effectiveRowCount = items.size.coerceAtLeast(1)
     val contentSize =
         with(density) {
-            Size(
-                width = (popoverWidth + shadowOffsetDp).toPx(),
-                height =
-                    // Rows + the border the rows sit inside (react content-box, see
-                    // SlockBrutalDropdownMenuSurface) + the shadow (task #370).
-                    ((effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue +
-                        SlockStroke.Default.value * 2).dp + shadowOffsetDp)
-                        .toPx()
-            )
+            if (raft) {
+                // raft: 36dp rows in a p-1.5 popup; the float shadow takes no layout space.
+                Size(
+                    width = popoverWidth.toPx(),
+                    height =
+                        (effectiveRowCount * SlockRaftMetrics.MenuRowHeight.value + SlockRaftMetrics.PopupPadding.value * 2)
+                            .dp
+                            .toPx()
+                )
+            } else {
+                Size(
+                    width = (popoverWidth + shadowOffsetDp).toPx(),
+                    height =
+                        // Rows + the border the rows sit inside (react content-box, see
+                        // SlockBrutalDropdownMenuSurface) + the shadow (task #370).
+                        ((effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue +
+                            SlockStroke.Default.value * 2).dp + shadowOffsetDp)
+                            .toPx()
+                )
+            }
         }
     val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
-    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
+    val resolvedVerticalOffsetDp =
+        verticalOffsetDp
+            ?: if (raft) SlockRaftMetrics.MenuSideOffset.value else SlockBrutalDropdownMenuVerticalOffsetValue
+    val verticalOffsetPx = with(density) { resolvedVerticalOffsetDp.dp.toPx() }
     val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
     SlockModalAnchoredPopover(
         anchor = anchor,
@@ -148,8 +171,25 @@ internal fun SlockBrutalDropdownMenuSurface(
     // (task #11: the message long-press menu's reaction bar), separated from the
     // rows by a heavy divider.
     headerContent: (@Composable () -> Unit)? = null,
+    // raft-ui DropdownMenuItem draws 16dp icons; web's hand-rolled MenuItem (the message
+    // context menu) keeps lucide's `size={14}`.
+    iconSize: Dp = SlockRaftMetrics.MenuIconSize,
     onDismiss: () -> Unit = {}
 ) {
+    if (slockRaftActive()) {
+        SlockRaftDropdownMenuSurface(
+            items = items,
+            onSelect = onSelect,
+            modifier = modifier,
+            width = width?.let(::slockRaftMenuWidth),
+            rowHeight = rowHeight,
+            dividerBeforeIds = dividerBeforeIds,
+            headerContent = headerContent,
+            iconSize = iconSize,
+            onDismiss = onDismiss
+        )
+        return
+    }
     Box(
         modifier = modifier.padding(end = shadowOffset, bottom = shadowOffset)
     ) {
@@ -203,10 +243,101 @@ internal fun SlockBrutalDropdownMenuSurface(
     }
 }
 
+/** raft-ui menu popup width: the caller's width, never under `min-w-60`. */
+internal fun slockRaftMenuWidth(width: Dp): Dp =
+    if (width < SlockRaftMetrics.MenuMinWidth) SlockRaftMetrics.MenuMinWidth else width
+
+/**
+ * raft-ui 0.6.0 DropdownMenu / ContextMenu content: container radius, `--layer-popover`,
+ * 1dp seam ring, float shadow, `p-1.5` inset, `min-w-60`. Only explicit separators are
+ * drawn: raft menus do not rule every row. A separator is the menu's `-mx-1.5 my-1.5`
+ * hairline, so it bleeds through the 6dp side inset to the popup edges while the rows
+ * stay inset. A header (reaction bar) sits above a separator. The legacy 40dp row
+ * default becomes raft's 36dp `min-h-9` row.
+ */
+@Composable
+private fun SlockRaftDropdownMenuSurface(
+    items: List<SlockBrutalDropdownMenuItem>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier,
+    width: Dp?,
+    rowHeight: Dp,
+    dividerBeforeIds: Set<String>,
+    headerContent: (@Composable () -> Unit)?,
+    iconSize: Dp,
+    onDismiss: () -> Unit
+) {
+    val resolvedRowHeight =
+        if (rowHeight == SlockBrutalDropdownMenuRowHeightValue.dp) SlockRaftMetrics.MenuRowHeight else rowHeight
+    val inset = Modifier.padding(horizontal = SlockRaftMetrics.PopupPadding)
+    Column(
+        modifier = modifier
+            .let { base -> if (width != null) base.width(width) else base.fillMaxWidth() }
+            .slockFloatingContentClickTarget()
+            .slockRaftOverlaySurface()
+            .padding(vertical = SlockRaftMetrics.PopupPadding)
+    ) {
+        headerContent?.let { header ->
+            Box(modifier = inset.fillMaxWidth()) { header() }
+            SlockRaftMenuSeparator()
+        }
+        if (items.isEmpty()) {
+            Row(
+                modifier = inset
+                    .fillMaxWidth()
+                    .height(resolvedRowHeight)
+                    .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(MR.strings.common_no_actions_available),
+                    style = SlockType.Body,
+                    color = SlockColor.ForegroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        } else {
+            items.forEachIndexed { index, item ->
+                if (index > 0 && item.id in dividerBeforeIds) {
+                    SlockRaftMenuSeparator()
+                }
+                Box(modifier = inset.fillMaxWidth()) {
+                    SlockBrutalDropdownMenuRow(
+                        item = item,
+                        rowHeight = resolvedRowHeight,
+                        iconSize = iconSize,
+                        onClick = {
+                            if (item.enabled) {
+                                onSelect(item.id)
+                            }
+                            onDismiss()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** raft-ui menu separator: a full-bleed 1dp `--line-muted` hairline with `my-1.5`. */
+@Composable
+private fun SlockRaftMenuSeparator() {
+    Box(
+        modifier = Modifier
+            .padding(vertical = SlockRaftMetrics.MenuSeparatorInset)
+            .fillMaxWidth()
+            .height(SlockStroke.Thin)
+            .background(SlockColor.LineMuted)
+    )
+}
+
 @Composable
 private fun SlockBrutalDropdownMenuRow(
     item: SlockBrutalDropdownMenuItem,
     rowHeight: Dp,
+    iconSize: Dp = SlockRaftMetrics.MenuIconSize,
     onClick: () -> Unit
 ) {
     // Press feedback mirrors web MenuItem `hover:bg-soft-signal/30` (artin,
@@ -224,6 +355,37 @@ private fun SlockBrutalDropdownMenuRow(
                     onPressedChange = { pressed = it }
                 )
         )
+    if (slockRaftActive()) {
+        SlockRaftDropdownMenuRow(
+            item = item,
+            rowHeight = rowHeight,
+            iconSize = iconSize,
+            pressed = pressed,
+            gestureModifier = Modifier.slockGesturePointerInput(gestureOwner, item.enabled) { owner ->
+                var gesture: SlockGestureSession<SlockBrutalDropdownRowGestureCallbacks>? = null
+                detectTapGestures(
+                    onPress = {
+                        val session = owner.beginGesture().also { gesture = it }
+                        val callbacks = session.currentCallbacksOrNull()
+                        if (callbacks != null && callbacks.enabled) {
+                            callbacks.onPressedChange(true)
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                gesture?.currentCallbacksOrNull()?.onPressedChange(false)
+                            }
+                        }
+                    },
+                    onTap = {
+                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                            if (callbacks.enabled) callbacks.onClick()
+                        }
+                    }
+                )
+            }
+        )
+        return
+    }
     val rowBackground = if (item.destructive) {
         // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
         SlockColor.AccentRed.copy(alpha = 0.08f)
@@ -309,6 +471,72 @@ private fun SlockBrutalDropdownMenuRow(
                 color = SlockColor.TextBlackArgb,
                 modifier = Modifier.size(14.dp)
             )
+        }
+    }
+}
+
+/**
+ * raft-ui menu item: min 36dp, control radius, px-2.5, 10dp gap, callout 14/20 medium;
+ * pressed/highlighted = `--primary-soft`; 16dp icons in icon ink; destructive items take
+ * the `--danger-strong` ink (no red wash); shortcut / trailing text is mono 12/16 hint.
+ */
+@Composable
+private fun SlockRaftDropdownMenuRow(
+    item: SlockBrutalDropdownMenuItem,
+    rowHeight: Dp,
+    iconSize: Dp,
+    pressed: Boolean,
+    gestureModifier: Modifier
+) {
+    val ink =
+        when {
+            !item.enabled -> SlockColor.ForegroundDisabled
+            item.destructive -> SlockColor.DangerStrong
+            else -> SlockColor.TextBlack
+        }
+    val iconInk =
+        when {
+            !item.enabled -> SlockColor.ForegroundDisabled
+            item.destructive -> SlockColor.DangerStrong
+            else -> SlockColor.ForegroundIcon
+        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(rowHeight)
+            .background(
+                if (pressed && item.enabled) SlockColor.PrimarySoft else Color.Transparent,
+                RoundedCornerShape(SlockRadius.Control)
+            )
+            .then(gestureModifier)
+            .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap)
+    ) {
+        item.icon?.let { icon ->
+            SlockLucideIcon(icon, modifier = Modifier.size(iconSize), color = slockArgbHex(iconInk))
+        }
+        Text(
+            text = item.label,
+            // callout 14/20 medium = the shared content size.
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Medium),
+            color = ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        item.trailing?.let {
+            Text(
+                text = it,
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        item.trailingIcon?.let {
+            // `indicator`: ml-auto size-4 check in foreground ink.
+            SlockLucideIcon(name = it, color = SlockColor.TextBlackArgb, modifier = Modifier.size(SlockRaftMetrics.MenuIconSize))
         }
     }
 }
