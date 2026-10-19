@@ -8,6 +8,10 @@
 # relinks the Kotlin/Native framework instead of reusing the one the sync step
 # just built (~20 extra minutes; ios-simulator-app run 38906495675, visual
 # run 39190258424). Building does not need the simulator to be booted.
+#
+# BUILD ONLY: the UDID is whichever iPhone is listed first, with no runtime or
+# device-model filter. That is safe because nothing is booted here; do not
+# reuse it to boot a simulator or run tests.
 set -euo pipefail
 xcrun simctl list devices available -j | python3 -c '
 import json, sys
