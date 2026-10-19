@@ -4002,19 +4002,21 @@ internal class SharedThreadDataSource(
         val members =
             channelMembers.data.members
                 .distinctBy { it.memberKey }
-        val memberKeys = members.map { it.memberKey }.toSet()
+                .map { it.toKuiklyThreadMemberItem(serverId) }
         val candidates =
             if (serverMembers == null) {
                 payload.memberCandidates
             } else {
-                serverMembers
-                    .filterNot { it.memberKey in memberKeys }
-                    .map { it.toKuiklyThreadMemberItem(serverId) }
+                threadAddMemberCandidatesExcludingJoined(
+                    candidates = serverMembers.map { it.toKuiklyThreadMemberItem(serverId) },
+                    members = members,
+                    localServerId = serverId?.value
+                )
             }
         return MembersEnrichOutcome.Updated(
             payload.copy(
                 membersCount = members.size,
-                members = members.map { it.toKuiklyThreadMemberItem(serverId) },
+                members = members,
                 memberCandidates = candidates,
                 canAddMembers = channelMembers.data.canAddMembers
             )

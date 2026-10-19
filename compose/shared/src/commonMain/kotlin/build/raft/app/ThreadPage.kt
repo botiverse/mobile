@@ -4485,11 +4485,12 @@ private fun ThreadMembersPageScreen() {
                 row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
             } }
     }
-    val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
-        serverMembersEntry.members
-            .filterNot { it.threadMemberKey in memberKeys }
-            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+    val candidates = remember(serverMembersEntry.members, route.serverId, members) {
+        threadAddMemberCandidatesExcludingJoined(
+            candidates = serverMembersEntry.members.map { it.toKuiklyThreadMemberItem(route.serverId) },
+            members = members,
+            localServerId = route.serverId.value
+        )
     }
     val agentStatusResolver = remember(serverMembersStore, route.serverId) {
         slockScopedAgentStatusResolver(serverMembersStore, route.serverId.value)
@@ -4725,6 +4726,7 @@ private fun ThreadMembersPageScreen() {
             onBack = { router.closePage() }, onRefresh = ::refreshMembers,
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
             canCreateAgents = canCreateAgents,
+            localServerId = route.serverId.value,
             onCreateAgent = { name, mode ->
                 if (canCreateAgents && liveOwner == routeOwner) {
                     createAgentName = name
@@ -4855,6 +4857,7 @@ internal fun ThreadMembersPageContent(
     onSubmit: (List<KuiklyThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
+    localServerId: String? = null,
 ) {
     val rosterListState = rememberLazyListState()
     // task #175: the page draws under the system navigation bar; whichever
@@ -4886,6 +4889,7 @@ internal fun ThreadMembersPageContent(
         if (addDialogVisible && canAddMembers) {
             ThreadAddMemberModal(
                 inline = true, members = members, candidates = candidates,
+                localServerId = localServerId,
                 canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver, addMemberStatus = addMemberStatus,
                 addMemberErrorCode = addMemberErrorCode,
@@ -31853,6 +31857,7 @@ private fun ThreadAddMemberModal(
     initialSelectedId: String? = null,
     showSelectedCheckmark: Boolean = true,
     inline: Boolean = false,
+    localServerId: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit,
     onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null,
@@ -31869,7 +31874,7 @@ private fun ThreadAddMemberModal(
     }
     var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
     var localError by remember { mutableStateOf(false) }
-    val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
+    val currentKeys = remember(members, localServerId) { threadAddMemberJoinedKeys(members, localServerId) }
     val selectedCandidates = candidates.filter { it.memberKey in selectedKeys && it.memberKey !in currentKeys }
     val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
     val createName = query.text.trim().removePrefix("@").takeIf { filteredCandidates.isEmpty() }.orEmpty()
@@ -32162,16 +32167,17 @@ private fun threadMembersProjection(
         } else {
             basePayload.members
         }
-    val memberKeys = members.map { it.memberKey }.toSet()
     val serverMembers =
         serverMembersEntry.members.takeIf { serverMembersEntry.serverId == serverId?.value?.trim() }.orEmpty()
     val candidates =
         if (serverMembers.isEmpty()) {
             basePayload.memberCandidates
         } else {
-            serverMembers
-                .filterNot { it.threadMemberKey in memberKeys }
-                .map { it.toKuiklyThreadMemberItem(serverId) }
+            threadAddMemberCandidatesExcludingJoined(
+                candidates = serverMembers.map { it.toKuiklyThreadMemberItem(serverId) },
+                members = members,
+                localServerId = serverId?.value
+            )
         }
     return ThreadMembersProjection(
         membersCount =
@@ -32249,6 +32255,42 @@ internal fun threadMembersRosterSubtitle(
 internal fun threadAddMemberCandidateSubtitle(description: String): String = description.trim()
 
 internal fun normalizedThreadMemberDescription(description: String?): String = description?.trim().orEmpty()
+
+/**
+ * Keys of roster members that already block an add on this server (web parity:
+ * `isLocalProjectionMember` in channelLocalMembership.ts). A joint channel's
+ * roster merges every participating server's projection, but an add only
+ * writes this server's projection, so a human whose row comes from another
+ * server is still addable here. Agents are excluded by id regardless of server,
+ * and a missing server on either side counts as local, so ordinary channels
+ * behave exactly as before.
+ */
+internal fun threadAddMemberJoinedKeys(
+    members: List<KuiklyThreadMemberItem>,
+    localServerId: String?
+): Set<String> {
+    val localId = localServerId?.trim().orEmpty()
+    return members
+        .filter { member ->
+            val sourceId = member.sourceServerId?.trim().orEmpty()
+            member.kind.equals("agent", ignoreCase = true) ||
+                localId.isEmpty() ||
+                sourceId.isEmpty() ||
+                sourceId == localId
+        }
+        .map { it.memberKey }
+        .toSet()
+}
+
+/** Server-directory [candidates] that are not yet members of this server's projection. */
+internal fun threadAddMemberCandidatesExcludingJoined(
+    candidates: List<KuiklyThreadMemberItem>,
+    members: List<KuiklyThreadMemberItem>,
+    localServerId: String?
+): List<KuiklyThreadMemberItem> {
+    val joinedKeys = threadAddMemberJoinedKeys(members, localServerId)
+    return candidates.filterNot { it.memberKey in joinedKeys }
+}
 
 internal fun filterThreadAddMemberCandidates(
     query: String,
