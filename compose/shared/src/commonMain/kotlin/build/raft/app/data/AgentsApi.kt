@@ -52,6 +52,86 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
     fun toRequestBody(): String = "{\"workspace\":\"$wireValue\"}"
 }
 
+// task #517 — post-archive state, mirroring `AgentArchiveView` in
+// `packages/shared/src/agentArchive.ts`. Field names are the wire names;
+// unknown `workspaceState` values collapse to `Unknown` rather than failing.
+
+/** Where the archived agent's workspace still exists (`workspaceState`). */
+internal enum class AgentArchiveWorkspaceState(val wireValue: String) {
+    OnComputer("on_computer"),
+    Deleted("deleted"),
+    Unknown("unknown");
+
+    companion object {
+        fun fromWire(raw: String?): AgentArchiveWorkspaceState =
+            entries.firstOrNull { it.wireValue == raw } ?: Unknown
+    }
+}
+
+/** Workspace operation queued/running on the Computer (`pendingOp`). */
+internal enum class AgentArchivePendingOp {
+    Delete;
+
+    companion object {
+        // Any non-null wire value is a pending workspace op; today only
+        // "delete" exists, so unrecognized values still read as pending.
+        fun fromWire(raw: String?): AgentArchivePendingOp? = raw?.let { Delete }
+    }
+}
+
+internal data class SlockAgentArchive(
+    val agentId: String,
+    val archivedAt: String?,
+    val archivedByUserId: String?,
+    val machineId: String?,
+    val machineName: String?,
+    val workspaceState: AgentArchiveWorkspaceState,
+    val pendingOp: AgentArchivePendingOp?,
+    val waitingForComputer: Boolean,
+    val lastErrorCode: String?,
+    val lastErrorAt: String?
+)
+
+@Serializable
+internal data class AgentArchiveEnvelopeDto(
+    val archive: AgentArchiveWireDto? = null
+)
+
+@Serializable
+internal data class AgentArchiveWireDto(
+    val agentId: String? = null,
+    val archivedAt: String? = null,
+    val archivedByUserId: String? = null,
+    val machineId: String? = null,
+    val machineName: String? = null,
+    val workspaceState: String? = null,
+    val pendingOp: String? = null,
+    val waitingForComputer: Boolean = false,
+    val lastErrorCode: String? = null,
+    val lastErrorAt: String? = null
+) {
+    fun toAgentArchive(): SlockAgentArchive? {
+        val id = agentId?.takeIf { it.isNotBlank() } ?: return null
+        return SlockAgentArchive(
+            agentId = id,
+            archivedAt = archivedAt?.takeIf { it.isNotBlank() },
+            archivedByUserId = archivedByUserId?.takeIf { it.isNotBlank() },
+            machineId = machineId?.takeIf { it.isNotBlank() },
+            machineName = machineName?.takeIf { it.isNotBlank() },
+            workspaceState = AgentArchiveWorkspaceState.fromWire(workspaceState),
+            pendingOp = AgentArchivePendingOp.fromWire(pendingOp),
+            waitingForComputer = waitingForComputer,
+            lastErrorCode = lastErrorCode?.takeIf { it.isNotBlank() },
+            lastErrorAt = lastErrorAt?.takeIf { it.isNotBlank() }
+        )
+    }
+}
+
+@Serializable
+internal data class AgentArchiveWorkspaceActionDto(
+    val action: String = "delete"
+)
+
 internal interface SlockAgentsApi {
     suspend fun agents(): HomeNetworkResponse
     suspend fun agent(agentId: MemberId): HomeNetworkResponse
@@ -67,6 +147,20 @@ internal interface SlockAgentsApi {
      * (`store/agentStore.ts` `deleteAgent`), so the client does the same.
      */
     suspend fun deleteAgent(agentId: MemberId, body: String): HomeNetworkResponse
+    /**
+     * task #517 (web `archiveApi.ts` parity): `GET /agents/:id/archive` —
+     * returns `{ archive: AgentArchiveView | null }`. Defaulted like
+     * `issueAgentCredential` so fakes that don't exercise archiving don't
+     * need a stub.
+     */
+    suspend fun agentArchive(agentId: MemberId): HomeNetworkResponse = error("unused")
+    /**
+     * task #517: `POST /agents/:id/archive/workspace` body
+     * `{"action":"delete"}` — queues the post-archive workspace delete and
+     * returns the updated archive view.
+     */
+    suspend fun deleteAgentArchiveWorkspace(agentId: MemberId, body: String): HomeNetworkResponse =
+        error("unused")
     suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse
     suspend fun agentActivityLog(agentId: MemberId, limit: Int = 50): HomeNetworkResponse
@@ -150,6 +244,20 @@ internal class SlockAgentsNetworkApi(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}",
             method = "DELETE",
+            bodyText = body
+        )
+
+    override suspend fun agentArchive(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/archive"
+        )
+
+    override suspend fun deleteAgentArchiveWorkspace(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/archive/workspace",
+            method = "POST",
             bodyText = body
         )
 
@@ -302,6 +410,57 @@ internal class SlockAgentsApiClient(
 
     suspend fun deleteAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
         transport.deleteAgent(agentId, body).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
+
+    /**
+     * task #517 (web `fetchAgentArchive` parity): `GET /agents/:id/archive`.
+     * `Content(null)` = the agent has no archive record; non-archived agents
+     * are expected to land here.
+     */
+    suspend fun agentArchive(agentId: MemberId): DataResult<SlockAgentArchive?> {
+        val response = transport.agentArchive(agentId)
+        if (!response.isSuccessful) return response.toAgentsDataError()
+        val body = response.bodyText?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "agent_archive_contract_mismatch", retryable = false))
+        // `{archive:null}` is a valid Content — not a contract mismatch — so
+        // this endpoint decodes by hand instead of through mapAgentsBody
+        // (whose transform-null-equals-mismatch convention can't carry it).
+        return try {
+            val wire = agentsApiJson.decodeFromString(AgentArchiveEnvelopeDto.serializer(), body)
+            val archive = wire.archive
+            if (archive != null && archive.toAgentArchive() == null) {
+                return DataResult.Error(ScreenError(code = "agent_archive_contract_mismatch", retryable = false))
+            }
+            DataResult.Content(archive?.toAgentArchive())
+        } catch (_: SerializationException) {
+            DataResult.Error(ScreenError(code = "agent_archive_contract_mismatch", retryable = false))
+        }
+    }
+
+    /**
+     * task #517 (web `requestAgentArchiveWorkspaceDelete` parity):
+     * `POST /agents/:id/archive/workspace` `{"action":"delete"}` returns the
+     * updated archive view (usually `pendingOp=delete` until the Computer
+     * confirms). Refusals surface the server `code` (`archive_migration_active`
+     * etc.) on the `ScreenError` so the UI can pick a localized reason instead
+     * of raw server text.
+     */
+    suspend fun deleteAgentArchiveWorkspace(agentId: MemberId): DataResult<SlockAgentArchive> {
+        val response = transport.deleteAgentArchiveWorkspace(
+            agentId,
+            agentsApiJson.encodeToString(AgentArchiveWorkspaceActionDto.serializer(), AgentArchiveWorkspaceActionDto())
+        )
+        val serverCode = response.serverErrorCodeOrNull()
+        val mapped = response.mapAgentsBody<AgentArchiveEnvelopeDto, SlockAgentArchive>(
+            "agent_archive_workspace_delete_contract_mismatch",
+            AgentArchiveEnvelopeDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire -> wire.archive?.toAgentArchive() }
+        return if (mapped is DataResult.Error && serverCode != null) {
+            DataResult.Error(mapped.error.copy(code = serverCode))
+        } else {
+            mapped
+        }
+    }
 
     // #89 React parity: agent scope grants typed accessors. Mirror React
     // `AgentScopesPanel.tsx` load / save / reset flows.
@@ -612,6 +771,16 @@ private fun HomeNetworkResponse.serverErrorTextOrNull(): String? {
     }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
+/** task #517: the top-level machine `code` some refused agent requests carry
+ * (`archive_migration_active`, …) — the web reads it off `response.data.code`. */
+private fun HomeNetworkResponse.serverErrorCodeOrNull(): String? {
+    if (isSuccessful) return null
+    val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).code
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+}
+
 private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {
     if (code != 409) return null
     val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
@@ -645,7 +814,10 @@ private suspend fun HomeNetworkResponse.mapAgentsCommand(
 
 @Serializable
 private data class AgentErrorTextEnvelopeDto(
-    val error: String? = null
+    val error: String? = null,
+    // task #517: machine-readable refusal code (e.g. `archive_migration_active`)
+    // rides next to the human text on the agents error envelope.
+    val code: String? = null
 )
 
 @Serializable
