@@ -11,7 +11,7 @@ from pathlib import Path
 import kuikly_release_manifest_gate as manifest_gate
 
 
-DEFAULT_RELEASE = "2.28.0-raft.13"
+DEFAULT_RELEASE = "2.28.0-raft.15"
 DEFAULT_REGISTRY = "https://maven.artifacts.botiverse.dev"
 
 
