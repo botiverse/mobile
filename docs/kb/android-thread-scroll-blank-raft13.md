@@ -32,13 +32,15 @@ Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_flin
 
 ### What this rules out
 
-**Markdown parsing on the UI thread is ruled out.** `prepareMarkdownContent` already dispatches through `SlockMarkdownParseDispatcher`, which on Android is `Dispatchers.Default.limitedParallelism(...)` (see `SlockMarkdownParseDispatcher.android.kt`). So `thread_markdown_preparse durationMs=377` is wall-clock time spent *awaiting* background parsing, not time occupying the UI thread. "Move the parse off the main thread" is therefore not a fix for this — it is already off it.
+**Markdown parsing on the Compose thread is ruled out.** `prepareMarkdownContent` already dispatches through `SlockMarkdownParseDispatcher`, which on Android is `Dispatchers.Default.limitedParallelism(...)` (see `SlockMarkdownParseDispatcher.android.kt`). So `thread_markdown_preparse durationMs=377` is wall-clock time spent *awaiting* background parsing, not time occupying the Compose thread. "Move the parse off the main thread" is therefore not a fix for this — it is already off it.
 
 ### What remains open
 
 The 478 ms `jank_frame` names its own operation (`thread_first_frame`), which points at first-frame composition / measure / layout, with the `thread_markdown_body_recompose` for a 1536-character message (building an `AnnotatedString`, text measurement) as a candidate.
 
-That recompose runs during composition is **read from the source, not measured**: the marker is emitted from a `remember{}` block in `ThreadPage.kt` (~line 7284) whose own comment states `remember{}` runs during composition, unlike the `LaunchedEffect` below it which fires after. Whether the 1536-character row is what consumed the 478 ms is **not established** — the trace has no per-phase breakdown of that window.
+That recompose happens **during composition** is read from the source, not measured: the marker is emitted from a `remember{}` block in `ThreadPage.kt` (~line 7284) whose own comment states `remember{}` runs during composition, unlike the `LaunchedEffect` below it which fires after.
+
+**Which thread that is has not been verified either.** In Kuikly on Android, Compose runs on Kuikly's Kotlin thread, and whether that thread is the same one as the Android UI thread (the thread before RenderThread) depends on the execution mode. Codex has not verified it, and neither have I. So this section deliberately says "Compose thread" and not "UI thread", and **which thread `jank_frame` was sampled on is likewise unverified**. Whether the 1536-character row consumed the 478 ms is **not established** — the trace has no per-phase breakdown of that window.
 
 **Also an inference, not an observation:** that native scrolling kept advancing during the stall. The gap is unsampled; the evidence is only the state before and after it. The current probe has no `gapSinceLastFrameMs`, so the blind spot cannot report its own width yet.
 
