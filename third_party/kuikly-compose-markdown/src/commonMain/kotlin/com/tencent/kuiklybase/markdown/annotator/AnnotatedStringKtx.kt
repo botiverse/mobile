@@ -37,6 +37,7 @@ import org.intellij.markdown.parser.MarkdownParser
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
 import build.raft.app.slockFirstComposedCharacterEnd
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
@@ -660,10 +661,12 @@ internal fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(
     firstComposedCharacterEnd: Int?,
 ) {
     if (codeText.isEmpty()) return
-    pushStyle(
-        SpanStyle(
-            inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
-        )
+    // Raft (CMP switch): upstream SpanStyle has no inlineBoxStyle; the chip box is a string
+    // annotation painted by build.raft.app.markdown.raftInlineDecorations. Both pop() calls
+    // below close this annotation.
+    pushStringAnnotation(
+        tag = RAFT_INLINE_BOX_ANNOTATION_TAG,
+        annotation = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true).encode()
     )
     // task #104: a platform without a composed-character segmenter (OHOS) must
     // still own the chip chrome. A single-child group is the exact shape a

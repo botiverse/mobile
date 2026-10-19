@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -220,7 +221,11 @@ internal fun createImageInlineTextContent(
 
     val imageHandler = LocalImageLinkHandler.current
     return InlineTextContent(
-        Placeholder(width = width.value.sp, height = mutableHeight.value.sp)
+        Placeholder(
+            width = width.value.sp,
+            height = mutableHeight.value.sp,
+            placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline
+        )
     ) { link ->
         transformer.transform(link, placeholderState.size)?.let { imageData ->
             imageHandler.store(imageData)
