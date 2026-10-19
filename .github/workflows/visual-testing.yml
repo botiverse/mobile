@@ -530,6 +530,11 @@ jobs:
             --console=plain \
             --stacktrace
 
+      # DIAGNOSTIC (not for merge): make only the Gradle runs Xcode starts log
+      # why compileKotlinIosSimulatorArm64 is not up to date.
+      - name: DIAG info logging for Xcode-started Gradle runs
+        run: echo "org.gradle.logging.level=info" >> "${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+
       # Concrete destination (any available iPhone UDID, not booted): avoids
       # "Unable to find a device" while CoreSimulator boots N shards, and — unlike
       # "generic/platform=iOS Simulator" — keeps Xcode's MR-bundle phase from
@@ -565,6 +570,9 @@ jobs:
             mkdir -p "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics"
             cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
           fi
+          mkdir -p "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics"
+          cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
+          grep -nE "not up-to-date because|has changed|Input property|Task :shared:compileKotlinIosSimulatorArm64|Skipping task|is not up-to-date" "$log" | head -80 || true
           exit "$status"
 
       - name: Boot job-owned simulator
