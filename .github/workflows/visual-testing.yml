@@ -498,14 +498,6 @@ jobs:
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
 
-      # The Gradle run that Xcode's "Copy kmmresource MR bundle" phase starts
-      # does not see the job's SLOCK_VISUAL_FIXTURES env, so without this it
-      # resolved slockVisualFixtures=false, saw different compile inputs and
-      # recompiled + relinked the framework (~15 min, run 39198145843). A
-      # user-home Gradle property reaches every Gradle run in the job.
-      - name: Visual fixtures for every Gradle run in this job
-        run: echo "slockVisualFixtures=true" >> "${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
-
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
@@ -513,6 +505,22 @@ jobs:
       - name: Pod install
         working-directory: compose/iosApp
         run: pod install
+
+      # Compile the simulator target on its own first, as test.yml's iOS job does.
+      # When the framework sync is the job's first Kotlin/Native compile, its
+      # input snapshot is taken before the K/N distribution under ~/.konan is
+      # complete ("Input property 'libraries' ... has been added") and the link
+      # sees a different konanCacheKind, so Xcode's "Copy kmmresource MR bundle"
+      # phase (:shared:copyFrameworkResourcesToApp) recompiled and relinked the
+      # whole framework again (~15-20 min; info log of diagnostic run 39212776556).
+      - name: Compile shared iOS simulator target
+        working-directory: compose
+        run: |
+          ./gradlew :shared:compileKotlinIosSimulatorArm64 \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
 
       # Sync the K/N framework as its own step (same as test.yml's iOS job) so
       # Gradle output is visible and cached, instead of running nested and
