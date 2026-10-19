@@ -1,0 +1,52 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.settings.appearance.page",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_settings_route_visual","fixtureKey":"canonical","fixtureRevision":"settings-appearance-v1","renderedGoalSha256":"6f8210b1c05e7f09df898d6b38d7d3f0f98bd5b270d9f56d9975f33002f3d234","realProductRoute":true},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.appearance.page.png",
+              "viewport": { "width": 1170, "height": 2532, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 517,
+                  "dominantRatio": 0.83140117
+                },
+                "readyTokenObserved": true,
+                "readyTokenRequired": true,
+                "stableFrameCount": 2
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 82,
+    "laidOutViews": 80,
+    "visibleContentLeafViews": 6,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4400,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "4112ec0f7aac4cfbe52ddfea3627ce49",
+                "bootId": "8ede9719-7e12-4570-ac6f-bd9d5badb652",
+                "capturedAtEpochMs": 1792392381247,
+                "capturedAtMonotonicNs": 410477230159
+              },
+              "clampedToShortWindow": false,
+              "capturedAt": "1792392381247"
+            }

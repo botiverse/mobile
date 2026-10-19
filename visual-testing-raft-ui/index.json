@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "name": "Raft Visual Testing",
+  "generatedAt": "2026-10-19T08:03:18.177Z",
+  "latestRunId": "8cb022476",
+  "latest": {
+    "runId": "8cb022476",
+    "commit": "8cb022476",
+    "commitSubject": "fix(ui): review fixes for the raft-ui 0.6 alignment",
+    "generatedAt": "2026-10-19T08:03:18.177Z",
+    "baseline": "react",
+    "current": "android",
+    "summary": {
+      "total": 99,
+      "same": 0,
+      "pass": 0,
+      "basic-pass": 1,
+      "different": 90,
+      "missing": 8
+    },
+    "analysisSummary": {
+      "total": 99,
+      "ready": 0,
+      "pending": 99
+    },
+    "comparisons": [
+      "react__android"
+    ],
+    "componentMatrixSummary": {
+      "total": 128,
+      "active": 108,
+      "pending": 17,
+      "skipped": 3,
+      "captureTypes": {
+        "component-fixture": {
+          "total": 95,
+          "active": 90,
+          "pending": 3,
+          "skipped": 2
+        },
+        "real-screen": {
+          "total": 33,
+          "active": 18,
+          "pending": 14,
+          "skipped": 1
+        }
+      },
+      "providers": {
+        "react": {
+          "active": 97,
+          "pending": 13,
+          "unsupported": 0,
+          "total": 110
+        },
+        "android": {
+          "active": 89,
+          "pending": 19,
+          "unsupported": 0,
+          "total": 108
+        },
+        "harmony": {
+          "active": 0,
+          "pending": 82,
+          "unsupported": 0,
+          "total": 82
+        },
+        "ios": {
+          "active": 0,
+          "pending": 1,
+          "unsupported": 0,
+          "total": 1
+        }
+      }
+    },
+    "href": "runs/8cb022476/",
+    "componentMatrix": "runs/8cb022476/component-matrix.json",
+    "llms": "runs/8cb022476/metadata.json"
+  },
+  "componentMatrixSummary": {
+    "total": 128,
+    "active": 108,
+    "pending": 17,
+    "skipped": 3,
+    "captureTypes": {
+      "component-fixture": {
+        "total": 95,
+        "active": 90,
+        "pending": 3,
+        "skipped": 2
+      },
+      "real-screen": {
+        "total": 33,
+        "active": 18,
+        "pending": 14,
+        "skipped": 1
+      }
+    },
+    "providers": {
+      "react": {
+        "active": 97,
+        "pending": 13,
+        "unsupported": 0,
+        "total": 110
+      },
+      "android": {
+        "active": 89,
+        "pending": 19,
+        "unsupported": 0,
+        "total": 108
+      },
+      "harmony": {
+        "active": 0,
+        "pending": 82,
+        "unsupported": 0,
+        "total": 82
+      },
+      "ios": {
+        "active": 0,
+        "pending": 1,
+        "unsupported": 0,
+        "total": 1
+      }
+    }
+  },
+  "runs": [
+    {
+      "runId": "8cb022476",
+      "commit": "8cb022476",
+      "commitSubject": "fix(ui): review fixes for the raft-ui 0.6 alignment",
+      "generatedAt": "2026-10-19T08:03:18.177Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 99,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 1,
+        "different": 90,
+        "missing": 8
+      },
+      "analysisSummary": {
+        "total": 99,
+        "ready": 0,
+        "pending": 99
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 128,
+        "active": 108,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 90,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 97,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 110
+          },
+          "android": {
+            "active": 89,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/8cb022476/",
+      "componentMatrix": "runs/8cb022476/component-matrix.json",
+      "llms": "runs/8cb022476/metadata.json"
+    }
+  ]
+}

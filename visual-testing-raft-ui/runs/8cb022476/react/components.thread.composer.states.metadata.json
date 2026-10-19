@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.thread.composer.states",
+  "image": "visual-testing-results/react/components.thread.composer.states.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.thread.composer.states']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 100
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 100
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-19T06:31:29.592Z"
+}
