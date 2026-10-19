@@ -2,6 +2,7 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,10 +13,13 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +27,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -31,6 +36,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
@@ -47,7 +53,8 @@ enum class RaftCardVariant {
 
     /**
      * A choice inside a form: control radius, the 1.5dp field border and a field-size
-     * title. The pick is shown by its checkbox or radio, never by the card.
+     * title. The pick is shown by its checkbox or radio, never by the card; with an
+     * `onClick` the whole card is the target (see [RaftCard]).
      */
     Option,
 }
@@ -107,7 +114,15 @@ private fun raftCardTitleStyle(variant: RaftCardVariant, typography: RaftTypogra
  * [leading] (a 16dp icon, an avatar or a switch spanning both lines) and [trailing] (a
  * status, badge or switch centred on the title line). [content] is the body: padded for
  * `Default` and `Option`; for `Inset`, fill it with [RaftCardSection]s. [footer] is a
- * note under a hairline, in `text-caption` `foreground-hint`.
+ * note under a hairline, in `text-caption` `foreground-hint`. The card provides `layer-card`
+ * as [LocalRaftSurfaceColor].
+ *
+ * An [RaftCardVariant.Option] card with [onClick] is one choice of a set, the whole card
+ * the target (its leading radio or checkbox is drawn, not tapped: pass it no handler).
+ * Press lays `fill-pressed` over the card, keyboard focus draws the focus ring outside
+ * it, and semantics carry [role] (`RadioButton` selected, or `Checkbox` checked) with
+ * [selected]; the card itself never shows the pick. [enabled] = false drops press, focus
+ * and taps. Other variants ignore [onClick].
  */
 @Composable
 fun RaftCard(
@@ -118,17 +133,29 @@ fun RaftCard(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     footer: (@Composable RowScope.() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    role: Role = Role.RadioButton,
+    enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val look = raftCardLook(variant, colors)
     val shape = RoundedCornerShape(look.radius)
-    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground) {
+    val clickable = variant == RaftCardVariant.Option && onClick != null
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val pressed = clickable && enabled && raftIsPressed(source)
+    val focused = clickable && enabled && raftIsFocused(source)
+    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerCard) {
         Column(
             modifier
+                .raftFocusRing(focused, look.radius, colors)
                 .clip(shape)
                 .background(colors.layerCard, shape)
-                .border(look.border, look.borderColor, shape),
+                .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), look.radius)
+                .border(look.border, look.borderColor, shape)
+                .then(onClick?.takeIf { clickable }?.let { Modifier.raftOptionTarget(selected, role, enabled, source, it) } ?: Modifier),
         ) {
             val hasHeader = title != null || description != null || leading != null || trailing != null
             if (hasHeader) {
@@ -165,6 +192,20 @@ fun RaftCard(
         }
     }
 }
+
+/** The option card's target: `selectable`, or `toggleable` for a [Role.Checkbox] card. */
+private fun Modifier.raftOptionTarget(
+    selected: Boolean,
+    role: Role,
+    enabled: Boolean,
+    source: MutableInteractionSource,
+    onClick: () -> Unit,
+): Modifier =
+    if (role == Role.Checkbox) {
+        toggleable(value = selected, interactionSource = source, indication = null, enabled = enabled, role = role, onValueChange = { onClick() })
+    } else {
+        selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, role = role, onClick = onClick)
+    }
 
 /** A block of an [RaftCardVariant.Inset] card: `p-4` under a hairline. */
 @Composable

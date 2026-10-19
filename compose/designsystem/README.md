@@ -70,6 +70,12 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
 - `RaftTheme { }` provides `LocalRaftColors`, `LocalRaftTypography`, `LocalRaftShapes`,
   `LocalRaftIsDark` and `LocalRaftContentColor` (CSS `currentColor`, `--foreground` at the
   root). Read them through `RaftTheme.colors` / `.typography` / `.shapes` / `.isDark`.
+- `LocalRaftSurfaceColor` (`RaftTheme.surfaceColor`) is the opaque surface under the
+  content: `layer-canvas` at the root, `layer-card` inside `RaftCard` and
+  `RaftListRowGroup`, a selected row's `info-soft` over the card, a banner's fill for its
+  action. Cut-outs read it: the avatar's presence light and the ring of an avatar stack.
+  A screen that paints its own surface (a `layer-panel` side panel) provides it too. The
+  focus ring's gap stays `layer-canvas` (raft's `--focus-ring` is a fixed colour).
 - Fonts: Space Grotesk 300–700 and Space Mono 400/700 from `composeResources/font`
   (copies of `androidApp/src/main/res/font`, SIL OFL 1.1, see `THIRD_PARTY_NOTICES.md`),
   loaded with `Font(Res.font.…)`, so every platform measures the same TTFs.
@@ -115,16 +121,16 @@ Other checks:
 | --- | --- | --- | --- |
 | `RaftSeparator` | Separator | Done | Horizontal, vertical, with a word |
 | `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
-| `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+), @ marker, gray muted count, `agent` tag, agent state chips |
+| `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
-| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy |
-| `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer |
-| `RaftAvatar`, `RaftAvatarGroup`, `RaftAvatarGroupCount` | Avatar | Done | 7 sizes, agent / human, initials, placeholder, presence light, die-cut edge, stack |
+| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy (focusable, semantics disabled, taps ignored) |
+| `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer. An option card with `onClick` is one target: press, focus ring, radio / checkbox role and `selected` |
+| `RaftAvatar`, `RaftAvatarGroup`, `RaftAvatarGroupCount` | Avatar | Done | 7 sizes, agent / human, initials (first grapheme of each word), placeholder, presence light cut out of the current surface, die-cut edge, stack |
 | `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg |
-| `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse, or still for screenshots / reduced motion |
+| `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse (all in phase, one shared frame loop per theme), or still for screenshots / reduced motion |
 | `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action |
-| `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`), pressed, inset focus, disabled, subtitle (AvatarListRow) |
-| `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below |
+| `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`, `selected` semantics), pressed, inset focus, disabled, subtitle (AvatarListRow) |
+| `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below, two columns at content width when unbounded; values wrap; each fact is one screen-reader item |
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
 | `RaftCodeBlock`, `RaftReadOnlyField` | CopyableCode | Done | Read-only command (wraps), the disabled-field value |
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
@@ -173,7 +179,8 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **No hover.** Touch has no hover; only the pressed overlay is drawn.
 - **Busy button keeps its colour.** button.tsx sets `disabled` while `loading`, which
   greys it; the Button doc ("keeps the button's width and color") and the States rule
-  (busy: unchanged) win. The busy button ignores taps.
+  (busy: unchanged) win. The busy button stays focusable (raft-ui `aria-disabled`), is
+  disabled in semantics and ignores taps.
 - **32dp hit area.** raft-ui widens a 32dp button to a 44px target with an overhanging
   `::after`; Compose foundation has no layout-free equivalent, so leave room around it.
 - **Skeleton line** uses the chip radius (DRI page spec); raft-ui uses the sticker radius.
@@ -183,5 +190,10 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
   second row on. A selected or disabled row hides its badge.
 - **DescriptionList horizontal** switches on the list's own width (640dp), not the window's.
+  It measures its labels first (a subcomposition) so each fact can be one node for screen
+  readers; it has no intrinsic size.
+- **Option card** is a target of its own (`selectable`, or `toggleable` with
+  `Role.Checkbox`) so the whole card picks, as the pages' option cards do; its radio or
+  checkbox is drawn without a handler. The card never shows the pick itself.
 - **Icons**: components draw a handful of Lucide outlines (`RaftGlyph`, ISC); app icons
   come through slots.

@@ -5,9 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -16,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /** raft-ui Skeleton `variant`. */
 enum class RaftSkeletonVariant {
@@ -67,13 +75,64 @@ private fun cubicBezierEase(t: Float, x1: Float, y1: Float, x2: Float, y2: Float
 }
 
 /**
+ * The one frame loop every pulsing [RaftSkeleton] under a [build.raft.designsystem.theme.RaftTheme]
+ * reads. It runs only while at least one skeleton is shown ([acquire] / [release]) and
+ * publishes the frame time; each skeleton's phase is that time modulo
+ * [RaftSkeletonPulseMillis], so skeletons that appear at different moments still pulse
+ * together (as CSS animations on one page do), and a screen of skeletons keeps one loop
+ * running, not one each. The time is read in the draw phase only: the pulse never
+ * recomposes.
+ */
+@Stable
+internal class RaftPulseClock(private val scope: CoroutineScope) {
+    private var users = 0
+    private var job: Job? = null
+
+    /** The latest frame time in ms; 0 until the first frame. */
+    var frameMillis by mutableLongStateOf(0L)
+        private set
+
+    /** Whether the frame loop is running (some skeleton is shown). */
+    val running: Boolean get() = job != null
+
+    fun acquire() {
+        users++
+        if (job == null) {
+            job = scope.launch { while (true) withFrameMillis { frameMillis = it } }
+        }
+    }
+
+    fun release() {
+        users = (users - 1).coerceAtLeast(0)
+        if (users == 0) {
+            job?.cancel()
+            job = null
+        }
+    }
+}
+
+/** Provided by [build.raft.designsystem.theme.RaftTheme]; null outside one. */
+internal val LocalRaftPulseClock = staticCompositionLocalOf<RaftPulseClock?> { null }
+
+/** The enclosing theme's clock, or a new one (one per outermost theme). */
+@Composable
+internal fun rememberRaftPulseClock(): RaftPulseClock {
+    val parent = LocalRaftPulseClock.current
+    if (parent != null) return parent
+    val scope = rememberCoroutineScope()
+    return remember(scope) { RaftPulseClock(scope) }
+}
+
+/**
  * raft-ui 0.8.0 Skeleton: a `fill-muted` placeholder in the shape of the content that is
  * loading. [RaftSkeletonVariant.Line] is a 12dp bar with the chip radius; blocks and
  * squares take the sticker radius; size them with [modifier].
  *
  * It pulses (Tailwind `animate-pulse`) unless [animated] is false: pass false for
  * screenshots and reduced motion (raft-ui `motion-reduce:animate-none`), which renders the
- * resting, fully opaque frame. Hidden from accessibility; mark the loading region busy.
+ * resting, fully opaque frame. Every skeleton under one theme pulses in phase from one
+ * shared frame loop ([RaftPulseClock]), which stops when the last one leaves. Hidden from
+ * accessibility; mark the loading region busy.
  */
 @Composable
 fun RaftSkeleton(
@@ -81,13 +140,11 @@ fun RaftSkeleton(
     variant: RaftSkeletonVariant = RaftSkeletonVariant.Block,
     animated: Boolean = true,
 ) {
-    val alpha = remember { mutableFloatStateOf(1f) }
+    val clock = rememberRaftPulseClock()
     if (animated) {
-        LaunchedEffect(Unit) {
-            val start = withFrameMillis { it }
-            while (true) {
-                withFrameMillis { now -> alpha.floatValue = raftSkeletonAlphaAt(now - start) }
-            }
+        DisposableEffect(clock) {
+            clock.acquire()
+            onDispose { clock.release() }
         }
     }
     val line = variant == RaftSkeletonVariant.Line
@@ -96,7 +153,7 @@ fun RaftSkeleton(
         sized
             .clearAndSetSemantics { }
             // Read in the draw phase only: the pulse never recomposes.
-            .graphicsLayer { this.alpha = if (animated) alpha.floatValue else 1f }
+            .graphicsLayer { this.alpha = if (animated) raftSkeletonAlphaAt(clock.frameMillis) else 1f }
             .background(RaftTheme.colors.fillMuted, RoundedCornerShape(if (line) RaftRadius.Chip else RaftRadius.Sticker)),
     )
 }

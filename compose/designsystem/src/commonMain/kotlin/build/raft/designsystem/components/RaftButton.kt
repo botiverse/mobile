@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -205,7 +206,9 @@ private fun RaftButtonBox(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val active = enabled && !loading
     val pressed = active && raftIsPressed(source)
-    // `focus-visible:shadow-focus`; raft-ui keeps a loading button focusable (aria-disabled).
+    // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
+    // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
+    // drops the tap while busy, and semantics say disabled, so no click action is offered.
     val focused = enabled && raftIsFocused(source)
     val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
@@ -216,12 +219,13 @@ private fun RaftButtonBox(
                 .background(look.fill, shape)
                 .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
                 .border(RaftStroke.Control, look.edge, shape)
+                .semantics { if (loading) disabled() }
                 .clickable(
                     interactionSource = source,
                     indication = null,
-                    enabled = active,
+                    enabled = enabled,
                     role = Role.Button,
-                    onClick = onClick,
+                    onClick = { if (!loading) onClick() },
                 ),
         contentAlignment = Alignment.Center,
     ) {
@@ -249,8 +253,9 @@ private fun RaftButtonBox(
  * - Disabled: `fill-muted`, `line-hairline` border, `foreground-disabled` type, no die-cut
  *   edge (a disabled button is no longer a sticker). An `OnFrame` button only greys its type.
  * - Busy ([loading]): the content is hidden (keeping the width) under a pixel
- *   [RaftSpinner] named [loadingLabel]; the button keeps its colour (Button > States) and
- *   ignores taps. Write the label as what is happening ("Creating…").
+ *   [RaftSpinner] named [loadingLabel]; the button keeps its colour (Button > States),
+ *   stays focusable (keyboard focus doesn't jump away when it turns busy) and ignores taps;
+ *   semantics mark it disabled. Write the label as what is happening ("Creating…").
  *
  * [leadingIcon] / [trailingIcon] are drawn in an icon-size box with
  * [LocalRaftContentColor] set to the button ink. The box is exactly 32 / 44 / 52dp: raft-ui

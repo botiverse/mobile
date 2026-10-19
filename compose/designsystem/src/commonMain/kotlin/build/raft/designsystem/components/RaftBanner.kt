@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -137,7 +139,10 @@ fun RaftBanner(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground) { action() }
+                    CompositionLocalProvider(
+                        LocalRaftContentColor provides colors.foreground,
+                        LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor),
+                    ) { action() }
                 }
             }
         }
@@ -198,11 +203,13 @@ fun RaftPanelNotice(
         if (actions != null) {
             // `-my-1.5`: a 32dp button doesn't make the strip taller; it centres on the first line.
             Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
-                Row(
-                    Modifier.wrapContentHeight(unbounded = true),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { actions() }
+                CompositionLocalProvider(LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor)) {
+                    Row(
+                        Modifier.wrapContentHeight(unbounded = true),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { actions() }
+                }
             }
         }
     }

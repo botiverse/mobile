@@ -2,6 +2,7 @@ package build.raft.designsystem.screenshot
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -254,19 +255,40 @@ class DisplayComponentScreenshotTest {
                     }
                 }
                 Column(Modifier.width(300.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Caption("Option: unchecked, checked")
+                    Caption("Option: unchecked, checked, pressed, focused")
                     RaftCard(
                         variant = RaftCardVariant.Option,
                         title = "This computer",
                         description = "The agent runs here while the app is open.",
                         leading = { FakeRadio(checked = false) },
+                        onClick = {},
                     )
                     RaftCard(
                         variant = RaftCardVariant.Option,
                         title = "A cloud computer",
                         description = "Always on. Uses your plan's hours.",
                         leading = { FakeRadio(checked = true) },
+                        onClick = {},
+                        selected = true,
                     )
+                    StateCell(pressed = true) {
+                        RaftCard(
+                            variant = RaftCardVariant.Option,
+                            title = "Pressed",
+                            description = "The pressed overlay over the card.",
+                            leading = { FakeRadio(checked = false) },
+                            onClick = {},
+                        )
+                    }
+                    StateCell(focused = true) {
+                        RaftCard(
+                            variant = RaftCardVariant.Option,
+                            title = "Focused",
+                            description = "The focus ring outside the card.",
+                            leading = { FakeRadio(checked = false) },
+                            onClick = {},
+                        )
+                    }
                 }
             }
         }
@@ -422,7 +444,7 @@ class DisplayComponentScreenshotTest {
                             subtitle = "@wug · claude-code",
                             onClick = {},
                             leading = {
-                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online, presenceCutoutColor = RaftTheme.colors.layerCard)
+                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online)
                             },
                             trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) },
                         )
@@ -432,9 +454,9 @@ class DisplayComponentScreenshotTest {
                             onClick = {},
                             divider = true,
                             selected = true,
-                            // On the selected row the light is cut out of the cyan wash.
+                            // The light is cut out of the surface by default: the card, the cyan wash.
                             leading = {
-                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline, presenceCutoutColor = RaftTheme.colors.infoSoft.compositeOver(RaftTheme.colors.layerCard))
+                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline)
                             },
                             trailing = { RaftButton("Open", onClick = {}) },
                         )
@@ -526,6 +548,18 @@ class DisplayComponentScreenshotTest {
                         Item("Created by", "Ada Lovelace")
                         Item("Due date", null)
                     }
+                    Caption("Vertical: values wrap")
+                    RaftDescriptionList {
+                        Item("Labels") {
+                            listOf("design", "mobile", "release", "needs review").forEach {
+                                RaftBadge(it, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                            }
+                        }
+                        Item("Reviewer") {
+                            RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xs, initials = "A")
+                            RaftText("Ada Lovelace of the Analytical Engine Society")
+                        }
+                    }
                     Caption("Horizontal on a phone: one column")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
@@ -534,6 +568,13 @@ class DisplayComponentScreenshotTest {
                     }
                 }
                 Column(Modifier.width(660.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Caption("Horizontal with no width limit (in a horizontal scroll)")
+                    Box(Modifier.horizontalScroll(rememberScrollState())) {
+                        RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                            Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
+                            Item("Workspace path", "/home/wug/work/raft-mobile", mono = true)
+                        }
+                    }
                     Caption("Horizontal at 640dp and wider")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }

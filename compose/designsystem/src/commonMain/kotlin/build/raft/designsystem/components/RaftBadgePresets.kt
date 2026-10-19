@@ -23,23 +23,29 @@ import build.raft.designsystem.tokens.RaftUiPalette
 /** The count as raft-ui writes it: the number alone, `99+` above 99. */
 fun raftUnreadCountText(count: Int): String = if (count > 99) "99+" else count.coerceAtLeast(0).toString()
 
+/** What a screen reader says for an unread count: the full number ("120 unread", not "99+"). */
+fun raftUnreadCountDescription(count: Int): String = "${count.coerceAtLeast(0)} unread"
+
 /**
  * The unread count: a pink (`attention`) sticker with Space Mono tabular figures, the
  * ink edge and the die-cut edge. Shows nothing for 0. Never on a selected row, never next
  * to an @ marker, never in a muted place (use [RaftMutedCount]).
  *
- * [contentDescription] ("3 unread") names it when no words are next to it.
+ * Screen readers read [contentDescription], by default "N unread" with the full count
+ * ([raftUnreadCountDescription]); pass your own wording, or null to read the badge's
+ * text as drawn.
  */
 @Composable
 fun RaftUnreadCount(
     count: Int,
     modifier: Modifier = Modifier,
-    contentDescription: String? = null,
+    contentDescription: String? = raftUnreadCountDescription(count),
 ) {
     if (count <= 0) return
     RaftBadge(
         text = raftUnreadCountText(count),
-        modifier = modifier.imageSemantics(contentDescription),
+        // A number, not a picture: no image role.
+        modifier = if (contentDescription != null) modifier.clearAndSetSemantics { this.contentDescription = contentDescription } else modifier,
         variant = RaftBadgeVariant.Accent,
     )
 }

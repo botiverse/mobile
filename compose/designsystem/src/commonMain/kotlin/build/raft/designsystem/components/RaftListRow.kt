@@ -25,13 +25,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -101,6 +105,7 @@ val LocalRaftListRowInks = staticCompositionLocalOf<RaftListRowInks?> { null }
  * raft-ui ListRowGroup, the inset list: rows flush inside one card (`layer-card`, 1dp
  * `line-hairline`, container radius, clipped, no padding of its own), so a selected
  * row's wash follows the corners. Give every row after the first `divider = true`.
+ * Provides `layer-card` as [LocalRaftSurfaceColor].
  */
 @Composable
 fun RaftListRowGroup(
@@ -109,13 +114,15 @@ fun RaftListRowGroup(
 ) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Container)
-    Column(
-        modifier
-            .clip(shape)
-            .background(colors.layerCard, shape)
-            .border(RaftStroke.Hairline, colors.lineHairline, shape),
-        content = content,
-    )
+    CompositionLocalProvider(LocalRaftSurfaceColor provides colors.layerCard) {
+        Column(
+            modifier
+                .clip(shape)
+                .background(colors.layerCard, shape)
+                .border(RaftStroke.Hairline, colors.lineHairline, shape),
+            content = content,
+        )
+    }
 }
 
 /**
@@ -139,7 +146,8 @@ fun RaftListRowGroup(
  * its controls are the targets). Press lays `fill-pressed` over the whole row; keyboard
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
  * [selected] is the item open beside the list: an `info-soft` wash, no border, no press
- * overlay. [enabled] = false greys every part and drops the tone, and the fill stays.
+ * overlay, and `selected` in semantics; the wash (over the surface under it) becomes
+ * [LocalRaftSurfaceColor] for the row's parts. [enabled] = false greys every part and drops the tone, and the fill stays.
  * A selected or disabled row never shows its [badge] (no count or @).
  */
 @Composable
@@ -172,12 +180,17 @@ fun RaftListRow(
     val ruleStart = variant.ruleStart
     val showBadge = badge != null && enabled && !selected
     val align = if (alignTop) Alignment.Top else Alignment.CenterVertically
-    CompositionLocalProvider(LocalRaftListRowInks provides inks, LocalRaftContentColor provides inks.ink3) {
+    val surface = if (selected) colors.infoSoft.compositeOver(RaftTheme.surfaceColor) else RaftTheme.surfaceColor
+    CompositionLocalProvider(
+        LocalRaftListRowInks provides inks,
+        LocalRaftContentColor provides inks.ink3,
+        LocalRaftSurfaceColor provides surface,
+    ) {
         Row(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = variant.minHeight)
-                .then(if (selected) Modifier.background(colors.infoSoft) else Modifier)
+                .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
                 .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), 0.dp)
                 .then(if (divider && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
                 .raftInsetFocusOutline(focused, colors.foreground)
