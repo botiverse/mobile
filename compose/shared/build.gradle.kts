@@ -154,6 +154,9 @@ kotlin {
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
                 // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
                 implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+                // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
+                // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
+                implementation("io.coil-kt.coil3:coil-svg:3.2.0")
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
@@ -165,6 +168,11 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
+                // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
+                // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
+                implementation("build.raft.mermaid:mermaid-core:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val commonTest by getting {
@@ -187,10 +195,14 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                // TODO(cmp-switch): mermaid-kuikly rendered through Kuikly CanvasView; needs a CMP renderer.
+                // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
+                // VideoView adapter that lived in androidApp).
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.androidx.media3.ui)
+                implementation(libs.androidx.core.ktx)
+                implementation(libs.androidx.activity.compose)
+                // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
+                implementation(libs.androidx.webkit)
             }
         }
         val androidUnitTest by getting {
@@ -223,9 +235,6 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val iosX64Test by getting

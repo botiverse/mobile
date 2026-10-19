@@ -51,6 +51,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActionScope
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1503,6 +1511,61 @@ internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
 
 internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
+/**
+ * CMP port of the Kuikly text-area `imeActionRequested` prop: a multi-line native editor that was
+ * not asked for an action key stayed multi-line, so the IME showed a newline key. Compose shows the
+ * action key on multi-line fields too, so drop the action in that case.
+ */
+internal fun raftResolvedKeyboardOptions(
+    keyboardOptions: KeyboardOptions,
+    singleLine: Boolean,
+    imeActionRequested: Boolean,
+): KeyboardOptions =
+    if (!singleLine && !imeActionRequested && keyboardOptions.imeAction != ImeAction.Default) {
+        keyboardOptions.copy(imeAction = ImeAction.Default)
+    } else {
+        keyboardOptions
+    }
+
+/**
+ * CMP port of the Android host's hardware-Enter routing (SlockKuiklyActivity
+ * handleSlockTextFieldEnterKey): when the field's IME action is Send, Enter sends on key-up and
+ * Shift+Enter inserts a newline (multi-line fields only). Compose would otherwise insert a newline
+ * for every hardware Enter on a multi-line field.
+ *
+ * TODO(cmp-switch): `systemNewlineAction` (an "Insert newline" item in the Android text
+ * selection menu) has no common Compose API yet; it is still ignored.
+ * TODO(cmp-switch): verify on iOS that the soft-keyboard Send key on a multi-line field fires
+ * KeyboardActions.onSend instead of inserting "\n".
+ */
+internal fun Modifier.raftImeEnterAction(
+    singleLine: Boolean,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+): Modifier {
+    if (keyboardOptions.imeAction != ImeAction.Send) return this
+    val onSend = keyboardActions.onSend ?: return this
+    return onPreviewKeyEvent { event ->
+        if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+        if (event.isShiftPressed) {
+            // Multi-line: let the field insert the newline. Single-line: swallow (no send).
+            return@onPreviewKeyEvent singleLine
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> true
+            KeyEventType.KeyUp -> {
+                onSend(RaftSendKeyboardActionScope)
+                true
+            }
+            else -> false
+        }
+    }
+}
+
+private object RaftSendKeyboardActionScope : KeyboardActionScope {
+    override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
+}
+
 internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
     val boundedSelectionStart = selectionStart.coerceIn(0, text.length)
     val boundedSelectionEnd = selectionEnd.coerceIn(0, text.length)
@@ -1676,9 +1739,16 @@ internal fun TextField(
         }
     }
 
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, slockTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        // TODO(cmp-switch): systemNewlineAction / imeActionRequested were native-editor props
-        // (Enter = IME action vs newline). Express them with keyboardOptions + onKeyEvent.
+        // systemNewlineAction / imeActionRequested were native-editor props; see
+        // raftImeEnterAction / raftResolvedKeyboardOptions.
+        .raftImeEnterAction(
+            singleLine = slockTextFieldSingleLine(maxLines),
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+        )
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1711,7 +1781,7 @@ internal fun TextField(
         singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
-        keyboardOptions = keyboardOptions,
+        keyboardOptions = resolvedKeyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
         enabled = enabled,
@@ -1796,9 +1866,16 @@ internal fun TextField(
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
 
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, slockTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        // TODO(cmp-switch): systemNewlineAction / imeActionRequested were native-editor props
-        // (Enter = IME action vs newline). Express them with keyboardOptions + onKeyEvent.
+        // systemNewlineAction / imeActionRequested were native-editor props; see
+        // raftImeEnterAction / raftResolvedKeyboardOptions.
+        .raftImeEnterAction(
+            singleLine = slockTextFieldSingleLine(maxLines),
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+        )
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1845,7 +1922,7 @@ internal fun TextField(
         singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
-        keyboardOptions = keyboardOptions,
+        keyboardOptions = resolvedKeyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
         enabled = enabled,

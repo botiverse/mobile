@@ -313,7 +313,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import build.raft.app.compat.ui.SelectableText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
 import androidx.compose.material3.Text
@@ -337,7 +337,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -28540,14 +28540,16 @@ private fun ThreadMessageTextSelectionDialog(
                 ) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            SelectableText(
-                                text = originalText,
-                                style = messageBodyTextStyle,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .testTag("thread_message_selection_text")
-                            )
+                            SelectionContainer(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = originalText,
+                                    style = messageBodyTextStyle,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .testTag("thread_message_selection_text")
+                                )
+                            }
                         }
                     }
                 }

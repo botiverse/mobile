@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -1320,7 +1321,11 @@ private fun SharedActivityList(
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .raftPullToRefresh(pullToRefreshState, enabled = showPullToRefreshItem)
+                    .padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (showPullToRefreshItem) {
@@ -2228,7 +2233,10 @@ private fun SharedActivityRefreshableStateBody(
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .raftPullToRefresh(pullToRefreshState, enabled = slockPlatformSupportsKuiklyPullToRefreshItem()),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
