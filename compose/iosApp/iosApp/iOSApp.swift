@@ -654,6 +654,17 @@ private func slockCurlCaBundlePath() -> String {
     return ""
 }
 
+/// Records Kotlin unhandled exceptions (`RaftIosHostHooks` installs the runtime hook) through the
+/// synchronous critical diagnostics path, so the record survives the termination that follows.
+/// Runs on the throwing thread.
+final class RaftIosUnhandledExceptionRecorder: NSObject, RaftIosUnhandledExceptionSink {
+    func recordUnhandledException(reason: String, stack: String) {
+        // TODO(cmp-switch): report the visible page name; the hook is process-wide and the
+        // CMP runtime does not track the current page for it yet.
+        SlockIosDiagnosticsRecordUnhandledException("unknown", 0, reason, stack)
+    }
+}
+
 @main
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
@@ -693,7 +704,11 @@ struct iOSApp: App {
         // Every page renders through Compose Multiplatform: install the :shared page registry
         // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
         // after the network transport (NetworkKMM image downloads), before the first page.
-        RaftIosHostHooks.shared.install(managedImages: SlockIosAvatarCacheHost.shared)
+        // Kotlin unhandled exceptions are recorded into diagnostics before termination.
+        RaftIosHostHooks.shared.install(
+            managedImages: SlockIosAvatarCacheHost.shared,
+            unhandledExceptions: RaftIosUnhandledExceptionRecorder()
+        )
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 

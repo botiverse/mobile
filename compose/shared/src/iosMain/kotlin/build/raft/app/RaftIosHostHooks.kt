@@ -4,6 +4,9 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.image.RaftImageHost
 import build.raft.app.image.RaftManagedImageRead
 import build.raft.app.image.RaftManagedImageReader
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.ReportUnhandledExceptionHook
+import kotlin.native.setUnhandledExceptionHook
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -29,6 +32,17 @@ interface RaftIosManagedImageStore {
     ): RaftIosManagedImageBytes?
 }
 
+/**
+ * Implemented by the iOS app (Swift, `RaftIosUnhandledExceptionRecorder`): records a Kotlin
+ * unhandled exception synchronously into the durable diagnostics log
+ * (`SlockIosDiagnosticsRecordUnhandledException`) before the process terminates. Called on the
+ * thread that threw, possibly not the main thread; must not throw and must not block on the main
+ * thread.
+ */
+interface RaftIosUnhandledExceptionSink {
+    fun recordUnhandledException(reason: String, stack: String)
+}
+
 /** One managed avatar read: the stored bytes and their sniffed content type. */
 class RaftIosManagedImageBytes(
     val bytes: NSData,
@@ -45,6 +59,9 @@ class RaftIosManagedImageBytes(
  * - [RaftImageHost.managedImageReader]: managed avatar bytes from the app's durable avatar store
  *   ([managedImages]; the Kuikly image handler read the same store through `imageForRenderModel:`).
  *
+ * - Kotlin unhandled exceptions: forwarded to [unhandledExceptions] (the Kuikly render controller's
+ *   `onUnhandledException` used to record them), then the runtime terminates as before.
+ *
  * The sandbox WebView (`RaftIosSandboxWebView`) and the video player (`RaftVideoPlayer`) need no
  * host hooks on iOS: the release notes document cache was Android-only.
  */
@@ -52,9 +69,13 @@ object RaftIosHostHooks {
     private var installed = false
 
     /** Main thread only. Idempotent. */
-    fun install(managedImages: RaftIosManagedImageStore?) {
+    fun install(
+        managedImages: RaftIosManagedImageStore?,
+        unhandledExceptions: RaftIosUnhandledExceptionSink?,
+    ) {
         if (installed) return
         installed = true
+        if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
         RaftPageRegistry.install()
         if (managedImages != null) {
             RaftImageHost.managedImageReader =
@@ -76,6 +97,27 @@ object RaftIosHostHooks {
                 }
         }
     }
+}
+
+/**
+ * Records every Kotlin unhandled exception through [sink], then hands it to the previously
+ * installed hook (if any). Returning from the hook lets the Kotlin/Native runtime terminate the
+ * process as it would have without a hook, so this only adds a diagnostics record.
+ */
+@OptIn(ExperimentalNativeApi::class)
+private fun installUnhandledExceptionHook(sink: RaftIosUnhandledExceptionSink) {
+    var previous: ReportUnhandledExceptionHook? = null
+    previous =
+        setUnhandledExceptionHook { throwable ->
+            try {
+                val reason = throwable::class.qualifiedName.orEmpty().ifEmpty { "Throwable" } +
+                    (throwable.message?.let { ": $it" } ?: "")
+                sink.recordUnhandledException(reason = reason, stack = throwable.stackTraceToString())
+            } catch (_: Throwable) {
+                // Recording is best effort; never mask the original exception.
+            }
+            previous?.invoke(throwable)
+        }
 }
 
 @OptIn(ExperimentalForeignApi::class)
