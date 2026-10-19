@@ -4764,7 +4764,7 @@ private fun HomeAppUpdateBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.Inset)
+                .background(SlockColor.FillMuted)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -4796,7 +4796,7 @@ private fun HomeAppUpdateBanner(
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.Inset).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.FillMuted).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(MR.strings.home_notification_center_title), style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text(
                 if (notifications.isEmpty()) {
@@ -4811,13 +4811,13 @@ private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationIte
                 maxLines = 1
             )
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
         if (notifications.isEmpty()) {
             HomeNotificationCenterEmptyState()
         } else {
             notifications.forEachIndexed { index, notification ->
                 if (index > 0) {
-                    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
+                    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
                 }
                 HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
             }
@@ -5013,7 +5013,7 @@ private fun HomeServerDrawerPanel(
                 Modifier
                     .width(drawerWidth)
                     .height(maxHeight)
-                    .background(SlockColor.Panel)
+                    .background(SlockColor.Canvas)
                     .border(SlockStroke.Thin, SlockColor.BorderSeam)
                     .clickable(onClick = {})
                     .pointerInput(onDismiss) {
@@ -5096,7 +5096,7 @@ private fun HomeServerDrawerPanel(
                     }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
+            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
             ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
         }
     }
@@ -5369,7 +5369,7 @@ private fun HomeServerDrawerServerHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (section.expanded) SlockColor.Inset else SlockColor.Panel)
+                .background(if (section.expanded) SlockColor.FillMuted else SlockColor.Canvas)
                 .alpha(if (unavailable) 0.3f else 1f)
                 .semantics {
                     if (unavailable) stateDescription = unavailableDescription
@@ -5462,7 +5462,7 @@ private fun HomeServerDrawerSectionHeader(
             Modifier
                 .fillMaxWidth()
                 .height(HomeServerDrawerSectionHeaderHeight)
-                .background(SlockColor.Inset)
+                .background(SlockColor.FillMuted)
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -5539,7 +5539,7 @@ private fun HomeServerDrawerErrorRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (row.hasCache) SlockColor.Inset else SlockColor.Panel)
+                .background(if (row.hasCache) SlockColor.FillMuted else SlockColor.Canvas)
                 .clickable(onClick = onRetry)
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -5782,7 +5782,7 @@ internal fun ServerSwitcherPanel(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.LineMuted))
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
         joinCommunityActions.forEach { action ->
             ServerSwitcherActionRow(action.label, onCreateServerClick)
         }
@@ -5824,7 +5824,7 @@ private fun ServerSwitcherRow(
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(
                     when {
-                        selected -> SlockColor.Primary
+                        selected -> SlockColor.Brand
                         pressed -> SlockColor.FillPressed
                         else -> Color.Transparent
                     },
@@ -6100,7 +6100,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Selected -> SlockColor.Brand
         ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
         ChannelRowInteractionState.Focused -> SlockColor.FillPressed
         ChannelRowInteractionState.Pressed -> SlockColor.FillPressed
@@ -6256,7 +6256,7 @@ private fun ChannelRow(
     // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Selected -> SlockColor.Brand
         ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
         ChannelRowInteractionState.Focused -> SlockColor.FillPressed
         ChannelRowInteractionState.Pressed -> SlockColor.FillPressed
@@ -6869,7 +6869,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.Primary
+        ChannelRowInteractionState.Selected -> SlockColor.Brand
         ChannelRowInteractionState.Hovered -> SlockColor.FillPressed
         ChannelRowInteractionState.Focused -> SlockColor.FillPressed
         ChannelRowInteractionState.Pressed -> SlockColor.FillPressed

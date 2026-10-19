@@ -287,7 +287,7 @@ internal fun UiTextareaVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(252.dp)
-                .background(SlockColor.Panel)
+                .background(SlockColor.Canvas)
                 .padding(16.dp)
     ) {
         SlockBrutalTextarea(
@@ -543,8 +543,8 @@ internal fun UiSelectionPopoverVisualContent() {
 internal fun UiMenuItemVisualContent() {
     // Mirrors the web case: four slock `MenuItem` rows (36dp, px-2.5, callout medium, mono
     // hint shortcut) stacked flush inside a `rounded-container border border-line-seam
-    // bg-layer-popover shadow-raft-float` card -- no popup inset -- with the last row
-    // carrying its own `border-t border-line-muted` inside its 36dp box. 342 x 178dp =
+    // bg-layer-popover shadow-float` card -- no popup inset -- with the last row
+    // carrying its own `border-t border-line-hairline` inside its 36dp box. 342 x 178dp =
     // 16 + 1 + 4 x 36 + 1 + 16.
     Box(
         modifier =
@@ -571,7 +571,7 @@ internal fun UiMenuItemVisualContent() {
                         Modifier
                             .fillMaxWidth()
                             .height(SlockStroke.Thin)
-                            .background(SlockColor.LineMuted)
+                            .background(SlockColor.BorderHairline)
                 )
             }
         }

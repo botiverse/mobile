@@ -52,7 +52,7 @@ internal enum class SlockFormFieldSize {
 }
 
 internal val SlockSlugInputPrefixBackground =
-    SlockColor.BrandYellow.copy(alpha = 0.30f) // react-parity: intentional bg-soft-signal/30 wash
+    SlockColor.BrandYellow.copy(alpha = 0.30f) // react-parity: intentional bg-palette-yellow/30 wash
 // react disabled tile flattened over white: BrandYellow @ (0.30 tile x 0.60
 // control opacity) = opaque #FFF7DD. Opaque on purpose - see the disabled
 // color block in SlockSlugInput for why per-part alpha can't match CSS group
@@ -451,7 +451,7 @@ internal fun SlockSlugInput(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
                 placeholder = placeholder,
-                placeholderColor = if (placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor,
+                placeholderColor = if (placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundHint else placeholderColor,
                 autoFocus = false,
                 maxLines = 1,
                 textStyle = SlockType.Input.copy(
@@ -573,7 +573,7 @@ internal fun SlockSlugInput(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
                 placeholder = placeholder,
-                placeholderColor = if (placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundPlaceholder else placeholderColor,
+                placeholderColor = if (placeholderColor == SlockColor.TextMutedGray) SlockColor.ForegroundHint else placeholderColor,
                 autoFocus = false,
                 maxLines = 1,
                 textStyle = SlockType.Input.copy(
@@ -671,8 +671,8 @@ internal fun SlockSlugInput(
 /**
  * raft-ui `InputGroup` with a `container` text addon (web `PrefixedInput` / `SlugInput`):
  * 44dp, control radius, 1.5dp `--line-strong` edge on the card layer; the addon is a
- * `--fill-muted` cell behind a 1dp `--line-muted` divider with mono 13/20 placeholder ink.
- * Disabled is the opaque `--fill-muted` / `--line-muted` pair. No shadow.
+ * `--fill-muted` cell behind a 1dp `--line-hairline` divider with mono 13/20 placeholder ink.
+ * Disabled is the opaque `--fill-muted` / `--line-hairline` pair. No shadow.
  */
 @Composable
 internal fun SlockRaftPrefixedInputFrame(
@@ -690,7 +690,7 @@ internal fun SlockRaftPrefixedInputFrame(
                 .height(fieldHeight)
                 .clip(shape)
                 .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
-                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.LineMuted, shape),
+                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.BorderHairline, shape),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -704,11 +704,11 @@ internal fun SlockRaftPrefixedInputFrame(
             Text(
                 text = prefix,
                 style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 20.sp),
-                color = if (enabled) SlockColor.ForegroundPlaceholder else SlockColor.ForegroundDisabled,
+                color = if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled,
                 maxLines = 1
             )
         }
-        Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.LineMuted))
+        Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.BorderHairline))
         field()
     }
 }

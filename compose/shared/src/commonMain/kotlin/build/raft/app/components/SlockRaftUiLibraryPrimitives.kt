@@ -328,7 +328,7 @@ internal fun SlockRaftUiBanner(
 
 /**
  * raft-ui 0.6.0 Banner: container radius 10dp, status `-soft` fill, 1dp inset
- * `--line-muted` ring, ink type. `md`: 14/12dp padding, 10dp gap, callout 14/20, 20dp
+ * `--line-hairline` ring, ink type. `md`: 14/12dp padding, 10dp gap, callout 14/20, 20dp
  * icon; `sm`: 12/8dp padding, 8dp gap, footnote 13/18, 16dp icon. Title is bold.
  */
 @Composable
@@ -350,7 +350,7 @@ private fun SlockRaftBanner(
             modifier
                 .fillMaxWidth()
                 .background(status.raftFill, shape)
-                .border(SlockStroke.Thin, SlockColor.LineMuted, shape)
+                .border(SlockStroke.Thin, SlockColor.BorderHairline, shape)
                 .padding(horizontal = if (small) 12.dp else 14.dp, vertical = if (small) 8.dp else 12.dp),
         horizontalArrangement = Arrangement.spacedBy(if (small) 8.dp else 10.dp),
         verticalAlignment = Alignment.Top
@@ -562,13 +562,13 @@ internal fun SlockRaftUiInlineCode(text: String, modifier: Modifier = Modifier) 
 internal fun SlockRaftUiKbd(text: String, modifier: Modifier = Modifier) {
     if (slockRaftActive()) {
         // raft-ui Kbd: mono 12/16 hint ink, 3dp radius, 4dp side padding, 1dp inset
-        // `--line-muted` ring, min 16dp wide.
+        // `--line-hairline` ring, min 16dp wide.
         val shape = RoundedCornerShape(3.dp)
         Box(
             modifier =
                 modifier
                     .widthIn(min = 16.dp)
-                    .border(SlockStroke.Thin, SlockColor.LineMuted, shape)
+                    .border(SlockStroke.Thin, SlockColor.BorderHairline, shape)
                     .padding(horizontal = 4.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -682,7 +682,7 @@ internal fun SlockRaftUiInputGroup(
 /**
  * raft-ui InputGroup with `container` text addons: 44dp, control radius, 1.5dp
  * `--line-strong` edge (`--danger-strong` when invalid) on the card layer; addons are
- * `--fill-muted` cells behind 1dp `--line-muted` dividers, mono 13/20 placeholder ink.
+ * `--fill-muted` cells behind 1dp `--line-hairline` dividers, mono 13/20 placeholder ink.
  */
 @Composable
 private fun SlockRaftUiInputGroupRaft(
@@ -705,7 +705,7 @@ private fun SlockRaftUiInputGroupRaft(
     ) {
         leadingText?.let {
             SlockRaftUiInputGroupAddonCell(it)
-            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.LineMuted))
+            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.BorderHairline))
         }
         Text(
             text = value,
@@ -716,7 +716,7 @@ private fun SlockRaftUiInputGroupRaft(
             overflow = TextOverflow.Ellipsis
         )
         trailingText?.let {
-            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.LineMuted))
+            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.BorderHairline))
             SlockRaftUiInputGroupAddonCell(it)
         }
     }
@@ -735,7 +735,7 @@ private fun SlockRaftUiInputGroupAddonCell(text: String) {
         Text(
             text = text,
             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 20.sp),
-            color = SlockColor.ForegroundPlaceholder,
+            color = SlockColor.ForegroundHint,
             maxLines = 1
         )
     }
@@ -801,7 +801,7 @@ internal fun SlockRaftUiAvatar(
                         Modifier
                             .size(badgeSize + 4.dp)
                             .align(Alignment.BottomEnd)
-                            .background(SlockColor.Panel, RoundedCornerShape(4.dp))
+                            .background(SlockColor.Canvas, RoundedCornerShape(4.dp))
                             .padding(2.dp)
                 ) {
                     Box(
@@ -865,7 +865,7 @@ internal fun SlockRaftUiTabs(
 ) {
     if (slockRaftActive()) {
         // raft-ui Tabs (`variant="default"`): a 2dp-gap row of 32dp control-radius tabs;
-        // the active tab is the yellow `--primary` sticker (ink edge, bold ink type). The
+        // the active tab is the yellow `--brand` sticker (ink edge, bold ink type). The
         // panel has no chrome of its own.
         Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1042,14 +1042,14 @@ internal fun SlockRaftUiMenuRow(
 ) {
     if (slockRaftActive()) {
         // raft menu item: min 36dp, control radius, px-2.5, callout 14/20 medium; the
-        // highlighted row is `--primary-soft`; shortcut text is mono 12/16 hint.
+        // highlighted row is `--brand-soft`; shortcut text is mono 12/16 hint.
         Row(
             modifier =
                 modifier
                     .fillMaxWidth()
                     .height(SlockRaftMetrics.MenuRowHeight)
                     .background(
-                        if (highlighted && !disabled) SlockColor.PrimarySoft else Color.Transparent,
+                        if (highlighted && !disabled) SlockColor.BrandSoft else Color.Transparent,
                         RoundedCornerShape(SlockRadius.Control)
                     )
                     .padding(horizontal = 10.dp),

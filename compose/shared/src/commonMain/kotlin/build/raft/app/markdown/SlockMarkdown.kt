@@ -2848,7 +2848,7 @@ private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
 // ref — renders as bold black text with a 2sp underline in black-at-30%-opacity offset
 // ~2sp below the baseline (react: `underline decoration-black/30 decoration-2
 // underline-offset-2`). Only the current-user self-mention gets the soft-signal chip
-// (react: `MSG_REF_CHIP bg-soft-signal`). A text SpanStyle can express the chip fill but
+// (react: `MSG_REF_CHIP bg-palette-yellow`). A text SpanStyle can express the chip fill but
 // not react's 1px black border / px-1 padding / square corners, so the fill is the closest
 // platform match; a bordered inline chip would require a dedicated composable.
 internal fun slockMarkdownTagSpanStyle(

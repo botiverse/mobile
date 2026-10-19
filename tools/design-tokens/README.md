@@ -28,8 +28,8 @@ python3 tools/design-tokens/gen_tokens.py --self-test  # CI: colour maths, casca
 
 ## Bumping to a newer Web
 
-1. Read the versions in `slock/packages/web/package.json` and `pnpm-lock.yaml` (`raft-ui`, `tailwindcss`) at the target slock commit.
-2. Replace the files under `source/` (`npm pack raft-ui@<v>`, `npm pack tailwindcss@<v>`, `git show <commit>:packages/web/src/index.css`), rename the version directories, and update `manifest.json` (paths, origins, `slockCommit`, sha256).
+1. Read the versions in `slock/packages/web/package.json` and `pnpm-lock.yaml` (`@botiverse/raft-ui`, `tailwindcss`) at the target slock commit.
+2. Replace the files under `source/` (`npm pack @botiverse/raft-ui@<v>` (the package was `raft-ui` up to 0.6), `npm pack tailwindcss@<v>`, `git show <commit>:packages/web/src/index.css`), rename the version directories, and update `manifest.json` (paths, origins, `slockCommit`, sha256).
 3. `python3 tools/design-tokens/gen_tokens.py`, then regenerate the oracle (see the header of `capture_chrome_oracle.mjs`), then `--check`.
 4. Review the Kotlin diff: every changed colour is a visible change on mobile.
 

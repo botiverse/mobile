@@ -580,7 +580,7 @@ internal fun AuthActionButton(
     val borderColor = when {
         dimWholeButton -> dimOntoCard(activeBorder)
         enabled || preserveDisabledVisual -> activeBorder
-        else -> SlockColor.LineMuted
+        else -> SlockColor.BorderHairline
     }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
@@ -639,14 +639,14 @@ internal fun AuthDivider() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.LineMuted))
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.BorderHairline))
         Text(
             text = stringResource(MR.strings.auth_social_divider_or),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.authStaticTextFocus()
         )
-        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.LineMuted))
+        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.BorderHairline))
     }
 }
 

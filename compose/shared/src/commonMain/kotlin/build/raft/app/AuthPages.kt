@@ -1144,7 +1144,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         pendingEnvironment = null
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Panel)) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
         SlockTopPageHeader(
             title =
                 when (destination) {

@@ -22,21 +22,21 @@ import kotlin.math.roundToInt
 // palette change shows up as a regenerated diff instead of silent drift. The remaining
 // literals have no Web token.
 internal object SlockColor {
-    val BrandYellow = RaftUiPalette.brutalYellow
-    // Semantic alias for react `--color-soft-signal` (== brutal/brand yellow #FFD440),
-    // used for the self-mention chip highlight so callsites read intent, not hue.
-    val SoftSignal = RaftUiPalette.softSignal
-    val AccentPink = RaftUiPalette.brutalPink
-    val AccentCyan = RaftUiPalette.brutalCyan
-    val AccentOrange = RaftUiPalette.brutalOrange
-    val AccentLavender = RaftUiPalette.brutalLavender
-    val AccentLime = RaftUiPalette.brutalLime
-    val AccentRed = RaftUiPalette.brutalRed
-    val AccentStone = RaftUiPalette.brutalStone
+    val BrandYellow = RaftUiPalette.paletteYellow
+    // Semantic alias for react `--color-palette-yellow` (raft-ui 0.6 `--color-palette-yellow`,
+    // == brand yellow), used for the self-mention chip highlight so callsites read intent, not hue.
+    val SoftSignal = RaftUiPalette.paletteYellow
+    val AccentPink = RaftUiPalette.palettePink
+    val AccentCyan = RaftUiPalette.paletteCyan
+    val AccentOrange = RaftUiPalette.paletteOrange
+    val AccentLavender = RaftUiPalette.paletteLavender
+    val AccentLime = RaftUiPalette.paletteLime
+    val AccentRed = RaftUiPalette.paletteRed
+    val AccentStone = RaftUiPalette.paletteStone
     // raft-ui `--warning` (#FF6900): the warning badge/banner fill. Distinct from AccentOrange.
     val StateWarningBase = RaftUiPalette.warning
     val SurfaceWhite = RaftUiPalette.white
-    val SurfaceCream = RaftUiPalette.brutalCream
+    val SurfaceCream = RaftUiPalette.paletteCream
     val AppBgLightBlue = Color(0xFFE6F8FF)
     val EmptyStateGray = Color(0xFFE7E7E7)
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
@@ -53,42 +53,36 @@ internal object SlockColor {
     val BorderHairline: Color get() = SlockThemeState.colors.lineHairline
     // Web raft `--line-seam` (ink at 45%): structural seams between panels.
     val BorderSeam: Color get() = SlockThemeState.colors.lineSeam
-    // Sticker ink (`--theme-shadow-sticker` colour); the only hard shadow left in raft.
+    // Sticker ink (`--elevation-sticker` colour); the only hard shadow left in raft.
     val ShadowBlack: Color get() = SlockThemeState.colors.ink
     // Web raft surfaces and secondary ink, for primitives migrating off the fixed
     // SurfaceWhite / TextMutedGray literals.
     val Canvas: Color get() = SlockThemeState.colors.layerCanvas
     val Card: Color get() = SlockThemeState.colors.layerCard
-    val Panel: Color get() = SlockThemeState.colors.layerPanel
-    val Inset: Color get() = SlockThemeState.colors.layerInset
     val Popover: Color get() = SlockThemeState.colors.layerPopover
     val TextMuted: Color get() = SlockThemeState.colors.foregroundMuted
 
-    // raft-ui 0.6.0 semantic roles the primitives draw with (foundation.css). Themed ones
+    // raft-ui 0.7 semantic roles the primitives draw with (foundation.css). Themed ones
     // follow light/dark through [SlockThemeState]; the solid "sticker" fills are the same
     // colour in both modes, so they read straight from the palette.
     // Text and icon ink ladder.
-    val ForegroundStrong: Color get() = SlockThemeState.colors.foregroundStrong
     val ForegroundHint: Color get() = SlockThemeState.colors.foregroundHint
-    val ForegroundIcon: Color get() = SlockThemeState.colors.foregroundIcon
-    val ForegroundPlaceholder: Color get() = SlockThemeState.colors.foregroundPlaceholder
     val ForegroundDisabled: Color get() = SlockThemeState.colors.foregroundDisabled
     val ForegroundInverse: Color get() = SlockThemeState.colors.foregroundInverse
     // Opaque neutral fills: resting/disabled control fill and the 8% pressed wash.
     val FillMuted: Color get() = SlockThemeState.colors.fillMuted
     val FillStrong: Color get() = SlockThemeState.colors.fillStrong
     val FillPressed: Color get() = SlockThemeState.colors.fillPressed
-    // `--line-muted` (card edges, menu separators) and `--line-field` (input ink).
-    val LineMuted: Color get() = SlockThemeState.colors.lineMuted
+    // `--line-field` (input ink); card edges and menu separators use [BorderHairline].
     val LineField: Color get() = SlockThemeState.colors.lineField
     // The yellow frame (`--layer-frame`) and the overlay backdrop.
     val Frame: Color get() = SlockThemeState.colors.layerFrame
     val Backdrop: Color get() = SlockThemeState.colors.layerBackdrop
     // State washes (`-soft`) and readable state ink (`-strong`).
-    val PrimarySoft: Color get() = SlockThemeState.colors.primarySoft
-    val PrimaryStrong: Color get() = SlockThemeState.colors.primaryStrong
-    val AccentSoft: Color get() = SlockThemeState.colors.accentSoft
-    val AccentStrong: Color get() = SlockThemeState.colors.accentStrong
+    val BrandSoft: Color get() = SlockThemeState.colors.brandSoft
+    val BrandStrong: Color get() = SlockThemeState.colors.brandStrong
+    val AttentionSoft: Color get() = SlockThemeState.colors.attentionSoft
+    val AttentionStrong: Color get() = SlockThemeState.colors.attentionStrong
     val InfoSoft: Color get() = SlockThemeState.colors.infoSoft
     val InfoStrong: Color get() = SlockThemeState.colors.infoStrong
     val SuccessSoft: Color get() = SlockThemeState.colors.successSoft
@@ -98,9 +92,9 @@ internal object SlockColor {
     val DangerSoft: Color get() = SlockThemeState.colors.dangerSoft
     val DangerStrong: Color get() = SlockThemeState.colors.dangerStrong
     val InactiveSoft: Color get() = SlockThemeState.colors.inactiveSoft
-    // Sticker solids (`bg-primary`, `bg-accent`, ...): ink type on colour in both modes.
-    val Primary = RaftUiPalette.primary
-    val Accent = RaftUiPalette.accent
+    // Sticker solids (`bg-brand`, `bg-attention`, ...): ink type on colour in both modes.
+    val Brand = RaftUiPalette.brand
+    val Attention = RaftUiPalette.attention
     val Info = RaftUiPalette.info
     val Success = RaftUiPalette.success
     val Warning = RaftUiPalette.warning
@@ -118,7 +112,7 @@ internal object SlockColor {
     val PresenceError = RaftUiPalette.presenceError
     val PresenceOffline = RaftUiPalette.presenceOffline
     val PresenceExternal = RaftUiPalette.presenceExternal
-    // Colour of the overlay float shadow (`--theme-shadow-float`): ink at 32% in light,
+    // Colour of the overlay float shadow (`--elevation-float`): ink at 32% in light,
     // black at 80% in dark. Only overlays (menus, popovers, dialogs) cast it.
     val OverlayShadow: Color
         get() =
