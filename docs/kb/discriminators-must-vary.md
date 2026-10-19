@@ -8,10 +8,16 @@
 > **Scope and lineage.** Distilled from one day of adjacent failures on this repo, several of them
 > mine and several pointed out by reviewers. It generalises the criterion in
 > `numeric-criteria-that-pass-while-the-feature-is-broken.md` from "does this number prove the
-> feature" to "does this signal distinguish anything at all". Nothing here has been superseded.
+> feature" to "does this signal distinguish anything at all".
+>
+> **Forms 1–3 and 5 came from the investigation; form 4 was added in review after the article first
+> landed** — the reviewer's case (same-looking store handles, two copies in one process) generalised
+> to worktree-vs-branch and to per-channel task numbering. It is recorded as part of the article
+> rather than a separate one because it is the same failure: a legitimate answer about the wrong
+> thing. Nothing here has been superseded.
 
 A **discriminator** is anything you use to tell two states apart: a test, a log line, a metric, a
-toggle, a measurement. Four ways they fail, all of which produce a confident wrong answer rather than
+toggle, a measurement. Five ways they fail, all of which produce a confident wrong answer rather than
 an error.
 
 ## 1. It never varies
@@ -43,13 +49,35 @@ An "impossible" value is a question about the contract, not evidence of a defect
 
 Check the definition before treating a number as an observation.
 
-## 4. It is satisfied by an implementation that fails the user
+## 4. It is a copy, not the thing the conclusion is about
+
+You inspected a different instance of the same-looking object, a different checkout, a different
+build, or a different process — and got a **legitimate** answer about that thing, not about the one
+in question. This is the most convincing of the five because it never errors: an empty result from
+the wrong copy looks exactly like an empty result from the right one.
+
+Three instances from one day:
+
+- a diagnostic key read as absent, when the writer and the reader held **two different store handles**
+  in the same process;
+- a file confirmed "not in the repository" using a working-tree `ls`, when the file was on the branch —
+  `ls` answers about the worktree, `git show origin/main:` answers about the branch, and both look
+  like "I checked";
+- a channel task number `#185` that referred to three different items depending on which channel's
+  numbering was in view: referencing the number stayed *valid* while the referent changed.
+
+**The tell is not in the answer, it is in the question you did not ask**: *which copy is this answer
+about?* Make the answer carry its own provenance — a store identity on the log line, a full ref on the
+lookup, a commit SHA rather than a branch name. Then "absent" distinguishes *not there* from *not
+there in the copy I happened to ask*.
+
+## 5. It is satisfied by an implementation that fails the user
 
 `window.innerWidth === 1280` passed while the page was drawn at 100% and the user could see about
 480px of it. The criterion described what the code should *do*, not what the user must *experience*.
 Full treatment in `numeric-criteria-that-pass-while-the-feature-is-broken.md`.
 
-## The question that catches all four
+## The question that catches all five
 
 Before trusting a signal, ask: **what would this report if the thing I am testing for were true, and
 what would it report if it were false?** If the two answers are the same — or if you cannot say what
