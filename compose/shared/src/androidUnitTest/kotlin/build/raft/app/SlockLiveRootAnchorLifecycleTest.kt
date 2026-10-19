@@ -46,7 +46,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Drives Kuikly's real LayoutNode and pointer-input element contracts. Internal Kotlin
+ * Drives Compose's real LayoutNode and pointer-input element contracts. Internal Kotlin
  * declarations remain JVM-public with module-suffixed method names, so reflection lets the app
  * module verify production Modifier.Node wiring instead of stopping at helper-only tests.
  */
@@ -114,11 +114,11 @@ class SlockLiveRootAnchorLifecycleTest {
         assertSame(firstOwner.tapDispatchScope, recreatedOwner.tapDispatchScope)
         assertTrue(recreatedOwner.pressed)
         assertEquals(Offset(12f, 34f), recreatedOwner.pressRippleOrigin)
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerModifier("tap_movement", firstOwner),
             pointerModifier("tap_movement", recreatedOwner)
         )
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerModifier("actions", firstOwner),
             pointerModifier("actions", recreatedOwner)
         )
@@ -150,7 +150,7 @@ class SlockLiveRootAnchorLifecycleTest {
 
         assertFalse(oldCallbackInvoked)
         assertTrue(replacementCallbackInvoked)
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerBeforeReplacement,
             pointerModifier("actions", owner)
         )
@@ -440,6 +440,32 @@ class SlockLiveRootAnchorLifecycleTest {
             layoutNode?.let(layoutHarness::deactivate)
             compositionHarness.close()
         }
+    }
+
+    /**
+     * CMP switch: Kuikly's pointer-input element compared equal across recompositions. Upstream
+     * `SuspendPointerInputElement.equals` also compares the handler instance (a fresh lambda per
+     * composition), but `SuspendingPointerInputModifierNodeImpl.update` only restarts the running
+     * gesture coroutine when a key changed or the handler *class* changed. Assert exactly that
+     * reset condition, so a recomposition never cancels an in-flight press.
+     */
+    private fun assertPointerHandlerKeptAcrossUpdate(before: Modifier, after: Modifier) {
+        fun Modifier.field(name: String): Any? =
+            javaClass.getMethod("get" + name.replaceFirstChar { it.uppercase() }).invoke(this)
+        assertEquals(
+            "androidx.compose.ui.input.pointer.SuspendPointerInputElement",
+            before.javaClass.name
+        )
+        assertEquals(before.javaClass, after.javaClass)
+        assertEquals(before.field("key1"), after.field("key1"))
+        assertEquals(before.field("key2"), after.field("key2"))
+        assertTrue(
+            (before.field("keys") as Array<*>?).contentEquals(after.field("keys") as Array<*>?)
+        )
+        assertSame(
+            before.field("pointerInputEventHandler")!!.javaClass,
+            after.field("pointerInputEventHandler")!!.javaClass
+        )
     }
 
     private fun pointerModifier(role: String, owner: ThreadMessageLongPressGestureOwner): Modifier =

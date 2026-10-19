@@ -1,11 +1,12 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewRef
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 
+// CMP switch: moved from commonTest. The capture handle is now RaftViewCaptureRef (a GraphicsLayer
+// handle with an internal constructor, not constructible off-device), so the slot's identity
+// contract is exercised with opaque instances allocated without running the constructor.
 class SlockFilePreviewCaptureRefTest {
     @Test
     fun captureSlotBindsOnlyTheCurrentEditorOwner() {
@@ -56,6 +57,11 @@ class SlockFilePreviewCaptureRefTest {
             editMode = editMode,
         )
 
-    private fun captureRef(nativeRef: Int): ViewRef<DeclarativeBaseView<*, *>> =
-        ViewRef(pagerId = "capture-test", nativeRef = nativeRef)
+    @Suppress("UNUSED_PARAMETER")
+    private fun captureRef(nativeRef: Int): RaftViewCaptureRef {
+        val unsafeClass = Class.forName("sun.misc.Unsafe")
+        val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+        return unsafeClass.getMethod("allocateInstance", Class::class.java)
+            .invoke(unsafe, RaftViewCaptureRef::class.java) as RaftViewCaptureRef
+    }
 }
