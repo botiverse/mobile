@@ -1,6 +1,10 @@
 #import "SlockCmpBridgeHost.h"
 #import "HRBridgeModule.h"
 
+// A missing SharedSlockCmpIosBridge method is a crash at the first bridge call (unrecognized
+// selector), so make it a compile error rather than a warning.
+#pragma clang diagnostic error "-Wprotocol"
+
 static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
     if (result == nil || result == NSNull.null) {
         return nil;
@@ -39,11 +43,13 @@ static NSString *_Nullable SlockCmpBridgeResultJson(id _Nullable result) {
     _module.slockHostController = hostController;
 }
 
-// Kotlin/Native exports SlockCmpIosBridge.call(method:paramsJson:callback:) with a mangled
-// `callback_:` label (the CI crash "unrecognized selector callMethod:paramsJson:callback_:").
+// Kotlin pins this selector with @ObjCName (SlockCmpIos.kt, SlockCmpIosBridge.call). It used to
+// be mangled to `callMethod:paramsJson:callback_:` because HostBridgeTransport.call exported the
+// same selector with another signature. RaftCmpBridgeSelectorTests asserts every required
+// selector of SharedSlockCmpIosBridge is answered here.
 - (void)callMethod:(NSString *)method
         paramsJson:(NSString *)paramsJson
-         callback_:(id<SharedSlockCmpIosBridgeCallback> _Nullable)callback {
+        resultSink:(id<SharedSlockCmpIosBridgeCallback> _Nullable)callback {
     dispatch_block_t invoke = ^{
         SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
         if (![self->_module respondsToSelector:selector]) {

@@ -1020,7 +1020,7 @@ jobs:
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
 
-      - name: Test login route transition admission (UIKit)
+      - name: Test login route transition admission and CMP bridge selectors (UIKit)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1033,6 +1033,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
             -only-testing:iosAppTests/SlockRouterLoginTransitionTests \
+            -only-testing:iosAppTests/RaftCmpBridgeSelectorTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \

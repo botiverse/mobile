@@ -12,6 +12,8 @@ import build.raft.app.cmp.host.SlockCmpNavigator
 import build.raft.app.cmp.host.SlockCmpPageArgs
 import build.raft.app.parseSlockJsonObjectOrNull
 import build.raft.app.toSlockJsonString
+import kotlin.experimental.ExperimentalObjCName
+import kotlin.native.ObjCName
 import kotlinx.serialization.json.JsonObject
 import platform.Foundation.NSThread
 import platform.UIKit.UIViewController
@@ -21,11 +23,24 @@ import platform.darwin.dispatch_get_main_queue
 /**
  * Implemented by the iOS app (Objective-C, `SlockCmpBridgeHost`): forwards one bridge call to the
  * page's `HRBridgeModule`. [paramsJson] is the method's param object; the host hands the result
- * payload (JSON text, or nil) to [callback], possibly from a background thread and, for streaming
+ * payload (JSON text, or nil) to [resultSink], possibly from a background thread and, for streaming
  * methods, more than once.
  */
 interface SlockCmpIosBridge {
-    fun call(method: String, paramsJson: String, callback: SlockCmpIosBridgeCallback?)
+    /**
+     * Exported to Objective-C as `callMethod:paramsJson:resultSink:`. The parameter name must stay
+     * distinct from `HostBridgeTransport.call`'s `callback`: two exported methods with the same
+     * selector but different signatures make Kotlin/Native mangle one of them (it used to export
+     * `callMethod:paramsJson:callback_:`, which the ObjC host then had to guess). `@ObjCName` pins
+     * the selector so a parameter rename cannot silently change it; iosAppTests'
+     * RaftCmpBridgeSelectorTests checks the host still answers every selector of the protocol.
+     */
+    @OptIn(ExperimentalObjCName::class)
+    fun call(
+        method: String,
+        paramsJson: String,
+        @ObjCName("resultSink") resultSink: SlockCmpIosBridgeCallback?,
+    )
 
     /**
      * Synchronous bridge call (Kuikly `syncCall = true`): the method's return value as text, or
@@ -146,7 +161,7 @@ object SlockCmpIos {
 
 private class IosBridgeTransport(private val bridge: SlockCmpIosBridge) : HostBridgeTransport {
     override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
-        bridge.call(method, paramsJson, callback?.let(::BridgeCallback))
+        bridge.call(method, paramsJson, resultSink = callback?.let(::BridgeCallback))
     }
 
     override fun callSync(method: String, paramsJson: String): String? = bridge.callSync(method, paramsJson)
