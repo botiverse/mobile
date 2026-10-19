@@ -67,6 +67,12 @@ internal class RaftIosSandboxWebViewContainer(events: RaftWebViewEvents) : UIVie
         super.layoutSubviews()
         webViewHost.layout()
     }
+
+    /** A covered page's views leave the window: pause the navigation-state poll until it returns. */
+    override fun didMoveToWindow() {
+        super.didMoveToWindow()
+        webViewHost.onWindowAttachmentChanged(attached = window != null)
+    }
 }
 
 /** Poll interval standing in for the `.m` KVO on estimatedProgress/title/canGoBack/canGoForward/loading/URL. */
@@ -244,10 +250,12 @@ internal class RaftIosSandboxWebView(
     /**
      * TODO(cmp-switch): Kotlin/Native cannot override the NSObject KVO category method
      * (`observeValueForKeyPath:`), so the `.m` key-value observation is replaced by a light poll
-     * while a WebView is attached; [notifyNavigationState] de-duplicates unchanged states.
+     * while a WebView is attached; [notifyNavigationState] de-duplicates unchanged states. The poll
+     * only runs while the container is in a window (paused while the page is covered).
      */
     private fun startObserving(target: WKWebView) {
         stopObserving(target)
+        if (container.window == null) return
         stateTimer =
             NSTimer.scheduledTimerWithTimeInterval(RaftIosNavigationStatePollSeconds, repeats = true) { _ ->
                 onObservedChange(target)
@@ -257,6 +265,20 @@ internal class RaftIosSandboxWebView(
     private fun stopObserving(@Suppress("UNUSED_PARAMETER") target: WKWebView) {
         stateTimer?.invalidate()
         stateTimer = null
+    }
+
+    fun onWindowAttachmentChanged(attached: Boolean) {
+        if (disposed) return
+        val view = webView ?: return
+        if (attached) {
+            if (stateTimer == null) {
+                startObserving(view)
+                // Catch up on whatever changed while the poll was paused.
+                onObservedChange(view)
+            }
+        } else {
+            stopObserving(view)
+        }
     }
 
     internal fun onObservedChange(source: Any?) {
