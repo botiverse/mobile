@@ -39,6 +39,7 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [A green number is not a working feature: choosing criteria an implementation cannot satisfy by accident](numeric-criteria-that-pass-while-the-feature-is-broken.md) | verification / criteria | CC-Cata | 2026-10-19 | current |
 | [WebView `injectedJavaScript` runs at document start: five ways that bites](webview-document-start-injection-pitfalls.md) | webview / platform | CC-Cata | 2026-10-19 | current |
 | [Say what you did not verify, in the same sentence as what you did](declaring-your-verification-ceiling.md) | verification / reporting | CC-Cata | 2026-10-19 | current |
+| [A discriminator must actually vary](discriminators-must-vary.md) | verification / criteria | CC-Cata | 2026-10-19 | current |
 
 ## Planned sections
 
