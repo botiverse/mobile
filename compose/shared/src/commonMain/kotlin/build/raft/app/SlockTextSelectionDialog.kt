@@ -21,17 +21,21 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.dp
 
 /**
- * Full-screen modal that shows [text] in a native selectable text view, so the
- * user can long-press, drag handles and copy any part of it. Rendered Markdown
- * is not selectable on its own; message "Select Text" and the Markdown / text
- * file preview both open this dialog with the source text.
+ * Full-screen modal that shows [text] in Kuikly's native `SelectableText`, so the
+ * user can long-press, drag handles and copy any part of it with the platform
+ * selection menu. Rendered Markdown is not selectable in place; the Markdown /
+ * text file preview opens this with the source text.
+ *
+ * Mirrors ThreadMessageTextSelectionDialog, which stays inline in ThreadPage
+ * because scripts/ci/check_source_constraints.py (task #924) audits it there.
+ * Same rule applies here: no app-owned copy/select controls or SelectionContainer.
  */
 @Composable
 internal fun SlockTextSelectionDialog(
     text: String,
     textStyle: TextStyle,
     onDismiss: () -> Unit,
-    testTag: String = "slock_text_selection_text"
+    testTag: String
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()

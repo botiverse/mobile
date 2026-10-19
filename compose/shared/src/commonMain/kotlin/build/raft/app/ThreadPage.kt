@@ -314,6 +314,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.foundation.text.SelectableText
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
 import com.tencent.kuikly.compose.material3.Text
@@ -338,6 +339,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
+import com.tencent.kuikly.compose.ui.semantics.testTag
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
@@ -28499,12 +28501,62 @@ private fun ThreadMessageTextSelectionDialog(
     messageBodyTextStyle: TextStyle,
     onDismiss: () -> Unit
 ) {
-    SlockTextSelectionDialog(
-        text = message.body,
-        textStyle = messageBodyTextStyle,
-        onDismiss = onDismiss,
-        testTag = "thread_message_selection_text"
-    )
+    val originalText = message.body
+    val topSafeArea = slockTopSafeAreaPadding()
+    val bottomSafeArea = slockBottomSafeAreaPadding()
+    Modal(onWillDismiss = { onDismiss() }) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Keep the modal dismissal boundary behind the native selectable
+            // text. Capturing on the content column would prevent the platform
+            // text view from receiving long-press/handle gestures on Android.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(SlockColor.SurfaceWhite)
+                        .slockNativeDispatchCapture()
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(topSafeArea + 56.dp)
+                        .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.X,
+                        onClick = onDismiss,
+                        size = 36.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
+                        .slockRaftCardSurface()
+                ) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            SelectableText(
+                                text = originalText,
+                                style = messageBodyTextStyle,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .testTag("thread_message_selection_text")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
