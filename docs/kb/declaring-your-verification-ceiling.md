@@ -5,6 +5,10 @@
 **Verified at:** 2026-10-18
 **Status:** current
 
+> **Scope and lineage.** Not tied to a single investigation: distilled across several, and no
+> statement here has been superseded. It generalises the review criterion in
+> `numeric-criteria-that-pass-while-the-feature-is-broken.md` from per-criterion to per-report.
+
 A report is trusted to the extent its author is explicit about its edges. The failure mode this
 article is about is not lying — it is **letting a strong claim and a weak one share a sentence**, so
 a reader with less context upgrades the weak one.

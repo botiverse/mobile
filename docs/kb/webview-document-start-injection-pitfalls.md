@@ -5,6 +5,11 @@
 **Verified at:** 2026-10-18
 **Status:** current
 
+> **Scope and lineage.** Written after the investigation settled, and authoritative for the viewport
+> mechanism in §5. `numeric-criteria-that-pass-while-the-feature-is-broken.md` was written earlier
+> from the same bug and originally disagreed with this section; it has been corrected to match, and
+> its lineage note points here.
+
 Injected script reaches the page at **document start** on all three platforms (Android
 `SlockSandboxWebViewRenderView`, iOS `WKUserScript(...AtDocumentStart...)`, OHOS
 `runJavaScriptOnDocumentStart`). That single fact produced five distinct defects on one feature, each

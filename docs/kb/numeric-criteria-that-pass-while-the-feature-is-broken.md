@@ -5,6 +5,12 @@
 **Verified at:** 2026-10-18
 **Status:** current
 
+> **Scope and lineage.** Written during the investigation, from the failures as they appeared. One
+> conclusion here was later overturned: the fix for failure 1 is not "drop `initial-scale` and let
+> overview mode fit" -- overview mode will not fit a page that declares its own width. The
+> authoritative version of that mechanism is `webview-document-start-injection-pitfalls.md` §5, and
+> this article now states it the same way. The other two failures were not revised.
+
 Three times in one task (an HTML preview "desktop mode" toggle on Android) a numeric criterion I had
 chosen reported success while the feature was unusable. The work was green, CI was green, and the
 screenshots looked plausible. This article is about the shape of that mistake, not about that feature.
