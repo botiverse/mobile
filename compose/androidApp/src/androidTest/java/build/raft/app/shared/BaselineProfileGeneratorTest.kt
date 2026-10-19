@@ -59,12 +59,12 @@ class BaselineProfileGeneratorTest {
                 val intent =
                     Intent()
                         .setClassName(targetPackage, KuiklyActivityClassName)
-                        .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
+                        .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                         .putExtra(
-                            SlockKuiklyActivity.KEY_PAGE_DATA,
+                            SlockCmpActivity.KEY_PAGE_DATA,
                             JSONObject().put("runNonce", nonce).toString(),
                         )
-                        .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                        .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 startActivityAndWait(intent)
 

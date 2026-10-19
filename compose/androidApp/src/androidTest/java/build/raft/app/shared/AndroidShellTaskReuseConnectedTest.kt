@@ -97,11 +97,11 @@ class AndroidShellTaskReuseConnectedTest {
             assertEquals(false, replacementPageData.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
             assertEquals(
                 "thread-server-b",
-                replacementPageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID),
+                replacementPageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID),
             )
             assertEquals(
                 "message-server-b",
-                replacementPageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID),
+                replacementPageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID),
             )
         } finally {
             activityManager.appTasks.firstOrNull { it.taskInfo.taskId == firstTaskId }?.finishAndRemoveTask()
@@ -143,7 +143,7 @@ class AndroidShellTaskReuseConnectedTest {
         val pageData =
             JSONObject()
                 .put("instanceId", instanceId)
-                .put(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                .put(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
                 .put("slockSocialAuthProviders", "google,github")
                 .put("slockSuppressRestoreLanding", true)
                 .put("localOffsetMinutes", 0)
@@ -151,9 +151,9 @@ class AndroidShellTaskReuseConnectedTest {
                 .put("nowEpochMillis", System.currentTimeMillis())
                 .withAndroidShellLaunchTarget(target)
         return Intent(context, SlockAppShellActivity::class.java)
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+            .putExtra(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
             .putExtra(
-                SlockKuiklyActivity.KEY_PAGE_DATA,
+                SlockCmpActivity.KEY_PAGE_DATA,
                 SlockKuiklyPageData.fromJson(pageData).text,
             )
     }
@@ -167,7 +167,7 @@ class AndroidShellTaskReuseConnectedTest {
         val pageData =
             JSONObject()
                 .put("instanceId", instanceId)
-                .put(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                .put(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
                 .put("slockSocialAuthProviders", "google,github")
                 .put("slockSuppressRestoreLanding", true)
                 .put("localOffsetMinutes", 0)
@@ -176,12 +176,12 @@ class AndroidShellTaskReuseConnectedTest {
                 .put(ANDROID_SHELL_INSTANCE_ID_KEY, shellInstanceId)
                 .put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
                 .put(ANDROID_DOCUMENT_SHELL_KEY, true)
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-server-b")
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-server-b")
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-server-b")
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-server-b")
         return Intent(context, SlockAppShellActivity::class.java)
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
+            .putExtra(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
+            .putExtra(SlockCmpActivity.KEY_PAGE_DATA, pageData.toString())
     }
 
     private fun readCurrentPageData(

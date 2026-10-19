@@ -25,8 +25,8 @@ class AndroidLoginTransitionRoutingConnectedTest {
     @Test
     fun accountAndShellRequestsInOneTaskShareThePendingLoginLaunch() = onMain {
         val taskId = nextTaskId.getAndIncrement()
-        val account = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
-        val shell = source(taskId, SlockKuiklyActivity.PAGE_APP_SHELL)
+        val account = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
+        val shell = source(taskId, SlockCmpActivity.PAGE_APP_SHELL)
 
         replaceWithLogin(account)
         assertTrue("The first replacement must finish its source", account.isFinishing)
@@ -43,7 +43,7 @@ class AndroidLoginTransitionRoutingConnectedTest {
 
     @Test
     fun alreadyFinishingSourceCannotStartALateLoginReplacement() = onMain {
-        val account = source(nextTaskId.getAndIncrement(), SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val account = source(nextTaskId.getAndIncrement(), SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         account.finish()
 
         replaceWithLogin(account)
@@ -56,8 +56,8 @@ class AndroidLoginTransitionRoutingConnectedTest {
 
     @Test
     fun separateTaskIdsKeepIndependentPendingLoginLaunches() = onMain {
-        val firstAccount = source(nextTaskId.getAndIncrement(), SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
-        val secondAccount = source(nextTaskId.getAndIncrement(), SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val firstAccount = source(nextTaskId.getAndIncrement(), SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
+        val secondAccount = source(nextTaskId.getAndIncrement(), SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
 
         replaceWithLogin(firstAccount)
         replaceWithLogin(secondAccount)
@@ -72,7 +72,7 @@ class AndroidLoginTransitionRoutingConnectedTest {
 
     @Test
     fun failedStartDoesNotFinishSourceAndCanBeRetried() = onMain {
-        val account = source(nextTaskId.getAndIncrement(), SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val account = source(nextTaskId.getAndIncrement(), SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         account.failNextStart = true
 
         val failure = runCatching { replaceWithLogin(account) }.exceptionOrNull()
@@ -91,26 +91,26 @@ class AndroidLoginTransitionRoutingConnectedTest {
     @Test
     fun successfulLoginToChooserAllowsANewLogoutCycleInTheSameTask() = onMain {
         val taskId = nextTaskId.getAndIncrement()
-        val firstAccount = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val firstAccount = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         replaceWithLogin(firstAccount)
         val firstIntent = firstAccount.launches.single()
         val firstToken = requireNotNull(firstIntent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN))
-        val login = source(taskId, SlockKuiklyActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
+        val login = source(taskId, SlockCmpActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
         assertEquals(firstToken, AndroidLoginTransitionRouting.bindLogin(login, firstToken))
 
         requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
             login,
-            SlockKuiklyActivity.PAGE_AUTH_CHOOSE_SERVER,
+            SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
             JSONObject().put("slockReplaceCurrentPage", true),
         )
         assertEquals(1, login.launches.size)
         assertEquals(
-            SlockKuiklyActivity.PAGE_AUTH_CHOOSE_SERVER,
-            login.launches.single().getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME),
+            SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
+            login.launches.single().getStringExtra(SlockCmpActivity.KEY_PAGE_NAME),
         )
         assertTrue(login.isFinishing)
 
-        val nextAccount = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val nextAccount = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         replaceWithLogin(nextAccount)
         assertEquals(1, nextAccount.launches.size)
         assertLoginLaunch(nextAccount.launches.single())
@@ -127,18 +127,18 @@ class AndroidLoginTransitionRoutingConnectedTest {
     @Test
     fun accountCreatedBeforeLogoutCannotRestartLoginAfterAuthenticationCompletes() = onMain {
         val taskId = nextTaskId.getAndIncrement()
-        val shell = source(taskId, SlockKuiklyActivity.PAGE_APP_SHELL)
-        val account = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val shell = source(taskId, SlockCmpActivity.PAGE_APP_SHELL)
+        val account = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         // Account is a real registered host but has emitted no router request.
         replaceWithLogin(shell)
         assertFalse(account.isFinishing)
         val firstIntent = shell.launches.single()
         val firstToken = requireNotNull(firstIntent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN))
-        val login = source(taskId, SlockKuiklyActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
+        val login = source(taskId, SlockCmpActivity.PAGE_LOGIN).apply { intent = Intent(firstIntent) }
         assertEquals(firstToken, AndroidLoginTransitionRouting.bindLogin(login, firstToken))
         requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
             login,
-            SlockKuiklyActivity.PAGE_AUTH_CHOOSE_SERVER,
+            SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
             JSONObject().put("slockReplaceCurrentPage", true),
         )
         assertEquals(1, login.launches.size)
@@ -156,7 +156,7 @@ class AndroidLoginTransitionRoutingConnectedTest {
     @Test
     fun retiredIntentRemainsRetiredOnRecreationButAFreshHostCanStartAgain() = onMain {
         val taskId = nextTaskId.getAndIncrement()
-        val oldAccount = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val oldAccount = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         replaceWithLogin(oldAccount)
         val loginIntent = oldAccount.launches.single()
         val token = requireNotNull(loginIntent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN))
@@ -173,12 +173,12 @@ class AndroidLoginTransitionRoutingConnectedTest {
         assertTrue(recreatedAccount.isFinishing)
         assertEquals(0, recreatedAccount.startAttempts)
 
-        val login = source(taskId, SlockKuiklyActivity.PAGE_LOGIN).apply { intent = Intent(loginIntent) }
+        val login = source(taskId, SlockCmpActivity.PAGE_LOGIN).apply { intent = Intent(loginIntent) }
         assertEquals(token, AndroidLoginTransitionRouting.bindLogin(login, token))
         login.finish()
         AndroidLoginTransitionRouting.onDestroyed(login, token, changingConfigurations = false)
 
-        val freshAccount = source(taskId, SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT)
+        val freshAccount = source(taskId, SlockCmpActivity.PAGE_SETTINGS_ACCOUNT)
         assertTrue(
             "A fresh route Intent in the same task must not inherit retirement",
             AndroidLoginTransitionRouting.observeHost(freshAccount),
@@ -191,11 +191,11 @@ class AndroidLoginTransitionRoutingConnectedTest {
     @Test
     fun oldAuthenticationAttemptCannotTakeOverTheSameActivityAfterANewIntent() = onMain {
         val taskId = nextTaskId.getAndIncrement()
-        val login = source(taskId, SlockKuiklyActivity.PAGE_LOGIN)
+        val login = source(taskId, SlockCmpActivity.PAGE_LOGIN)
         val token = requireNotNull(AndroidLoginTransitionRouting.bindLogin(login, requestedToken = null))
         val oldAttempt = AndroidLoginTransitionRouting.captureAuthentication(login)
         try {
-            login.intent = Intent().putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_LOGIN)
+            login.intent = Intent().putExtra(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_LOGIN)
             AndroidLoginTransitionRouting.observeNewIntent(login)
             val oldAccepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(login, oldAttempt) {
                 error("An old authentication completion must not launch after a new Intent owns the Activity")
@@ -205,13 +205,13 @@ class AndroidLoginTransitionRoutingConnectedTest {
             assertEquals(0, login.startAttempts)
 
             val newAccepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(login) {
-                SlockKuiklyActivity.startAuthChooseServer(login)
+                SlockCmpActivity.startAuthChooseServer(login)
             }
             assertTrue("The current Intent's authentication remains usable", newAccepted)
             assertEquals(1, login.launches.size)
             assertEquals(
-                SlockKuiklyActivity.PAGE_AUTH_CHOOSE_SERVER,
-                login.launches.single().getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME),
+                SlockCmpActivity.PAGE_AUTH_CHOOSE_SERVER,
+                login.launches.single().getStringExtra(SlockCmpActivity.KEY_PAGE_NAME),
             )
         } finally {
             // If an assertion fails before completion, release this case's
@@ -254,7 +254,7 @@ class AndroidLoginTransitionRoutingConnectedTest {
 
     private fun source(taskId: Int, pageName: String): RecordingActivity =
         RecordingActivity(InstrumentationRegistry.getInstrumentation().targetContext, taskId).apply {
-            intent = Intent().putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, pageName)
+            intent = Intent().putExtra(SlockCmpActivity.KEY_PAGE_NAME, pageName)
             AndroidLoginTransitionRouting.observeHost(this)
             sources += this
         }
@@ -262,14 +262,14 @@ class AndroidLoginTransitionRoutingConnectedTest {
     private fun replaceWithLogin(source: Activity) {
         requireNotNull(KuiklyRenderAdapterManager.krRouterAdapter).openPage(
             source,
-            SlockKuiklyActivity.PAGE_LOGIN,
+            SlockCmpActivity.PAGE_LOGIN,
             JSONObject().put("slockReplaceCurrentPage", true),
         )
     }
 
     private fun assertLoginLaunch(intent: Intent) {
         assertEquals(SlockKuiklyActivity::class.java.name, intent.component?.className)
-        assertEquals(SlockKuiklyActivity.PAGE_LOGIN, intent.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME))
+        assertEquals(SlockCmpActivity.PAGE_LOGIN, intent.getStringExtra(SlockCmpActivity.KEY_PAGE_NAME))
         assertTrue(
             "The accepted launch must carry its native ownership ticket",
             !intent.getStringExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN).isNullOrBlank(),

@@ -80,6 +80,20 @@ import build.raft.app.R
 import build.raft.app.slockInputFontFaceName
 import build.raft.app.MainActivity
 import build.raft.app.cmp.SlockCmpRouter
+import build.raft.app.cmp.SlockCmpRoot
+import build.raft.app.RaftWebViewFileChooserHost
+import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftHostEvents
+import build.raft.app.cmp.host.SlockCmpHost
+import build.raft.app.cmp.host.SlockCmpNavigator
+import build.raft.app.cmp.host.SlockCmpPageArgs
+import build.raft.app.parseSlockJsonObjectOrNull
+import build.raft.app.toSlockJsonString
+import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.WindowCompat
+import kotlinx.serialization.json.JsonObject
+import java.lang.ref.WeakReference
 import build.raft.app.BuildConfig
 import build.raft.app.androidExternalBrowserIntent
 import build.raft.app.data.SlockDesktopShortcutContract
@@ -112,7 +126,6 @@ import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.core.data.storage.SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
-import build.raft.app.data.SlockInProcessNotifyModule
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -148,26 +161,6 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
-import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
-import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
-import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
-import com.tencent.kuikly.core.render.android.adapter.IKRFontAdapter
-import com.tencent.kuikly.core.render.android.adapter.IKRImageAdapter
-import com.tencent.kuikly.core.render.android.adapter.IKRLogAdapter
-import com.tencent.kuikly.core.render.android.adapter.IKRRouterAdapter
-import com.tencent.kuikly.core.render.android.adapter.IKRUncaughtExceptionHandlerAdapter
-import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
-import com.tencent.kuikly.core.render.android.context.KuiklyRenderCoreExecuteModeBase
-import com.tencent.kuikly.core.render.android.exception.ErrorReason
-import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegator
-import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
-import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
-import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
-import com.tencent.kuikly.core.render.android.performace.KRMonitorType
-import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
-import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
-import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
-import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
@@ -679,7 +672,7 @@ private data class PendingAndroidAttachmentSaveAs(
     val source: AndroidAttachmentContentUriSource,
     val owner: AndroidAttachmentOwnerLease,
     val attachmentId: String,
-    val callback: KuiklyRenderCallback?,
+    val callback: RaftBridgeCallback?,
     val restoredFromActivityResultState: Boolean = false
 )
 
@@ -744,20 +737,39 @@ internal fun discardRestoredThreadCameraCaptureResult(file: File): Boolean =
 private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
         restoredFromActivityResultState || ProcessAndroidAttachmentOwners.admit(owner)
 
-open class SlockKuiklyActivity :
+/**
+ * The Android page host: renders one page (any page registered with `SlockCmpRouter`, i.e. every
+ * :shared page through `RaftPageRegistry`) with Compose Multiplatform inside `SlockCmpRoot`.
+ *
+ * Launched with the `pageName` / `pageData` extras through [start] / [startAppShell]. The app
+ * shell runs in the [SlockAppShellActivity] / [SlockDocumentShellActivity] subclasses (task and
+ * document launch modes); [SlockKuiklyActivity] is kept only as a manifest entry point.
+ *
+ * - Edge to edge: pages pad themselves with window insets; the host also publishes the bar
+ *   heights in pageData and as `slockWindowInsetsChanged` host events (Kuikly host contract).
+ * - Back: Compose `BackHandler`s registered by the page run first; this host's fallback callback
+ *   moves the app shell task to the back or finishes the page.
+ * - Native capabilities: [SlockKuiklyBridgeModule] behind [SlockCmpHost.bridgeTransport]
+ *   (sync and async), host-bound ones through [RaftHostActivity].
+ */
+internal open class SlockCmpActivity :
     ComponentActivity(),
-    KuiklyRenderViewBaseDelegatorDelegate,
-    SlockKuiklyChildPageLoadListener,
-    SlockSandboxWebViewFileChooserHost {
+    RaftHostActivity,
+    SlockCmpNavigator,
+    RaftWebViewFileChooserHost {
 
-    private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private val bridgeDelegate =
+        lazy {
+            val activityRef = WeakReference<Activity>(this)
+            SlockKuiklyBridgeModule(applicationContext, hostActivity = { activityRef.get() })
+        }
+    private val bridge by bridgeDelegate
+    private val hostEvents = RaftHostEvents()
     private val adaptivePaneHostDelegate =
         lazy {
             AndroidAdaptivePaneHost(
                 activity = this,
-                sendEvent = { event, data ->
-                    kuiklyRenderViewDelegator.sendEvent(event, data)
-                },
+                sendEvent = { event, data -> sendHostEvent(event, data) },
             )
         }
     private val adaptivePaneHost by adaptivePaneHostDelegate
@@ -776,8 +788,8 @@ open class SlockKuiklyActivity :
     private val homeColdStartFallbackTimeoutRunnable =
         Runnable { handleHomeColdStartFallbackTimeout() }
     private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
-    private var kuiklyHostAttached = false
-    private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private var hostAttached = false
+    private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
     private var pendingAttachmentSaveAs: PendingAndroidAttachmentSaveAs? = null
@@ -788,10 +800,11 @@ open class SlockKuiklyActivity :
             ?: "legacy-app-shell"
     }
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
-    private val kuiklySystemBackCallback =
+    // Registered before the page composes, so every Compose BackHandler the page installs runs first.
+    private val hostSystemBackCallback =
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    handleKuiklySystemBack()
+                    handleHostSystemBack()
                 }
             }
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<PickVisualMediaRequest> =
@@ -853,9 +866,6 @@ open class SlockKuiklyActivity :
             finish()
             return
         }
-        if (redirectToCmpHostIfRouted()) {
-            return
-        }
         if (pageName == PAGE_LOGIN) {
             loginTransitionToken = AndroidLoginTransitionRouting.bindLogin(
                 this,
@@ -888,7 +898,7 @@ open class SlockKuiklyActivity :
                     restoredAfterActivityRecreation = true,
                 )
             }
-        onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
+        onBackPressedDispatcher.addCallback(this, hostSystemBackCallback)
         setContentView(R.layout.activity_slock_kuikly)
         prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
@@ -897,9 +907,9 @@ open class SlockKuiklyActivity :
         suppressVisualKeyboard()
         installHomeColdStartNativeHoldIfNeeded()
         if (homeColdStartUsesNativeHold) {
-            attachKuiklyHostAfterHoldFirstDraw()
+            attachHostAfterHoldFirstDraw()
         } else {
-            attachKuiklyHost()
+            attachHost()
         }
     }
 
@@ -908,7 +918,7 @@ open class SlockKuiklyActivity :
      * third-party windows at 60Hz unless the window explicitly requests a
      * display mode. Pick the highest-refresh [Display.Mode] that keeps the
      * current resolution so SurfaceFlinger is allowed to run this window at
-     * 90/120Hz. Kuikly's `KRVsyncModule` follows `Choreographer`, which then
+     * 90/120Hz. Compose's frame clock follows `Choreographer`, which then
      * ticks at the unlocked rate. No-op below API 23 or when the panel exposes
      * a single mode.
      */
@@ -978,7 +988,7 @@ open class SlockKuiklyActivity :
         )
     }
 
-    private fun attachKuiklyHostAfterHoldFirstDraw() {
+    private fun attachHostAfterHoldFirstDraw() {
         val content = findViewById<View>(android.R.id.content)
         var drawObserved = false
         val listener =
@@ -987,31 +997,119 @@ open class SlockKuiklyActivity :
                 drawObserved = true
                 content.post {
                     removeHomeColdStartFirstDrawListener(content)
-                    attachKuiklyHost()
+                    attachHost()
                 }
             }
         homeColdStartFirstDrawListener = listener
         content.viewTreeObserver.addOnDrawListener(listener)
     }
 
-    private fun attachKuiklyHost() {
-        if (kuiklyHostAttached || isFinishing || isDestroyed) return
+    private fun attachHost() {
+        if (hostAttached || isFinishing || isDestroyed) return
         SlockKuiklyAdapters.init(applicationContext)
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
-        installSlockInputFontBridge(container)
         val spec = createPageSpec()
         pageSpec = spec
         SlockPerformanceDiagnostics.install(window)
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
-        SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
-        kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
-        kuiklyHostAttached = true
+        SlockPerformanceDiagnostics.updateOperation(container, "cmp_attach")
+        if (!SlockCmpRouter.rendersOnCmp(spec.pageName)) {
+            // SlockCmpRoot renders a placeholder; keep the old recoverable error surface on top.
+            SlockAppLog.e(TAG, "cmp_host_unknown_page page=${spec.pageName}")
+            showHostErrorSurface("UNKNOWN_PAGE")
+        }
+        val args = SlockCmpPageArgs.fromJsonText(spec.pageName, spec.pageData.text)
+        val transport = KuiklyBridgeModuleTransport(bridge)
+        val host =
+            SlockCmpHost(
+                capabilities = BridgeWireHostCapabilities(transport),
+                navigator = this,
+                bridgeTransport = transport,
+                events = hostEvents,
+            )
+        val composeView =
+            ComposeView(this).apply {
+                setContent {
+                    SlockCmpRoot(args, host, onDarkThemeResolved = ::applySystemBarAppearance)
+                }
+            }
+        container.addView(
+            composeView,
+            0,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        observeCmpFirstFrame(composeView)
+        hostAttached = true
+        SlockAppLog.record(TAG, "cmp_host_open page=${spec.pageName}")
         adaptivePaneHost.start()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            kuiklyRenderViewDelegator.onResume()
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
         }
         SlockAndroidLocalDiagnostics.reportAppFullLaunch()
+    }
+
+    private fun observeCmpFirstFrame(view: View) {
+        var drawObserved = false
+        val listener =
+            ViewTreeObserver.OnDrawListener {
+                if (drawObserved) return@OnDrawListener
+                drawObserved = true
+                view.post {
+                    removeCmpFirstFrameListener(view)
+                    onCmpFirstFrame()
+                }
+            }
+        cmpFirstFrameListener = listener
+        view.viewTreeObserver.addOnDrawListener(listener)
+    }
+
+    private fun removeCmpFirstFrameListener(view: View? = findViewById(R.id.slock_kuikly_container)) {
+        val listener = cmpFirstFrameListener ?: return
+        cmpFirstFrameListener = null
+        val observer = view?.viewTreeObserver ?: return
+        if (observer.isAlive) observer.removeOnDrawListener(listener)
+    }
+
+    /**
+     * First frame of the page composition: the CMP counterpart of Kuikly's page-load-complete
+     * (render readiness, the task #482 insets replay) and of the app-shell child page load that
+     * released the home cold-start splash.
+     *
+     * TODO(cmp-switch): the splash is now released on the shell's first frame, not when the home
+     * child page finished loading its content (no child page load signal on CMP yet).
+     */
+    private fun onCmpFirstFrame() {
+        if (isFinishing || isDestroyed) return
+        val now = SystemClock.elapsedRealtime()
+        renderReadinessTopPageLoad = SlockKuiklyLoadReadiness(succeeded = true, completedAtMillis = now)
+        if (Build.VERSION.SDK_INT >= 30) {
+            window?.decorView?.rootWindowInsets?.let { insets ->
+                lastPublishedInsetsKey = null
+                publishWindowInsets(insets)
+            }
+        }
+        if (homeColdStartSplashGate?.release() == true) {
+            removeHomeColdStartNativeHold(reason = "cmp_first_frame")
+            SlockAppLog.d("SlockBoot", "home_content_splash_released source=cmp_first_frame page=$pageName")
+        }
+    }
+
+    /** Light theme: dark status/navigation bar icons; dark theme: light icons. */
+    private fun applySystemBarAppearance(dark: Boolean) {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
+
+    /** Kuikly `sendEvent`: delivered to the hosted page(s) as a pager event, on the main thread. */
+    private fun sendHostEvent(event: String, data: Map<String, Any?>) {
+        val payload = parseSlockJsonObjectOrNull(JSONObject(data).toString()) ?: JsonObject(emptyMap())
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            hostEvents.send(event, payload)
+        } else {
+            runOnUiThread { hostEvents.send(event, payload) }
+        }
     }
 
     private fun removeHomeColdStartFirstDrawListener(
@@ -1022,27 +1120,6 @@ open class SlockKuiklyActivity :
             content.viewTreeObserver.removeOnDrawListener(listener)
         }
         homeColdStartFirstDrawListener = null
-    }
-
-    /**
-     * [start] already opens CMP pages in [SlockCmpActivity]; this covers Intents that name this
-     * Activity directly (the debug diagnostics deep-link alias, instrumentation tests).
-     */
-    private fun redirectToCmpHostIfRouted(): Boolean {
-        val routedPageName = pageName
-        if (this is SlockAppShellActivity || !SlockCmpRouter.rendersOnCmp(routedPageName)) return false
-        val forwardedFlags =
-            intent.flags and (
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
-                    Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                )
-        startActivity(
-            SlockCmpActivity.intent(this, routedPageName, resolvedPageData(intent).text)
-                .addFlags(forwardedFlags)
-        )
-        finish()
-        return true
     }
 
     private fun prepareHomeColdStartSplashIfNeeded() {
@@ -1138,33 +1215,6 @@ open class SlockKuiklyActivity :
         SlockAppLog.d("SlockBoot", "home_content_splash_hold_view_removed reason=$reason")
     }
 
-    override fun onSlockKuiklyChildPageLoadComplete(
-        pageName: String,
-        pageDataText: String,
-        isSucceed: Boolean
-    ) {
-        renderReadinessChildLoads[pageName] =
-            SlockKuiklyLoadReadiness(
-                succeeded = isSucceed,
-                completedAtMillis = SystemClock.elapsedRealtime()
-            )
-        if (!isHomeAppShellChildPageData(pageDataText)) return
-        if (!isSucceed) {
-            SlockAppLog.w(
-                "SlockBoot",
-                "home_content_splash_child_load_failed page=$pageName " +
-                    "action=keep_brand_fallback"
-            )
-            return
-        }
-        if (homeColdStartSplashGate?.release() != true) return
-        removeHomeColdStartNativeHold(reason = "child_page_load")
-        SlockAppLog.d(
-            "SlockBoot",
-            "home_content_splash_released source=child_page_load success=$isSucceed page=$pageName"
-        )
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         AndroidLoginTransitionRouting.retireHost(this)
@@ -1192,7 +1242,7 @@ open class SlockKuiklyActivity :
         hideScreenshotFeedbackAction()
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
-        removeSlockInputFontBridge()
+        removeCmpFirstFrameListener()
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
         }
@@ -1212,9 +1262,7 @@ open class SlockKuiklyActivity :
             }
         }
         super.onDestroy()
-        if (kuiklyHostAttached) {
-            kuiklyRenderViewDelegator.onDetach()
-        }
+        if (bridgeDelegate.isInitialized()) bridge.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1352,7 +1400,7 @@ open class SlockKuiklyActivity :
     private suspend fun promptScreenshotFeedbackDescription(): String? =
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { continuation ->
-                    val input = EditText(this@SlockKuiklyActivity).apply {
+                    val input = EditText(this@SlockCmpActivity).apply {
                         hint = SlockHostStrings.feedbackPromptPlaceholder()
                         minLines = 3
                         setPadding(
@@ -1363,7 +1411,7 @@ open class SlockKuiklyActivity :
                         )
                     }
                     val dialog =
-                            AlertDialog.Builder(this@SlockKuiklyActivity)
+                            AlertDialog.Builder(this@SlockCmpActivity)
                                 .setTitle(SlockHostStrings.feedbackPromptTitle())
                                 .setMessage(SlockHostStrings.feedbackPromptMessage())
                                 .setView(input)
@@ -1401,21 +1449,17 @@ open class SlockKuiklyActivity :
     }
 
     override fun onPause() {
-        if (kuiklyHostAttached) {
+        if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Hidden, "activity_on_pause")
         }
         super.onPause()
-        if (kuiklyHostAttached) {
-            kuiklyRenderViewDelegator.onPause()
-        }
     }
 
     override fun onResume() {
         super.onResume()
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         suppressVisualKeyboard()
-        if (kuiklyHostAttached) {
-            kuiklyRenderViewDelegator.onResume()
+        if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
         }
 
@@ -1447,20 +1491,9 @@ open class SlockKuiklyActivity :
         }
     }
 
-    @Suppress("DEPRECATION")
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        handleKuiklySystemBack()
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (handleSlockTextFieldEnterKey(event)) {
             return true
-        }
-        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            if (kuiklyRenderViewDelegator.onBackPressed()) {
-                return true
-            }
         }
         return try {
             super.dispatchKeyEvent(event)
@@ -1502,20 +1535,59 @@ open class SlockKuiklyActivity :
         return false
     }
 
-    private fun handleKuiklySystemBack() {
-        if (kuiklyRenderViewDelegator.onBackPressed()) return
+    private fun handleHostSystemBack() {
         if (moveAppShellTaskToBackIfNeeded()) return
-        kuiklySystemBackCallback.isEnabled = false
+        hostSystemBackCallback.isEnabled = false
         try {
             onBackPressedDispatcher.onBackPressed()
         } finally {
-            kuiklySystemBackCallback.isEnabled = true
+            hostSystemBackCallback.isEnabled = true
         }
     }
 
-    internal fun closeKuiklyHostPage() {
+    override fun closeHostPage() {
         if (moveAppShellTaskToBackIfNeeded()) return
         finish()
+    }
+
+    override fun hostContentContainer(): ViewGroup? =
+        if (isDestroyed) null else findViewById(R.id.slock_kuikly_container)
+
+    /**
+     * Kuikly `RouterModule.openPage` (formerly the Kuikly router adapter): login replacement,
+     * post-authentication hand-off, the app shell launch path and `slockReplaceCurrentPage`.
+     */
+    override fun openPage(pageName: String, pageData: JsonObject) {
+        val data = JSONObject(pageData.toSlockJsonString())
+        val replaceCurrent = shouldReplaceCurrentPage(data)
+        if (pageName == SlockKuiklyPages.LOGIN && replaceCurrent) {
+            AndroidLoginTransitionRouting.openReplacement(this, data)
+            return
+        }
+        val startDestination = {
+            if (pageName == SlockKuiklyPages.APP_SHELL) {
+                startAppShell(this, data)
+            } else {
+                start(this, pageName, data)
+            }
+        }
+        if (AndroidLoginTransitionRouting.isPostAuthReplacement(
+                intent?.getStringExtra(KEY_PAGE_NAME), pageName, replaceCurrent,
+            )) {
+            if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
+                    this, launchDestination = startDestination,
+                )) return
+        } else {
+            startDestination()
+        }
+        if (replaceCurrent) {
+            finish()
+        }
+    }
+
+    /** Kuikly `RouterModule.closePage` / bridge `closePage`. */
+    override fun closePage() {
+        closeHostPage()
     }
 
     private fun moveAppShellTaskToBackIfNeeded(): Boolean {
@@ -1531,78 +1603,13 @@ open class SlockKuiklyActivity :
     // native fallback instead of leaving a dead view or leaking a raw stack.
     private var hostErrorSurfaceShown = false
 
-    override fun onUnhandledException(
-        throwable: Throwable,
-        errorReason: ErrorReason,
-        executeMode: KuiklyRenderCoreExecuteModeBase
-    ) {
-        super.onUnhandledException(throwable, errorReason, executeMode)
-        // Keep the full local stack for the visual-fixture crash investigation. The previous
-        // diagnostics path retained only a sanitized summary, which made the deterministic
-        // wrapped+nested CALL_KOTLIN failure impossible to localize from logcat.
-        android.util.Log.e(
-            "SlockKuiklyCrash",
-            "unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
-            throwable
-        )
-        // Visual capture intentionally collects only a narrow tag allow-list. Mirror the
-        // throwable there so the wrapped CALL_KOTLIN cause survives the capture receipt.
-        android.util.Log.e(
-            "VisualCapture",
-            "kuikly_unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
-            throwable
-        )
-        SlockAndroidLocalDiagnostics.reportCaughtException(
-            name = "KuiklyUnhandledException",
-            throwable = throwable,
-            extraData =
-                mapOf(
-                    "source" to "host_delegate",
-                    "reason" to errorReason.name,
-                    "executeMode" to executeMode.mode.toString()
-                )
-        )
-        runOnUiThread { showHostErrorSurface(errorReason.name) }
-    }
-
-    override fun onPageLoadComplete(
-        isSucceed: Boolean,
-        errorReason: ErrorReason?,
-        executeMode: KuiklyRenderCoreExecuteModeBase
-    ) {
-        super.onPageLoadComplete(isSucceed, errorReason, executeMode)
-        renderReadinessTopPageLoad =
-            SlockKuiklyLoadReadiness(
-                succeeded = isSucceed,
-                completedAtMillis = SystemClock.elapsedRealtime()
-            )
-        if (isSucceed) {
-            // task #482: insets dispatched between onAttach (pageData copy) and
-            // the shared layer's first observer registration would be lost and
-            // dedupe-suppressed on the next equal dispatch. Force one replay at
-            // page load completion so the mounted pager converges.
-            if (Build.VERSION.SDK_INT >= 30) {
-                window?.decorView?.rootWindowInsets?.let { insets ->
-                    lastPublishedInsetsKey = null
-                    publishWindowInsets(insets)
-                }
-            }
-            return
-        }
-        SlockAppLog.e(
-            "SlockKuiklyHost",
-            "page_load_failed reason=${errorReason?.name ?: "unknown"} mode=${executeMode.mode}"
-        )
-        runOnUiThread { showHostErrorSurface(errorReason?.name ?: "PAGE_LOAD_FAILED") }
-    }
-
     private fun showHostErrorSurface(reasonCode: String) {
         if (hostErrorSurfaceShown || isFinishing || isDestroyed) return
         val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
         hostErrorSurfaceShown = true
         SlockAndroidLocalDiagnostics.recordLog(
             "error",
-            "SlockKuikly",
+            TAG,
             "visual_host_error_surface reason=$reasonCode page=${pageSpec?.pageName ?: pageName}"
         )
         val density = resources.displayMetrics.density
@@ -1666,66 +1673,9 @@ open class SlockKuiklyActivity :
             contentHeight = window.decorView.height
         )
 
-    override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
-        super.registerExternalModule(kuiklyRenderExport)
-        kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
-            SlockKuiklyBridgeModule(applicationContext)
-        }
-        // task #354: replace the built-in KRNotifyModule (external module
-        // registration is last-wins) so notify events travel in-process via
-        // SlockKuiklyEventHub instead of a Binder-limited system broadcast.
-        kuiklyRenderExport.moduleExport(SlockInProcessNotifyModule.MODULE_NAME) {
-            SlockInProcessNotifyModule()
-        }
-    }
-
-    override fun performanceMonitorTypes(): List<KRMonitorType> =
-            SlockKuiklyPerformanceDiagnostics.monitorTypes
-
-    override fun onGetLaunchData(data: KRLaunchData) {
-        SlockKuiklyPerformanceDiagnostics.recordLaunch("activity", pageName, data)
-    }
-
-    override fun onGetPerformanceData(data: KRPerformanceData) {
-        SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
-    }
-
-    override fun useHostDisplayMetrics(): Boolean =
-        shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)
-
-    private fun installSlockInputFontBridge(container: ViewGroup) {
-        updateDefaultShellDisplayMetrics(container)
-        // Only display metrics are tracked here. Input typefaces are owned by
-        // SlockKuiklyTextFieldView (selected face by default, explicit fontFamily honoured);
-        // re-forcing a face on every EditText each layout overrode both.
-        val listener =
-                ViewTreeObserver.OnGlobalLayoutListener {
-                    updateDefaultShellDisplayMetrics(container)
-                }
-        inputFontLayoutListener = listener
-        container.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        container.post {
-            updateDefaultShellDisplayMetrics(container)
-        }
-    }
-
-    private fun updateDefaultShellDisplayMetrics(container: ViewGroup) {
-        if (!shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)) return
-        SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
-    }
-
-    private fun removeSlockInputFontBridge() {
-        val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
-        val listener = inputFontLayoutListener ?: return
-        if (container.viewTreeObserver.isAlive) {
-            container.viewTreeObserver.removeOnGlobalLayoutListener(listener)
-        }
-        inputFontLayoutListener = null
-    }
-
-    internal fun requestAttachmentSaveAs(
+    override fun requestAttachmentSaveAs(
             dispatch: AndroidAttachmentOpenDispatch.SaveAs,
-            callback: KuiklyRenderCallback?
+            callback: RaftBridgeCallback?
     ) {
         runOnUiThread {
             if (!ProcessAndroidAttachmentOwners.admit(dispatch.owner)) {
@@ -1879,12 +1829,12 @@ open class SlockKuiklyActivity :
         }
     }
 
-    internal fun requestThreadAttachmentUpload(
+    override fun requestThreadAttachmentUpload(
             channelId: String,
             imageOnly: Boolean,
             capture: Boolean,
-            compressImages: Boolean = false,
-            callback: KuiklyRenderCallback?
+            compressImages: Boolean,
+            callback: RaftBridgeCallback?
     ) {
         if (pendingThreadAttachmentUpload != null) {
             callback?.invoke(
@@ -1978,12 +1928,12 @@ open class SlockKuiklyActivity :
         )
     }
 
-    internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
+    override fun requestGoogleNativeSocialAuth(callback: RaftBridgeCallback?): Boolean {
         if (!googleSocialAuthGateway.isNativeConfigured()) return false
 
         val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         lifecycleScope.launch {
-            val nativeResult = googleSocialAuthGateway.signIn(this@SlockKuiklyActivity)
+            val nativeResult = googleSocialAuthGateway.signIn(this@SlockCmpActivity)
             when (nativeResult) {
                 is GoogleSocialAuthResult.IdToken -> {
                     val result =
@@ -2000,10 +1950,10 @@ open class SlockKuiklyActivity :
                     when (result) {
                         is SharedAuthResult.Success -> {
                             val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
-                                this@SlockKuiklyActivity, loginTransition,
+                                this@SlockCmpActivity, loginTransition,
                             ) {
-                                SlockKuiklyActivity.startAppShell(
-                                        this@SlockKuiklyActivity,
+                                SlockCmpActivity.startAppShell(
+                                        this@SlockCmpActivity,
                                         clearTask = true
                                 )
                             }
@@ -2540,38 +2490,6 @@ open class SlockKuiklyActivity :
                         }
                     }
 
-    override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
-        super.registerExternalRenderView(kuiklyRenderExport)
-        kuiklyRenderExport.renderViewExport(
-            KRTextFieldView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockKuiklyTextFieldView(context, window.attributes?.softInputMode) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            KRTextAreaView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockKuiklyTextAreaView(context, window.attributes?.softInputMode) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            SlockLucideIconRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            SlockPixelAvatarRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockPixelAvatarRenderView(context) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            SlockKuiklyPageRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockKuiklyPageRenderView(context, this) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            SlockNativeTiltedBadgeChromeRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockNativeTiltedBadgeChromeRenderView(context) }
-        )
-        kuiklyRenderExport.renderViewExport(
-            SlockSandboxWebViewRenderView.VIEW_NAME,
-            renderViewExportCreator = { context -> SlockSandboxWebViewRenderView(context) }
-        )
-    }
-
     private fun createPageSpec(): SlockKuiklyPageSpec {
         val pageData =
                 resolvedPageData(intent)
@@ -2801,7 +2719,7 @@ open class SlockKuiklyActivity :
                             )
             )
         }
-        kuiklyRenderViewDelegator.sendEvent(
+        sendHostEvent(
                 EVENT_WINDOW_INSETS_CHANGED,
                 mapOf(
                         "statusBarHeightPx" to top.toString(),
@@ -2827,7 +2745,7 @@ open class SlockKuiklyActivity :
         }
     }
 
-    internal fun updatePerformanceScene(action: String, sceneName: String) {
+    override fun updatePerformanceScene(action: String, sceneName: String) {
         val cleanScene = sceneName.takeIf { it.isNotBlank() } ?: return
         val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
         when (action) {
@@ -2873,12 +2791,12 @@ open class SlockKuiklyActivity :
             intent.getBooleanExtra(KEY_SUPPRESS_SOFT_KEYBOARD, false) ||
                     (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
 
-    internal fun requestRealtimeConnect(
+    override fun requestRealtimeConnect(
         serverId: String,
         accessToken: String,
-        shellInstanceId: String = "",
+        shellInstanceId: String,
         lastSeq: Long,
-        forceReconnect: Boolean = false,
+        forceReconnect: Boolean,
         witness: RealtimeConnectionWitnessToken,
     ) {
         if (
@@ -2902,7 +2820,7 @@ open class SlockKuiklyActivity :
         )
     }
 
-    internal fun requestRealtimeReconcile(
+    override fun requestRealtimeReconcile(
         serverIds: Set<String>,
         accessToken: String,
         environmentId: String,
@@ -2923,11 +2841,11 @@ open class SlockKuiklyActivity :
         )
     }
 
-    internal fun requestRealtimeDisconnect(
+    override fun requestRealtimeDisconnect(
         reason: String,
-        serverId: String = "",
-        shellInstanceId: String = "",
-        explicitClose: Boolean = false
+        serverId: String,
+        shellInstanceId: String,
+        explicitClose: Boolean
     ) {
         AndroidRealtimeKeepAliveController.stop(applicationContext, reason)
         AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(
@@ -2938,7 +2856,7 @@ open class SlockKuiklyActivity :
         )
     }
 
-    internal fun requestRealtimeCursorAdvance(
+    override fun requestRealtimeCursorAdvance(
         serverId: String,
         appliedSeq: Long,
         witness: RealtimeConnectionWitnessToken,
@@ -2952,6 +2870,7 @@ open class SlockKuiklyActivity :
     }
 
     companion object {
+        private const val TAG = "SlockCmpHost"
         private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
         private const val THREAD_CAMERA_CAPTURE_STATE_KEY = "slockThreadCameraCaptureState"
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
@@ -3299,16 +3218,6 @@ internal object SlockKuiklyAdapters {
             return
         }
         initialized = true
-        with(KuiklyRenderAdapterManager) {
-            krImageAdapter = SlockKuiklyImageAdapter(context.applicationContext)
-            krLogAdapter = SlockKuiklyLogAdapter
-            krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter
-            SlockKuiklyFontAdapter.init(context.applicationContext)
-            krFontAdapter = SlockKuiklyFontAdapter
-            krRouterAdapter = SlockKuiklyRouterAdapter
-            krThreadAdapter = SlockKuiklyThreadAdapter
-            krVideoViewAdapter = SlockKRVideoViewAdapter
-        }
     }
 }
 
@@ -3316,7 +3225,7 @@ private data class PendingThreadAttachmentUpload(
         val channelId: String,
         val imageOnly: Boolean,
         val compressImages: Boolean,
-        val callback: KuiklyRenderCallback?
+        val callback: RaftBridgeCallback?
 )
 
 private data class PendingThreadCameraCapture(
@@ -3403,45 +3312,6 @@ internal fun safePickedThreadAttachmentFileName(
 internal fun threadMediaAttachmentPickerRequest(): PickVisualMediaRequest =
         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
 
-private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
-    override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
-        val activity = context as? Activity
-        val replaceCurrent = SlockKuiklyActivity.shouldReplaceCurrentPage(pageData)
-        if (activity != null && pageName == SlockKuiklyPages.LOGIN && replaceCurrent) {
-            AndroidLoginTransitionRouting.openReplacement(activity, pageData)
-            return
-        }
-        val startDestination = {
-            if (pageName == SlockKuiklyPages.APP_SHELL) {
-                SlockKuiklyActivity.startAppShell(context, pageData)
-            } else {
-                SlockKuiklyActivity.start(context, pageName, pageData)
-            }
-        }
-        if (activity != null && AndroidLoginTransitionRouting.isPostAuthReplacement(
-                activity.intent?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME), pageName, replaceCurrent,
-            )) {
-            if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
-                    activity, launchDestination = startDestination,
-                )) return
-        } else {
-            startDestination()
-        }
-        if (replaceCurrent) {
-            activity?.finish()
-        }
-    }
-
-    override fun closePage(context: Context) {
-        val activity = context as? Activity ?: return
-        if (activity is SlockKuiklyActivity) {
-            activity.closeKuiklyHostPage()
-        } else {
-            activity.finish()
-        }
-    }
-}
-
 internal enum class SlockKuiklyHostCloseAction {
     Finish,
     MoveTaskToBack
@@ -3454,282 +3324,9 @@ internal fun slockKuiklyHostCloseAction(pageName: String?): SlockKuiklyHostClose
             SlockKuiklyHostCloseAction.Finish
         }
 
-private object SlockKuiklyLogAdapter : IKRLogAdapter {
-    override val asyncLogEnable: Boolean = true
-
-    override fun i(tag: String, msg: String) {
-        Log.i(tag, msg)
-    }
-
-    override fun d(tag: String, msg: String) {
-        Log.d(tag, msg)
-    }
-
-    override fun e(tag: String, msg: String) {
-        // Error-level render logs must reach persistent diagnostics, not just
-        // Logcat: the Kuikly fork's bridge marshal reports dropped fields via
-        // KuiklyRenderLog.e (task #476), and that evidence has to survive into
-        // the exported diagnostics ring. SlockAppLog.e writes Logcat itself.
-        SlockAppLog.e(tag, msg)
-    }
-}
-
-private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
-    override fun uncaughtException(throwable: Throwable) {
-        Log.e("SlockKuikly", "Kuikly render error", throwable)
-        SlockAndroidLocalDiagnostics.reportCaughtException(
-            name = "KuiklyRenderException",
-            throwable = throwable,
-            extraData =
-                mapOf(
-                    "source" to "kuikly_render",
-                    "thread" to Thread.currentThread().name
-                )
-        )
-    }
-}
-
-internal object SlockKuiklyFontAdapter : IKRFontAdapter {
-    private const val DESIGN_WIDTH_DP = 393f
-
-    private data class SlockFontSpec(
-            val fontRes: Int,
-            val weight: Int,
-            val useResourceTypeface: Boolean = false,
-    )
-
-    private var context: Context? = null
-    @Volatile
-    private var hostDisplayMetrics: DisplayMetrics? = null
-    private val typefaceCache = mutableMapOf<Int, Typeface>()
-
-    fun init(context: Context) {
-        this.context = context.applicationContext
-    }
-
-    /**
-     * The face native editors use: the Regular sans face of the user's Settings > Appearance
-     * choice, or the host sans face for "System". Resolved on every call (the underlying
-     * Typeface is cached) so a font change reaches EditTexts on the next layout pass instead of
-     * staying on whatever face was resolved first.
-     */
-    fun inputTypeface(context: Context): Typeface? {
-        val faceName = slockInputFontFaceName() ?: return Typeface.SANS_SERIF
-        return bundledTypeface(faceName, context) ?: Typeface.SANS_SERIF
-    }
-
-    internal fun useResourceTypefaceFor(fontFamily: String?): Boolean {
-        val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
-        // Resource-backed (single TTF via ResourcesCompat) rather than CustomFallbackBuilder:
-        // CustomFallbackBuilder's per-glyph resolver is what turns U+0031 into a sans-serif glyph
-        // on affected hosts, so every mono face stays on the single-resource path.
-        return fontName in setOf(
-                "SpaceMono-Regular",
-                "space_mono_regular",
-                "SpaceMono-Bold",
-                "space_mono_bold",
-                "GeistMono-Regular",
-                "geist_mono_regular",
-                "GeistMono-Bold",
-                "geist_mono_bold"
-        )
-    }
-
-    fun updateHostDisplayMetrics(container: View) {
-        val context = container.context ?: return
-        val widthPx = when {
-            container.width > 0 -> container.width
-            context.resources.displayMetrics.widthPixels > 0 -> context.resources.displayMetrics.widthPixels
-            else -> return
-        }
-        val heightPx = when {
-            container.height > 0 -> container.height
-            context.resources.displayMetrics.heightPixels > 0 -> context.resources.displayMetrics.heightPixels
-            else -> widthPx
-        }
-        val sourceMetrics = context.resources.displayMetrics
-        val density = hostDisplayDensity(
-            widthPx = widthPx,
-            heightPx = heightPx,
-            sourceDensity = sourceMetrics.density
-        ) ?: return
-        hostDisplayMetrics = DisplayMetrics().apply {
-            setTo(sourceMetrics)
-            this.widthPixels = widthPx
-            this.heightPixels = heightPx
-            this.density = density
-            this.scaledDensity = density
-            this.densityDpi = (density * DisplayMetrics.DENSITY_DEFAULT).roundToInt()
-        }
-    }
-
-    internal fun hostDisplayDensity(
-            widthPx: Int,
-            heightPx: Int,
-            sourceDensity: Float
-    ): Float? {
-        val designEdgePx = minOf(widthPx, heightPx).takeIf { it > 0 } ?: return null
-        val designDensity = (designEdgePx / DESIGN_WIDTH_DP).takeIf { it.isFinite() && it > 0f } ?: return null
-        val hostDensity = sourceDensity.takeIf { it.isFinite() && it > 0f }
-        return hostDensity?.let { minOf(designDensity, it) } ?: designDensity
-    }
-
-    fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
-        val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
-        // Task #179: the Settings>Appearance font option can select the host face. That has to be
-        // an explicit branch, otherwise "system" would fall through to the unknown-name path.
-        if (fontName == "system" || fontName == "sans-serif") {
-            return Typeface.SANS_SERIF
-        }
-        // Unknown names follow the user's selected face (see inputTypeface), never a fixed one.
-        return bundledTypeface(fontName, context) ?: inputTypeface(context)
-    }
-
-    /** A bundled face by its Kuikly/resource name, or null when the name is not bundled. */
-    private fun bundledTypeface(fontName: String, context: Context): Typeface? {
-        val fontSpec = when (fontName) {
-            "SpaceGrotesk-Regular", "space_grotesk_regular" -> SlockFontSpec(R.font.space_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "SpaceGrotesk-Medium", "space_grotesk_medium" -> SlockFontSpec(R.font.space_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
-            "SpaceGrotesk-SemiBold", "space_grotesk_semibold" -> SlockFontSpec(R.font.space_grotesk_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
-            "SpaceGrotesk-Bold", "space_grotesk_bold" -> SlockFontSpec(R.font.space_grotesk_bold, FontStyle.FONT_WEIGHT_BOLD)
-            "SpaceGrotesk-Light", "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
-            "SpaceGrotesk-Variable", "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
-            "Space Grotesk", "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
-
-            // Task #179: Hanken Grotesk (web `brutal` default, the mobile default option).
-            "HankenGrotesk-Light", "hanken_grotesk_light" -> SlockFontSpec(R.font.hanken_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
-            "HankenGrotesk-Regular", "hanken_grotesk_regular" -> SlockFontSpec(R.font.hanken_grotesk_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "HankenGrotesk-Medium", "hanken_grotesk_medium" -> SlockFontSpec(R.font.hanken_grotesk_medium, FontStyle.FONT_WEIGHT_MEDIUM)
-            "HankenGrotesk-SemiBold", "hanken_grotesk_semibold" -> SlockFontSpec(R.font.hanken_grotesk_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
-            "HankenGrotesk-Bold", "hanken_grotesk_bold" -> SlockFontSpec(R.font.hanken_grotesk_bold, FontStyle.FONT_WEIGHT_BOLD)
-
-            // Task #179: Geist — web `elegant` sans (body role of the "Geist + Inter" option).
-            "Geist-Light", "geist_light" -> SlockFontSpec(R.font.geist_light, FontStyle.FONT_WEIGHT_LIGHT)
-            "Geist-Regular", "geist_regular" -> SlockFontSpec(R.font.geist_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "Geist-Medium", "geist_medium" -> SlockFontSpec(R.font.geist_medium, FontStyle.FONT_WEIGHT_MEDIUM)
-            "Geist-SemiBold", "geist_semibold" -> SlockFontSpec(R.font.geist_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
-            "Geist-Bold", "geist_bold" -> SlockFontSpec(R.font.geist_bold, FontStyle.FONT_WEIGHT_BOLD)
-
-            // Task #179: Inter — web `elegant` heading face (heading role of the same option).
-            "Inter-Light", "inter_light" -> SlockFontSpec(R.font.inter_light, FontStyle.FONT_WEIGHT_LIGHT)
-            "Inter-Regular", "inter_regular" -> SlockFontSpec(R.font.inter_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "Inter-Medium", "inter_medium" -> SlockFontSpec(R.font.inter_medium, FontStyle.FONT_WEIGHT_MEDIUM)
-            "Inter-SemiBold", "inter_semibold" -> SlockFontSpec(R.font.inter_semibold, FontStyle.FONT_WEIGHT_SEMI_BOLD)
-            "Inter-Bold", "inter_bold" -> SlockFontSpec(R.font.inter_bold, FontStyle.FONT_WEIGHT_BOLD)
-
-            // Task #179: Geist Mono — web's mono in both themes (mono role of the Hanken and
-            // Geist+Inter options). Only Regular/Bold are bundled, matching Space Mono.
-            "GeistMono-Regular", "geist_mono_regular" -> SlockFontSpec(
-                    R.font.geist_mono_regular,
-                    FontStyle.FONT_WEIGHT_NORMAL,
-                    useResourceTypeface = useResourceTypefaceFor(fontName)
-            )
-            "GeistMono-Bold", "geist_mono_bold" -> SlockFontSpec(
-                    R.font.geist_mono_bold,
-                    FontStyle.FONT_WEIGHT_BOLD,
-                    useResourceTypeface = useResourceTypefaceFor(fontName)
-            )
-
-            // Keep Space Mono as one resource-backed face. CustomFallbackBuilder's per-glyph
-            // resolver is the path that turns U+0031 into a sans-serif glyph on affected hosts.
-            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(
-                    R.font.space_mono_regular,
-                    FontStyle.FONT_WEIGHT_NORMAL,
-                    useResourceTypeface = useResourceTypefaceFor(fontName)
-            )
-            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(
-                    R.font.space_mono_bold,
-                    FontStyle.FONT_WEIGHT_BOLD,
-                    useResourceTypeface = useResourceTypefaceFor(fontName)
-            )
-            else -> null
-        }
-        return fontSpec?.let { cachedTypeface(context.applicationContext, it) }
-    }
-
-    private fun cachedTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? =
-            synchronized(typefaceCache) {
-                typefaceCache[fontSpec.fontRes]?.let { return@synchronized it }
-                val typeface = buildTypeface(context, fontSpec) ?: return@synchronized null
-                typefaceCache[fontSpec.fontRes] = typeface
-                typeface
-            }
-
-    private fun buildTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? {
-        if (fontSpec.useResourceTypeface || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            // Space Mono must remain one resource-backed face: CustomFallbackBuilder's per-glyph
-            // resolver can select a sans-serif glyph for U+0031 on affected Android hosts.
-            return ResourcesCompat.getFont(context, fontSpec.fontRes)
-        }
-        return try {
-            val font = Font.Builder(context.resources, fontSpec.fontRes)
-                    .setWeight(fontSpec.weight)
-                    .setSlant(FontStyle.FONT_SLANT_UPRIGHT)
-                    .build()
-            val family = FontFamily.Builder(font).build()
-            Typeface.CustomFallbackBuilder(family)
-                    .setStyle(FontStyle(fontSpec.weight, FontStyle.FONT_SLANT_UPRIGHT))
-                    .setSystemFallback("sans-serif")
-                    .build()
-        } catch (_: Exception) {
-            ResourcesCompat.getFont(context, fontSpec.fontRes)
-        }
-    }
-
-    override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
-        val currentContext = context
-        result(currentContext?.let { resolveTypeface(fontFamily, it) })
-    }
-
-    override fun scaleFontSize(fontSize: Float): Float = fontSize
-
-    override fun getDisplayMetrics(useHostDisplayMetrics: Boolean?): DisplayMetrics? {
-        if (useHostDisplayMetrics != true) {
-            return null
-        }
-        return hostDisplayMetrics ?: context?.resources?.displayMetrics
-    }
-}
-
 internal fun isSlockRenderableLocalImageSource(source: String): Boolean =
         source.startsWith("file://", ignoreCase = true) ||
                 source.startsWith("content://", ignoreCase = true)
-
-internal sealed interface SlockKuiklyImageRoute {
-    val diagnosticsToken: String
-
-    data class ManagedAvatar(
-            val descriptor: SlockAvatarMountedRenderDescriptor
-    ) : SlockKuiklyImageRoute {
-        override val diagnosticsToken: String = "managed_avatar"
-    }
-
-    data object Svg : SlockKuiklyImageRoute { override val diagnosticsToken = "svg" }
-    data object Base64 : SlockKuiklyImageRoute { override val diagnosticsToken = "base64" }
-    data object Assets : SlockKuiklyImageRoute { override val diagnosticsToken = "assets" }
-    data object Local : SlockKuiklyImageRoute { override val diagnosticsToken = "local" }
-    data object Network : SlockKuiklyImageRoute { override val diagnosticsToken = "network" }
-    data object Unsupported : SlockKuiklyImageRoute { override val diagnosticsToken = "unsupported" }
-}
-
-internal fun resolveSlockKuiklyImageRoute(
-        source: String,
-        isBase64: Boolean,
-        isAssets: Boolean,
-        isLocal: Boolean,
-        isWebUrl: Boolean
-): SlockKuiklyImageRoute =
-        parseSlockAvatarMountedRenderModel(source)?.let { descriptor ->
-            SlockKuiklyImageRoute.ManagedAvatar(descriptor)
-        }
-                ?: when {
-                    source.isSlockSvgImageSource() -> SlockKuiklyImageRoute.Svg
-                    isBase64 -> SlockKuiklyImageRoute.Base64
-                    isAssets -> SlockKuiklyImageRoute.Assets
-                    isLocal -> SlockKuiklyImageRoute.Local
-                    isWebUrl -> SlockKuiklyImageRoute.Network
-                    else -> SlockKuiklyImageRoute.Unsupported
-                }
 
 internal fun isSlockAvatarLegacyTerminalBridgeAction(action: String): Boolean =
         action == "retireOwner" || action == "retireSubject"
@@ -3738,684 +3335,11 @@ internal inline fun <T : AutoCloseable> withSlockAvatarRenderDeliveryLease(
         lease: T,
         deliver: (T) -> Unit
 ) {
-    // Terminal drain must cover the observable adapter delivery, not only decode/registration.
+    // Terminal drain must cover the observable delivery, not only decode/registration.
     try {
         deliver(lease)
     } finally {
         lease.close()
-    }
-}
-
-private fun String.isSlockSvgImageSource(): Boolean {
-    val raw = trimStart()
-    val normalized = raw.lowercase(Locale.US)
-    val path = normalized.substringBefore("?").substringBefore("#")
-    return raw.startsWith("<svg", ignoreCase = true) ||
-            normalized.startsWith("data:image/svg+xml") ||
-            path.endsWith(".svg")
-}
-
-internal class SlockKuiklyImageAdapter(
-        private val context: Context
-) : IKRImageAdapter {
-    private companion object {
-        private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
-        private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
-        private const val LOCAL_IMAGE_HEADER_SNIFF_BYTES = 512
-        private const val MOUNTED_AVATAR_BITMAP_CACHE_BYTES = 8 * 1024 * 1024
-        private const val MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES = 1024 * 1024
-
-        private val networkBitmapCache =
-                object : LruCache<SlockNetworkImageRequestKey, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
-                    override fun sizeOf(key: SlockNetworkImageRequestKey, value: Bitmap): Int {
-                        return value.allocationByteCount.coerceAtLeast(value.byteCount)
-                    }
-                }
-        private val mountedAvatarBitmapCache =
-                object : LruCache<SlockMountedAvatarRequestKey, Bitmap>(MOUNTED_AVATAR_BITMAP_CACHE_BYTES) {
-                    override fun sizeOf(key: SlockMountedAvatarRequestKey, value: Bitmap): Int {
-                        return value.allocationByteCount.coerceAtLeast(value.byteCount)
-                    }
-                }
-        private val networkImageFlights =
-                SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
-        private val mountedAvatarImageFlights =
-                SlockImageRequestSingleFlight<SlockMountedAvatarRequestKey, Bitmap>()
-        private val networkByteFlights =
-                SlockImageRequestSingleFlight<String, SharedDownloadedBytes>()
-        private val networkDownloadScope =
-                CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    }
-
-    override fun fetchDrawable(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        val route =
-                resolveSlockKuiklyImageRoute(
-                        source = imageLoadOption.src,
-                        isBase64 = imageLoadOption.isBase64(),
-                        isAssets = imageLoadOption.isAssets(),
-                        isLocal = imageLoadOption.isLocalUri(),
-                        isWebUrl = imageLoadOption.isWebUrl()
-                )
-        SlockAppLog.record(
-                "SlockImageLoad",
-                "source=${route.diagnosticsToken} status=request requestWidth=${imageLoadOption.requestWidth} " +
-                        "requestHeight=${imageLoadOption.requestHeight} " +
-                        if (route is SlockKuiklyImageRoute.ManagedAvatar) {
-                            "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
-                        } else {
-                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
-                        }
-        )
-        when (route) {
-            is SlockKuiklyImageRoute.ManagedAvatar ->
-                loadMountedAvatar(route.descriptor, imageLoadOption, callback)
-            SlockKuiklyImageRoute.Svg -> loadSvg(imageLoadOption, callback)
-            SlockKuiklyImageRoute.Base64 -> loadFromBase64(imageLoadOption, callback)
-            SlockKuiklyImageRoute.Assets -> loadFromAssets(imageLoadOption, callback)
-            SlockKuiklyImageRoute.Local -> loadFromLocalUri(imageLoadOption, callback)
-            SlockKuiklyImageRoute.Network -> loadFromNetwork(imageLoadOption, callback)
-            SlockKuiklyImageRoute.Unsupported -> {
-                SlockAppLog.record(
-                        "SlockImageLoad",
-                        "source=unsupported status=failed requestWidth=${imageLoadOption.requestWidth} " +
-                                "requestHeight=${imageLoadOption.requestHeight} ${binaryDownloadUrlDiagnostics(imageLoadOption.src)}"
-                )
-                callback(null)
-            }
-        }
-    }
-
-    private fun loadMountedAvatar(
-            descriptor: SlockAvatarMountedRenderDescriptor,
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        val requestKey = imageLoadOption.mountedAvatarRequestKey(descriptor)
-        cachedMountedAvatarBitmap(requestKey)?.let { bitmap ->
-            SlockAppLog.record(
-                    "SlockImageLoad",
-                    "source=managed_avatar status=cache_hit bitmapWidth=${bitmap.width} " +
-                            "bitmapHeight=${bitmap.height} " +
-                            "requestWidth=${imageLoadOption.requestWidth} " +
-                            "requestHeight=${imageLoadOption.requestHeight} " +
-                            "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
-            )
-            callback(bitmap.toBitmapDrawable())
-            return
-        }
-        val subscription =
-                mountedAvatarImageFlights.load(
-                        key = requestKey,
-                        start = { complete ->
-                            SlockKuiklyThreadAdapter.executeOnSubThread {
-                                val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
-                                if (renderRead == null) {
-                                    SlockAppLog.record(
-                                            "SlockImageLoad",
-                                            "source=managed_avatar status=render_read_unavailable " +
-                                                    "slot=${descriptor.slot} " +
-                                                    "commitIdentityHash=${descriptor.commitIdentity.hashCode().toString(16)}"
-                                    )
-                                    complete(Result.failure(IllegalStateException("Avatar render read failed")))
-                                    return@executeOnSubThread
-                                }
-                                withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
-                                    val result =
-                                            runCatching {
-                                                cachedMountedAvatarBitmap(requestKey)?.let { return@runCatching it }
-                                                val decoded =
-                                                        bitmapFromMountedAvatarBytes(
-                                                                bytes = leasedRead.bytes,
-                                                                imageLoadOption = imageLoadOption,
-                                                                contentType = leasedRead.contentType
-                                                        ) ?: throw IllegalStateException("Failed to decode avatar")
-                                                val registered =
-                                                        leasedRead.registerDecoded(
-                                                                width = decoded.width.coerceAtLeast(0),
-                                                                height = decoded.height.coerceAtLeast(0),
-                                                                scaleIdentity =
-                                                                        "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
-                                                                                "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
-                                                        )
-                                                if (!registered) throw IllegalStateException("Failed to register decoded avatar")
-                                                cacheMountedAvatarBitmap(requestKey, decoded)
-                                                decoded
-                                            }
-                                    result.exceptionOrNull()?.let { throwable ->
-                                        recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
-                                    }
-                                    complete(result)
-                                }
-                            }
-                        },
-                        callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
-                )
-        SlockAppLog.record(
-                "SlockImageLoad",
-                "source=managed_avatar status=${subscription.disposition.diagnosticsToken()} " +
-                        "requestKeyHash=${requestKey.hashCode().toString(16)} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
-        )
-    }
-
-    private fun bitmapFromMountedAvatarBytes(
-            bytes: ByteArray,
-            imageLoadOption: HRImageLoadOption,
-            contentType: String?
-    ): Bitmap? {
-        return if (bytes.looksLikeSvg(contentType)) {
-            (svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption) as? BitmapDrawable)?.bitmap
-        } else {
-            bitmapFromBytes(bytes, imageLoadOption)
-        }
-    }
-
-    private fun cachedMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey): Bitmap? =
-            synchronized(mountedAvatarBitmapCache) {
-                mountedAvatarBitmapCache.get(requestKey)?.takeUnless { it.isRecycled }
-            }
-
-    private fun cacheMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey, bitmap: Bitmap) {
-        val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
-        if (bitmapBytes > MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES) {
-            return
-        }
-        synchronized(mountedAvatarBitmapCache) {
-            mountedAvatarBitmapCache.put(requestKey, bitmap)
-        }
-    }
-
-    private fun HRImageLoadOption.mountedAvatarRequestKey(
-            descriptor: SlockAvatarMountedRenderDescriptor
-    ): SlockMountedAvatarRequestKey =
-            SlockMountedAvatarRequestKey.create(
-                    descriptor = descriptor,
-                    requestWidth = requestWidth,
-                    requestHeight = requestHeight,
-                    needResize = needResize,
-                    scaleType = scaleType.name
-            )
-
-    override fun getDrawableWidth(
-            kuiklyRenderViewContext: KuiklyRenderViewContext,
-            drawable: Drawable
-    ): Float = drawable.intrinsicWidth.toFloat()
-
-    override fun getDrawableHeight(
-            kuiklyRenderViewContext: KuiklyRenderViewContext,
-            drawable: Drawable
-    ): Float = drawable.intrinsicHeight.toFloat()
-
-    private fun loadFromBase64(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            runCatching {
-                        val bytes = imageLoadOption.decodeBase64Payload()
-                        bitmapDrawableFromBytes(bytes, imageLoadOption)
-                    }
-                    .onSuccess { drawable ->
-                        callback(drawable)
-                    }
-                    .onFailure {
-                        callback(null)
-                    }
-        }
-    }
-
-    private fun loadFromAssets(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            runCatching {
-                        val assetPath = imageLoadOption.src.substring(HRImageLoadOption.SCHEME_ASSETS.length)
-                        val bytes = context.assets.open(assetPath).use { input -> input.readBytes() }
-                        drawableFromBytes(bytes, imageLoadOption, contentType = null)
-                    }
-                    .onSuccess { drawable ->
-                        callback(drawable)
-                    }
-                    .onFailure { throwable ->
-                        // Bundled asset paths carry no user data, so log the path itself:
-                        // a missing/broken packaged asset is otherwise invisible (task #335
-                        // reaction atlas debugging on artin's device hit exactly this).
-                        SlockAppLog.w(
-                                "SlockImageLoad",
-                                "source=assets status=failed type=${throwable::class.java.simpleName} " +
-                                        "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
-                                        "message=${throwable.message}"
-                        )
-                        callback(null)
-                    }
-        }
-    }
-
-    private fun loadFromLocalUri(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            runCatching {
-                        val src = imageLoadOption.src
-                        val uri = Uri.parse(src)
-                        val filePath = uri.path?.takeIf { imageLoadOption.isFile() && it.isNotBlank() }
-                        val openInput: () -> InputStream? = {
-                            if (filePath != null) {
-                                FileInputStream(filePath)
-                            } else {
-                                context.contentResolver.openInputStream(uri)
-                            }
-                        }
-                        val contentType =
-                                if (imageLoadOption.isContentUri()) {
-                                    context.contentResolver.getType(uri)
-                                } else {
-                                    null
-                                }
-                        // Never read a local raster image into memory as a whole: a 60 MB picked
-                        // PNG would need the file bytes plus the full-size bitmap and OOM the
-                        // preview.  Sniff a short header for SVG, otherwise decode from the
-                        // stream with bounds-first sampling.
-                        val header =
-                                openInput()?.use { input -> input.readLocalImageHeader() }
-                                        ?: return@runCatching null
-                        if (header.looksLikeSvg(contentType)) {
-                            val bytes = openInput()?.use { input -> input.readBytes() } ?: return@runCatching null
-                            return@runCatching svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
-                        }
-                        slockDecodeSampledBitmap(openInput, imageLoadOption.targetDecodeEdgePx())?.toBitmapDrawable()
-                                ?: throw IllegalStateException("Image decode failed")
-                    }
-                    .onSuccess { drawable ->
-                        callback(drawable)
-                    }
-                    .onFailure { throwable ->
-                        recordImageLoadFailure("local", imageLoadOption, throwable)
-                        callback(null)
-                    }
-        }
-    }
-
-    private fun loadFromNetwork(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        val requestKey = imageLoadOption.networkRequestKey()
-        cachedNetworkBitmap(requestKey)?.let { bitmap ->
-            SlockAppLog.record(
-                    "SlockImageLoad",
-                    "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
-                            "bitmapHeight=${bitmap.height} " +
-                            "requestWidth=${imageLoadOption.requestWidth} " +
-                            "requestHeight=${imageLoadOption.requestHeight} " +
-                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
-            )
-            callback(bitmap.toBitmapDrawable())
-            return
-        }
-        val subscription =
-                networkImageFlights.load(
-                        key = requestKey,
-                        start = { complete ->
-                            fetchNetworkBytes(imageLoadOption.src) { byteResult ->
-                                byteResult.onFailure { throwable ->
-                                    recordImageLoadFailure("network", imageLoadOption, throwable)
-                                    complete(Result.failure(throwable))
-                                    return@fetchNetworkBytes
-                                }
-                                val response = byteResult.getOrThrow()
-                                SlockKuiklyThreadAdapter.executeOnSubThread {
-                                    val result =
-                                            runCatching {
-                                                cachedNetworkBitmap(requestKey)?.let { return@runCatching it }
-                                                recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
-                                                bitmapFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
-                                                        ?: throw IllegalStateException("Image decode failed")
-                                            }
-                                    result.exceptionOrNull()?.let { throwable ->
-                                        recordImageLoadFailure("network", imageLoadOption, throwable)
-                                    }
-                                    complete(result)
-                                }
-                            }
-                        },
-                        callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
-                )
-        SlockAppLog.record(
-                "SlockImageLoad",
-                "source=network status=${subscription.disposition.diagnosticsToken()} " +
-                        "requestKeyHash=${requestKey.hashCode().toString(16)} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
-        )
-    }
-
-    private fun fetchNetworkBytes(
-            src: String,
-            onComplete: (Result<SharedDownloadedBytes>) -> Unit
-    ) {
-        val urlIdentity = src.slockNetworkImageUrlIdentity()
-        networkByteFlights.load(
-                key = urlIdentity,
-                start = { complete ->
-                    networkDownloadScope.launch {
-                        val fetchResult =
-                                runCatching {
-                                    SharedBinaryDownloader.fetchBytes(src)
-                                }
-                        complete(fetchResult)
-                    }
-                },
-                callback = onComplete
-        )
-    }
-
-    private fun cachedNetworkBitmap(requestKey: SlockNetworkImageRequestKey): Bitmap? =
-            synchronized(networkBitmapCache) {
-                networkBitmapCache.get(requestKey)?.takeUnless { it.isRecycled }
-            }
-
-    private fun cacheNetworkBitmap(requestKey: SlockNetworkImageRequestKey, bitmap: Bitmap) {
-        val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
-        if (bitmapBytes > MAX_SINGLE_NETWORK_BITMAP_BYTES) {
-            return
-        }
-        synchronized(networkBitmapCache) {
-            networkBitmapCache.put(requestKey, bitmap)
-        }
-    }
-
-    private fun bitmapFromNetworkBytes(
-            bytes: ByteArray,
-            imageLoadOption: HRImageLoadOption,
-            contentType: String?
-    ): Bitmap? {
-        val bitmap =
-                if (bytes.looksLikeSvg(contentType)) {
-                    (svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption) as? BitmapDrawable)?.bitmap
-                } else {
-                    bitmapFromBytes(bytes, imageLoadOption)
-                }
-                        ?: run {
-                            recordNetworkImageDecodeFailure(imageLoadOption, bytes.size, contentType)
-                            return null
-                        }
-        cacheNetworkBitmap(imageLoadOption.networkRequestKey(), bitmap)
-        SlockAppLog.record(
-                "SlockImageLoad",
-                "source=network status=decoded bytes=${bytes.size} contentType=${contentType ?: "unknown"} " +
-                        "bitmapWidth=${bitmap.width} bitmapHeight=${bitmap.height} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
-        )
-        return bitmap
-    }
-
-    private fun HRImageLoadOption.networkRequestKey(): SlockNetworkImageRequestKey =
-            SlockNetworkImageRequestKey.create(
-                    url = src,
-                    requestWidth = requestWidth,
-                    requestHeight = requestHeight,
-                    needResize = needResize,
-                    scaleType = scaleType.name
-            )
-
-    private fun SlockImageFlightDisposition.diagnosticsToken(): String =
-            when (this) {
-                SlockImageFlightDisposition.Started -> "flight_start"
-                SlockImageFlightDisposition.Joined -> "flight_join"
-            }
-
-    private fun loadSvg(
-            imageLoadOption: HRImageLoadOption,
-            callback: (drawable: Drawable?) -> Unit
-    ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            runCatching {
-                        val svgText = imageLoadOption.readSvgText()
-                        svgBitmapDrawable(svgText, imageLoadOption)
-                    }
-                    .onSuccess { drawable ->
-                        callback(drawable)
-                    }
-                    .onFailure {
-                        callback(null)
-                    }
-        }
-    }
-
-    private fun drawableFromBytes(
-            bytes: ByteArray,
-            imageLoadOption: HRImageLoadOption,
-            contentType: String?
-    ): Drawable? {
-        return if (bytes.looksLikeSvg(contentType)) {
-            svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
-        } else {
-            bitmapDrawableFromBytes(bytes, imageLoadOption)
-        }
-    }
-
-    private fun bitmapDrawableFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Drawable? {
-        return bitmapFromBytes(bytes, imageLoadOption)?.toBitmapDrawable()
-    }
-
-    private fun InputStream.readLocalImageHeader(): ByteArray {
-        val buffer = ByteArray(LOCAL_IMAGE_HEADER_SNIFF_BYTES)
-        var filled = 0
-        while (filled < buffer.size) {
-            val read = read(buffer, filled, buffer.size - filled)
-            if (read < 0) break
-            filled += read
-        }
-        return buffer.copyOf(filled)
-    }
-
-    private fun bitmapFromBytes(bytes: ByteArray, imageLoadOption: HRImageLoadOption): Bitmap? {
-        val boundsOptions =
-                BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
-        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        }
-        val decodeOptions =
-                BitmapFactory.Options().apply {
-                    inSampleSize = imageLoadOption.bitmapDecodeSampleSize(boundsOptions.outWidth, boundsOptions.outHeight)
-                }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
-    }
-
-    private fun HRImageLoadOption.bitmapDecodeSampleSize(sourceWidth: Int, sourceHeight: Int): Int =
-            slockBitmapDecodeSampleSize(sourceWidth, sourceHeight, targetDecodeEdgePx())
-
-    private fun HRImageLoadOption.targetDecodeEdgePx(): Int {
-        val density = context.resources.displayMetrics.density.coerceAtLeast(1f)
-        val requestedEdgePx =
-                max(requestWidth, requestHeight)
-                        .takeIf { it > 0 }
-                        ?.let { (it * density).roundToInt() * 2 }
-        val screenEdgePx =
-                max(context.resources.displayMetrics.widthPixels, context.resources.displayMetrics.heightPixels)
-        return (requestedEdgePx ?: screenEdgePx)
-                .coerceAtLeast(256)
-                .coerceAtMost(SLOCK_MAX_BITMAP_DECODE_EDGE_PX)
-    }
-
-    private fun Bitmap.toBitmapDrawable(): BitmapDrawable =
-            BitmapDrawable(context.resources, this)
-
-    private fun recordNetworkImageBytes(
-            imageLoadOption: HRImageLoadOption,
-            byteCount: Int,
-            contentType: String?
-    ) {
-        SlockAppLog.record(
-                "SlockImageLoad",
-                "source=network status=bytes bytes=$byteCount contentType=${contentType ?: "unknown"} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
-        )
-    }
-
-    private fun recordNetworkImageDecodeFailure(
-            imageLoadOption: HRImageLoadOption,
-            byteCount: Int,
-            contentType: String?
-    ) {
-        SlockAppLog.w(
-                "SlockImageLoad",
-                "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
-        )
-    }
-
-    private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
-        SlockAppLog.w(
-                "SlockImageLoad",
-                "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
-                        "message=${throwable.safeImageLoadMessage()} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
-        )
-    }
-
-    private fun Throwable.safeImageLoadMessage(): String =
-            (message ?: "none")
-                    .replace(Regex("""https?://[^\s)]+""", RegexOption.IGNORE_CASE), "[url]")
-                    .replace(
-                            Regex(
-                                    """(?i)\b(access[_-]?token|refresh[_-]?token|signature|password|authorization|bearer)\s*[:=]\s*[^\s,;)&]+"""
-                            )
-                    ) { matchResult ->
-                        "${matchResult.groupValues[1]}=[redacted]"
-                    }
-                    .replace(Regex("\\s+"), "_")
-                    .filter { char ->
-                        char.isLetterOrDigit() ||
-                                char == '_' ||
-                                char == '-' ||
-                                char == '.' ||
-                                char == ':' ||
-                                char == '/' ||
-                                char == '=' ||
-                                char == '[' ||
-                                char == ']'
-                    }
-                    .take(160)
-                    .ifBlank { "blank" }
-
-    private fun svgBitmapDrawable(svgText: String, imageLoadOption: HRImageLoadOption): Drawable {
-        val preparedSvg = imageLoadOption.svgColorOverride()
-                ?.let { color -> svgText.applySvgColor(color) }
-                ?: svgText
-        val svg = SVG.getFromInputStream(ByteArrayInputStream(preparedSvg.toByteArray(StandardCharsets.UTF_8)))
-        val width = imageLoadOption.requestWidth.takeIf { it > 0 }?.toSvgPixels()
-                ?: svg.documentWidth.takeIf { it > 0f }?.toInt()
-                ?: defaultSvgSizePx()
-        val height = imageLoadOption.requestHeight.takeIf { it > 0 }?.toSvgPixels()
-                ?: svg.documentHeight.takeIf { it > 0f }?.toInt()
-                ?: width
-        svg.setDocumentWidth(width.toFloat())
-        svg.setDocumentHeight(height.toFloat())
-        val picture = svg.renderToPicture(width, height)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        picture.draw(Canvas(bitmap))
-        return BitmapDrawable(context.resources, bitmap)
-    }
-
-    private fun defaultSvgSizePx(): Int = (24f * context.resources.displayMetrics.density).toInt().coerceAtLeast(24)
-
-    private fun Int.toSvgPixels(): Int {
-        return (this * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(defaultSvgSizePx())
-    }
-
-    private fun HRImageLoadOption.readSvgText(): String {
-        val raw = src.trim()
-        if (raw.startsWith("<svg", ignoreCase = true)) {
-            return raw
-        }
-        if (raw.lowercase(Locale.US).startsWith("data:image/svg+xml")) {
-            return decodeSvgDataUri(raw)
-        }
-        if (isBase64()) {
-            return decodeBase64Payload().toString(StandardCharsets.UTF_8)
-        }
-        if (isAssets()) {
-            val assetPath = src.substring(HRImageLoadOption.SCHEME_ASSETS.length).substringBefore("?")
-            return context.assets.open(assetPath).use { input -> input.readBytes().toString(StandardCharsets.UTF_8) }
-        }
-        if (isWebUrl()) {
-            return runBlocking {
-                SharedBinaryDownloader.fetchBytes(src).bytes.toString(StandardCharsets.UTF_8)
-            }
-        }
-        return raw
-    }
-
-    private fun HRImageLoadOption.decodeBase64Payload(): ByteArray {
-        return Base64.decode(src.substringAfter(","), Base64.DEFAULT)
-    }
-
-    private fun HRImageLoadOption.isSvgSource(): Boolean {
-        return src.isSlockSvgImageSource()
-    }
-
-    private fun HRImageLoadOption.isContentUri(): Boolean {
-        return src.startsWith("content://", ignoreCase = true)
-    }
-
-    private fun HRImageLoadOption.isLocalUri(): Boolean {
-        return isSlockRenderableLocalImageSource(src)
-    }
-
-    private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {
-        if (contentType?.contains("svg", ignoreCase = true) == true) {
-            return true
-        }
-        return toString(StandardCharsets.UTF_8).trimStart().startsWith("<svg", ignoreCase = true)
-    }
-
-    private fun decodeSvgDataUri(src: String): String {
-        val payload = src.substringAfter(",", missingDelimiterValue = "")
-        return if (src.substringBefore(",").contains(";base64", ignoreCase = true)) {
-            Base64.decode(payload, Base64.DEFAULT).toString(StandardCharsets.UTF_8)
-        } else {
-            URLDecoder.decode(payload, StandardCharsets.UTF_8.name())
-        }
-    }
-
-    private fun HRImageLoadOption.svgColorOverride(): String? {
-        val metadata = src.substringBefore(",", missingDelimiterValue = "")
-        val query = src.substringAfter("?", missingDelimiterValue = "")
-        return listOf(metadata, query)
-                .asSequence()
-                .flatMap { it.split("&", ";").asSequence() }
-                .mapNotNull { part ->
-                    val key = part.substringBefore("=", missingDelimiterValue = "")
-                    if (key in setOf("color", "tint", "stroke", "fill")) {
-                        part.substringAfter("=", missingDelimiterValue = "").takeIf { it.isNotBlank() }
-                    } else {
-                        null
-                    }
-                }
-                .firstOrNull()
-                ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }
-    }
-
-    private fun String.applySvgColor(color: String): String {
-        return replace("stroke=\"currentColor\"", "stroke=\"$color\"")
-                .replace("stroke='currentColor'", "stroke='$color'")
-                .replace("fill=\"currentColor\"", "fill=\"$color\"")
-                .replace("fill='currentColor'", "fill='$color'")
     }
 }
 
@@ -4433,9 +3357,10 @@ internal fun slockAndroidBridgeUrlDecode(value: String): String =
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
         private val hostActivity: (() -> Activity?)? = null,
-) : KuiklyRenderBaseModule() {
-    override val activity: Activity?
-        get() = hostActivity?.invoke() ?: super.activity
+) {
+    /** The hosting Activity (a [RaftHostActivity] for every page host), or null once it is gone. */
+    val activity: Activity?
+        get() = hostActivity?.invoke()
 
     private val threadImageCompressionOperations = ConcurrentHashMap<String, ThreadImageCompressionOperation>()
     private val threadImageCompressionMainHandler = Handler(Looper.getMainLooper())
@@ -4463,7 +3388,11 @@ internal class SlockKuiklyBridgeModule(
     internal suspend fun submitNativeFeedback(request: JSONObject): Map<String, Any> =
             submitFeedbackToHands(request)
 
-    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
+    /**
+     * One `HRBridgeModule` call. The return value is the synchronous result (`urlEncode`,
+     * `currentTimestamp`, ...; see [isSynchronousMethod]); asynchronous results go to [callback].
+     */
+    fun call(method: String, params: String?, callback: RaftBridgeCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
             "openUrl" -> openUrl(params)
@@ -4512,8 +3441,8 @@ internal class SlockKuiklyBridgeModule(
             "closePage" -> {
                 cancelFeedbackDiagnosticsUploads()
                 val hostActivity = activity
-                if (hostActivity is SlockKuiklyActivity) {
-                    hostActivity.closeKuiklyHostPage()
+                if (hostActivity is RaftHostActivity) {
+                    hostActivity.closeHostPage()
                 } else {
                     hostActivity?.finish()
                 }
@@ -4575,7 +3504,7 @@ internal class SlockKuiklyBridgeModule(
             }
             "threadAttachmentUpload" -> {
                 val request = JSONObject(params ?: "{}")
-                (activity as? SlockKuiklyActivity)?.requestThreadAttachmentUpload(
+                (activity as? RaftHostActivity)?.requestThreadAttachmentUpload(
                         channelId = request.optString("channelId"),
                         imageOnly = request.optBoolean("imageOnly", false),
                         capture = request.optBoolean("capture", false),
@@ -4623,7 +3552,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    override fun onDestroy() {
+    fun onDestroy() {
         cancelFeedbackDiagnosticsUploads()
         threadImageCompressionDestroyed.set(true)
         threadImageCompressionOperations.values.toList().forEach { operation ->
@@ -4634,7 +3563,6 @@ internal class SlockKuiklyBridgeModule(
             runCatching { operation.removeOutputs() }
         }
         threadImageCompressionOperations.clear()
-        super.onDestroy()
     }
 
     /**
@@ -4652,7 +3580,7 @@ internal class SlockKuiklyBridgeModule(
         feedbackDiagnosticsUploads.clear()
     }
 
-    private fun compressThreadImage(params: String?, callback: KuiklyRenderCallback?) {
+    private fun compressThreadImage(params: String?, callback: RaftBridgeCallback?) {
         if (callback == null || threadImageCompressionDestroyed.get()) return
         val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
         val requestId = request?.optString("requestId")?.trim().orEmpty()
@@ -4819,7 +3747,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun deliverThreadImageCompressionFailure(callback: KuiklyRenderCallback) {
+    private fun deliverThreadImageCompressionFailure(callback: RaftBridgeCallback) {
         if (threadImageCompressionDestroyed.get()) return
         if (!threadImageCompressionMainHandler.post {
             if (!threadImageCompressionDestroyed.get()) {
@@ -4830,7 +3758,7 @@ internal class SlockKuiklyBridgeModule(
 
     private data class ThreadImageCompressionOperation(
             val requestId: String,
-            val callback: KuiklyRenderCallback,
+            val callback: RaftBridgeCallback,
             val outputFile: File,
             val state: AtomicInteger = AtomicInteger(ACTIVE)
     ) {
@@ -4864,7 +3792,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                     }
                 }
-                (activity as? SlockKuiklyActivity)?.requestRealtimeReconcile(
+                (activity as? RaftHostActivity)?.requestRealtimeReconcile(
                     serverIds = serverIds,
                     accessToken = request.optString("accessToken"),
                     environmentId = request.optString("environmentId"),
@@ -4883,7 +3811,7 @@ internal class SlockKuiklyBridgeModule(
                 )
             }
             "connect" ->
-                    (activity as? SlockKuiklyActivity)?.requestRealtimeConnect(
+                    (activity as? RaftHostActivity)?.requestRealtimeConnect(
                             serverId = request.optString("serverId"),
                             accessToken = request.optString("accessToken"),
                             shellInstanceId = request.optString("shellInstanceId"),
@@ -4898,7 +3826,7 @@ internal class SlockKuiklyBridgeModule(
                                 )
                     )
             "cursorAdvance" ->
-                    (activity as? SlockKuiklyActivity)?.requestRealtimeCursorAdvance(
+                    (activity as? RaftHostActivity)?.requestRealtimeCursorAdvance(
                             serverId = request.optString("serverId"),
                             appliedSeq = request.optLong("appliedSeq", 0L),
                             witness =
@@ -4910,7 +3838,7 @@ internal class SlockKuiklyBridgeModule(
                                 )
                     )
             "disconnect" ->
-                    (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(
+                    (activity as? RaftHostActivity)?.requestRealtimeDisconnect(
                             reason = request.optString("reason").ifBlank { "shared_disconnect" },
                             serverId = request.optString("serverId"),
                             shellInstanceId = request.optString("shellInstanceId"),
@@ -4923,7 +3851,7 @@ internal class SlockKuiklyBridgeModule(
         val request = JSONObject(params ?: "{}")
         val sceneName = request.optString("sceneName").trim()
         if (sceneName.isBlank()) return
-        (activity as? SlockKuiklyActivity)?.updatePerformanceScene(
+        (activity as? RaftHostActivity)?.updatePerformanceScene(
                 action = request.optString("action").ifBlank { "enter" },
                 sceneName = sceneName
         )
@@ -4935,8 +3863,8 @@ internal class SlockKuiklyBridgeModule(
         val phase = request.optString("phase").trim()
         if (routeName.isBlank() && phase.isBlank()) return
         val container =
-                (activity as? SlockKuiklyActivity)
-                        ?.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                (activity as? RaftHostActivity)
+                        ?.hostContentContainer()
                         ?: return
         val durationMs =
                 if (request.has("durationMs")) {
@@ -4988,14 +3916,14 @@ internal class SlockKuiklyBridgeModule(
                     val launchId = "${serverId}_${targetId}_${System.currentTimeMillis()}"
                     val launchIntent = Intent(appContext, MainActivity::class.java).apply {
                         action = Intent.ACTION_VIEW
-                        putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                        putExtra(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
                         val pageData = JSONObject().apply {
                             put(SlockDesktopShortcutContract.KeyServerId, serverId)
                             put(SlockDesktopShortcutContract.KeyTargetId, targetId)
                             put(SlockDesktopShortcutContract.KeyTargetKind, item.targetKind)
                             put(SlockDesktopShortcutContract.KeyLaunchId, launchId)
                         }
-                        putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
+                        putExtra(SlockCmpActivity.KEY_PAGE_DATA, pageData.toString())
                         putExtra(SlockDesktopShortcutContract.KeyServerId, serverId)
                         putExtra(SlockDesktopShortcutContract.KeyTargetId, targetId)
                         putExtra(SlockDesktopShortcutContract.KeyTargetKind, item.targetKind)
@@ -5025,8 +3953,8 @@ internal class SlockKuiklyBridgeModule(
         clipboard.setPrimaryClip(ClipData.newPlainText("Raft", content))
     }
 
-    private fun exportThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
-        val hostActivity = activity as? SlockKuiklyActivity
+    private fun exportThreadShareImage(params: String?, callback: RaftBridgeCallback?) {
+        val hostActivity = activity?.takeIf { it is RaftHostActivity }
         if (hostActivity == null) {
             callback?.invoke(mapOf("status" to "failed", "message" to "Image export unavailable"))
             return
@@ -5037,8 +3965,8 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun probeThreadViewportPixels(params: String?, callback: KuiklyRenderCallback?) {
-        val hostActivity = activity as? SlockKuiklyActivity
+    private fun probeThreadViewportPixels(params: String?, callback: RaftBridgeCallback?) {
+        val hostActivity = activity?.takeIf { it is RaftHostActivity }
         if (hostActivity == null) {
             callback?.invoke(mapOf("status" to "failed", "message" to "Thread pixel probe unavailable"))
             return
@@ -5059,7 +3987,7 @@ internal class SlockKuiklyBridgeModule(
         runCatching {
             hostActivity.runOnUiThread {
             val container =
-                    hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                    (hostActivity as RaftHostActivity).hostContentContainer()
                             ?: run {
                                 deliver(mapOf("status" to "failed", "message" to "Thread view unavailable"))
                                 return@runOnUiThread
@@ -5243,12 +4171,12 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun captureThreadShareImage(
-        hostActivity: SlockKuiklyActivity,
+        hostActivity: Activity,
         request: JSONObject,
         onResult: (Map<String, Any>) -> Unit
     ) {
         val container =
-                hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                (hostActivity as RaftHostActivity).hostContentContainer()
                         ?: run {
                             onResult(mapOf("status" to "failed", "message" to "Thread view unavailable"))
                             return
@@ -5461,10 +4389,10 @@ internal class SlockKuiklyBridgeModule(
             color = Color.BLACK
         }
         val captionTypeface =
-                SlockKuiklyFontAdapter.resolveTypeface("space_grotesk_semibold", appContext)
+                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_semibold)
                         ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         val titleTypeface =
-                SlockKuiklyFontAdapter.resolveTypeface("space_grotesk_bold", appContext)
+                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_bold)
                         ?: captionTypeface
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(24, 24, 24)
@@ -5540,7 +4468,7 @@ internal class SlockKuiklyBridgeModule(
         return this / 2f - (metrics.ascent + metrics.descent) / 2f
     }
 
-    private fun saveThreadShareImage(params: String?, callback: KuiklyRenderCallback?) {
+    private fun saveThreadShareImage(params: String?, callback: RaftBridgeCallback?) {
         SlockKuiklyThreadAdapter.execute("thread-share-image-save") {
             val request = JSONObject(params ?: "{}")
             callback?.invoke(saveThreadShareImageFile(request))
@@ -5602,7 +4530,7 @@ internal class SlockKuiklyBridgeModule(
      * inspection use SlockAvatarMountedNativeProviderRegistry directly; reviving the old
      * inspect/await/finalize actions here would create a second downloader/byte authority.
      */
-    private fun avatarCacheCapability(params: String?, callback: KuiklyRenderCallback?) {
+    private fun avatarCacheCapability(params: String?, callback: RaftBridgeCallback?) {
         val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
         val action = request?.optString("action").orEmpty()
         val controller = SlockAndroidAvatarCacheProcess.currentOrNull()
@@ -5668,7 +4596,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
+    private fun settingsCapability(params: String?, callback: RaftBridgeCallback?) {
         val request = JSONObject(params ?: "{}")
         val action = request.optString("action")
         if (!BuildConfig.HANDS_APK_UPDATE_ENABLED &&
@@ -5893,7 +4821,7 @@ internal class SlockKuiklyBridgeModule(
                 )
     }
 
-    private fun startMobileOAuthLink(request: JSONObject, callback: KuiklyRenderCallback?) {
+    private fun startMobileOAuthLink(request: JSONObject, callback: RaftBridgeCallback?) {
         val provider = request.optString("providerId").trim().lowercase(Locale.US)
         if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
             callback?.invoke(
@@ -5905,7 +4833,7 @@ internal class SlockKuiklyBridgeModule(
             )
             return
         }
-        val lifecycleOwner = activity as? SlockKuiklyActivity ?: appContext as? SlockKuiklyActivity
+        val lifecycleOwner = activity as? RaftHostActivity
         if (lifecycleOwner == null) {
             callback?.invoke(
                     mapOf(
@@ -7182,7 +6110,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun startFeedbackDiagnosticsUpload(
         request: JSONObject,
-        callback: KuiklyRenderCallback?,
+        callback: RaftBridgeCallback?,
     ) {
         // A diagnostics request has no useful owner without a callback. Do not generate or
         // upload a native archive that cannot deliver its terminal reference to the WebView.
@@ -7318,7 +6246,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun cancelFeedbackDiagnosticsUpload(
         request: JSONObject,
-        callback: KuiklyRenderCallback?,
+        callback: RaftBridgeCallback?,
     ) {
         val requestId = request.optString("requestId").trim()
         val binding =
@@ -7936,7 +6864,7 @@ internal class SlockKuiklyBridgeModule(
                         .put("pageName", SlockKuiklyPages.IN_APP_BROWSER)
                         .put("url", url)
         return runCatching {
-            SlockKuiklyActivity.start(activity ?: appContext, SlockKuiklyPages.IN_APP_BROWSER, pageData)
+            SlockCmpActivity.start(activity ?: appContext, SlockKuiklyPages.IN_APP_BROWSER, pageData)
         }.onFailure { throwable ->
             SlockAppLog.record(
                     "SlockOpenUrl",
@@ -7995,7 +6923,7 @@ internal class SlockKuiklyBridgeModule(
         return implicit.setPackage(selectedPackage)
     }
 
-    private fun openAttachment(params: String?, callback: KuiklyRenderCallback?) {
+    private fun openAttachment(params: String?, callback: RaftBridgeCallback?) {
         SlockKuiklyThreadAdapter.execute("attachment-open") {
             val request = JSONObject(params ?: "{}")
             val startedAt = System.currentTimeMillis()
@@ -8021,7 +6949,7 @@ internal class SlockKuiklyBridgeModule(
             when (dispatch) {
                 is AndroidAttachmentOpenDispatch.Complete -> callback?.invoke(dispatch.result.toBridgePayload())
                 is AndroidAttachmentOpenDispatch.SaveAs -> {
-                    val host = activity as? SlockKuiklyActivity
+                    val host = activity as? RaftHostActivity
                     if (host == null) {
                         callback?.invoke(AndroidAttachmentOpenResult.storageFailed().toBridgePayload())
                     } else {
@@ -8032,7 +6960,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun saveAttachment(params: String?, callback: KuiklyRenderCallback?) {
+    private fun saveAttachment(params: String?, callback: RaftBridgeCallback?) {
         SlockKuiklyThreadAdapter.execute("attachment-save") {
             val request = JSONObject(params ?: "{}")
             val owner = request.attachmentOwnerLease()
@@ -8150,7 +7078,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun saveImageToPhotos(params: String?, callback: KuiklyRenderCallback?) {
+    private fun saveImageToPhotos(params: String?, callback: RaftBridgeCallback?) {
         val request = JSONObject(params ?: "{}")
         val downloadId = request.optString("downloadId").takeIf(String::isNotBlank)
                 ?: "${request.optString("attachmentId")}:${request.optString("fileName")}".take(160)
@@ -8165,14 +7093,14 @@ internal class SlockKuiklyBridgeModule(
                 callback?.invoke(mapOf("status" to "failed", "message" to "Missing attachment export authority"))
                 return@execute
             }
-            val authorityProgressCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+            val authorityProgressCallback: RaftBridgeCallback? = callback?.let { downstream ->
                 { payload ->
                     if (ProcessAndroidAttachmentExportAuthorities.isCurrent(owner, downloadId, operationId)) {
                         downstream(payload)
                     }
                 }
             }
-            val authorityTerminalCallback: KuiklyRenderCallback? = callback?.let { downstream ->
+            val authorityTerminalCallback: RaftBridgeCallback? = callback?.let { downstream ->
                 { payload ->
                     if (ProcessAndroidAttachmentExportAuthorities.retireIfCurrent(owner, downloadId, operationId)) {
                         downstream(payload)
@@ -9197,7 +8125,7 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun socialAuth(params: String?, callback: KuiklyRenderCallback?) {
+    private fun socialAuth(params: String?, callback: RaftBridgeCallback?) {
         val provider = JSONObject(params ?: "{}").optString("provider").trim().lowercase()
         if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
             callback?.invoke(
@@ -9209,8 +8137,7 @@ internal class SlockKuiklyBridgeModule(
             )
             return
         }
-        val hostActivity = activity as? SlockKuiklyActivity
-        val lifecycleOwner = hostActivity ?: appContext as? SlockKuiklyActivity
+        val lifecycleOwner = activity as? RaftHostActivity
         if (lifecycleOwner == null) {
             callback?.invoke(
                     mapOf(
@@ -9308,6 +8235,15 @@ internal class SlockKuiklyBridgeModule(
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
+
+        /**
+         * Methods `BridgeModule` calls with `syncCall = true` that answer from their return value.
+         * They are cheap and thread-safe, so [KuiklyBridgeModuleTransport.callSync] runs them on the
+         * calling thread (Kuikly ran them on its context thread, not the main thread).
+         */
+        internal val synchronousMethods: Set<String> = setOf("urlEncode", "urlDecode", "currentTimestamp")
+
+        internal fun isSynchronousMethod(method: String): Boolean = method in synchronousMethods
         private val handsUpdateDownloads = ConcurrentHashMap<String, HandsUpdateDownload>()
         private val handsUpdateDownloadLock = Any()
         private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
@@ -9805,3 +8741,43 @@ private fun JSONObject?.toStableStringMap(): Map<String, String> {
     }
     return result
 }
+
+
+/** Bundled font (the TTFs live in :shared `res/font`) for natively drawn share-image chrome. */
+private fun raftShareChromeTypeface(context: Context, fontRes: Int): Typeface? =
+        runCatching { ResourcesCompat.getFont(context, fontRes) }.getOrNull()
+
+/**
+ * Drives [SlockKuiklyBridgeModule.call] the way the Kuikly renderer did: asynchronous calls on the
+ * main thread with the params as JSON text, callback results (maps, org.json values, strings) back
+ * as JSON text; synchronous calls ([SlockKuiklyBridgeModule.isSynchronousMethod]) on the calling
+ * thread, answering the method's return value.
+ */
+internal class KuiklyBridgeModuleTransport(
+    private val module: SlockKuiklyBridgeModule,
+) : HostBridgeTransport {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
+        val invoke = {
+            module.call(method, paramsJson, callback?.let { deliver -> { result: Any? -> deliver(bridgeResultJson(result)) } })
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) invoke() else mainHandler.post(invoke)
+    }
+
+    override fun callSync(method: String, paramsJson: String): String? {
+        if (!SlockKuiklyBridgeModule.isSynchronousMethod(method)) return null
+        return bridgeResultJson(module.call(method, paramsJson, null)) ?: ""
+    }
+}
+
+internal fun bridgeResultJson(result: Any?): String? =
+    when (result) {
+        null -> null
+        is String -> result
+        is JSONObject -> result.toString()
+        is JSONArray -> result.toString()
+        is Map<*, *> -> JSONObject(result).toString()
+        else -> JSONObject.wrap(result)?.toString()
+    }

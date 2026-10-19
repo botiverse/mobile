@@ -32,7 +32,7 @@ class SlockFloatingOverlayTouchGuardConnectedTest {
                         .put("instanceId", "floating-overlay-touch-guard-connected-test")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForTouchGuardTest() }
@@ -101,7 +101,7 @@ class SlockFloatingOverlayTouchGuardConnectedTest {
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
             abs(Color.blue(this) - Color.blue(target)) <= tolerance
 
-    private fun SlockKuiklyActivity.hideSystemBarsForTouchGuardTest() {
+    private fun SlockCmpActivity.hideSystemBarsForTouchGuardTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

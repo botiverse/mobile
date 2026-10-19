@@ -29,7 +29,7 @@ class SlockLucideNativeCanvasConnectedTest {
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", "compose_lucide_state_atlas_visual")
                 .putExtra("pageData", JSONObject().put("instanceId", "lucide-native-spin-test").toString())
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             lateinit var host: SlockLucideIconRenderView
@@ -86,7 +86,7 @@ class SlockLucideNativeCanvasConnectedTest {
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", "compose_lucide_state_atlas_visual")
                 .putExtra("pageData", JSONObject().put("instanceId", "lucide-native-multi-spin-test").toString())
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             lateinit var host: SlockLucideIconRenderView

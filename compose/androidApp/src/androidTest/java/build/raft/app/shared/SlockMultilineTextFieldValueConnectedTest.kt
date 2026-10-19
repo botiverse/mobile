@@ -290,7 +290,7 @@ class SlockMultilineTextFieldValueConnectedTest {
                         .put("instanceId", "attachment-comment-exact-value-test")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.waitForEditorSnapshot("", 0, 0, -1, -1)

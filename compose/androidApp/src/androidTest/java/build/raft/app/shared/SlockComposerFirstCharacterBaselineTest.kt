@@ -31,7 +31,7 @@ class SlockComposerFirstCharacterBaselineTest {
                         .put("visualFixture", "empty")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             // Recover emulator-owned focus before waitForIdleSync/editor checks. A launcher

@@ -42,18 +42,21 @@
             </intent-filter>
         </service>
 
+        <!-- Page host: every page renders on Compose Multiplatform (SlockCmpRouter /
+             RaftPageRegistry). adjustResize so Compose receives IME insets on every API level. -->
+        <activity
+            android:name=".shared.SlockCmpActivity"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Slock.Translucent"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Former Kuikly host, kept as an entry point (diagnostics alias, Intents from older
+             versions); a SlockCmpActivity subclass with the same behaviour. -->
         <activity
             android:name=".shared.SlockKuiklyActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.Slock.Translucent"
-            android:windowSoftInputMode="adjustNothing" />
-        <!-- Compose Multiplatform pages (SlockCmpRouter allowlist); same extras as SlockKuiklyActivity. -->
-        <activity
-            android:name=".shared.SlockCmpActivity"
-            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
-            android:exported="false"
-            android:theme="@style/Theme.Slock"
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".shared.SlockAppShellActivity"
@@ -61,7 +64,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Slock.AppShellStarting"
-            android:windowSoftInputMode="adjustNothing" />
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".shared.SlockDocumentShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
@@ -69,7 +72,7 @@
             android:exported="false"
             android:launchMode="standard"
             android:theme="@style/Theme.Slock.Starting"
-            android:windowSoftInputMode="adjustNothing" />
+            android:windowSoftInputMode="adjustResize" />
         <activity-alias
             android:name=".core.diagnostics.DiagnosticsDeepLinkActivity"
             android:enabled="@bool/diagnostics_deeplink_enabled"

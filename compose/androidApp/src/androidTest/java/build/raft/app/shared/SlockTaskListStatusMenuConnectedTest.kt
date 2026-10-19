@@ -38,7 +38,7 @@ class SlockTaskListStatusMenuConnectedTest {
                         .put("fixture", TasksPanelStatusMenuRecycleFixture)
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
@@ -269,7 +269,7 @@ class SlockTaskListStatusMenuConnectedTest {
             Color.green(this) <= 24 &&
             Color.blue(this) <= 24
 
-    private fun SlockKuiklyActivity.hideSystemBarsForTaskListStatusTest() {
+    private fun SlockCmpActivity.hideSystemBarsForTaskListStatusTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

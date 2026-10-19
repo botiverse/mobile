@@ -45,7 +45,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", InteractionOracleFixture)
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             try {
@@ -179,7 +179,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                             .put("visualFixture", "empty")
                             .toString()
                     )
-                    .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                    .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
             ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
                 waitUntil("empty composer should attach before '${case.trigger}'") {
@@ -230,7 +230,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", RepositionOracleFixture)
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
@@ -317,7 +317,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", "member_suggestions_scroll_oracle")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
@@ -687,7 +687,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         throw AssertionError(message)
     }
 
-    private fun SlockKuiklyActivity.hideSystemBarsForSuggestionTest() {
+    private fun SlockCmpActivity.hideSystemBarsForSuggestionTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

@@ -735,8 +735,6 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             "com.tencent.kuiklybase:network-android-curl-runtime",
             "com.tencent.kuiklybase:resource-core",
             "com.tencent.kuiklybase:resource-core-android",
-            "com.tencent.kuikly-open:compose",
-            "com.tencent.kuikly-open:compose-android",
             handsAndroidSdkModule
         )
     )
@@ -760,7 +758,7 @@ kotlin {
 
 // Keep the custom connectedTest target on the production dependency graph. Forcing newer
 // lifecycle/savedstate atomic groups here previously upgraded only its Compose runtime to 1.9.x,
-// while Kuikly 2.21 is compiled against the production BOM's 1.7.x CompositionObserver ABI.
+// while the app is compiled against the production Compose runtime.
 val verifyConnectedTestComposeRuntimeAlignment by tasks.registering {
     group = "verification"
     description =
@@ -806,9 +804,9 @@ tasks.matching {
 dependencies {
     add(handsAndroidSdkAar.name, "$handsAndroidSdkCoordinate@aar")
 
-    // Kuikly Compose shared module
+    // Shared app (pages, data layer) on Compose Multiplatform.
     implementation(project(":shared"))
-    // Compose Multiplatform pages (SlockCmpActivity); Kuikly-free, see ui-cmp/build.gradle.kts.
+    // CMP page root/router/host contracts (SlockCmpActivity); see ui-cmp/build.gradle.kts.
     implementation(project(":ui-cmp"))
     implementation(project(":designsystem"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.47")
@@ -824,9 +822,7 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Kuikly 2.21 still calls CompositionObserverKt.observe. Runtime 1.8.3 keeps that ABI
-    // and avoids the initial-layout StackOverflow reproduced with the BOM's runtime 1.7.6;
-    // runtime 1.9.x is incompatible because it replaces observe with setObserver.
+    // Pinned to the AndroidX Compose runtime line CMP 1.8.x is built against.
     implementation("androidx.compose.runtime:runtime:1.8.3")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

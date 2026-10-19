@@ -87,7 +87,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun onHostVisibilityChanged(
         visibility: AndroidHostVisibility,
         shellInstanceId: String = "",
-        pageName: String = SlockKuiklyActivity.PAGE_APP_SHELL,
+        pageName: String = SlockCmpActivity.PAGE_APP_SHELL,
         source: String = "unknown"
     ) {
         val lifecycleForegroundEpoch = processVisibilityTracker.currentForegroundEpoch()
@@ -1124,7 +1124,7 @@ internal enum class AndroidHostVisibility(val wireValue: String) {
 }
 
 internal fun normalizedAndroidLifecyclePageName(pageName: String): String =
-    pageName.trim().ifBlank { SlockKuiklyActivity.PAGE_APP_SHELL }
+    pageName.trim().ifBlank { SlockCmpActivity.PAGE_APP_SHELL }
 
 /** Started-activity accounting is process visibility, not a page/pager lifecycle signal. */
 internal class AndroidProcessVisibilityTracker(

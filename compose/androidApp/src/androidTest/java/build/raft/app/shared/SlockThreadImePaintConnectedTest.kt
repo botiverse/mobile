@@ -45,9 +45,9 @@ class SlockThreadImePaintConnectedTest {
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
             Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
-                .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
+                .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                 .putExtra(
-                    SlockKuiklyActivity.KEY_PAGE_DATA,
+                    SlockCmpActivity.KEY_PAGE_DATA,
                     JSONObject()
                         .put("runNonce", nonce)
                         .put("showComposer", true)
@@ -211,9 +211,9 @@ class SlockThreadImePaintConnectedTest {
         val nonce = UUID.randomUUID().toString().replace("-", "")
         val intent =
             Intent(instrumentation.targetContext, SlockKuiklyActivity::class.java)
-                .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
+                .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
                 .putExtra(
-                    SlockKuiklyActivity.KEY_PAGE_DATA,
+                    SlockCmpActivity.KEY_PAGE_DATA,
                     JSONObject()
                         .put("runNonce", nonce)
                         .put("showComposer", true)

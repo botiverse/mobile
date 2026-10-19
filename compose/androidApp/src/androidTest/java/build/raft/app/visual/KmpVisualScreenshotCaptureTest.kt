@@ -20,6 +20,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.shared.SlockCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.VisualCaptureLocaleRestoreToken
@@ -1796,7 +1797,7 @@ class KmpVisualScreenshotCaptureTest {
                             .put("fixture", "scroll_probe")
                     ).toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
         finishLeakedPredecessorActivities()
         var before: Bitmap? = null
@@ -3956,7 +3957,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
-            pageName = SlockKuiklyActivity.PAGE_LOGIN,
+            pageName = SlockCmpActivity.PAGE_LOGIN,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -3966,7 +3967,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthForgotPasswordScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.forgot-password",
-            pageName = SlockKuiklyActivity.PAGE_FORGOT_PASSWORD,
+            pageName = SlockCmpActivity.PAGE_FORGOT_PASSWORD,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -4160,9 +4161,9 @@ class KmpVisualScreenshotCaptureTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
-                .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
+                .putExtra("pageName", SlockCmpActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
@@ -4253,7 +4254,7 @@ class KmpVisualScreenshotCaptureTest {
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", pageName)
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
         finishLeakedPredecessorActivities()

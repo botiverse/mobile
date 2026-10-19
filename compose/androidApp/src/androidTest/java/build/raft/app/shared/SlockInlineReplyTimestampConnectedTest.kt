@@ -34,7 +34,7 @@ class SlockInlineReplyTimestampConnectedTest {
                         .put("interactionProbe", "reply-timestamp-owner")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()

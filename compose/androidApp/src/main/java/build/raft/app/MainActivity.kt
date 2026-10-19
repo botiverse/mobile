@@ -9,7 +9,7 @@ import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
 import build.raft.app.shared.AndroidLoginTransitionRouting
-import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.shared.SlockCmpActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import build.raft.app.shared.withAndroidShellRouteOwner
@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
     private fun externalBrowserIntent(uri: Uri): Intent? = androidExternalBrowserIntent(this, uri)
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
-        val pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent)
+        val pageData = SlockCmpActivity.appShellPageDataFromIntent(launchIntent)
         openSharedShellPageData(pageData, launchIntent)
     }
 
@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
         pageData: JSONObject,
         launchIntent: Intent? = intent
     ) {
-        SlockKuiklyActivity.startAppShell(
+        SlockCmpActivity.startAppShell(
             this,
             pageData = pageData,
             clearTask = launchIntent.shouldClearTaskForSharedShell(),
@@ -405,7 +405,7 @@ class MainActivity : ComponentActivity() {
                 is SharedAuthResult.Failure -> {
                     if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
                         pendingStore.clear()
-                        SlockKuiklyActivity.startAuthLegalAcceptance(
+                        SlockCmpActivity.startAuthLegalAcceptance(
                             this@MainActivity,
                             pageData = mobileOAuthLegalAcceptancePageData(
                                 provider = pending.provider,
@@ -436,7 +436,7 @@ class MainActivity : ComponentActivity() {
         val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(this, loginTransition) {
             when (postLoginDestination(session.selectedServerId)) {
                 PostLoginDestination.AppShell ->
-                    SlockKuiklyActivity.startAppShell(
+                    SlockCmpActivity.startAppShell(
                         this,
                         pageData =
                             postLoginAppShellPageData(
@@ -456,7 +456,7 @@ class MainActivity : ComponentActivity() {
                         clearTask = true
                     )
                 PostLoginDestination.ChooseServer ->
-                    SlockKuiklyActivity.startAuthChooseServer(
+                    SlockCmpActivity.startAuthChooseServer(
                         this,
                         clearTask = true
                     )
@@ -467,9 +467,9 @@ class MainActivity : ComponentActivity() {
 
     private fun openLoginAfterMobileOAuthError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        SlockKuiklyActivity.start(
+        SlockCmpActivity.start(
             this,
-            SlockKuiklyActivity.PAGE_LOGIN,
+            SlockCmpActivity.PAGE_LOGIN,
             pageData = mobileOAuthLoginErrorPageData(message),
             clearTask = true
         )
@@ -486,7 +486,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openSettingsAccountAfterMobileOAuthLink() {
-        SlockKuiklyActivity.startAppShell(
+        SlockCmpActivity.startAppShell(
             this,
             pageData =
                 settingsAccountAppShellPageData(
@@ -717,7 +717,7 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
 }
 
 private fun Intent?.isAppShellPageDataIntent(): Boolean =
-    this?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME) == SlockKuiklyActivity.PAGE_APP_SHELL
+    this?.getStringExtra(SlockCmpActivity.KEY_PAGE_NAME) == SlockCmpActivity.PAGE_APP_SHELL
 
 private fun isSlockAppWebViewIntent(action: String?, dataScheme: String?, dataHost: String?): Boolean =
     action == Intent.ACTION_VIEW && isSlockAppWebLink(dataScheme, dataHost)

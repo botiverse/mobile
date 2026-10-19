@@ -69,7 +69,7 @@ class SlockReleaseNotesSectionGapConnectedTest {
                         .put("instanceId", probeGeneration)
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         return ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()

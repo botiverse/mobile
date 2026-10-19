@@ -68,9 +68,9 @@ internal object AndroidLoginTransitionRouting {
             sourceRetired = source.retired,
             setSourceRetired = { setRetired(activity, source, it) },
             startLogin = { token ->
-                SlockKuiklyActivity.start(
+                SlockCmpActivity.start(
                     activity,
-                    SlockKuiklyActivity.PAGE_LOGIN,
+                    SlockCmpActivity.PAGE_LOGIN,
                     pageData,
                     loginTransitionToken = token,
                 )

@@ -12,7 +12,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.postLoginAppShellPageData
-import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.shared.SlockCmpActivity
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import java.io.File
 import java.security.MessageDigest
@@ -139,7 +139,7 @@ class QaSessionBootstrapActivity : ComponentActivity() {
 
     private fun openShell() {
         stage("shell_launch_requested")
-        SlockKuiklyActivity.startAppShell(
+        SlockCmpActivity.startAppShell(
             this,
             pageData = postLoginAppShellPageData(owner = currentAndroidShellRouteOwner(this)),
             clearTask = true,
