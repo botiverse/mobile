@@ -65,6 +65,7 @@ import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftMutedCount
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftPresence
+import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSection
@@ -74,6 +75,7 @@ import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftStickerTile
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftActiveStickerLook
 import build.raft.designsystem.components.raftInsetFocusOutline
@@ -248,7 +250,7 @@ class DisplayComponentScreenshotTest {
                         variant = RaftCardVariant.Inset,
                         title = "Auto-archive",
                         description = "Archive channels with no messages for 30 days.",
-                        trailing = { FakeSwitch(on = true) },
+                        trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
                     ) {
                         RaftCardSection { RaftText("Keep pinned channels") }
                         RaftCardSection { RaftText("Notify the owner first") }
@@ -260,14 +262,14 @@ class DisplayComponentScreenshotTest {
                         variant = RaftCardVariant.Option,
                         title = "This computer",
                         description = "The agent runs here while the app is open.",
-                        leading = { FakeRadio(checked = false) },
+                        leading = { RaftRadio(selected = false, onClick = null) },
                         onClick = {},
                     )
                     RaftCard(
                         variant = RaftCardVariant.Option,
                         title = "A cloud computer",
                         description = "Always on. Uses your plan's hours.",
-                        leading = { FakeRadio(checked = true) },
+                        leading = { RaftRadio(selected = true, onClick = null) },
                         onClick = {},
                         selected = true,
                     )
@@ -276,7 +278,7 @@ class DisplayComponentScreenshotTest {
                             variant = RaftCardVariant.Option,
                             title = "Pressed",
                             description = "The pressed overlay over the card.",
-                            leading = { FakeRadio(checked = false) },
+                            leading = { RaftRadio(selected = false, onClick = null) },
                             onClick = {},
                         )
                     }
@@ -285,7 +287,7 @@ class DisplayComponentScreenshotTest {
                             variant = RaftCardVariant.Option,
                             title = "Focused",
                             description = "The focus ring outside the card.",
-                            leading = { FakeRadio(checked = false) },
+                            leading = { RaftRadio(selected = false, onClick = null) },
                             onClick = {},
                         )
                     }
@@ -493,7 +495,7 @@ class DisplayComponentScreenshotTest {
                             divider = true,
                             description = "Mentions and direct messages, on every device you are signed in on.",
                             wrapDescription = true,
-                            trailing = { FakeSwitch(on = true) },
+                            trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
                         )
                         RaftListRow("Language", variant = RaftListRowVariant.Plain, divider = true, onClick = {}, enabled = false, trailing = { RaftListRowValue("English"); RaftListRowChevron() })
                     }
@@ -674,34 +676,6 @@ class DisplayComponentScreenshotTest {
                         .border(RaftStroke.Hairline, colors.lineHairline, shape),
                 )
             }
-        }
-    }
-
-    /** Stand-in for the PR 3 Radio: an 18dp ring, an ink dot when checked. */
-    @Composable
-    private fun FakeRadio(checked: Boolean) {
-        val colors = RaftTheme.colors
-        Box(
-            Modifier.size(18.dp).border(RaftStroke.Control, colors.lineStrong, RoundedCornerShape(50)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (checked) Box(Modifier.size(8.dp).background(colors.foreground, RoundedCornerShape(50)))
-        }
-    }
-
-    /** Stand-in for the PR 3 Switch. */
-    @Composable
-    private fun FakeSwitch(on: Boolean) {
-        val shape = RoundedCornerShape(50)
-        Box(
-            Modifier
-                .size(40.dp, 24.dp)
-                .background(if (on) RaftUiPalette.brand else RaftTheme.colors.fillMuted, shape)
-                .border(RaftStroke.Control, RaftUiPalette.stickerInk, shape)
-                .padding(3.dp),
-            contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
-        ) {
-            Box(Modifier.size(16.dp).background(Color.White, shape).border(RaftStroke.Control, RaftUiPalette.stickerInk, shape))
         }
     }
 
