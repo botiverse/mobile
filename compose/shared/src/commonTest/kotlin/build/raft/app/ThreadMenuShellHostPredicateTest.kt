@@ -8,11 +8,15 @@ import kotlin.test.assertTrue
  * task #185 / PR #3147: pins which geometry the message long-press menu is hosted by.
  *
  * Why this file exists: the condition it tests (`adaptiveDetailPage && (!measured || x > 0f)`) has
- * already regressed once — single-column phone pages were being routed to the shell host, which
- * emptied the reaction emoji row in every layout. That regression was caught by a person looking at
- * a device, not by a test. If someone later "simplifies" the expression back to plain `x > 0f`, the
- * consequence is a menu that clips intermittently rather than always, and *every other test in this
- * repo stays green*.
+ * already regressed once, and the symptom was misleading: single-column phone pages were being
+ * routed to the shell host (this predicate's concern), and separately the host captured the reaction
+ * atlas before it had decoded. The two stacked, so what a person saw on the device was an empty emoji
+ * row in every layout. The routing fault is what this predicate owns; the capture fault is fixed
+ * elsewhere now, so routing a full-width page to the host again would show up as a behaviour
+ * deviation rather than a blank row. Neither cause was caught by a test.
+ *
+ * If someone later "simplifies" the expression back to plain `x > 0f`, the consequence is a menu that
+ * clips intermittently rather than always — and *every other test in this repo stays green*.
  *
  * Three cells, matching the criteria agreed in review:
  *
@@ -21,6 +25,13 @@ import kotlin.test.assertTrue
  * | true       | any   | yes  | unmeasured is indistinguishable from x = 0; take the safe side |
  * | false      | 0     | no   | full-width page: the in-page menu fits                     |
  * | false      | > 0   | yes  | narrow pane: the in-page modal would clip                  |
+ *
+ * **Which assertion is load-bearing was verified by mutation, once:**
+ * `verified by mutation on 2026-10-19 @ f033638435f9 — removing `!originMeasured ||` turns only
+ * "unmeasured x = 0" red; the "unmeasured x = 312" assertion still passes, because x > 0 already
+ * routes to the host on its own.` That is a one-off observation, not a standing guarantee: it
+ * describes the implementation as of that commit, and nothing re-runs it. If someone changes the
+ * predicate, re-do the mutation check rather than trusting this line.
  */
 class ThreadMenuShellHostPredicateTest {
 
@@ -51,7 +62,10 @@ class ThreadMenuShellHostPredicateTest {
         // emptied the emoji row in single-column layouts.
         assertFalse(
             threadMenuUsesShellHost(adaptiveDetailPage = true, originMeasured = true, windowOriginX = 0f),
-            "a full-width page must keep its in-page menu; hosting it there is the known regression"
+            "a full-width page must keep its in-page menu; routing it to the host is the known regression"
+            // Note: the device symptom of that regression was an empty emoji row, but that was two
+            // causes stacked -- this routing fault plus a host capturing an undecoded atlas. Only the
+            // routing half is asserted here; hosting a full-width page is a behaviour deviation.
         )
     }
 
