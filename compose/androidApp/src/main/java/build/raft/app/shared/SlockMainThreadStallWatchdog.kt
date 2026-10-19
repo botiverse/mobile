@@ -127,12 +127,12 @@ internal object SlockMainThreadStallWatchdog {
         )
     }
 
-    private fun isLooperWait(stack: Array<StackTraceElement>): Boolean {
+    private fun isLooperWait(stack: Array<out StackTraceElement>): Boolean {
         val top = stack.firstOrNull() ?: return false
         return top.methodName == "nativePollOnce" && top.className == "android.os.MessageQueue"
     }
 
-    private fun formatStack(stack: Array<StackTraceElement>): String =
+    private fun formatStack(stack: Array<out StackTraceElement>): String =
         if (stack.isEmpty()) {
             "[]"
         } else {
