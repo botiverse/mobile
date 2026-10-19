@@ -139,7 +139,7 @@ GESTURE_OWNER_REGIONS = (
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
     (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),
     (THREAD_PAGE, "private fun ThreadMessageAvatar(", "private fun ThreadMessageStaticAvatar(", "thread-message-avatar"),
-    (BRUTAL_DROPDOWN, "private fun SlockBrutalDropdownMenuRow(", "private data class SlockBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
+    (BRUTAL_DROPDOWN, "internal fun SlockBrutalDropdownMenuRow(", "private data class SlockBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
     (FOREGROUND_BANNER, "internal fun SlockForegroundMessageBannerView(", "private data class ForegroundBannerGestureCallbacks(", "foreground-banner"),
 )
 

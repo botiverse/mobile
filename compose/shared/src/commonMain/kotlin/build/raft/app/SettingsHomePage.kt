@@ -20947,13 +20947,23 @@ internal fun SharedHomeSearchPanel(
                     surfaceShadowColor = SearchPopoverShadowColor,
                     selectedRowColor = SlockColor.SurfaceWhite,
                     showClearWhenSelected = true,
-                    headerSlot = {
-                        if (state.senderFiltersLoading) {
-                            Text(stringResource(MR.strings.search_filter_loading_senders), style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                        } else if (state.senderFiltersErrorCode != null) {
-                            Text(state.senderFiltersErrorCode, style = SlockType.Caption, color = SlockColor.AccentRed)
+                    // Only pass a header when there is a status to show: the raft popover
+                    // pads the slot and reserves its height, so an empty slot would leave a gap.
+                    headerSlot =
+                        when {
+                            state.senderFiltersLoading -> {
+                                {
+                                    Text(stringResource(MR.strings.search_filter_loading_senders), style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                                }
+                            }
+                            state.senderFiltersErrorCode != null -> {
+                                val errorCode = state.senderFiltersErrorCode
+                                {
+                                    Text(errorCode, style = SlockType.Caption, color = SlockColor.AccentRed)
+                                }
+                            }
+                            else -> null
                         }
-                    }
                 )
             "channel" ->
                 SlockFilterPopover(
