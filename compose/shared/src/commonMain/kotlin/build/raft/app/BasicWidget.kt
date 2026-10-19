@@ -1612,6 +1612,25 @@ internal fun TextFieldValue.toSlockTextInputState(): TextInputState =
     )
 
 /**
+ * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
+ * composition (mid-dictation, mid-CJK conversion) is committed as-is, without dropping characters.
+ *
+ * Kuikly's Android editor ran `finishComposingText()` inside `getTextInputState` (7ae5b181a), so
+ * the composer never received an open composing region. On CMP the reader returns the Compose
+ * [TextFieldValue], whose text already contains the composing characters; clearing the range makes
+ * the snapshot match that contract, and when the composer writes the snapshot back to the field
+ * (acceptEditorValue) Compose sees a composition-only change and restarts input, which ends the
+ * IME's composition the way `finishComposingText` did - so the IME cannot keep composing into
+ * the text that is being sent.
+ */
+internal fun TextInputState.raftWithFinishedComposition(): TextInputState =
+    if (compositionStart == TextInputState.NO_COMPOSITION && compositionEnd == TextInputState.NO_COMPOSITION) {
+        this
+    } else {
+        copy(compositionStart = TextInputState.NO_COMPOSITION, compositionEnd = TextInputState.NO_COMPOSITION)
+    }
+
+/**
  * Reads the native editor's current text/selection/composition state at an action boundary.
  *
  * Native UIKit/Android/OHOS editing can already be visible while its ordinary change callback is
@@ -1904,7 +1923,7 @@ internal fun TextField(
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
                 callback(
                     SlockTextFieldNativeEditorRead(
-                        state = currentValueForReader.toSlockTextInputState(),
+                        state = currentValueForReader.toSlockTextInputState().raftWithFinishedComposition(),
                         editorNativeRef = -1,
                     )
                 )
