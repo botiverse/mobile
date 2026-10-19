@@ -1,0 +1,59 @@
+# Dispatch stub. HarmonyOS was removed from main (1.15 moves to Compose
+# Multiplatform); the 1.14.x line still ships OHOS from release/1.14.x.
+# GitHub only dispatches workflows whose file exists on the default branch, so
+# this file keeps "OHOS Release" dispatchable. Always dispatch with
+# `--ref release/1.14.x`: GitHub then runs the full workflow from that branch.
+# Delete this stub once the 1.14 line no longer ships OHOS.
+name: OHOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact application SHA for artifact-only validation (empty uses workflow ref)"
+        required: false
+        type: string
+        default: ""
+      publish_to_hands:
+        description: "Publish a Hands draft; disable for validation artifacts only"
+        required: true
+        type: boolean
+        default: true
+      version_major:
+        description: "versionName major (X)"
+        required: true
+        type: string
+        default: "1"
+      version_minor:
+        description: "versionName minor (Y)"
+        required: true
+        type: string
+        default: "0"
+      version_patch:
+        description: "versionName patch (Z)"
+        required: true
+        type: string
+        default: "0"
+      version_build:
+        description: "versionCode build (0-999)"
+        required: true
+        type: string
+        default: "0"
+      version_suffix:
+        description: "versionName suffix (e.g. rc1); leave empty for release"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  wrong-ref:
+    name: Dispatch from release/1.14.x
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse to run from main
+        run: |
+          echo "::error::OHOS was removed from main. Dispatch this workflow with --ref release/1.14.x."
+          exit 1
