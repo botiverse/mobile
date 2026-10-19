@@ -121,9 +121,12 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
         // identity and the exact key with the value.
         //
         // storeId is the object identity, not the class: the class is invariant across two handles,
-        // so it cannot discriminate them. Two calls in one process (install point, read point)
-        // printing different storeIds prove two handles; the same storeId with raw=<absent> points
-        // at the key/namespace or the timing instead.
+        // so it cannot discriminate them. Read the comparison in ONE direction only (Ark): this
+        // tracks the WRAPPER object, not the underlying MMKV. Same storeId => definitely the same
+        // object => definitely the same MMKV. Different storeId => only that the wrappers differ;
+        // two wrappers over one MMKV also differ, so a different storeId alone does NOT prove two
+        // underlying stores. To claim that the values must diverge too (same key, one reads a value
+        // and the other reads absent).
         "font_preference_coldstart store=${binding.store::class.simpleName}" +
             " storeId=${slockStoreIdentity(binding.store)} scope=${binding.scope}" +
             " namespace=${SlockLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
@@ -135,8 +138,11 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
 
 /**
  * Stable per-instance identity for diagnostics: distinguishes two store handles that share a class.
- * Uses the platform identity hash where available; falls back to a per-process counter keyed by the
- * instance so repeated calls for the SAME object keep returning the SAME value.
+ * Repeated calls for the SAME object keep returning the SAME value, so two call sites can be
+ * compared within one process.
+ *
+ * **The comparison is sound in one direction only** — see the note at the call site: this is the
+ * wrapper's identity, not the underlying MMKV's.
  */
 private val slockStoreIdentities = mutableListOf<Pair<Any, Int>>()
 
