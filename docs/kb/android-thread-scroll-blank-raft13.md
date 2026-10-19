@@ -48,6 +48,29 @@ The 478 ms `jank_frame` is **one frame on the Android UI thread**, and the same 
 
 **Making that last question decidable** is what the next probe addresses: when the main thread stalls ≥150 ms, capture the main-thread stack and the Kuikly-thread stack from a **single `getAllStackTraces()`** call, and mark which one is merely waiting in its looper. Note that a stack sample must be read as busy-or-idle — a stack parked in `MessageQueue.nativePollOnce` means "nothing was dispatched", not "the thread was held".
 
+### Two stalls, timing arithmetic, and what it excludes (2026-10-19)
+
+Two long-message recomposes sit immediately before the two longest stalls in the same trace:
+
+| # | `jank_frame` reported | duration | **implied frame start** (report − duration) | `body_recompose` log | gap |
+|---|---|---|---|---|---|
+| 1 | 52.047 | 478 ms | **51.569** | 51.568 (`bodyLen=1536`) | **+1 ms** |
+| 2 | 53.510 | 285 ms | **53.225** | 53.184 (`bodyLen=1966`) | +41 ms |
+
+Shorter messages in the same trace show **no frame above 110 ms**, so the pairing has a negative control.
+
+**What this excludes:** the stall does **not** begin during composition. `thread_markdown_body_recompose` is emitted from a `SideEffect`, which runs **after** composition commits, and the implied frame start is 1 ms and 41 ms *after* that log. So composition for that message had already finished when the long frame began. The cost is in what happens **to the composed output next** — first measure / layout / draw — not in building it.
+
+**Metadata a reader needs to re-derive this:**
+
+- Both lines go through the same writer (`SlockAndroidLocalDiagnostics.recordLog`) into the same JSONL with one wall-clock `ts`, recording **write time**. The two channels are structurally one clock; that is not an assumption.
+- `jank_frame` is written from the JankStats callback **at frame end**, so its `ts` is the frame's end. The frame start above is `ts − frameDurationUiNanos`.
+- **The derivation is an inference at ±1–2 frames, not a measurement.** There is log-write latency between the two events, and the gap itself varies (1 ms vs 41 ms), so it is not a constant.
+
+**What it still does not say:** that the recompose or the 1536/1966-character message *caused* the stall. It locates the stall to the window after composition; the main-thread stack is what names the operation.
+
+A candidate worth testing, from reading the fork (**unconfirmed**): Kuikly's `KRRichTextView` can re-measure an entire paragraph with `StaticLayout` on the main thread in `setShadow`/`setLayoutParams` when the layout width and the background-measured text width disagree (`KRRichTextView.kt` ~214–258). If a stack shows `initTextLayout → measureLayoutExactly`, that is this path.
+
 **Also an inference, not an observation:** that native scrolling kept advancing during the stall. The gap is unsampled; the evidence is only the state before and after it. The current probe has no `gapSinceLastFrameMs`, so the blind spot cannot report its own width yet.
 
 **"Rows could not be placed in time" is well supported. "Composition blocked by X" is not**, for any particular X, on this evidence.
