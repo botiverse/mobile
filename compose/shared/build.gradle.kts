@@ -129,6 +129,9 @@ kotlin {
                 kotlin.srcDir("src/visualFixtureData/kotlin")
             }
             dependencies {
+                // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
+                // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
+                api(project(":core"))
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")

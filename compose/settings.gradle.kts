@@ -123,5 +123,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "compose"
 include(":androidApp")
+include(":core")
 include(":shared")
 include(":designsystem")
