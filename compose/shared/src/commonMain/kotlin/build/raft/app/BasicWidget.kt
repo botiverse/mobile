@@ -1612,6 +1612,29 @@ internal fun TextFieldValue.toSlockTextInputState(): TextInputState =
     )
 
 /**
+ * The most recent [TextFieldValue] a field has seen, for action-boundary reads (Send).
+ *
+ * The composed `value` lags an IME edit by a frame: Compose delivers the edit to `onValueChange`,
+ * the caller stores it, and only the next recomposition passes it back. A Send fired inside that
+ * window must still see the edit, so the `onValueChange` wrapper records it ([recordEdit]) before
+ * calling the caller. Every committed composition records the caller's value ([recordComposed]),
+ * so programmatic changes (clear after send, draft restore) and edits the caller rejected win
+ * again once composed.
+ */
+internal class RaftLiveTextFieldValue(initial: TextFieldValue) {
+    var value: TextFieldValue = initial
+        private set
+
+    fun recordEdit(next: TextFieldValue) {
+        value = next
+    }
+
+    fun recordComposed(composed: TextFieldValue) {
+        value = composed
+    }
+}
+
+/**
  * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
  * composition (mid-dictation, mid-CJK conversion) is committed as-is, without dropping characters.
  *
@@ -1916,14 +1939,25 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-    // CMP: the editing state lives in Compose, so the "native" read is the current value.
-    val currentValueForReader by rememberUpdatedState(value)
+    // CMP: the editing state lives in Compose, so the "native" read is the live value: the most
+    // recent value seen by the field, including an IME edit delivered to onValueChange that the
+    // caller has not recomposed with yet (an IME commit and Send within one frame), see
+    // RaftLiveTextFieldValue.
+    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
+    SideEffect { liveValueForReader.recordComposed(value) }
+    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
+        remember(liveValueForReader) {
+            { next ->
+                liveValueForReader.recordEdit(next)
+                currentOnValueChange(next)
+            }
+        }
     if (nativeEditingStateReader != null) {
         SideEffect {
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
                 callback(
                     SlockTextFieldNativeEditorRead(
-                        state = currentValueForReader.toSlockTextInputState().raftWithFinishedComposition(),
+                        state = liveValueForReader.value.toSlockTextInputState().raftWithFinishedComposition(),
                         editorNativeRef = -1,
                     )
                 )
@@ -1934,7 +1968,7 @@ internal fun TextField(
     BasicTextField(
         modifier = updatedModifier,
         value = value,
-        onValueChange = currentOnValueChange,
+        onValueChange = onValueChangeRecordingLive,
         textStyle = resolvedTextStyle,
         singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,
