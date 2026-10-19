@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.components.SlockRaftMetrics
+import build.raft.app.components.SlockRaftSeparator
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftOverlaySurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
@@ -29,6 +33,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -91,6 +96,44 @@ internal fun SlockFilterPopover(
     headerSlot: (@Composable () -> Unit)? = null
 ) {
     if (anchor == null) return
+    val filtered =
+        if (searchText.isBlank()) options
+        else options.filter { it.label.contains(searchText, ignoreCase = true) }
+    if (slockRaftActive()) {
+        SlockRaftFilterPopover(
+            anchor = anchor,
+            title = title,
+            filtered = filtered,
+            selectedIds = selectedIds,
+            onToggle = onToggle,
+            onClear = onClear,
+            onDismiss = onDismiss,
+            widthDp = widthDp,
+            horizontalOffsetDp = horizontalOffsetDp,
+            verticalOffsetDp = verticalOffsetDp,
+            multiSelect = multiSelect,
+            showClearWhenSelected = showClearWhenSelected,
+            headerSlot = headerSlot,
+            searchField =
+                if (searchable) {
+                    {
+                        TextField(
+                            value = searchText,
+                            onValueChange = onSearchChange,
+                            placeholder = searchPlaceholder,
+                            placeholderColor = SlockColor.ForegroundHint,
+                            autoFocus = false,
+                            maxLines = 1,
+                            textStyle = SlockRaftFilterPopoverInputStyle(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    null
+                }
+        )
+        return
+    }
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val popoverWidth = widthDp.dp
@@ -104,9 +147,6 @@ internal fun SlockFilterPopover(
     val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
     val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
     val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
-    val filtered =
-        if (searchText.isBlank()) options
-        else options.filter { it.label.contains(searchText, ignoreCase = true) }
     SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = popoverSize,
@@ -288,6 +328,44 @@ internal fun SlockFilterPopover(
     headerSlot: (@Composable () -> Unit)? = null
 ) {
     if (anchor == null) return
+    val filtered =
+        if (searchText.text.isBlank()) options
+        else options.filter { it.label.contains(searchText.text, ignoreCase = true) }
+    if (slockRaftActive()) {
+        SlockRaftFilterPopover(
+            anchor = anchor,
+            title = title,
+            filtered = filtered,
+            selectedIds = selectedIds,
+            onToggle = onToggle,
+            onClear = onClear,
+            onDismiss = onDismiss,
+            widthDp = widthDp,
+            horizontalOffsetDp = horizontalOffsetDp,
+            verticalOffsetDp = verticalOffsetDp,
+            multiSelect = multiSelect,
+            showClearWhenSelected = showClearWhenSelected,
+            headerSlot = headerSlot,
+            searchField =
+                if (searchable) {
+                    {
+                        TextField(
+                            value = searchText,
+                            onValueChange = onSearchChange,
+                            placeholder = searchPlaceholder,
+                            placeholderColor = SlockColor.ForegroundHint,
+                            autoFocus = false,
+                            maxLines = 1,
+                            textStyle = SlockRaftFilterPopoverInputStyle(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    null
+                }
+        )
+        return
+    }
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val popoverWidth = widthDp.dp
@@ -301,9 +379,6 @@ internal fun SlockFilterPopover(
     val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
     val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
     val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
-    val filtered =
-        if (searchText.text.isBlank()) options
-        else options.filter { it.label.contains(searchText.text, ignoreCase = true) }
     SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = popoverSize,
@@ -451,6 +526,173 @@ internal fun SlockFilterPopover(
                                                 .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// raft-ui Combobox / Select popup (web search filters): overlay surface (container radius,
+// popover layer, seam ring, float shadow), min 220dp wide; a `py-1.5 pl-4 pr-1.5` header
+// with the caption-bold hint label over a hairline; an `h-10 px-3` search row with its own
+// hairline; a `p-1.5` list (max 256dp) of 36dp control-radius rows in callout medium ink,
+// the selected row bold with a trailing 16dp check. No row dividers, no selected fill.
+private val SlockRaftFilterHeaderHeight = 28.dp
+private val SlockRaftFilterSearchHeight = 40.dp
+private val SlockRaftFilterListMaxHeight = 256.dp
+private val SlockRaftFilterMinWidth = 220.dp
+
+@Composable
+private fun SlockRaftFilterPopoverInputStyle() =
+    SlockType.Input.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
+
+@Composable
+private fun SlockRaftFilterPopover(
+    anchor: SlockPopoverAnchor,
+    title: String,
+    filtered: List<SlockFilterOption>,
+    selectedIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+    widthDp: Float,
+    horizontalOffsetDp: Float,
+    verticalOffsetDp: Float,
+    multiSelect: Boolean,
+    showClearWhenSelected: Boolean,
+    headerSlot: (@Composable () -> Unit)?,
+    searchField: (@Composable () -> Unit)?
+) {
+    val density = LocalDensity.current
+    val popoverWidth = maxOf(widthDp.dp, SlockRaftFilterMinWidth)
+    val listHeight =
+        if (filtered.isEmpty()) {
+            48.dp
+        } else {
+            minOf(SlockRaftMetrics.MenuRowHeight * filtered.size + SlockRaftMetrics.PopupPadding * 2, SlockRaftFilterListMaxHeight)
+        }
+    val popoverHeight =
+        SlockRaftFilterHeaderHeight + SlockStroke.Thin +
+            (if (searchField != null) SlockRaftFilterSearchHeight + SlockStroke.Thin else 0.dp) +
+            listHeight
+    SlockModalAnchoredPopover(
+        anchor = anchor,
+        // raft overlays float on a shadow that takes no layout space.
+        contentSize = with(density) { Size(popoverWidth.toPx(), popoverHeight.toPx()) },
+        onDismiss = onDismiss,
+        viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
+        horizontalOffset = with(density) { horizontalOffsetDp.dp.toPx() },
+        verticalOffset = with(density) { verticalOffsetDp.dp.toPx() },
+        // Filter chip anchors are their left edge; clamp to the viewport
+        // instead of flipping the popover entirely to the chip's left.
+        horizontalAutoFlip = false,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+    ) {
+        Column(
+            modifier = Modifier
+                .width(popoverWidth)
+                .slockRaftOverlaySurface()
+                // Keeps taps on card whitespace from dismissing the overlay while leaving
+                // the nested list scrollable (see the brutal surface above).
+                .clickable(onClick = {})
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SlockRaftFilterHeaderHeight)
+                    .padding(start = 16.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.ForegroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (showClearWhenSelected && selectedIds.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.common_clear),
+                            style = SlockType.Caption
+                                .copy(fontSize = 12.sp, lineHeight = 16.sp, textDecoration = TextDecoration.Underline)
+                                .withSlockFontWeight(FontWeight.SemiBold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            headerSlot?.let {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) { it() }
+            }
+            SlockRaftSeparator()
+            if (searchField != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(SlockRaftFilterSearchHeight)
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    searchField()
+                }
+                SlockRaftSeparator()
+            }
+            if (filtered.isEmpty()) {
+                Text(
+                    text = stringResource(MR.strings.common_no_matches),
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.ForegroundHint,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = SlockRaftFilterListMaxHeight)) {
+                    LazyColumn(modifier = Modifier.padding(SlockRaftMetrics.PopupPadding)) {
+                        items(filtered.size, key = { i -> filtered[i].id }) { index ->
+                            val option = filtered[index]
+                            val selected = option.id in selectedIds
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(SlockRaftMetrics.MenuRowHeight)
+                                    .clickable {
+                                        onToggle(option.id)
+                                        if (!multiSelect) onDismiss()
+                                    }
+                                    .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap)
+                            ) {
+                                option.icon?.let {
+                                    Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                                        SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = slockArgbHex(SlockColor.TextBlack))
+                                    }
+                                }
+                                Text(
+                                    text = option.label,
+                                    style = SlockType.Body
+                                        .copy(fontSize = 14.sp, lineHeight = 20.sp)
+                                        .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (selected) {
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.Check,
+                                        modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
+                                        color = SlockColor.TextBlackArgb,
+                                        strokeWidth = 2f
+                                    )
                                 }
                             }
                         }

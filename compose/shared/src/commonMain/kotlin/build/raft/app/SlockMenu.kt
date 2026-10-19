@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.components.SlockRaftMetrics
+import build.raft.app.components.SlockRaftSeparator
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +105,23 @@ internal fun SlockBaseMenuOverlay(
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto
 ) {
     if (items.isEmpty()) return
+    if (slockRaftActive()) {
+        SlockRaftBaseMenuOverlay(
+            anchor = anchor,
+            items = items,
+            selectedId = selectedId,
+            onDismiss = onDismiss,
+            onSelect = onSelect,
+            width = width ?: slockRaftMenuWidth(slockBaseMenuWidth(items, uppercaseLabels = false, minWidth = minWidth)),
+            horizontalOffset = horizontalOffset,
+            // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
+            // own gap (the 4dp status menu) is kept.
+            verticalOffset = if (verticalOffset == SlockBaseMenuVerticalOffset) SlockRaftMetrics.MenuSideOffset else verticalOffset,
+            verticalPlacement = verticalPlacement,
+            modifier = modifier
+        )
+        return
+    }
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
     val menuWidth = width ?: slockBaseMenuWidth(items, uppercaseLabels, minWidth)
@@ -219,6 +240,105 @@ internal fun SlockTaskStatusMenuOverlay(
         onDismiss = onDismiss,
         onSelect = onSelect
     )
+}
+
+/**
+ * raft-ui DropdownMenu / Select popup for [SlockBaseMenuOverlay]: overlay surface (container
+ * radius, popover layer, seam ring, float shadow) with a `p-1.5` inset; 36dp control-radius
+ * rows (`px-2.5`, `gap-2.5`) in callout medium ink with a 16dp muted-ink icon; the selected
+ * row is bold with a trailing 16dp check (no selected fill, no uppercase); `dividerBefore`
+ * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. The brutal colour / label tuning
+ * parameters of the overlay do not apply here.
+ */
+@Composable
+private fun SlockRaftBaseMenuOverlay(
+    anchor: SlockPopoverAnchor,
+    items: List<SlockBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    width: Dp,
+    horizontalOffset: Dp,
+    verticalOffset: Dp,
+    verticalPlacement: SlockFloatingVerticalPlacement,
+    modifier: Modifier
+) {
+    val density = LocalDensity.current
+    val separatorHeight = SlockRaftMetrics.MenuSeparatorInset * 2 + SlockStroke.Thin
+    val menuHeight =
+        SlockRaftMetrics.MenuRowHeight * items.size +
+            SlockRaftMetrics.PopupPadding * 2 +
+            separatorHeight * items.count { it.dividerBefore }
+    SlockModalAnchoredPopover(
+        anchor = anchor,
+        // raft overlays float on a shadow that takes no layout space.
+        contentSize = with(density) { Size(width.toPx(), menuHeight.toPx()) },
+        viewportGap = with(density) { SlockBaseMenuViewportGap.toPx() },
+        horizontalOffset = with(density) { horizontalOffset.toPx() },
+        verticalOffset = with(density) { verticalOffset.toPx() },
+        verticalPlacement = verticalPlacement,
+        horizontalAutoFlip = true,
+        onDismiss = onDismiss,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .width(width)
+                .slockRaftOverlaySurface()
+                // Keeps blank menu space out of the sibling dismiss barrier (see the
+                // brutal surface).
+                .clickable(onClick = {})
+                .padding(vertical = SlockRaftMetrics.PopupPadding)
+        ) {
+            items.forEach { item ->
+                if (item.dividerBefore) {
+                    SlockRaftSeparator(verticalSpacing = SlockRaftMetrics.MenuSeparatorInset)
+                }
+                val selected = item.id == selectedId
+                Button(
+                    onClick = { onSelect(item.id) },
+                    // Rows sit in the popup's 6dp side inset; separators bleed through it.
+                    modifier = Modifier
+                        .padding(horizontal = SlockRaftMetrics.PopupPadding)
+                        .fillMaxWidth()
+                        .height(SlockRaftMetrics.MenuRowHeight)
+                        .padding(horizontal = SlockRaftMetrics.MenuItemPaddingHorizontal)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(SlockRaftMetrics.MenuItemGap)
+                    ) {
+                        item.icon?.let {
+                            SlockLucideIcon(
+                                it,
+                                modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
+                                color = slockArgbHex(SlockColor.TextMuted)
+                            )
+                        }
+                        Text(
+                            text = item.label,
+                            style = SlockType.Body
+                                .copy(fontSize = 14.sp, lineHeight = 20.sp)
+                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (selected) {
+                            SlockLucideIcon(
+                                SlockLucideIconName.Check,
+                                modifier = Modifier.size(SlockRaftMetrics.MenuIconSize),
+                                color = SlockColor.TextBlackArgb,
+                                strokeWidth = 2f
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: Boolean, minWidth: Dp): Dp {
