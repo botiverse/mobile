@@ -2,7 +2,7 @@
 
 Owner: Mahua · Verified at: 2026-10-18 · Status: current
 
-**Scope.** This article explains the share of fast-scroll blank rows that came from reverse-layout re-anchoring, and the fix for it. It is **not** a general explanation of blank rows during a hard fling: on a build that already contains the fix, a hard fling can still blank out a comparable area through frame production alone. See "Evidence method" for the measurement that separates the two.
+**Scope.** This article explains the share of fast-scroll blank rows that came from reverse-layout re-anchoring, and the fix for it. It is **not** a general explanation of blank rows during a hard fling: on a build that already contains the fix, a hard fling can still blank out a comparable area through frame production alone — **that residual is now identified** (Markdown pre-parse blocking the Kotlin thread; see "The residual blank, now identified"). See "Evidence method" for the measurement that separates the two.
 
 Symptom fixed in this repo by PR **#3073** (Kuikly release set bump to `2.28.0-raft.13`); renderer fix upstream in KuiklyUI PR **#205**.
 
@@ -15,6 +15,21 @@ On Android, flinging a long message thread to the bottom left a large blank regi
 The thread list runs `LazyColumn(reverseLayout = true)` (shipped behind `mobile_thread_reverse_layout_v0`, default-on). The Kuikly fork's reverse native-scroll path anchors the native scroll offset to the **estimated** total content height. Message rows vary in height (markdown, code blocks, images), so the estimate keeps correcting mid-fling; every correction re-anchored the native offset and re-laid all placed children on the Kuikly thread. During a fling this re-anchor storm plus new-row composition blew the frame budget, so rows already inside the viewport waited multiple frames to paint.
 
 The same mechanism, seen in one screenshot frame, also explained two companion symptoms: the top row clipped by the list's top edge and a "Back to bottom" pill shown while the latest row was already visible — both are what a content block shifted by an over-estimated anchor looks like.
+
+## The residual blank, now identified (2026-10-19)
+
+The Scope above says a hard fling can still blank on a build containing the fix, "through frame production alone". That was honest but unnamed. A per-frame trace from a real device (Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_fling_frame` samples over 9 flings) names it, and it is **not** the reverse path:
+
+- `outOfRange` and `overscroll` were **0 throughout**, so the residual is neither over-scrolling nor "queued but never drawn".
+- On one up-fling the content view held **5 rows** against an estimated content height of 9000. The native offset fell ~100 px per frame, and the hole above the viewport grew 63 → 876 → … → **1777 px (89% of a 1993 px viewport)** over about 180 ms, frames 3-12.
+- Then **480 ms with no frame at all** (51.529 → 52.012). When frames resumed, the content height had become 14037 and the viewport was fully covered.
+- In the same window: `jank_frame durationMs=478 route=kuikly_thread operation=thread_first_frame`, immediately preceded by `thread_markdown_preparse scope=visible_overscan durationMs=377` and a markdown re-layout for a 1536-character message.
+
+**Mechanism: the Kotlin thread was blocked ~480 ms by Markdown pre-parse and first-frame composition.** Native scrolling kept advancing during the stall, new rows could not be placed, and the viewport showed what was underneath — blank. Once the thread recovered, the rows arrived in one batch. So this is **"rows could not be placed in time"**, not "rows failed to paint".
+
+Two other flings on the same trace also blanked (37 consecutive frames, max 698 px; and 567 px), so it is not a single outlier.
+
+**What this does and does not change.** It confirms the Scope's claim that the residual is layout-independent — the reverse-path fix is still the correct explanation of the ~700 px regression this article is about. It does **not** support reading the fixed-build toggle result as evidence about this residual's size. Fix direction for this mechanism (moving `visible_overscan` pre-parse off the scroll-critical path, more row prefetch) is tracked separately; **as of 2026-10-19 no fix for it has landed**, so on any current build expect the residual to persist.
 
 ## Fix
 
