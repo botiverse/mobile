@@ -75,38 +75,14 @@ internal enum class SlockTabBarPresentation {
 
 internal enum class SlockAppTabBarRenderer {
     SharedCompose,
-    OhosHdsImmersive,
     IosLiquidGlass,
     AndroidFloating
 }
 
 private val SlockSharedBottomTabBarHeight = 58.dp
-private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
-// Mirror of the HDS floating bar geometry inside SlockOhosHdsTabBarView.ets:
-// a 56vp bar lifted 26vp off the host bottom, inset 18vp per side. The
-// Compose-side touch blocker below must track these numbers so it covers
-// exactly the pill and nothing else.
-private val SlockOhosHdsDockBarHeight = 56.dp
-private val SlockOhosHdsDockBottomMargin = 26.dp
-private val SlockOhosHdsDockSideMargin = 18.dp
-
-// The native OHOS dock lives in the 92dp dock band of the host; the pill sits
-// [band top+10 .. band top+66]. Custom native (ForwardArkTS) views are hit-test
-// transparent, so taps over the pill fall through to the content list unless
-// a Compose blocker in the same subtree consumes them first.
-internal fun slockOhosHdsDockBlockerTopOffset(): Dp =
-    SlockOhosHdsBottomTabBarHostHeight - SlockOhosHdsDockBottomMargin - SlockOhosHdsDockBarHeight
-
-// When the dock band is seated at the host bottom (OHOS immersive, where the
-// app now paints into the bottom safe area), the pill sits a fixed
-// SlockOhosHdsDockBottomMargin above the host bottom regardless of safe-area
-// height. The tap blocker (height = dock bar height) is bottom-anchored and
-// lifted by that margin so it still covers exactly the pill rect.
-internal fun slockOhosHdsDockBlockerBottomOffset(): Dp = SlockOhosHdsDockBottomMargin
-
-internal fun slockOhosHdsDockBlockerHeight(): Dp = SlockOhosHdsDockBarHeight
-
-internal fun slockOhosHdsDockBlockerSideMargin(): Dp = SlockOhosHdsDockSideMargin
+// Fixed band that hosts the native floating dock (iOS Liquid Glass, Android
+// floating). Scrollable content reserves this band plus the bottom safe area.
+private val SlockFloatingDockBottomTabBarHostHeight = 92.dp
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
@@ -125,7 +101,6 @@ internal fun slockAppBottomTabBarContentInset(
         // edge-to-edge, but scrollable trailing content must reserve the full
         // host band. Otherwise the final row settles under the native bar and
         // its tap target is intercepted by the tab surface.
-        SlockAppTabBarRenderer.OhosHdsImmersive,
         SlockAppTabBarRenderer.IosLiquidGlass,
         SlockAppTabBarRenderer.AndroidFloating ->
             slockFloatingDockBottomTabBarHostHeight(bottomSafeArea)
@@ -136,7 +111,6 @@ internal fun slockAppBottomTabBarContentInset(
 @Composable
 internal fun slockAppBottomTabBarOverlaysContent(): Boolean {
     return when (slockAppTabBarRenderer()) {
-        SlockAppTabBarRenderer.OhosHdsImmersive,
         SlockAppTabBarRenderer.IosLiquidGlass,
         SlockAppTabBarRenderer.AndroidFloating -> true
         SlockAppTabBarRenderer.SharedCompose -> false
@@ -150,7 +124,7 @@ internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
     slockSharedBottomTabBarHostHeight(bottomSafeArea) + SlockSpacing.Lg
 
 internal fun slockFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
-    SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
+    SlockFloatingDockBottomTabBarHostHeight + bottomSafeArea
 
 internal val SlockVerticalTabSectionTextStyle: TextStyle
     get() =
@@ -301,22 +275,6 @@ internal fun SlockAppBottomTabBarHost(
 ) {
     val hostModifier = modifier.zIndex(SlockAppBottomTabBarHostZIndex)
     when (slockAppTabBarRenderer()) {
-        SlockAppTabBarRenderer.OhosHdsImmersive -> {
-            // OHOS custom native views are hit-test transparent, so the dock
-            // needs a Compose blocker under the pill to stop tap-through.
-            // The OHOS host now paints into the bottom safe area (see Index.ets
-            // expandSafeArea), so seat the dock band at the host bottom instead
-            // of leaving the safe area as empty space below it.
-            SlockNativeFloatingBottomTabBarHost(
-                items = items,
-                onSelect = onSelect,
-                modifier = hostModifier,
-                bottomSafeArea = bottomSafeArea,
-                containDockTaps = true,
-                seatDockAtHostBottom = true
-            )
-            return
-        }
         SlockAppTabBarRenderer.IosLiquidGlass -> {
             // The iOS host paints edge-to-edge. Seat the native dock band at the
             // host bottom so UITabBar receives the real bottom safe area instead
@@ -376,7 +334,7 @@ private fun SlockSharedAndroidFloatingBottomTabBarHost(
                 // The old Android ComposeView received the dock band's exact
                 // 92dp parent constraint, so its nominal 56dp Row expanded to
                 // the full band. Preserve that rendered geometry in Kuikly.
-                .height(SlockOhosHdsBottomTabBarHostHeight)
+                .height(SlockFloatingDockBottomTabBarHostHeight)
                 .padding(horizontal = 18.dp)
                 .background(SlockColor.SurfaceWhite.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
                 .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -433,49 +391,25 @@ private fun SlockNativeFloatingBottomTabBarHost(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp,
-    containDockTaps: Boolean = false,
     seatDockAtHostBottom: Boolean = false
 ) {
     // The dock band is a fixed 92dp. By default it sits at the top of the host
     // and the bottom safe area is empty space below it. When the host already
-    // paints into the safe area (OHOS immersive), seat the band at the host
+    // paints into the safe area (iOS edge-to-edge), seat the band at the host
     // bottom so the pill drops by one safe-area height instead of floating high.
     val dockBandAlignment = if (seatDockAtHostBottom) Alignment.BottomCenter else Alignment.TopCenter
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
+            .height(SlockFloatingDockBottomTabBarHostHeight + bottomSafeArea)
     ) {
-        // Drawn first (lower z) so it sits under the native dock. Sized to the
-        // pill rect only — margins stay tap-through, matching iOS pointInside.
-        // The blocker tracks the dock band: top-anchored when the band is at the
-        // top, bottom-anchored when the band is seated at the host bottom.
-        if (containDockTaps) {
-            val blockerModifier = if (seatDockAtHostBottom) {
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(y = -slockOhosHdsDockBlockerBottomOffset())
-            } else {
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = slockOhosHdsDockBlockerTopOffset())
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(slockOhosHdsDockBlockerHeight())
-                    .then(blockerModifier)
-                    .padding(horizontal = slockOhosHdsDockBlockerSideMargin())
-                    .clickable(onClick = {})
-            )
-        }
         SlockNativeFloatingTabBar(
             items = items,
             onSelect = onSelect,
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockOhosHdsBottomTabBarHostHeight)
+                .height(SlockFloatingDockBottomTabBarHostHeight)
                 .align(dockBandAlignment)
         )
     }
@@ -498,7 +432,6 @@ internal fun resolveSlockAppTabBarRenderer(
     platformDefaultRenderer: String?
 ): SlockAppTabBarRenderer {
     return when (explicitRenderer?.takeIf { it.isNotBlank() } ?: platformDefaultRenderer.orEmpty()) {
-        "ohosHdsImmersive", "hdsImmersive" -> SlockAppTabBarRenderer.OhosHdsImmersive
         "iosLiquidGlass", "iosNativeFloating" -> SlockAppTabBarRenderer.IosLiquidGlass
         "androidFloating", "androidNativeFloating" -> SlockAppTabBarRenderer.AndroidFloating
         else -> SlockAppTabBarRenderer.SharedCompose

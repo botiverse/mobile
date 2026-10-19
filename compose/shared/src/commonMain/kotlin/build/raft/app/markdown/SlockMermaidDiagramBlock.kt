@@ -10,8 +10,8 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
  * (parse → layout → Kuikly Canvas draw) lives in the target-specific `actual`
  * source sets where the `build.raft.mermaid` artifacts are resolvable.
  * commonMain keeps only this signature so mermaid types never enter the
- * common classpath. Android/iOS consume normal `0.1.2`; OHOS consumes
- * `0.1.2-ohos` from `ohosArm64Main` only.
+ * common classpath. Android and iOS consume the `build.raft.mermaid` artifacts
+ * from their own source sets.
  *
  * Contract: if Mermaid source parses and lays out, render the native Canvas diagram
  * with interactive zoom; otherwise gracefully fall back to [fallback].

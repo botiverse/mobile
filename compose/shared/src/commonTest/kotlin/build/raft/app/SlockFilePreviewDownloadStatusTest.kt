@@ -1840,12 +1840,6 @@ class SlockFilePreviewDownloadStatusTest {
                 SlockPreviewableVideoContainer.ThreeGpp,
                 SlockPreviewableVideoContainer.ThreeGpp2
             )
-        val ohos =
-            setOf(
-                SlockPreviewableVideoContainer.Mp4,
-                SlockPreviewableVideoContainer.Matroska,
-                SlockPreviewableVideoContainer.MpegTs
-            )
 
         assertEquals(
             all,
@@ -1857,12 +1851,6 @@ class SlockFilePreviewDownloadStatusTest {
             apple,
             all.filterTo(mutableSetOf()) {
                 slockVideoPlayerFormatProfileSupports(SlockVideoPlayerFormatProfile.IosAvPlayer, it)
-            }
-        )
-        assertEquals(
-            ohos,
-            all.filterTo(mutableSetOf()) {
-                slockVideoPlayerFormatProfileSupports(SlockVideoPlayerFormatProfile.OhosArkUiVideo, it)
             }
         )
     }

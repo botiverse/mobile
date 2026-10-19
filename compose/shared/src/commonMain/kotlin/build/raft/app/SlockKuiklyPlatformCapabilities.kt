@@ -80,7 +80,6 @@ internal expect fun slockPlatformPreservesEncodedFontWeightForFallback(): Boolea
 // build version), not hardcoded in commonMain. These MUST stay in sync with
 // the canonical Hands update-check slug each app module already ships:
 //   Android → BuildConfig.HANDS_APP_SLUG (compose/androidApp/build.gradle.kts)
-//   OHOS    → appSlug in compose/ohosApp/.../EntryAbility.ets
 //   iOS     → appSlug in compose/iosApp/.../iOSApp.swift
 // (That value lives in the app modules for the native update-check and is not
 // currently exposed to shared code; unifying would mean plumbing it through

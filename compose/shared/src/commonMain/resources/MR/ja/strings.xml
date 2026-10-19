@@ -2035,9 +2035,6 @@
     <string name="settings_storage_row_downloads_detail">ダウンロード中または失敗した際の一時データです。完了したファイルは「ダウンロード」に残ります。</string>
     <string name="settings_storage_row_temporary">一時ファイルとログ</string>
     <string name="settings_storage_row_temporary_detail">アプリが生成したデバッグログと一時ファイル。</string>
-    <string name="settings_storage_ohos_database_detail">OHOS のストレージ使用量は、まだホスト機能から取得できません。</string>
-    <string name="settings_storage_ohos_image_cache_detail">OHOS では画像キャッシュのクリアはまだ利用できません。</string>
-    <string name="settings_storage_ohos_temporary_detail">ローカル診断バッファには、診断のログクリアを使用してください。</string>
     <string name="settings_storage_feedback_image_cleared">画像キャッシュをクリアしました。</string>
     <string name="settings_storage_feedback_downloads_cleared">添付ファイルの一時データを消去しました。完了したダウンロードは削除されていません。</string>
     <string name="settings_storage_feedback_temporary_cleared">一時ファイルと診断ログをクリアしました。</string>

@@ -21,8 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-// OHOS commonTest has no kotlinx-coroutines-test KLIB (scripts/ci/check_commontest_crossplatform_deps.py):
-// every test here is runBlocking + CompletableDeferred barriers + injected wakeup capture, with
+// Every test here is runBlocking + CompletableDeferred barriers + injected wakeup capture, with
 // zero reliance on virtual time.
 class ThreadPendingSendDrainerTest {
 

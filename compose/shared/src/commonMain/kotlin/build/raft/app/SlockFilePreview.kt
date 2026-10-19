@@ -7341,8 +7341,7 @@ internal enum class SlockPreviewableVideoContainer {
 
 internal enum class SlockVideoPlayerFormatProfile {
     AndroidMedia3,
-    IosAvPlayer,
-    OhosArkUiVideo
+    IosAvPlayer
 }
 
 internal fun slockVideoPlayerFormatProfileSupports(
@@ -7364,14 +7363,6 @@ internal fun slockVideoPlayerFormatProfileSupports(
                 SlockPreviewableVideoContainer.M4v,
                 SlockPreviewableVideoContainer.ThreeGpp,
                 SlockPreviewableVideoContainer.ThreeGpp2 -> true
-                else -> false
-            }
-        // ArkUI Video's documented file formats are MP4, MKV, and TS.
-        SlockVideoPlayerFormatProfile.OhosArkUiVideo ->
-            when (container) {
-                SlockPreviewableVideoContainer.Mp4,
-                SlockPreviewableVideoContainer.Matroska,
-                SlockPreviewableVideoContainer.MpegTs -> true
                 else -> false
             }
     }
