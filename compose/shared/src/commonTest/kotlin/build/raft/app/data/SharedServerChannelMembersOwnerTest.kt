@@ -213,6 +213,29 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(listOf("after-relogin"), reloaded.data.members.map { it.id.value })
     }
 
+    @Test
+    fun addingAPeerServerHumanMakesTheirJointRosterRowLocal() = runBlocking {
+        // Joint channel: the roster holds this human only through the peer server.
+        val repository = OwnerTestMemberRepository().apply {
+            channelMembers =
+                listOf(member("peer-human").copy(serverId = ServerId("server-peer"), serverName = "Peer", serverSlug = "peer"))
+        }
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val store = store(repository, ownerState) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+
+        val result =
+            store.addChannelMember(
+                ServerId(SERVER_ID),
+                AddChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("peer-human"), MemberKind.Human)
+            )
+
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        val row = store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).single()
+        assertEquals(ServerId(SERVER_ID), row.serverId)
+        assertEquals(null, row.serverName)
+    }
+
     private fun store(
         repository: OwnerTestMemberRepository,
         ownerState: MutableStateFlow<ProcessServerMembersOwner?>,
@@ -343,7 +366,8 @@ private abstract class UnsupportedMemberRepository : MemberRepository {
     override suspend fun addChannelMember(
         priority: DataRequestPriority,
         request: AddChannelMemberRequest
-    ): DataResult<ChannelMemberActionResult> = error("unused")
+    ): DataResult<ChannelMemberActionResult> =
+        DataResult.Content(ChannelMemberActionResult(channelId = request.channelId, memberId = request.memberId))
 
     override suspend fun removeChannelMember(
         priority: DataRequestPriority,

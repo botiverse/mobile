@@ -1400,7 +1400,7 @@ class SharedServerMembersStore internal constructor(
                 result.data.member
                     ?: currentMemberProfile(serverId, request.memberId.value)
             if (member != null) {
-                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true)
+                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true, addedOnServer = serverId)
                 patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
             }
         }
@@ -1475,7 +1475,7 @@ class SharedServerMembersStore internal constructor(
             val addedIds = result.data.addedUserIds + result.data.addedAgentIds
             for (memberIdValue in addedIds) {
                 val member = currentMemberProfile(serverId, memberIdValue) ?: continue
-                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true)
+                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true, addedOnServer = serverId)
                 patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
             }
         }
@@ -2701,7 +2701,8 @@ class SharedServerMembersStore internal constructor(
         binding: SharedServerChannelMembersOwnerBinding,
         channelKey: String?,
         member: MemberProfile,
-        inMentionChannel: Boolean
+        inMentionChannel: Boolean,
+        addedOnServer: ServerId? = null
     ) {
         val serverKey = binding.serverId
         val memberKey = member.id.value.trim()
@@ -2711,7 +2712,14 @@ class SharedServerMembersStore internal constructor(
         val current = _state.value.channelMemberSlices[scope] ?: return
         if (current.ownerWriteGeneration != binding.writeGeneration) return
         val nextMembers =
-            if (inMentionChannel) {
+            if (addedOnServer != null) {
+                // A joint channel's roster may hold this person only through the peer server; an
+                // add writes this server's membership, so the row becomes local (the server's
+                // merged roster prefers the viewed server's copy too).
+                current.members.upsertServerMember(member).map { row ->
+                    if (row.id.value.trim() == memberKey && row.kind == member.kind) row.copy(serverId = addedOnServer, serverName = null, serverSlug = null) else row
+                }
+            } else if (inMentionChannel) {
                 current.members.upsertServerMember(member)
             } else {
                 current.members.removeServerMember(memberKey, member.kind)
