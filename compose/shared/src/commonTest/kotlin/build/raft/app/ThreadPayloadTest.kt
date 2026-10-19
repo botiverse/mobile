@@ -8934,7 +8934,7 @@ class ThreadPayloadTest {
                         }
                         """.trimIndent()
                     )
-                }
+                }.toJsonObject()
             )
 
         assertEquals(1, attachments.size)

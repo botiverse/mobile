@@ -34,20 +34,21 @@ class SlockAdaptiveDetailOpenContractTest {
         val malformed =
             request(requestId = "req-1")
                 .toJson()
-                .put(SlockAdaptiveDetailOpenRequest.KEY_LAUNCH_PAYLOAD, " ")
+                .withEntry(SlockAdaptiveDetailOpenRequest.KEY_LAUNCH_PAYLOAD, " ")
         assertNull(malformed.toSlockAdaptiveDetailOpenRequestOrNull())
         // Invalid window facts are rejected the same way.
         val badFact =
             request(requestId = "req-1")
                 .toJson()
-                .put(
+                .withEntry(
                     SlockAdaptiveDetailOpenRequest.KEY_WINDOW_FACT,
                     JSONObject()
                         .put(SlockAdaptiveOpenWindowFact.KEY_WIDTH_PX, 0.0)
                         .put(SlockAdaptiveOpenWindowFact.KEY_HEIGHT_PX, 1200.0)
                         .put(SlockAdaptiveOpenWindowFact.KEY_DENSITY, 2.0)
                         .put(SlockAdaptiveOpenWindowFact.KEY_POSTURE, "flat")
-                        .put(SlockAdaptiveOpenWindowFact.KEY_CAPTURED_AT_MS, 1000.0),
+                        .put(SlockAdaptiveOpenWindowFact.KEY_CAPTURED_AT_MS, 1000.0)
+                        .toJsonObject(),
                 )
         assertNull(badFact.toSlockAdaptiveDetailOpenRequestOrNull())
     }
@@ -310,6 +311,7 @@ class SlockAdaptiveDetailOpenContractTest {
                 .put("reason", "")
                 .put("sourceControllerToken", "src-1")
                 .put("targetControllerToken", "tgt-1")
+                .toJsonObject()
                 .toSlockAdaptiveNativeCommitResultOrNull()
         assertNotNull(committed)
         assertTrue(committed.committed)
@@ -319,10 +321,11 @@ class SlockAdaptiveDetailOpenContractTest {
                 .put("requestId", "req-1")
                 .put("status", "rejected")
                 .put("reason", "stack_changed")
+                .toJsonObject()
                 .toSlockAdaptiveNativeCommitResultOrNull()
         assertNotNull(rejected)
         assertTrue(!rejected.committed)
-        assertNull(JSONObject().put("status", "committed").toSlockAdaptiveNativeCommitResultOrNull())
+        assertNull(JSONObject().put("status", "committed").toJsonObject().toSlockAdaptiveNativeCommitResultOrNull())
     }
 
     private fun commitResult(

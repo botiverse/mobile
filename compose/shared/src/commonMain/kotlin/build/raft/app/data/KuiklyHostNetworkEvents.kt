@@ -1,6 +1,9 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.has
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import kotlinx.serialization.json.JsonObject
 
 object SlockHostNetworkNotifyContract {
     const val EventName = "slock.hostNetworkStatus"
@@ -35,12 +38,12 @@ internal class KuiklyHostNetworkEvents(
     }
 }
 
-private fun JSONObject.isAuthoritativeOnlineSignal(): Boolean =
+private fun JsonObject.isAuthoritativeOnlineSignal(): Boolean =
     optString(SlockHostNetworkNotifyContract.KeyStatus) == SlockHostNetworkNotifyContract.StatusOnline &&
         has(SlockHostNetworkNotifyContract.KeyOnline) &&
         optBoolean(SlockHostNetworkNotifyContract.KeyOnline, false)
 
-private fun JSONObject.toHostNetworkStatusSignal(): HostNetworkStatusSignal {
+private fun JsonObject.toHostNetworkStatusSignal(): HostNetworkStatusSignal {
     val status = optString(SlockHostNetworkNotifyContract.KeyStatus)
     val online =
         status != SlockHostNetworkNotifyContract.StatusOffline &&

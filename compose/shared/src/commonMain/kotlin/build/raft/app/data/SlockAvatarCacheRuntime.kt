@@ -1,8 +1,12 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
+import build.raft.app.host.HostAvatarCacheCapability
+import build.raft.app.optBoolean
+import build.raft.app.optLong
+import build.raft.app.optString
 import build.raft.app.slockSha256Hex
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.toSlockJsonString
+import build.raft.app.withEntry
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.io.encoding.Base64
@@ -15,6 +19,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 internal const val SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL = "slock_avatar_cache_v1"
 internal const val SLOCK_AVATAR_NATIVE_MANAGED_SET = "typed_avatar_only"
@@ -76,30 +84,29 @@ internal data class SlockAvatarNativeRequest(
     val imageModel: String
         get() =
             SLOCK_AVATAR_NATIVE_IMAGE_MODEL_PREFIX +
-                Base64.encode(toJson().toString().encodeToByteArray())
+                Base64.encode(toJson().toSlockJsonString().encodeToByteArray())
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put("protocol", SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL)
-            .putSlockAvatarManagedSetContract()
-            .put("remoteUrl", remoteUrl)
-            .put("nativePartitionKey", nativePartitionKey)
-            .put("nativeSubjectKey", nativeSubjectKey)
-            .put("nativeBytesKey", nativeBytesKey)
-            .put("readMode", readMode.wireValue)
-            .put("commitGeneration", committedToCommitIdentity.commitGeneration.toString())
-            .put("commitNonce", committedToCommitIdentity.nonce)
-            .put("expectedModelRevision", expectedModelRevision.toString())
-            .put("modelRevision", newModelRevision.toString())
-            .also { json ->
-                retryAtMillis?.let { json.put("retryAtMillis", it.toString()) }
-                eTag?.let { json.put("eTag", it) }
-                lastModified?.let { json.put("lastModified", it) }
-                expectedCommitIdentity?.let { expected ->
-                    json.put("expectedCommitGeneration", expected.commitGeneration.toString())
-                    json.put("expectedCommitNonce", expected.nonce)
-                }
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put("protocol", SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL)
+            putSlockAvatarManagedSetContract()
+            put("remoteUrl", remoteUrl)
+            put("nativePartitionKey", nativePartitionKey)
+            put("nativeSubjectKey", nativeSubjectKey)
+            put("nativeBytesKey", nativeBytesKey)
+            put("readMode", readMode.wireValue)
+            put("commitGeneration", committedToCommitIdentity.commitGeneration.toString())
+            put("commitNonce", committedToCommitIdentity.nonce)
+            put("expectedModelRevision", expectedModelRevision.toString())
+            put("modelRevision", newModelRevision.toString())
+            retryAtMillis?.let { put("retryAtMillis", it.toString()) }
+            eTag?.let { put("eTag", it) }
+            lastModified?.let { put("lastModified", it) }
+            expectedCommitIdentity?.let { expected ->
+                put("expectedCommitGeneration", expected.commitGeneration.toString())
+                put("expectedCommitNonce", expected.nonce)
             }
+        }
 }
 
 /**
@@ -108,15 +115,16 @@ internal data class SlockAvatarNativeRequest(
  * and the 64 MiB budget operate only on that managed set; the contract never authorizes scanning,
  * sizing, clearing, or limiting a platform's global image cache.
  */
-internal fun JSONObject.putSlockAvatarManagedSetContract(): JSONObject =
+internal fun JsonObjectBuilder.putSlockAvatarManagedSetContract() {
     put("managedSet", SLOCK_AVATAR_NATIVE_MANAGED_SET)
-        .put("managedIndex", SLOCK_AVATAR_NATIVE_INDEX_CONTRACT)
-        .put("budgetScope", SLOCK_AVATAR_NATIVE_BUDGET_SCOPE)
-        .put("indexedRetirementRequired", true)
-        .put("maxEntryBytes", SlockAvatarCachePolicy.MaxEntryBytes.toString())
-        .put("maxManagedBytes", SlockAvatarCachePolicy.MaxPlatformBytes.toString())
+    put("managedIndex", SLOCK_AVATAR_NATIVE_INDEX_CONTRACT)
+    put("budgetScope", SLOCK_AVATAR_NATIVE_BUDGET_SCOPE)
+    put("indexedRetirementRequired", true)
+    put("maxEntryBytes", SlockAvatarCachePolicy.MaxEntryBytes.toString())
+    put("maxManagedBytes", SlockAvatarCachePolicy.MaxPlatformBytes.toString())
+}
 
-internal fun JSONObject.acknowledgesSlockAvatarManagedSet(): Boolean {
+internal fun JsonObject.acknowledgesSlockAvatarManagedSet(): Boolean {
     if (optString("managedSet") != SLOCK_AVATAR_NATIVE_MANAGED_SET) return false
     if (optString("managedIndex") != SLOCK_AVATAR_NATIVE_INDEX_CONTRACT) return false
     if (optString("budgetScope") != SLOCK_AVATAR_NATIVE_BUDGET_SCOPE) return false
@@ -236,7 +244,7 @@ internal object UnsupportedSlockAvatarNativeCache : SlockAvatarNativeCache {
 }
 
 internal class BridgeSlockAvatarNativeCache(
-    private val bridge: BridgeModule,
+    private val host: HostAvatarCacheCapability,
     private val bridgeCallContext: CoroutineContext
 ) : SlockAvatarNativeCache {
     init {
@@ -252,12 +260,13 @@ internal class BridgeSlockAvatarNativeCache(
     ): SlockAvatarNativeInspection {
         val response =
             call(
-                JSONObject()
-                    .put("action", "inspect")
-                    .putSlockAvatarManagedSetContract()
-                    .put("nativePartitionKey", nativePartitionKey)
-                    .put("nativeSubjectKey", nativeSubjectKey)
-                    .put("nativeBytesKey", nativeBytesKey)
+                buildJsonObject {
+                    put("action", "inspect")
+                    putSlockAvatarManagedSetContract()
+                    put("nativePartitionKey", nativePartitionKey)
+                    put("nativeSubjectKey", nativeSubjectKey)
+                    put("nativeBytesKey", nativeBytesKey)
+                }
             )
         if (response?.optString("status") != "ok" || !response.acknowledgesSlockAvatarManagedSet()) {
             return SlockAvatarNativeInspection.Unsupported
@@ -272,7 +281,7 @@ internal class BridgeSlockAvatarNativeCache(
     }
 
     override suspend fun awaitResult(request: SlockAvatarNativeRequest): SlockAvatarNativeLoadResult {
-        val response = call(request.toJson().put("action", "awaitResult"))
+        val response = call(request.toJson().withEntry("action", "awaitResult"))
             ?: return SlockAvatarNativeLoadResult.Unsupported
         if (!response.acknowledgesSlockAvatarManagedSet()) {
             return SlockAvatarNativeLoadResult.Unsupported
@@ -309,19 +318,20 @@ internal class BridgeSlockAvatarNativeCache(
     ): SlockAvatarNativeMutationResult =
         mutation(
             request.toJson()
-                .put("action", "finalize")
-                .put("outcome", outcome.wireValue)
+                .withEntry("action", "finalize")
+                .withEntry("outcome", outcome.wireValue)
         )
 
     override suspend fun rollback(request: SlockAvatarNativeRequest): SlockAvatarNativeMutationResult =
-        mutation(request.toJson().put("action", "rollback"))
+        mutation(request.toJson().withEntry("action", "rollback"))
 
     override suspend fun retireOwner(nativePartitionKey: String): SlockAvatarNativeMutationResult =
         mutation(
-            JSONObject()
-                .put("action", "retireOwner")
-                .putSlockAvatarManagedSetContract()
-                .put("nativePartitionKey", nativePartitionKey)
+            buildJsonObject {
+                put("action", "retireOwner")
+                putSlockAvatarManagedSetContract()
+                put("nativePartitionKey", nativePartitionKey)
+            }
         )
 
     override suspend fun retireSubject(
@@ -329,14 +339,15 @@ internal class BridgeSlockAvatarNativeCache(
         nativeSubjectKey: String
     ): SlockAvatarNativeMutationResult =
         mutation(
-            JSONObject()
-                .put("action", "retireSubject")
-                .putSlockAvatarManagedSetContract()
-                .put("nativePartitionKey", nativePartitionKey)
-                .put("nativeSubjectKey", nativeSubjectKey)
+            buildJsonObject {
+                put("action", "retireSubject")
+                putSlockAvatarManagedSetContract()
+                put("nativePartitionKey", nativePartitionKey)
+                put("nativeSubjectKey", nativeSubjectKey)
+            }
         )
 
-    private suspend fun mutation(command: JSONObject): SlockAvatarNativeMutationResult {
+    private suspend fun mutation(command: JsonObject): SlockAvatarNativeMutationResult {
         val response = call(command) ?: return SlockAvatarNativeMutationResult.Unsupported
         if (!response.acknowledgesSlockAvatarManagedSet()) {
             return SlockAvatarNativeMutationResult.Unsupported
@@ -351,10 +362,10 @@ internal class BridgeSlockAvatarNativeCache(
         }
     }
 
-    private suspend fun call(command: JSONObject): JSONObject? {
-        command.put("protocol", SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL)
+    private suspend fun call(command: JsonObject): JsonObject? {
+        val stamped = command.withEntry("protocol", SLOCK_AVATAR_NATIVE_CACHE_PROTOCOL)
         return withContext(bridgeCallContext) {
-            bridge.avatarCacheCapability(command)
+            host.avatarCacheCapability(stamped)
         }
     }
 }

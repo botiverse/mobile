@@ -3079,7 +3079,7 @@ private fun SlockAppShellReadyContent(
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellDesktopShortcutEventNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellDesktopShortcutEventNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
                     return@observe
@@ -3115,7 +3115,7 @@ private fun SlockAppShellReadyContent(
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellSystemNotificationNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
@@ -5837,12 +5837,12 @@ private fun SlockAppShellReadyContent(
                     }
                 }
             }
-        val callbackRef = realtimeEvents.addListener(onRealtimeEvent)
+        val callbackRef = realtimeEvents.addListener { onRealtimeEvent(it.toKuiklyJson()) }
         // task #354: the canonical AppShell ingest also consumes the Android
         // raw-ingest topic — large raw server events are routed only there so
         // they are decoded exactly once. Other platforms never publish on it,
         // and page surfaces must not subscribe to it.
-        val rawIngestRef = realtimeEvents.addRawIngestListener(onRealtimeEvent)
+        val rawIngestRef = realtimeEvents.addRawIngestListener { onRealtimeEvent(it.toKuiklyJson()) }
         onDispose {
             realtimeEvents.removeListener(callbackRef)
             realtimeEvents.removeListener(rawIngestRef)

@@ -4,17 +4,22 @@ import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
 import build.raft.app.network.SharedBinaryConditionalValidators
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.optString
+import build.raft.app.parseSlockJsonObject
+import build.raft.app.toSlockJsonString
 import build.raft.app.slockAvatarDiagnosticsHash
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,9 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.TimeSource
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private const val SLOCK_AVATAR_MOUNTED_MODEL_PREFIX = "slock-avatar-render-v1:"
 private val SlockAvatarOpaqueKeyPattern = Regex("[0-9a-f]{64}")
@@ -860,15 +864,16 @@ private fun nextMountedAvatarModelRevision(current: Long): Long {
 internal fun SlockAvatarMountedSnapshot.managedImageModel(): String? {
     val identity = commitIdentity ?: return null
     val json =
-        JSONObject()
-            .put("protocol", "slock_avatar_render_v1")
-            .put("nativePartitionKey", key.owner.nativePartitionKey)
-            .put("nativeSubjectKey", key.nativeSubjectKey)
-            .put("nativeBytesKey", key.nativeBytesKey)
-            .put("commitGeneration", identity.commitGeneration.toString())
-            .put("commitNonce", identity.nonce)
-            .put("modelRevision", modelRevision.toString())
-    return SLOCK_AVATAR_MOUNTED_MODEL_PREFIX + Base64.encode(json.toString().encodeToByteArray())
+        buildJsonObject {
+            put("protocol", "slock_avatar_render_v1")
+            put("nativePartitionKey", key.owner.nativePartitionKey)
+            put("nativeSubjectKey", key.nativeSubjectKey)
+            put("nativeBytesKey", key.nativeBytesKey)
+            put("commitGeneration", identity.commitGeneration.toString())
+            put("commitNonce", identity.nonce)
+            put("modelRevision", modelRevision.toString())
+        }
+    return SLOCK_AVATAR_MOUNTED_MODEL_PREFIX + Base64.encode(json.toSlockJsonString().encodeToByteArray())
 }
 
 /** Parses only the managed render protocol; ordinary URLs/assets/base64/local models return null. */
@@ -877,7 +882,7 @@ fun parseSlockAvatarMountedRenderModel(model: String): SlockAvatarMountedRenderD
     if (!model.startsWith(SLOCK_AVATAR_MOUNTED_MODEL_PREFIX)) return null
     val payload = model.removePrefix(SLOCK_AVATAR_MOUNTED_MODEL_PREFIX)
     val json =
-        runCatching { JSONObject(Base64.decode(payload).decodeToString()) }.getOrNull()
+        runCatching { parseSlockJsonObject(Base64.decode(payload).decodeToString()) }.getOrNull()
             ?: return null
     if (json.optString("protocol") != "slock_avatar_render_v1") return null
     val generation = json.optString("commitGeneration").toLongOrNull()?.takeIf { it > 0L } ?: return null

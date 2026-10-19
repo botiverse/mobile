@@ -663,7 +663,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     fun ackTimeoutPostsCancelNoticeForShellPendingDrop(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
-        val observed = mutableListOf<JSONObject>()
+        val observed = mutableListOf<kotlinx.serialization.json.JsonObject>()
         val subscription =
             fixture.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
@@ -690,7 +690,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     fun readyTimeoutPostsCancelNoticeWithAckedGeneration(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
-        val observed = mutableListOf<JSONObject>()
+        val observed = mutableListOf<kotlinx.serialization.json.JsonObject>()
         val subscription =
             fixture.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,

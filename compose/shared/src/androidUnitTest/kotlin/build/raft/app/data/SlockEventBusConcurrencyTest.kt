@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optInt
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SlockEventBusConcurrencyTest {
     @Test
@@ -23,7 +25,7 @@ class SlockEventBusConcurrencyTest {
             }
         val postThread =
             thread(name = "slock-event-worker", isDaemon = true) {
-                eventBus.post(eventName, JSONObject())
+                eventBus.post(eventName, buildJsonObject {})
             }
 
         assertTrue(listenerStarted.await(5, TimeUnit.SECONDS))
@@ -56,13 +58,13 @@ class SlockEventBusConcurrencyTest {
             }
         val firstPost =
             thread(name = "slock-event-first", isDaemon = true) {
-                eventBus.post(eventName, JSONObject().put("value", 1))
+                eventBus.post(eventName, buildJsonObject { put("value", 1) })
             }
 
         assertTrue(firstListenerStarted.await(5, TimeUnit.SECONDS))
         val secondPost =
             thread(name = "slock-event-second", isDaemon = true) {
-                eventBus.post(eventName, JSONObject().put("value", 2))
+                eventBus.post(eventName, buildJsonObject { put("value", 2) })
             }
         secondPost.join(5_000)
         assertTrue(!secondPost.isAlive)

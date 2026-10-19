@@ -1,7 +1,16 @@
 package build.raft.app.data
 
+import build.raft.app.optBoolean
+import build.raft.app.optDouble
+import build.raft.app.optJsonArray
+import build.raft.app.optJsonObject
+import build.raft.app.optString
 import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * task #180: cross-page contract for shell-rendered overlays.
@@ -56,8 +65,8 @@ internal data class SlockShellOverlayRequest(
     val anchor: Offset,
     val items: List<SlockShellOverlayItem>,
 ) {
-    fun toJson(): JSONObject =
-        JSONObject().apply {
+    fun toJson(): JsonObject =
+        buildJsonObject {
             put(SHELL_OVERLAY_MESSAGE_TYPE, SHELL_OVERLAY_TYPE_REQUEST)
             put(SHELL_OVERLAY_REQUEST_ID, requestId)
             put(SHELL_OVERLAY_PAGE_KEY, pageKey)
@@ -65,10 +74,10 @@ internal data class SlockShellOverlayRequest(
             put(SHELL_OVERLAY_ANCHOR_Y, anchor.y.toDouble())
             put(
                 SHELL_OVERLAY_ITEMS,
-                com.tencent.kuikly.core.nvi.serialization.json.JSONArray().apply {
+                buildJsonArray {
                     items.forEach { item ->
-                        put(
-                            JSONObject().apply {
+                        add(
+                            buildJsonObject {
                                 put("id", item.id)
                                 put("label", item.label)
                                 put("enabled", item.enabled)
@@ -87,8 +96,8 @@ internal data class SlockShellOverlayResult(
     val selectedId: String? = null,
     val dismissed: Boolean = false,
 ) {
-    fun toJson(): JSONObject =
-        JSONObject().apply {
+    fun toJson(): JsonObject =
+        buildJsonObject {
             put(SHELL_OVERLAY_MESSAGE_TYPE, SHELL_OVERLAY_TYPE_CANCEL.takeIf { dismissed } ?: "result")
             put(SHELL_OVERLAY_REQUEST_ID, requestId)
             selectedId?.let { put(SHELL_OVERLAY_SELECTED_ID, it) }
@@ -96,13 +105,13 @@ internal data class SlockShellOverlayResult(
         }
 }
 
-internal fun cancelSlockShellOverlayJson(requestId: String): JSONObject =
-    JSONObject().apply {
+internal fun cancelSlockShellOverlayJson(requestId: String): JsonObject =
+    buildJsonObject {
         put(SHELL_OVERLAY_MESSAGE_TYPE, SHELL_OVERLAY_TYPE_CANCEL)
         put(SHELL_OVERLAY_REQUEST_ID, requestId)
     }
 
-internal fun JSONObject.shellOverlayRequestIdOrNull(): String? =
+internal fun JsonObject.shellOverlayRequestIdOrNull(): String? =
     optString(SHELL_OVERLAY_REQUEST_ID).trim().takeIf { it.isNotEmpty() }
 
 /**
@@ -113,7 +122,7 @@ internal fun JSONObject.shellOverlayRequestIdOrNull(): String? =
  */
 internal fun slockShouldApplyShellOverlayResult(
     currentRequestId: String?,
-    incoming: JSONObject?,
+    incoming: JsonObject?,
 ): Boolean {
     val incomingId = incoming?.shellOverlayRequestIdOrNull() ?: return false
     return currentRequestId != null && currentRequestId == incomingId
@@ -137,15 +146,15 @@ internal data class SlockShellOpenOverlay(
  * Parses a page's request off the event bus. Returns null for anything malformed -- a menu the shell
  * cannot fully understand must not be drawn, because a half-parsed row could dispatch the wrong id.
  */
-internal fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject?.toSlockShellOverlayRequestOrNull(): SlockShellOverlayRequest? {
+internal fun JsonObject?.toSlockShellOverlayRequestOrNull(): SlockShellOverlayRequest? {
     val json = this ?: return null
     val requestId = json.shellOverlayRequestIdOrNull() ?: return null
     val pageKey = json.optString(SHELL_OVERLAY_PAGE_KEY).trim()
     if (pageKey.isEmpty()) return null
-    val rows = json.optJSONArray(SHELL_OVERLAY_ITEMS) ?: return null
+    val rows = json.optJsonArray(SHELL_OVERLAY_ITEMS) ?: return null
     val items =
-        (0 until rows.length()).mapNotNull { index ->
-            val row = rows.optJSONObject(index) ?: return@mapNotNull null
+        (0 until rows.size).mapNotNull { index ->
+            val row = rows.optJsonObject(index) ?: return@mapNotNull null
             val id = row.optString("id").trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             val label = row.optString("label")
             SlockShellOverlayItem(

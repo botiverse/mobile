@@ -1,7 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberKind
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import build.raft.app.toSlockJsonString
+import build.raft.app.withEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,10 +13,13 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SlockAvatarCacheRuntimeTest {
     @Test
@@ -62,7 +68,7 @@ class SlockAvatarCacheRuntimeTest {
         assertEquals("1", wire.optString("expectedModelRevision"))
         assertEquals("2", wire.optString("modelRevision"))
 
-        val serialized = wire.toString()
+        val serialized = wire.toSlockJsonString()
         listOf(
             key.owner.environmentId,
             key.owner.accountId,
@@ -140,21 +146,22 @@ class SlockAvatarCacheRuntimeTest {
 
     @Test
     fun managedSetAcknowledgementFailsClosedForMissingIndexGlobalBudgetOrOverflow() {
-        fun response(): JSONObject =
-            JSONObject()
-                .put("managedSet", SLOCK_AVATAR_NATIVE_MANAGED_SET)
-                .put("managedIndex", SLOCK_AVATAR_NATIVE_INDEX_CONTRACT)
-                .put("budgetScope", SLOCK_AVATAR_NATIVE_BUDGET_SCOPE)
-                .put("indexedRetirement", true)
-                .put("managedBytes", "1024")
+        fun response(): JsonObject =
+            buildJsonObject {
+                put("managedSet", SLOCK_AVATAR_NATIVE_MANAGED_SET)
+                put("managedIndex", SLOCK_AVATAR_NATIVE_INDEX_CONTRACT)
+                put("budgetScope", SLOCK_AVATAR_NATIVE_BUDGET_SCOPE)
+                put("indexedRetirement", true)
+                put("managedBytes", "1024")
+            }
 
         assertTrue(response().acknowledgesSlockAvatarManagedSet())
-        assertFalse(response().put("managedIndex", "none").acknowledgesSlockAvatarManagedSet())
-        assertFalse(response().put("budgetScope", "global_image_cache").acknowledgesSlockAvatarManagedSet())
-        assertFalse(response().put("indexedRetirement", false).acknowledgesSlockAvatarManagedSet())
+        assertFalse(response().withEntry("managedIndex", "none").acknowledgesSlockAvatarManagedSet())
+        assertFalse(response().withEntry("budgetScope", "global_image_cache").acknowledgesSlockAvatarManagedSet())
+        assertFalse(response().withEntry("indexedRetirement", false).acknowledgesSlockAvatarManagedSet())
         assertFalse(
             response()
-                .put("managedBytes", (SlockAvatarCachePolicy.MaxPlatformBytes + 1L).toString())
+                .withEntry("managedBytes", (SlockAvatarCachePolicy.MaxPlatformBytes + 1L).toString())
                 .acknowledgesSlockAvatarManagedSet()
         )
     }

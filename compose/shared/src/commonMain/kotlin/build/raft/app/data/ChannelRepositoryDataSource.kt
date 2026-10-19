@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.MemberKindWireContract
-import build.raft.app.strictMemberKindOrNull
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -9,11 +8,14 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.toSlockJsonString
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val channelRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -62,7 +64,7 @@ internal suspend fun SlockNetworkClient.updateChannel(
         priority,
         "channels/${channelId.value}",
         method = "PATCH",
-        bodyText = JSONObject().put("visibility", visibility.wireValue).toString()
+        bodyText = buildJsonObject { put("visibility", visibility.wireValue) }.toSlockJsonString()
     )
 
 private suspend fun SlockNetworkClient.updateChannelProfile(

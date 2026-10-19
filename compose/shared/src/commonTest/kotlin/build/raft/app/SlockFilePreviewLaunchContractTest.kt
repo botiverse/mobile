@@ -634,12 +634,12 @@ class SlockFilePreviewLaunchContractTest {
                 override fun observe(
                     eventName: String,
                     crossProcess: Boolean,
-                    listener: (JSONObject?) -> Unit
+                    listener: (kotlinx.serialization.json.JsonObject?) -> Unit
                 ): RealtimeSubscription = RealtimeSubscription {}
 
                 override fun post(
                     eventName: String,
-                    eventData: JSONObject,
+                    eventData: kotlinx.serialization.json.JsonObject,
                     crossProcess: Boolean,
                     source: String
                 ) {

@@ -1,8 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.MemberKindWireContract
-import build.raft.app.commentHostTypeOrNull
-import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.KuiklyThreadAttachmentItem
 import build.raft.app.KuiklyThreadMessageCommentHostSource
 import build.raft.app.KuiklyThreadMessageCommentRef
@@ -10,23 +7,31 @@ import build.raft.app.KuiklyThreadMessageItem
 import build.raft.app.KuiklyThreadReactionItem
 import build.raft.app.KuiklyThreadScreenPayload
 import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.MemberKindWireContract
 import build.raft.app.SharedThreadComposerAttachment
+import build.raft.app.commentHostRouteKindOrNull
+import build.raft.app.commentHostTypeOrNull
 import build.raft.app.matchesResolvedReplyThreadTimeline
 import build.raft.app.memberKindWireValue
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageType
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.providerLabel
+import build.raft.app.optJsonArray
+import build.raft.app.optJsonObject
+import build.raft.app.optLong
+import build.raft.app.optString
+import build.raft.app.parseSlockJsonObject
 import build.raft.app.replyThreadContentChannelId
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictMessageTypeOrNull
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.strictTaskStatusOrNull
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MessageType
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
-import build.raft.app.model.providerLabel
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Strict, React-aligned parsers for the thread message timeline + attachment
@@ -158,7 +163,7 @@ private data class WireAttachmentsResponse(
 )
 
 internal fun parseSharedThreadUploadedAttachments(
-    response: JSONObject?
+    response: JsonObject?
 ): List<SharedThreadComposerAttachment> {
     val bodyText = response?.optString("bodyText").orEmpty()
     if (bodyText.isBlank()) return emptyList()
@@ -182,16 +187,16 @@ internal fun parseSharedThreadUploadedAttachments(
 
 @OptIn(ExperimentalEncodingApi::class)
 internal fun parseSharedThreadPickedPlatformFiles(
-    response: JSONObject?
+    response: JsonObject?
 ): List<PlatformFile> {
-    val filesJson = response?.optJSONArray("files")
+    val filesJson = response?.optJsonArray("files")
         ?: response?.optString("bodyText").orEmpty()
             .takeIf { it.isNotBlank() }
-            ?.let { bodyText -> runCatching { JSONObject(bodyText).optJSONArray("files") }.getOrNull() }
+            ?.let { bodyText -> runCatching { parseSlockJsonObject(bodyText).optJsonArray("files") }.getOrNull() }
         ?: return emptyList()
     return buildList {
-        for (index in 0 until filesJson.length()) {
-            val fileJson = filesJson.optJSONObject(index) ?: continue
+        for (index in 0 until filesJson.size) {
+            val fileJson = filesJson.optJsonObject(index) ?: continue
             val fileName = fileJson.optString("fileName").takeIf { it.isNotBlank() }
                 ?: "attachment-${index + 1}"
             val fileRef = fileJson.optString("fileRef").takeIf { it.isNotBlank() }

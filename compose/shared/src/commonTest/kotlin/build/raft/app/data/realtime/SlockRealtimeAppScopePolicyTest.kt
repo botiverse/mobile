@@ -1,10 +1,10 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEnhancedNotifyEvent
 import build.raft.app.data.SlockEnhancedNotifyEventBus
-import build.raft.app.data.PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
 import build.raft.app.data.SlockPushDeliveryStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -20,12 +20,13 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class SlockRealtimeAppScopePolicyTest {
     @Test
@@ -309,7 +310,7 @@ class SlockRealtimeAppScopePolicyTest {
         enhancedNotifyBus.emit(
             SlockEnhancedNotifyEvent(
                 eventName = "unrelated",
-                eventData = JSONObject().put(SlockRealtimeNotifyContract.KeyChannelId, "channel-3")
+                eventData = buildJsonObject { put(SlockRealtimeNotifyContract.KeyChannelId, "channel-3") }
             )
         )
 
@@ -578,12 +579,11 @@ class SlockRealtimeAppScopePolicyTest {
                 SlockEnhancedNotifyEvent(
                     eventName = SlockRealtimeNotifyContract.RoomsEventName,
                     eventData =
-                        JSONObject()
-                            .put(SlockRealtimeNotifyContract.KeyAction, action)
-                            .put(SlockRealtimeNotifyContract.KeyChannelId, channelId)
-                            .also { payload ->
-                                serverId?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) }
-                            },
+                        buildJsonObject {
+                            put(SlockRealtimeNotifyContract.KeyAction, action)
+                            put(SlockRealtimeNotifyContract.KeyChannelId, channelId)
+                            serverId?.let { put(SlockRealtimeNotifyContract.KeyServerId, it) }
+                        },
                     source = "notify"
                 )
             )

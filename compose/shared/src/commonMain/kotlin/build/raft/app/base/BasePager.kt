@@ -4,6 +4,7 @@ import build.raft.app.SlockEnvironmentIndicatorHost
 import build.raft.app.slockEnvironmentIndicatorEnabledForPage
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
+import build.raft.app.toJsonObject
 import build.raft.app.SlockAdaptivePanePagerEvent
 import build.raft.app.SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.SlockEnhancedNotifyCenter
@@ -103,7 +104,7 @@ internal abstract class BasePager : ComposeContainer() {
             // shell's settle subscription sees it. Token/authority checks stay in the settle path.
             SlockEnhancedNotifyCenter.post(
                 eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
-                eventData = eventData,
+                eventData = eventData.toJsonObject(),
                 crossProcess = true,
                 source = "pager_commit_result_forward",
             )

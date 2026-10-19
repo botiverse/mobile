@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.optString
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject as KuiklyJSONObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -8,6 +9,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * task #354 transport teeth: platform events travel through the in-process
@@ -50,7 +54,7 @@ class SlockInProcessEventTransportTest {
 
     private fun event(
         eventName: String = "realtimeNotify",
-        data: KuiklyJSONObject = KuiklyJSONObject().put("k", "v"),
+        data: JsonObject = buildJsonObject { put("k", "v") },
         source: String = "android_test"
     ): SlockEnhancedNotifyEvent =
         SlockEnhancedNotifyEvent(eventName = eventName, eventData = data, source = source)
@@ -94,7 +98,7 @@ class SlockInProcessEventTransportTest {
         listen()
         val secret = "payload-body-marker-中文"
         AndroidSlockPlatformEventDispatcher.dispatch(
-            event(data = KuiklyJSONObject().put("field", secret))
+            event(data = buildJsonObject { put("field", secret) })
         )
 
         val dispatchLog = logs.single { it.startsWith("slock_platform_event_dispatch ") }
@@ -115,7 +119,7 @@ class SlockInProcessEventTransportTest {
         AndroidSlockPlatformEventDispatcher.dispatch(
             event(
                 eventName = SlockRealtimeNotifyContract.RawIngestEventName,
-                data = KuiklyJSONObject().put("rawPayload", filler)
+                data = buildJsonObject { put("rawPayload", filler) }
             )
         )
 

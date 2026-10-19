@@ -1,12 +1,14 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 internal class KuiklyRealtimeEvents(
     private val eventBus: SlockEventBus
 ) {
-    fun addListener(onEvent: (JSONObject) -> Unit): RealtimeSubscription =
+    fun addListener(onEvent: (JsonObject) -> Unit): RealtimeSubscription =
         eventBus.observe(SlockRealtimeNotifyContract.EventName, crossProcess = true) { data ->
             data?.let(onEvent)
         }
@@ -16,7 +18,7 @@ internal class KuiklyRealtimeEvents(
      * the Android raw-ingest topic; other platforms never publish on it, so
      * this is a no-op there. Page surfaces must not subscribe here.
      */
-    fun addRawIngestListener(onEvent: (JSONObject) -> Unit): RealtimeSubscription =
+    fun addRawIngestListener(onEvent: (JsonObject) -> Unit): RealtimeSubscription =
         eventBus.observe(SlockRealtimeNotifyContract.RawIngestEventName, crossProcess = true) { data ->
             data?.let(onEvent)
         }
@@ -38,10 +40,11 @@ internal class KuiklyRealtimeEvents(
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
-            JSONObject()
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionJoinChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
-                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
+            buildJsonObject {
+                put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionJoinChannel)
+                put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                serverId?.takeIf { it.isNotBlank() }?.let { put(SlockRealtimeNotifyContract.KeyServerId, it) }
+            },
             source = "realtime_rooms"
         )
     }
@@ -59,10 +62,11 @@ internal class KuiklyRealtimeEvents(
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
-            JSONObject()
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRejoinChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
-                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
+            buildJsonObject {
+                put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRejoinChannel)
+                put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                serverId?.takeIf { it.isNotBlank() }?.let { put(SlockRealtimeNotifyContract.KeyServerId, it) }
+            },
             source = "foreground_reconcile"
         )
     }
@@ -80,10 +84,11 @@ internal class KuiklyRealtimeEvents(
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
-            JSONObject()
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionLeaveChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
-                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
+            buildJsonObject {
+                put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionLeaveChannel)
+                put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                serverId?.takeIf { it.isNotBlank() }?.let { put(SlockRealtimeNotifyContract.KeyServerId, it) }
+            },
             source = "realtime_rooms"
         )
     }

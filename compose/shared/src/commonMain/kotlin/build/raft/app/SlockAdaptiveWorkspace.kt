@@ -1,6 +1,8 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 internal const val SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT = "slockAdaptiveDetailClose"
 internal const val SLOCK_ADAPTIVE_DETAIL_SHELL_ID = "slockAdaptiveDetailShellId"
@@ -64,14 +66,15 @@ internal data class SlockAdaptiveDetailCloseRequest(
         require(generation > 0L) { "Adaptive close requires a positive generation" }
     }
 
-    fun toJson(): JSONObject =
-        JSONObject()
-            .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, shellInstanceId)
-            .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
-            .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation)
+    fun toJson(): JsonObject =
+        buildJsonObject {
+            put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, shellInstanceId)
+            put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
+            put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation)
+        }
 }
 
-internal fun JSONObject.toSlockAdaptiveDetailCloseRequestOrNull(): SlockAdaptiveDetailCloseRequest? {
+internal fun JsonObject.toSlockAdaptiveDetailCloseRequestOrNull(): SlockAdaptiveDetailCloseRequest? {
     val shellInstanceId = optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID).trim()
     val identityKey = optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
     val generation = optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
@@ -81,7 +84,7 @@ internal fun JSONObject.toSlockAdaptiveDetailCloseRequestOrNull(): SlockAdaptive
 
 internal fun updatedSlockAdaptiveDetailCloseRequest(
     current: SlockAdaptiveDetailCloseRequest?,
-    eventData: JSONObject,
+    eventData: JsonObject,
 ): SlockAdaptiveDetailCloseRequest? =
     eventData.toSlockAdaptiveDetailCloseRequestOrNull() ?: current
 

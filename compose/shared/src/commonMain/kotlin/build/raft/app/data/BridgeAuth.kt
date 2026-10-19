@@ -1,11 +1,19 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
 import build.raft.app.flushSlockPlatformDiagnosticsDownstream
 import build.raft.app.flushSlockPlatformLogs
+import build.raft.app.host.HostCapabilities
+import build.raft.app.optBoolean
+import build.raft.app.optInt
+import build.raft.app.optJsonArray
+import build.raft.app.optJsonObject
+import build.raft.app.optLong
+import build.raft.app.optString
+import build.raft.app.parseSlockJsonArray
+import build.raft.app.parseSlockJsonObject
+import build.raft.app.slockLogInfo
 import build.raft.app.slockPlatformSupportsConversationForwardGesture
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.toSlockJsonString
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -18,8 +26,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val bridgeAuthJson = Json { ignoreUnknownKeys = true }
+
+/** Tag `BridgeModule.log` always wrote under, kept so host log rings keep matching. */
+internal const val HOST_BRIDGE_LOG_TAG = "SlockKuikly"
 
 @Serializable
 private data class HandsUpdateBridgeErrorBody(
@@ -42,7 +60,7 @@ class SettingsHandsFeedbackSubmission(
 )
 
 internal class BridgeSettingsPlatformCapabilities(
-    private val bridge: BridgeModule,
+    private val host: HostCapabilities,
     private val copiedMessage: String,
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
     private val feedbackVisualSubmission: SettingsHandsFeedbackSubmission? = null,
@@ -52,32 +70,38 @@ internal class BridgeSettingsPlatformCapabilities(
         get() = slockPlatformSupportsConversationForwardGesture()
 
     fun bridgeCopyToClipboard(content: String) {
-        bridge.copyToPasteboard(content)
-        bridge.toast(copiedMessage)
+        host.copyToPasteboard(content)
+        host.toast(copiedMessage)
     }
 
     fun bridgeToast(content: String) {
-        bridge.toast(content)
+        host.toast(content)
     }
 
     fun openUrl(url: String) {
-        openUrlHandler?.invoke(url) ?: bridge.openUrl(url)
+        openUrlHandler?.invoke(url) ?: host.openUrl(url)
     }
 
     fun openExternalUrl(url: String) {
-        bridge.openUrl(url)
+        host.openUrl(url)
     }
 
     fun log(message: String) {
-        bridge.log(message)
+        logBridge(message)
+    }
+
+    /** Same channel `BridgeModule.log` used: bridge-free platform log under the bridge tag. */
+    private fun logBridge(message: String) {
+        slockLogInfo(HOST_BRIDGE_LOG_TAG, message)
     }
 
     override suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "mobileOAuthLink")
-                    .put("providerId", providerId)
+                buildJsonObject {
+                    put("action", "mobileOAuthLink")
+                    put("providerId", providerId)
+                }
             )
         val status = response?.optString("status").orEmpty()
         return when (status) {
@@ -92,12 +116,15 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     suspend fun startWebLogin(): DataResult<Unit> {
-        val prep = settingsCapability(JSONObject().put("action", "appLoginPrepare"))
+        val prep = settingsCapability(buildJsonObject { put("action", "appLoginPrepare") })
         val generation = prep?.optString("generation").orEmpty()
         val url = SlockAppLogin.start(generation, prep?.optString("codeVerifier").orEmpty(),
             prep?.optString("codeChallenge").orEmpty(), prep?.optString("returnUri").orEmpty())
             ?: return DataResult.Error(ScreenError("web_login_prepare_failed", retryable = true))
-        val result = settingsCapability(JSONObject().put("action", "appLoginOpen").put("authorizationUrl", url))
+        val result = settingsCapability(buildJsonObject {
+            put("action", "appLoginOpen")
+            put("authorizationUrl", url)
+        })
         if (result?.optString("status") == "started") return DataResult.Content(Unit)
         SlockAppLogin.cancel(generation)
         return DataResult.Error(ScreenError("web_login_browser_failed", retryable = true))
@@ -105,7 +132,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     private suspend fun startSharedBrowserMobileOAuthLink(
         providerId: String,
-        preparation: JSONObject?,
+        preparation: JsonObject?,
     ): DataResult<Unit> {
         val generation = preparation?.optString("generation").orEmpty()
         val verifier = preparation?.optString("codeVerifier").orEmpty()
@@ -144,9 +171,10 @@ internal class BridgeSettingsPlatformCapabilities(
         }
         val open =
             settingsCapability(
-                JSONObject()
-                    .put("action", "mobileOAuthOpen")
-                    .put("authorizationUrl", authorizationUrl)
+                buildJsonObject {
+                    put("action", "mobileOAuthOpen")
+                    put("authorizationUrl", authorizationUrl)
+                }
             )
         if (open?.optString("status") == "started") return DataResult.Content(Unit)
         suspendCoroutine<Unit> { continuation ->
@@ -183,7 +211,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "loadStorage"))
+        val response = settingsCapability(buildJsonObject { put("action", "loadStorage") })
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_storage_unavailable" }))
         }
@@ -193,9 +221,10 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "clearStorage")
-                    .put("target", target)
+                buildJsonObject {
+                    put("action", "clearStorage")
+                    put("target", target)
+                }
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_storage_clear_failed" }))
@@ -204,7 +233,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "loadAbout"))
+        val response = settingsCapability(buildJsonObject { put("action", "loadAbout") })
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_about_unavailable" }))
         }
@@ -236,21 +265,21 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadOpenSourceLicenses(): DataResult<SharedSettingsOpenSourceLicensesSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "loadOpenSourceLicenses"))
+        val response = settingsCapability(buildJsonObject { put("action", "loadOpenSourceLicenses") })
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_open_source_licenses_unavailable" }))
         }
         val payload =
             response.optString("payloadJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseSlockJsonObject(raw) }.getOrNull() }
                 ?: response
-        val itemsJson = payload.optJSONArray("items")
+        val itemsJson = payload.optJsonArray("items")
         val items =
             buildList {
                 if (itemsJson != null) {
-                    for (index in 0 until itemsJson.length()) {
-                        val item = itemsJson.optJSONObject(index) ?: continue
+                    for (index in 0 until itemsJson.size) {
+                        val item = itemsJson.optJsonObject(index) ?: continue
                         val name = item.optString("name")
                         val displayName = item.optString("displayName")
                         val licenseName = item.optString("licenseName")
@@ -280,7 +309,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "loadDeveloper"))
+        val response = settingsCapability(buildJsonObject { put("action", "loadDeveloper") })
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_unavailable" }))
         }
@@ -288,7 +317,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "handsUpdateCheck"))
+        val response = settingsCapability(buildJsonObject { put("action", "handsUpdateCheck") })
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_check_failed" }))
         }
@@ -299,7 +328,10 @@ internal class BridgeSettingsPlatformCapabilities(
         handsUpdateAction("handsUpdateStatus")
 
     override suspend fun readHandsDownloadProgress(token: String): SharedUpdateDownloadProgress? {
-        val response = settingsCapability(JSONObject().put("action", "handsDownloadProgress").put("token", token))
+        val response = settingsCapability(buildJsonObject {
+            put("action", "handsDownloadProgress")
+            put("token", token)
+        })
         return response?.toSharedUpdateDownloadProgress()
     }
 
@@ -313,9 +345,10 @@ internal class BridgeSettingsPlatformCapabilities(
         if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "prefetchReleaseNotes")
-                    .put("url", url)
+                buildJsonObject {
+                    put("action", "prefetchReleaseNotes")
+                    put("url", url)
+                }
             )
         return when (response?.optString("status")) {
             "ok", "started" -> DataResult.Content(Unit)
@@ -327,9 +360,10 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "setApiEnvironment")
-                    .put("environmentKey", environmentKey)
+                buildJsonObject {
+                    put("action", "setApiEnvironment")
+                    put("environmentKey", environmentKey)
+                }
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_failed" }))
@@ -340,13 +374,14 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "setApiEnvironment")
-                    .put("environmentKey", request.key)
-                    .put("environmentLabel", request.label)
-                    .put("apiBaseUrl", request.apiBaseUrl)
-                    .put("socketBaseUrl", request.socketBaseUrl)
-                    .put("webUrl", request.webUrl)
+                buildJsonObject {
+                    put("action", "setApiEnvironment")
+                    put("environmentKey", request.key)
+                    put("environmentLabel", request.label)
+                    put("apiBaseUrl", request.apiBaseUrl)
+                    put("socketBaseUrl", request.socketBaseUrl)
+                    put("webUrl", request.webUrl)
+                }
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_failed" }))
@@ -360,13 +395,14 @@ internal class BridgeSettingsPlatformCapabilities(
     ): DataResult<Unit> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "apiEnvironmentChanged")
-                    .put("beforeEnvironmentKey", before.key)
-                    .put("afterEnvironmentKey", after.key)
-                    .put("apiBaseUrl", after.apiBaseUrl)
-                    .put("socketBaseUrl", after.socketBaseUrl)
-                    .put("webUrl", after.webUrl)
+                buildJsonObject {
+                    put("action", "apiEnvironmentChanged")
+                    put("beforeEnvironmentKey", before.key)
+                    put("afterEnvironmentKey", after.key)
+                    put("apiBaseUrl", after.apiBaseUrl)
+                    put("socketBaseUrl", after.socketBaseUrl)
+                    put("webUrl", after.webUrl)
+                }
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_hook_failed" }))
@@ -394,10 +430,11 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun setDiagnosticFeatureFlagOverride(key: String, mode: String): DataResult<Unit> {
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "setDiagnosticFeatureFlagOverride")
-                    .put("key", key)
-                    .put("mode", mode)
+                buildJsonObject {
+                    put("action", "setDiagnosticFeatureFlagOverride")
+                    put("key", key)
+                    put("mode", mode)
+                }
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(
@@ -419,7 +456,7 @@ internal class BridgeSettingsPlatformCapabilities(
             ?.toDiagnosticsFeedbackDraft()
 
     suspend fun pickFeedbackAttachment(imageOnly: Boolean): DataResult<List<PlatformFile>> {
-        val response = bridge.threadAttachmentUpload(channelId = "settings-hands-feedback", imageOnly = imageOnly)
+        val response = host.threadAttachmentUpload(channelId = "settings-hands-feedback", imageOnly = imageOnly)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (code !in 200..299) {
@@ -445,12 +482,13 @@ internal class BridgeSettingsPlatformCapabilities(
             )
         }
         val command =
-            JSONObject()
-                .put("action", "promoteFeedbackDraftAttachments")
-                .put("accountId", accountId)
-                .put("groupId", groupId)
-                .put("maxBytes", maxBytes)
-                .put("files", files.toFeedbackDraftPromotionFilesJson())
+            buildJsonObject {
+                put("action", "promoteFeedbackDraftAttachments")
+                put("accountId", accountId)
+                put("groupId", groupId)
+                put("maxBytes", maxBytes)
+                put("files", files.toFeedbackDraftPromotionFilesJson())
+            }
         val response = settingsCapability(command)
         if (response?.optString("status") != "ok") {
             return DataResult.Error(
@@ -509,13 +547,14 @@ internal class BridgeSettingsPlatformCapabilities(
         if (distinctRefs.isEmpty()) return true
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "discardFeedbackDraftAttachments")
-                    .put("accountId", accountId)
-                    .put(
+                buildJsonObject {
+                    put("action", "discardFeedbackDraftAttachments")
+                    put("accountId", accountId)
+                    put(
                         "fileRefs",
-                        JSONArray().also { array -> distinctRefs.forEach(array::put) }
+                        JsonArray(distinctRefs.map(::JsonPrimitive))
                     )
+                }
             )
         return response?.optString("status") == "ok"
     }
@@ -524,30 +563,31 @@ internal class BridgeSettingsPlatformCapabilities(
         message: String,
         attachments: List<PlatformFile>
     ): DataResult<SettingsHandsFeedbackSubmission> {
-        bridge.log(
+        logBridge(
             "settings_hands_feedback_submit_start messageLength=${message.length} " +
                 "attachmentCount=${attachments.size}"
         )
         feedbackVisualSubmission?.let { submission ->
-            bridge.log(
+            logBridge(
                 "settings_hands_feedback_visual_submit_success attachmentCount=${attachments.size} " +
                     "ticket=${submission.ticketId.take(8)}"
             )
             return DataResult.Content(submission)
         }
-        bridge.log("settings_hands_feedback_bridge_request_prepared")
+        logBridge("settings_hands_feedback_bridge_request_prepared")
         flushSlockPlatformLogs()
         if (!flushSlockPlatformDiagnosticsDownstream()) {
             return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
         }
         val response =
             settingsCapability(
-                JSONObject()
-                    .put("action", "submitFeedback")
-                    .put("message", message)
-                    .put("files", attachments.toFeedbackFilesJson())
+                buildJsonObject {
+                    put("action", "submitFeedback")
+                    put("message", message)
+                    put("files", attachments.toFeedbackFilesJson())
+                }
             )
-        bridge.log(
+        logBridge(
             "settings_hands_feedback_submit_response status=${response?.optString("status").orEmpty()} " +
                 "code=${response?.optString("code").orEmpty()} " +
                 "ticket=${response?.optString("ticketId").orEmpty().take(8)}"
@@ -571,7 +611,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
-        val response = settingsCapability(JSONObject().put("action", "getNotificationPermissionStatus"))
+        val response = settingsCapability(buildJsonObject { put("action", "getNotificationPermissionStatus") })
             ?: return null
         return systemNotificationPermissionSnapshot(
             code = response.optString("code"),
@@ -590,46 +630,50 @@ internal class BridgeSettingsPlatformCapabilities(
 
     suspend fun postUnreadNotification(request: SystemUnreadNotificationRequest): SystemNotificationActionResult {
         val command =
-            JSONObject()
-                .put("action", "postUnreadNotification")
-                .put("serverId", request.serverId)
-                .put("messageId", request.messageId)
-                .put("threadId", request.threadId)
-                .put("channelId", request.channelId.orEmpty())
-                .put("parentChannelId", request.parentChannelId.orEmpty())
-                .put("parentMessageId", request.parentMessageId.orEmpty())
-                .put("category", request.category.wireValue)
-                .put("title", request.title)
-                .put("body", request.body)
-                .put("notificationKey", request.notificationKey)
+            buildJsonObject {
+                put("action", "postUnreadNotification")
+                put("serverId", request.serverId)
+                put("messageId", request.messageId)
+                put("threadId", request.threadId)
+                put("channelId", request.channelId.orEmpty())
+                put("parentChannelId", request.parentChannelId.orEmpty())
+                put("parentMessageId", request.parentMessageId.orEmpty())
+                put("category", request.category.wireValue)
+                put("title", request.title)
+                put("body", request.body)
+                put("notificationKey", request.notificationKey)
+            }
         val response = settingsCapability(command)
             ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
         return response.toSystemNotificationActionResult()
     }
 
     private suspend fun handsUpdateAction(action: String, token: String = ""): DataResult<SharedSettingsUpdateCheckSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", action).put("token", token))
+        val response = settingsCapability(buildJsonObject {
+            put("action", action)
+            put("token", token)
+        })
         if (response?.optString("status") != "ok") {
-            return DataResult.Error(handsUpdateBridgeError(response?.toString()))
+            return DataResult.Error(handsUpdateBridgeError(response?.toSlockJsonString()))
         }
         return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
     }
 
-    private suspend fun settingsCapability(command: JSONObject): JSONObject? =
+    private suspend fun settingsCapability(command: JsonObject): JsonObject? =
         onBridgeCallContext {
-            bridge.settingsCapability(command)
+            host.settingsCapability(command)
         }
 
-    private suspend fun diagnosticsSettingsCapability(action: String): JSONObject? {
-        val command = JSONObject().put("action", action)
+    private suspend fun diagnosticsSettingsCapability(action: String): JsonObject? {
+        val command = buildJsonObject { put("action", action) }
         flushSlockPlatformLogs()
         if (!flushSlockPlatformDiagnosticsDownstream()) return null
         return settingsCapability(command)
     }
 
-    private suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
+    private suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JsonObject? =
         onBridgeCallContext {
-            bridge.threadAttachmentUpload(channelId = channelId, imageOnly = imageOnly)
+            host.threadAttachmentUpload(channelId = channelId, imageOnly = imageOnly)
         }
 
     private suspend fun <T> onBridgeCallContext(block: suspend () -> T): T =
@@ -642,43 +686,43 @@ internal class BridgeSettingsPlatformCapabilities(
         }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private fun List<PlatformFile>.toFeedbackFilesJson(): JSONArray =
-        JSONArray().also { array ->
+    private fun List<PlatformFile>.toFeedbackFilesJson(): JsonArray =
+        buildJsonArray {
             take(3).forEach { file ->
-                array.put(
-                    JSONObject()
-                        .put("id", file.id)
-                        .put("fileName", file.fileName)
-                        .put("mimeType", file.mimeType.orEmpty())
-                        .put("sizeBytes", file.sizeBytes ?: file.bytes.size.toLong())
-                        .put("previewUri", file.previewUri.orEmpty())
-                        .put("fileRef", file.fileRef.orEmpty())
-                        .put("source", file.source)
-                        .also { item ->
-                            if (file.bytes.isNotEmpty()) {
-                                item.put("bodyBase64", Base64.encode(file.bytes))
-                            }
+                add(
+                    buildJsonObject {
+                        put("id", file.id)
+                        put("fileName", file.fileName)
+                        put("mimeType", file.mimeType.orEmpty())
+                        put("sizeBytes", file.sizeBytes ?: file.bytes.size.toLong())
+                        put("previewUri", file.previewUri.orEmpty())
+                        put("fileRef", file.fileRef.orEmpty())
+                        put("source", file.source)
+                        if (file.bytes.isNotEmpty()) {
+                            put("bodyBase64", Base64.encode(file.bytes))
                         }
+                    }
                 )
             }
         }
 
-    private fun List<PlatformFile>.toFeedbackDraftPromotionFilesJson(): JSONArray =
-        JSONArray().also { array ->
+    private fun List<PlatformFile>.toFeedbackDraftPromotionFilesJson(): JsonArray =
+        buildJsonArray {
             forEach { file ->
-                array.put(
-                    JSONObject()
-                        .put("id", file.id)
-                        .put("fileName", file.fileName)
-                        .put("mimeType", file.mimeType.orEmpty())
-                        .put("fileRef", file.fileRef.orEmpty())
-                        .put("previewUri", file.previewUri.orEmpty())
+                add(
+                    buildJsonObject {
+                        put("id", file.id)
+                        put("fileName", file.fileName)
+                        put("mimeType", file.mimeType.orEmpty())
+                        put("fileRef", file.fileRef.orEmpty())
+                        put("previewUri", file.previewUri.orEmpty())
+                    }
                 )
             }
         }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private fun JSONObject.toDiagnosticsFeedbackDraft(): SettingsDiagnosticsFeedbackDraft? {
+    private fun JsonObject.toDiagnosticsFeedbackDraft(): SettingsDiagnosticsFeedbackDraft? {
         if (optString("status") != "ok") return null
         val fileName = optString("fileName").ifBlank { "slock-feedback.txt" }
         val mimeType = optString("mimeType").ifBlank { "text/plain" }
@@ -694,12 +738,12 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
-        val response = settingsCapability(JSONObject().put("action", action))
+        val response = settingsCapability(buildJsonObject { put("action", action) })
             ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
         return response.toSystemNotificationActionResult()
     }
 
-    private fun JSONObject.toSystemNotificationActionResult(): SystemNotificationActionResult {
+    private fun JsonObject.toSystemNotificationActionResult(): SystemNotificationActionResult {
         val status = optString("status")
         val code = optString("code").ifBlank { status.ifBlank { "unknown" } }
         return SystemNotificationActionResult(
@@ -759,19 +803,19 @@ internal fun systemNotificationPermissionSnapshot(
     )
 }
 
-internal fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
+internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
     // Android sends "rowsJson" (string bridge, #476); OHOS/iOS still send
     // structured "rows". Same dual-accept shape as entriesJson (#484).
     val rowsJson =
-        optJSONArray("rows")
+        optJsonArray("rows")
             ?: optString("rowsJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
     val rows =
         buildList {
             if (rowsJson != null) {
-                for (index in 0 until rowsJson.length()) {
-                    val row = rowsJson.optJSONObject(index) ?: continue
+                for (index in 0 until rowsJson.size) {
+                    val row = rowsJson.optJsonObject(index) ?: continue
                     add(
                         SharedSettingsStorageRow(
                             target = row.optString("target"),
@@ -792,19 +836,19 @@ internal fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
     )
 }
 
-internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
+internal fun JsonObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
     // Android sends "optionsJson" (string bridge, #476); OHOS/iOS still
     // send structured "options". Same dual-accept shape as entriesJson.
     val optionsJson =
-        optJSONArray("options")
+        optJsonArray("options")
             ?: optString("optionsJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
     val options =
         buildList {
             if (optionsJson != null) {
-                for (index in 0 until optionsJson.length()) {
-                    val option = optionsJson.optJSONObject(index) ?: continue
+                for (index in 0 until optionsJson.size) {
+                    val option = optionsJson.optJsonObject(index) ?: continue
                     val key = option.optString("key")
                     if (key.isBlank()) continue
                     add(
@@ -867,17 +911,17 @@ internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
     )
 }
 
-internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
+internal fun JsonObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
     val entriesJson =
-        optJSONArray("entries")
+        optJsonArray("entries")
             ?: optString("entriesJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
     val entries =
         buildList {
             if (entriesJson != null) {
-                for (index in 0 until entriesJson.length()) {
-                    val entry = entriesJson.optJSONObject(index) ?: continue
+                for (index in 0 until entriesJson.size) {
+                    val entry = entriesJson.optJsonObject(index) ?: continue
                     add(
                         SharedSettingsDiagnosticsEntry(
                             timestampLabel = entry.optString("timestampLabel"),
@@ -891,16 +935,16 @@ internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
     val readStateJson =
         optString("readStateV1DiagnosticJson")
             .takeIf { it.isNotBlank() }
-            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+            ?.let { raw -> runCatching { parseSlockJsonObject(raw) }.getOrNull() }
     val featureFlagOverridesJson =
         optString("diagnosticFeatureFlagOverridesJson")
             .takeIf { it.isNotBlank() }
-            ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+            ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
     val featureFlagOverrides =
         buildList {
             if (featureFlagOverridesJson != null) {
-                for (index in 0 until featureFlagOverridesJson.length()) {
-                    val json = featureFlagOverridesJson.optJSONObject(index) ?: continue
+                for (index in 0 until featureFlagOverridesJson.size) {
+                    val json = featureFlagOverridesJson.optJsonObject(index) ?: continue
                     val key = json.optString("key").trim()
                     if (key.isBlank()) continue
                     add(
@@ -953,7 +997,7 @@ internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
     )
 }
 
-private fun JSONObject.optNullableBoolean(key: String): Boolean? =
+private fun JsonObject.optNullableBoolean(key: String): Boolean? =
     when (optString(key).trim().lowercase()) {
         "true" -> true
         "false" -> false

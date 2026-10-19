@@ -1,11 +1,18 @@
 package build.raft.app.data
 
+import build.raft.app.optBoolean
+import build.raft.app.optDouble
+import build.raft.app.optJsonArray
+import build.raft.app.optJsonObject
+import build.raft.app.optString
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * task #180: contract for shell-rendered overlays. Argus asked for these before any rendering work,
@@ -37,9 +44,9 @@ class SlockShellOverlayContractTest {
         // The anchor must survive verbatim: the shell draws in window space and must not re-derive it.
         assertEquals(1904.0, json.optDouble(SHELL_OVERLAY_ANCHOR_X), 0.001)
         assertEquals(82.0, json.optDouble(SHELL_OVERLAY_ANCHOR_Y), 0.001)
-        val rows = json.optJSONArray(SHELL_OVERLAY_ITEMS)
-        assertEquals(2, rows?.length())
-        assertFalse(rows?.optJSONObject(1)?.optBoolean("enabled") ?: true)
+        val rows = json.optJsonArray(SHELL_OVERLAY_ITEMS)
+        assertEquals(2, rows?.size)
+        assertFalse(rows?.optJsonObject(1)?.optBoolean("enabled") ?: true)
     }
 
     @Test
@@ -102,7 +109,7 @@ class SlockShellOverlayContractTest {
 
     @Test
     fun aMessageWithoutARequestIdIsNotTrusted() {
-        val noId = com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply { put("selectedId", "x") }
+        val noId = buildJsonObject { put("selectedId", "x") }
 
         assertNull(noId.shellOverlayRequestIdOrNull())
         assertFalse(slockShouldApplyShellOverlayResult(currentRequestId = "req-1", incoming = noId))

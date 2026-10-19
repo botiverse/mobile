@@ -1,6 +1,9 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optLong
+import build.raft.app.optString
+import kotlinx.serialization.json.JsonObject
+
 
 /** Bytes belong to one host-owned download attempt, never to the offered APK size. */
 data class SharedUpdateDownloadProgress(
@@ -16,7 +19,7 @@ data class SharedUpdateDownloadProgress(
     val active: Boolean get() = phase == "downloading" || phase == "paused"
 }
 
-internal fun JSONObject.toSharedUpdateDownloadProgress(): SharedUpdateDownloadProgress? {
+internal fun JsonObject.toSharedUpdateDownloadProgress(): SharedUpdateDownloadProgress? {
     val token = optString("token")
     val phase = optString("phase")
     if (optString("status") != "ok" || token.isBlank() ||

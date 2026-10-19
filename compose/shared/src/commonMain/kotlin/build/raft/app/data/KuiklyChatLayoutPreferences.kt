@@ -1,6 +1,12 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.has
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
 
 private const val CHAT_LAYOUT_PREFERENCE_EVENT = "slock.chatLayoutPreferenceChanged"
 private const val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT = "slock.chatLayoutPreferenceSnapshotChanged"
@@ -73,7 +79,7 @@ class KuiklyChatLayoutPreferenceEvents(
     fun postConversationForwardGestureChanged(enabled: Boolean) {
         eventBus.post(
             CHAT_LAYOUT_PREFERENCE_EVENT,
-            JSONObject().put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled),
+            buildJsonObject { put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled) },
             source = source
         )
     }
@@ -160,28 +166,29 @@ fun kuiklyChatLayoutPreferenceRepository(
 
     }
 
-private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
-    JSONObject()
-        .put(KEY_MY_MESSAGE_ALIGNMENT, myMessageAlignment.storageKey)
-        .put(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, desktopModeOnLargeScreen)
-        .put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
-        .put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
-        .put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
-        .put(KEY_THREAD_UNREAD_JUMP_ENABLED, threadUnreadJumpEnabled)
-        .put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
-        .put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
-        .put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
-        .put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
-        .put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
-        .put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
-        .put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
-        .put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
-        .put(KEY_NEW_DESIGN_SETTINGS_ENABLED, newDesignSettingsEnabled)
-        .put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
-        .put(KEY_TRANSLATION_MODE, translationMode.storageKey)
-        .put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
+private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
+    buildJsonObject {
+        put(KEY_MY_MESSAGE_ALIGNMENT, myMessageAlignment.storageKey)
+        put(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, desktopModeOnLargeScreen)
+        put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
+        put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
+        put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
+        put(KEY_THREAD_UNREAD_JUMP_ENABLED, threadUnreadJumpEnabled)
+        put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
+        put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
+        put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
+        put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
+        put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
+        put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
+        put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
+        put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
+        put(KEY_NEW_DESIGN_SETTINGS_ENABLED, newDesignSettingsEnabled)
+        put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
+        put(KEY_TRANSLATION_MODE, translationMode.storageKey)
+        put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
+    }
 
-internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPreferenceSnapshot? {
+internal fun JsonObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPreferenceSnapshot? {
     if (CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS.any { !has(it) }) return null
     return ChatLayoutPreferenceSnapshot(
         myMessageAlignment = MyMessageAlignmentPreference.fromStorageKey(optString(KEY_MY_MESSAGE_ALIGNMENT)),
