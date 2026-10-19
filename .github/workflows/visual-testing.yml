@@ -42,6 +42,10 @@ on:
         description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
         type: boolean
         default: false
+      ios_link_heap:
+        description: "DIAGNOSTIC: Gradle/K-N JVM heap for the iOS framework link, e.g. 6g. Empty keeps gradle.properties."
+        type: string
+        default: ""
       ios_shards:
         description: "iOS capture parallelism: N job-owned simulators each take a slice of the case list. 1 = legacy serial behaviour. Suggested max on the single self-hosted Mac: 4."
         type: number
@@ -510,7 +514,15 @@ jobs:
       - name: Sync shared framework (simulator arm64)
         working-directory: compose
         run: |
-          ./gradlew :shared:syncFramework \
+          bash "$GITHUB_WORKSPACE/scripts/ci/ios_link_sampler.sh" 120 &
+          sampler=$!
+          trap 'kill $sampler 2>/dev/null || true' EXIT
+          heap_args=()
+          if [ -n "${{ inputs.ios_link_heap }}" ]; then
+            heap_args=("-Dorg.gradle.jvmargs=-Xmx${{ inputs.ios_link_heap }} -Xss4m -Dfile.encoding=UTF-8")
+          fi
+          sysctl -n hw.memsize hw.ncpu
+          ./gradlew :shared:syncFramework "${heap_args[@]}" \
             -Pkotlin.native.cocoapods.platform=iphonesimulator \
             -Pkotlin.native.cocoapods.archs=arm64 \
             -Pkotlin.native.cocoapods.configuration=Debug \
