@@ -353,6 +353,8 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             retryBounds = Rect().also(target::getBoundsInScreen),
             viewportBounds = viewportBounds(target),
             backToBottomBounds = backToBottomBounds,
+            minRetryHeightPx =
+                RetryRowMinVisibleHeightDp * instrumentation.targetContext.resources.displayMetrics.density,
         )
     }
 
@@ -378,6 +380,14 @@ class SlockThreadNewerAutoPaginationConnectedTest {
      * by it and is treated as partially scrolled out.
      */
     private fun viewportBounds(node: AccessibilityNodeInfo): Rect {
+        // A scrolling ancestor is the real clip; prefer it when the tree exposes one.
+        var scrollable: AccessibilityNodeInfo? = node.parent
+        var scrollDepth = 0
+        while (scrollable != null && scrollDepth < MaxAccessibilityTreeDepth) {
+            if (scrollable.isScrollable) return Rect().also(scrollable::getBoundsInScreen)
+            scrollable = scrollable.parent
+            scrollDepth += 1
+        }
         val nodeBounds = Rect().also(node::getBoundsInScreen)
         var current: AccessibilityNodeInfo? = node.parent
         var outermost: AccessibilityNodeInfo = node
@@ -761,9 +771,15 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         val viewportBounds: Rect?,
         val backToBottomBounds: List<Rect>,
         val gestureCount: Int = 0,
+        // Accessibility bounds are clipped, so a Retry target this short is cut off whichever
+        // ancestor the viewport heuristic picked (a misrouted run showed a 26px strip).
+        val minRetryHeightPx: Float = 0f,
     ) {
         val fullyVisible: Boolean
-            get() = retryBounds != null && viewportBounds != null && isFullyInside(retryBounds, viewportBounds)
+            get() = retryBounds != null &&
+                viewportBounds != null &&
+                retryBounds.height() >= minRetryHeightPx &&
+                isFullyInside(retryBounds, viewportBounds)
 
         val ready: Boolean
             get() = fullyVisible && backToBottomBounds.isEmpty()
@@ -799,6 +815,8 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val StableSamplesRequired = 3
         private const val StablePixelTolerance = 2
         private const val AnchorToleranceDp = 10f
+        // Well under the button's laid-out height, well over the clipped strips seen in flakes.
+        private const val RetryRowMinVisibleHeightDp = 24f
         private const val GestureSettleMs = 250L
         private const val AccessibilityTapSettleMs = 300L
         private const val FirstGestureDurationMs = 650L
