@@ -5,55 +5,29 @@ import build.raft.app.cmp.pages.CmpHelloPage
 import kotlin.concurrent.Volatile
 
 /**
- * A page that has a Compose Multiplatform implementation.
+ * A page implemented in this module (not through the :shared [RaftPageProvider]).
  *
- * [pageName] and the pageData JSON are the same contract the Kuikly page uses (deep links,
+ * [pageName] and the pageData JSON are the same contract every page uses (deep links,
  * notifications, `openPage` callers and visual-testing cases keep working unchanged).
- * [rollbackFlagKey] is the per-page remote-config key a [SlockCmpRouteOverride] reads to send the
- * page back to Kuikly (or, for a page listed with [enabledByDefault] = false, to turn CMP on)
- * without a release.
  */
 class SlockCmpPage internal constructor(
     val pageName: String,
-    val rollbackFlagKey: String,
-    val enabledByDefault: Boolean = true,
     internal val content: @Composable () -> Unit,
 )
 
-/**
- * The migrated-pages allowlist: the only place that decides whether a page name renders on CMP.
- *
- * Both hosts ask [SlockCmpRouter.rendersOnCmp] before creating a page (Android picks
- * `SlockCmpActivity` over `SlockKuiklyActivity`, iOS pushes the CMP view controller instead of
- * `KuiklyRenderViewController`); everything not listed here stays on Kuikly.
- */
+/** Pages implemented in :ui-cmp itself. Everything else comes from the installed [RaftPageProvider]. */
 object SlockCmpPages {
     /** Debug-only end-to-end check of both hosts (theme, page args, HostCapabilities, close). */
     const val CMP_HELLO: String = "compose_cmp_hello"
 
-    /** Product pages migrated to CMP. Empty until the Settings pilot lands. */
-    val migrated: List<SlockCmpPage> = emptyList()
-
-    /** Pages routed to CMP only in debug builds (see [SlockCmpRouter.configure]). */
+    /** Pages admitted only in debug builds (see [SlockCmpRouter.configure]). */
     val debugOnly: List<SlockCmpPage> =
         listOf(
             SlockCmpPage(
                 pageName = CMP_HELLO,
-                rollbackFlagKey = "mobile_cmp_page_compose_cmp_hello",
                 content = { CmpHelloPage() },
             ),
         )
-}
-
-/**
- * Per-page remote override of the allowlist (rollback seam). Return `false` to send the page back
- * to Kuikly, `true` to render it on CMP, or `null` to keep [SlockCmpPage.enabledByDefault]. Only
- * pages listed in [SlockCmpPages] (and admitted in this build) can be routed to CMP at all. Called
- * on the navigation path, so it must answer synchronously (e.g. from the last persisted flag
- * evaluation); a throwing override counts as `null`.
- */
-fun interface SlockCmpRouteOverride {
-    fun cmpEnabled(page: SlockCmpPage): Boolean?
 }
 
 /**
@@ -65,6 +39,12 @@ fun interface RaftPageProvider {
     fun content(pageName: String): (@Composable () -> Unit)?
 }
 
+/**
+ * Decides what a CMP host renders for a page name. Since the CMP switch every page renders on CMP:
+ * the registered set is the :ui-cmp pages admitted in this build plus everything the installed
+ * [RaftPageProvider] knows. There is no per-page rollback any more (there is no Kuikly host left
+ * to roll back to).
+ */
 object SlockCmpRouter {
     @Volatile
     private var debugPagesEnabled: Boolean = false
@@ -72,10 +52,7 @@ object SlockCmpRouter {
     @Volatile
     private var pageProvider: RaftPageProvider? = null
 
-    /**
-     * TODO(cmp-switch): installs the :shared page registry. Rendering only: [rendersOnCmp] still
-     * answers from the allowlist until the hosts switch every page over.
-     */
+    /** Installs the :shared page registry (`RaftPageRegistry.install()`, called by each host at startup). */
     fun installPageProvider(provider: RaftPageProvider) {
         pageProvider = provider
     }
@@ -84,33 +61,19 @@ object SlockCmpRouter {
     fun providedContent(pageName: String): (@Composable () -> Unit)? =
         runCatching { pageProvider?.content(pageName) }.getOrNull()
 
-    @Volatile
-    private var routeOverride: SlockCmpRouteOverride? = null
-
-    /**
-     * Called once by each host at startup. [debugBuild] admits [SlockCmpPages.debugOnly];
-     * [override] is the remote rollback seam (none by default: the code allowlist decides).
-     */
-    fun configure(debugBuild: Boolean, override: SlockCmpRouteOverride? = null) {
+    /** Called once by each host at startup. [debugBuild] admits [SlockCmpPages.debugOnly]. */
+    fun configure(debugBuild: Boolean) {
         debugPagesEnabled = debugBuild
-        routeOverride = override
     }
 
-    /** True when [pageName] must be hosted by the CMP host instead of the Kuikly one. */
-    fun rendersOnCmp(pageName: String): Boolean {
-        val page = admittedPage(pageName) ?: return false
-        val override = runCatching { routeOverride?.cmpEnabled(page) }.getOrNull()
-        return override ?: page.enabledByDefault
-    }
+    /** True when [pageName] is a registered page (a host can render it). */
+    fun rendersOnCmp(pageName: String): Boolean = content(pageName) != null
 
-    /**
-     * The page a CMP host should render for [pageName], or null when it has no CMP implementation
-     * in this build. Ignores the rollback override: a host that was already launched for a page
-     * keeps rendering it.
-     */
-    fun page(pageName: String): SlockCmpPage? = admittedPage(pageName)
+    /** The :ui-cmp page for [pageName], or null when it is not one (or not admitted in this build). */
+    fun page(pageName: String): SlockCmpPage? =
+        SlockCmpPages.debugOnly.firstOrNull { it.pageName == pageName }?.takeIf { debugPagesEnabled }
 
-    private fun admittedPage(pageName: String): SlockCmpPage? =
-        SlockCmpPages.migrated.firstOrNull { it.pageName == pageName }
-            ?: SlockCmpPages.debugOnly.firstOrNull { it.pageName == pageName }?.takeIf { debugPagesEnabled }
+    /** The body a host renders for [pageName]: a :ui-cmp page first, then the installed provider. */
+    fun content(pageName: String): (@Composable () -> Unit)? =
+        page(pageName)?.content ?: providedContent(pageName)
 }

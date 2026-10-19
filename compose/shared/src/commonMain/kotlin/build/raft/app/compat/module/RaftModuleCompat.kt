@@ -18,9 +18,9 @@ import kotlinx.coroutines.launch
  * `BridgeModule` (HRBridgeModule) and Kuikly's built-in Router/Codec/Performance modules keep
  * their API; native calls go over `SlockCmpHost.bridgeTransport` (the same HRBridgeModule wire the
  * Kuikly renderer used) and callbacks are delivered on the main thread, where CMP composes.
- * Synchronous native calls do not exist on the CMP transport: `syncCall = true` is sent
- * asynchronously and returns an empty value (callers that need a sync answer must move to a
- * Kotlin implementation or to HostCapabilities).
+ * Synchronous native calls (`syncCall = true`) go through `HostBridgeTransport.callSync`; a host
+ * without a synchronous path for the method gets the call sent asynchronously and the caller an
+ * empty value (as before).
  */
 
 typealias CallbackFn = (data: JSONObject?) -> Unit
@@ -67,7 +67,8 @@ abstract class Module {
             return ReturnValue(null)
         }
         if (syncCall) {
-            // TODO(cmp-switch): no synchronous bridge on CMP; see file header.
+            val syncResult = runCatching { transport.callSync(methodName, param?.toString().orEmpty()) }.getOrNull()
+            if (syncResult != null) return ReturnValue(null, syncResult)
             slockLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
         }
         val ref: CallbackRef? = callback?.let { "cb-${callbackSequence.incrementAndGet()}" }

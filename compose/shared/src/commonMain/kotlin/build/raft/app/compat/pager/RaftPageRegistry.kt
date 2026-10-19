@@ -54,7 +54,7 @@ object RaftPageRegistry {
         return { RaftPagerHost(factory) }
     }
 
-    /** TODO(cmp-switch): hosts call this at startup (not wired yet). */
+    /** Hosts call this once at startup (Android: `SlockApplication.onCreate`). */
     fun install() {
         SlockCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
     }
@@ -141,6 +141,13 @@ fun RaftPagerHost(
             val event = if (visible) Pager.PAGER_EVENT_DID_APPEAR else Pager.PAGER_EVENT_DID_DISAPPEAR
             pager.onReceivePagerEvent(event, JSONObject())
         }
+    }
+    // Native host events (Kuikly `sendEvent`: window insets, adaptive panes, ...) reach the page as
+    // pager events, the way the Kuikly renderer delivered them.
+    DisposableEffect(pager, host) {
+        val unsubscribe =
+            host.events.subscribe { event, data -> pager.onReceivePagerEvent(event, data.toKuiklyJson()) }
+        onDispose { unsubscribe() }
     }
     DisposableEffect(pager) {
         onDispose {

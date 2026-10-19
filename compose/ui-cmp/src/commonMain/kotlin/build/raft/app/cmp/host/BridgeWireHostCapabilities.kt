@@ -22,6 +22,13 @@ import kotlin.coroutines.resume
  */
 fun interface HostBridgeTransport {
     fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?)
+
+    /**
+     * Synchronous bridge call (Kuikly `syncCall = true`): returns the method's result as text, or
+     * null when this host has no synchronous path for [method] (callers then get an empty value).
+     * Hosts answer on the calling thread; only cheap, thread-safe methods may be served here.
+     */
+    fun callSync(method: String, paramsJson: String): String? = null
 }
 
 /**
@@ -32,10 +39,8 @@ fun interface HostBridgeTransport {
  * the same calls from a CMP page as from a Kuikly page. Keep the two in step until `BridgeModule`
  * is deleted.
  *
- * Known Android gap: native methods that cast their host to `SlockKuiklyActivity` (realtime
- * reports, attachment upload, social auth, the settings OAuth link) answer "unavailable" or drop
- * the call when the host is `SlockCmpActivity`. iOS falls back to the top view controller instead.
- * A page that needs one of these must first move it behind a host interface both activities share.
+ * Android: host-bound native methods (realtime reports, attachment upload, social auth, the
+ * settings OAuth link) reach the hosting Activity through its `RaftHostActivity` interface.
  */
 class BridgeWireHostCapabilities(
     private val transport: HostBridgeTransport,
