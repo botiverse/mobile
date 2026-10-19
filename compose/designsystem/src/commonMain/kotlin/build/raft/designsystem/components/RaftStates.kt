@@ -10,20 +10,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.tokens.RaftElevation
 import build.raft.designsystem.tokens.RaftShadowLayer
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.sqrt
 
 // Shared state primitives (raft-design Foundations > States, Elevation > Focus ring,
 // Dark mode > The die-cut edge, Color > Stickers / Pressed overlays). Every component
@@ -261,3 +269,121 @@ internal fun Modifier.raftHardShadow(layer: RaftShadowLayer, radius: Dp): Modifi
             cornerRadius = CornerRadius(radius.toPx()),
         )
     }
+
+/**
+ * `shadow-float` ([RaftElevation.float]) under an overlay: menus, popovers, dialogs, sheets
+ * and toasts, never content. Drawn without a platform blur, so it is the same on every
+ * platform and Android API level (RenderEffect blur needs API 31): each blurred layer is
+ * a stack of rounded rects whose alphas add up to the Gaussian edge CSS draws
+ * (sigma = blur / 2). [topRadius] / [bottomRadius] are the surface's corner radii.
+ */
+internal fun Modifier.raftFloatShadow(dark: Boolean, topRadius: Dp, bottomRadius: Dp = topRadius): Modifier =
+    drawBehind {
+        RaftElevation.float(dark).forEach { drawShadowLayer(it, topRadius.toPx(), bottomRadius.toPx()) }
+    }
+
+private fun DrawScope.drawShadowLayer(layer: RaftShadowLayer, topRadius: Float, bottomRadius: Float) {
+    val dx = layer.offsetX.toPx()
+    val dy = layer.offsetY.toPx()
+    val spread = layer.spread.toPx()
+    val sigma = layer.blur.toPx() / 2f
+
+    // The box grown by [grow] on every side, moved by the layer's x / y.
+    fun grown(grow: Float): Path? {
+        if (size.width + 2 * grow <= 0f || size.height + 2 * grow <= 0f) return null
+        val top = CornerRadius(max(0f, topRadius + grow))
+        val bottom = CornerRadius(max(0f, bottomRadius + grow))
+        return Path().apply {
+            addRoundRect(
+                RoundRect(
+                    left = dx - grow,
+                    top = dy - grow,
+                    right = size.width + dx + grow,
+                    bottom = size.height + dy + grow,
+                    topLeftCornerRadius = top,
+                    topRightCornerRadius = top,
+                    bottomRightCornerRadius = bottom,
+                    bottomLeftCornerRadius = bottom,
+                ),
+            )
+        }
+    }
+
+    if (sigma <= 0f) {
+        // A hard layer (a spread-only ring included): one rect.
+        grown(spread)?.let { drawPath(it, layer.color) }
+        return
+    }
+    // A staircase of the edge profile alpha * (1 - Phi(d / sigma)), from 3 sigma outside the
+    // spread edge inwards. Rect i covers every point inside its edge, so the alpha in band i
+    // is 1 - prod(1 - a_j) for j <= i; each a_i makes that equal the profile mid-band.
+    val alpha = layer.color.alpha
+    val step = max(1.dp.toPx(), sigma / 8f)
+    val steps = (6f * sigma / step).toInt().coerceAtLeast(1)
+    var covered = 0f
+    for (i in 0 until steps) {
+        val edge = spread + 3f * sigma - i * step
+        val target = alpha * (1f - raftNormalCdf((edge - step / 2f - spread) / sigma))
+        if (target <= covered) continue
+        val a = 1f - (1f - target) / (1f - covered)
+        covered = target
+        grown(edge)?.let { drawPath(it, layer.color.copy(alpha = a)) }
+    }
+}
+
+/** The standard normal CDF (Abramowitz-Stegun 7.1.26 erf, |error| < 1.5e-7). */
+internal fun raftNormalCdf(x: Float): Float {
+    val z = abs(x) / sqrt(2f)
+    val t = 1f / (1f + 0.3275911f * z)
+    val y =
+        1f - (((((1.061405429f * t - 1.453152027f) * t) + 1.421413741f) * t - 0.284496736f) * t + 0.254829592f) *
+            t * exp(-z * z)
+    return 0.5f * (1f + if (x >= 0f) y else -y)
+}
+
+/**
+ * An overlay's surface (menus, popovers, dialogs, sheets): `shadow-float` under it, a 1dp
+ * [ring] outside its edge (`ring-1 ring-line-seam`; pass transparent for none), [fill],
+ * and its content clipped to the shape (`overflow-hidden`). [topRadius] / [bottomRadius]
+ * let a bottom sheet round only its top. Overlays never take an ink border.
+ */
+internal fun Modifier.raftOverlaySurface(
+    fill: Color,
+    ring: Color,
+    dark: Boolean,
+    topRadius: Dp,
+    bottomRadius: Dp = topRadius,
+): Modifier {
+    val shape = RoundedCornerShape(topStart = topRadius, topEnd = topRadius, bottomEnd = bottomRadius, bottomStart = bottomRadius)
+    return this
+        .raftFloatShadow(dark, topRadius, bottomRadius)
+        .then(
+            if (ring.alpha == 0f) {
+                Modifier
+            } else {
+                Modifier.drawBehind {
+                    val w = RaftStroke.Hairline.toPx()
+                    val top = topRadius.toPx() + w / 2f
+                    val bottom = if (bottomRadius > 0.dp) bottomRadius.toPx() + w / 2f else 0f
+                    val path =
+                        Path().apply {
+                            addRoundRect(
+                                RoundRect(
+                                    left = -w / 2f,
+                                    top = -w / 2f,
+                                    right = size.width + w / 2f,
+                                    bottom = size.height + w / 2f,
+                                    topLeftCornerRadius = CornerRadius(top),
+                                    topRightCornerRadius = CornerRadius(top),
+                                    bottomRightCornerRadius = CornerRadius(bottom),
+                                    bottomLeftCornerRadius = CornerRadius(bottom),
+                                ),
+                            )
+                        }
+                    drawPath(path, ring, style = Stroke(width = w))
+                }
+            },
+        )
+        .clip(shape)
+        .background(fill, shape)
+}
