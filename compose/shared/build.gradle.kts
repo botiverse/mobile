@@ -154,6 +154,9 @@ kotlin {
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
                 // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
                 implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+                // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
+                // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
+                implementation("io.coil-kt.coil3:coil-svg:3.2.0")
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
@@ -187,6 +190,8 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
+                // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
+                implementation(libs.androidx.webkit)
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")

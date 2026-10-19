@@ -25,6 +25,8 @@ import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.size.Size
+import build.raft.app.image.raftInstallImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 
@@ -144,10 +146,11 @@ fun Modifier.setProp(key: String, value: Any): Modifier = this
 // ---- Images ------------------------------------------------------------------------------------
 
 /**
- * Kuikly `rememberAsyncImageBitmap`: the decoded bitmap for [model] (URL or path), or null while
- * loading / on failure. Loaded through Coil's singleton loader.
- * TODO(cmp-switch): Coil has no network fetcher configured yet (needs a NetworkKMM Fetcher), so
- * http(s) models stay null until that lands.
+ * Kuikly `rememberAsyncImageBitmap`: the decoded bitmap for [model] (URL, `assets://` path,
+ * managed avatar model, inline SVG, local path), or null while loading / on failure. Loaded
+ * through the Raft singleton Coil loader (`raftBuildImageLoader`: NetworkKMM fetcher, bundled
+ * assets, SVG). Decoded at the original size, like the Kuikly helper (callers draw sub-rects of
+ * atlases from it).
  */
 @Composable
 fun rememberAsyncImageBitmap(model: String?): ImageBitmap? {
@@ -155,7 +158,9 @@ fun rememberAsyncImageBitmap(model: String?): ImageBitmap? {
     val context = LocalPlatformContext.current
     var bitmap by remember(source) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(source) {
-        val result = SingletonImageLoader.get(context).execute(ImageRequest.Builder(context).data(source).build())
+        raftInstallImageLoader()
+        val request = ImageRequest.Builder(context).data(source).size(Size.ORIGINAL).build()
+        val result = SingletonImageLoader.get(context).execute(request)
         bitmap = (result as? SuccessResult)?.image?.toRaftImageBitmap()
     }
     return bitmap
