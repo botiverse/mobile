@@ -109,14 +109,17 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             // gate on its actual contract: fresh direct toward-newer gestures
             // may advance through the committed 30-row page until one of them
             // crosses the near-end threshold and starts exactly one next page.
-            var approachGestureCount = 0
-            while (
-                fixtureSnapshot(nonce).afterRequests.size < 2 &&
-                approachGestureCount < MaxTowardNewerApproachGestures
-            ) {
-                performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
-                approachGestureCount += 1
-            }
+            //
+            // How far one slow swipe travels depends on the platform scroll
+            // physics (CMP LazyColumn: drag distance minus touch slop, with
+            // almost no fling for a 650ms linear swipe) and on emulator speed,
+            // so a fixed gesture budget is flaky. Keep swiping while the
+            // newest visible message still advances; once the list stops
+            // advancing it is pinned at the loaded tail (well inside the
+            // near-end threshold), and the fresh gestures made there must
+            // already have started the next page.
+            val approach = approachNewerEdgeUntilSecondRequest(instrumentation, scenario, nonce)
+            recordEvidence("THREAD_NEWER_APPROACH", approach.toString())
             val secondRequest = waitForAfterRequestCount(nonce, expectedCount = 2)
             assertEquals(46L, secondRequest.afterRequests[1].afterSeq)
             assertEquals(30, secondRequest.afterRequests[1].limit)
@@ -208,6 +211,60 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             EvidenceStatusCode,
             Bundle().apply { putString("stream", "$key $value\n") },
         )
+    }
+
+    /**
+     * Performs direct toward-newer gestures until the second newer request
+     * starts. The loop is bounded by observable progress, not a fixed gesture
+     * count: it stops once [MaxStalledApproachGestures] consecutive gestures
+     * fail to advance the newest visible message (the list is pinned at the
+     * loaded tail) or after the [MaxTowardNewerApproachGestures] safety cap.
+     */
+    private fun approachNewerEdgeUntilSecondRequest(
+        instrumentation: Instrumentation,
+        scenario: ActivityScenario<SlockCmpActivity>,
+        nonce: String,
+    ): ApproachResult {
+        var gestures = 0
+        var stalledGestures = 0
+        var newestVisibleSeq = newestVisibleFixtureSeq(instrumentation)
+        val progress = mutableListOf(newestVisibleSeq)
+        while (
+            fixtureSnapshot(nonce).afterRequests.size < 2 &&
+            stalledGestures < MaxStalledApproachGestures &&
+            gestures < MaxTowardNewerApproachGestures
+        ) {
+            performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
+            gestures += 1
+            if (awaitAfterRequestCountAtLeast(nonce, expectedCount = 2, timeoutMs = ApproachRequestPollMs)) {
+                break
+            }
+            val newest = newestVisibleFixtureSeq(instrumentation)
+            progress += newest
+            if (newest > newestVisibleSeq) {
+                newestVisibleSeq = newest
+                stalledGestures = 0
+            } else {
+                stalledGestures += 1
+            }
+        }
+        return ApproachResult(
+            gestures = gestures,
+            newestVisibleSeqAfterEachGesture = progress,
+            stalledGestures = stalledGestures,
+        )
+    }
+
+    private fun newestVisibleFixtureSeq(instrumentation: Instrumentation): Long =
+        visibleFixtureMarkers(instrumentation, 1L..80L).maxOfOrNull { marker -> marker.seq } ?: -1L
+
+    private fun awaitAfterRequestCountAtLeast(nonce: String, expectedCount: Int, timeoutMs: Long): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (true) {
+            if ((fixtureSnapshotOrNull(nonce)?.afterRequests?.size ?: 0) >= expectedCount) return true
+            if (System.nanoTime() >= deadline) return false
+            SystemClock.sleep(ObservationPollMs)
+        }
     }
 
     private fun waitForInitialFocusedHistory(nonce: String) {
@@ -302,12 +359,24 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         instrumentation: Instrumentation,
         scenario: ActivityScenario<SlockCmpActivity>,
     ): RetryRevealState {
+        // Like the approach loop, keep swiping while the list still moves
+        // (newest visible message or Retry row position changes) instead of
+        // relying on a fixed per-gesture travel distance.
         var gestureCount = 0
+        var stalledGestures = 0
         var state = retryRevealState(instrumentation)
-        while (!state.ready && gestureCount < MaxRetryRevealGestures) {
+        var position = state.retryBounds?.top to newestVisibleFixtureSeq(instrumentation)
+        while (
+            !state.ready &&
+            stalledGestures < MaxStalledRetryRevealGestures &&
+            gestureCount < MaxRetryRevealGestures
+        ) {
             performUpwardGesture(instrumentation, scenario, durationMs = SecondGestureDurationMs)
             gestureCount += 1
             state = retryRevealState(instrumentation)
+            val nextPosition = state.retryBounds?.top to newestVisibleFixtureSeq(instrumentation)
+            stalledGestures = if (nextPosition == position) stalledGestures + 1 else 0
+            position = nextPosition
         }
         try {
             // The pill unmounts on the frame after the list reaches its end,
@@ -789,6 +858,12 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 "backToBottom=$backToBottomBounds gestures=$gestureCount)"
     }
 
+    private data class ApproachResult(
+        val gestures: Int,
+        val newestVisibleSeqAfterEachGesture: List<Long>,
+        val stalledGestures: Int,
+    )
+
     private data class GestureGeometry(
         val x: Float,
         val startY: Float,
@@ -821,7 +896,12 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val AccessibilityTapSettleMs = 300L
         private const val FirstGestureDurationMs = 650L
         private const val SecondGestureDurationMs = 650L
-        private const val MaxTowardNewerApproachGestures = 6
+        // Safety cap only: the approach loop is bounded by observed progress,
+        // and every non-stalled gesture advances at least one of the 46
+        // loaded rows.
+        private const val MaxTowardNewerApproachGestures = 50
+        private const val MaxStalledApproachGestures = 3
+        private const val ApproachRequestPollMs = 400L
         private const val FocusedHistoryGestureXFraction = 0.85f
         private const val TailRepositionGestureXFraction = 0.50f
         private const val RepositionGestureDurationMs = 650L
@@ -829,7 +909,9 @@ class SlockThreadNewerAutoPaginationConnectedTest {
         private const val MaxAccessibilitySummaryChars = 8_000
         private const val MaxAccessibilityClickAncestorDepth = 8
         private const val MaxAccessibilityTreeDepth = 64
-        private const val MaxRetryRevealGestures = 6
+        // Safety cap only; the reveal loop stops once gestures stop moving the list.
+        private const val MaxRetryRevealGestures = 50
+        private const val MaxStalledRetryRevealGestures = 3
         private const val RetryRevealStableSamplesRequired = 2
         private const val EvidenceStatusCode = 2
     }
