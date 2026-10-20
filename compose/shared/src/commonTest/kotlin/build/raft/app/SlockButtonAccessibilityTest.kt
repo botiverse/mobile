@@ -1,12 +1,12 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.semantics.Role
-import com.tencent.kuikly.compose.ui.semantics.SemanticsActions
-import com.tencent.kuikly.compose.ui.semantics.SemanticsConfiguration
-import com.tencent.kuikly.compose.ui.semantics.SemanticsModifier
-import com.tencent.kuikly.compose.ui.semantics.SemanticsProperties
-import com.tencent.kuikly.compose.ui.semantics.getOrNull
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsConfiguration
+import androidx.compose.ui.semantics.SemanticsModifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -28,7 +28,7 @@ raise "push path filters would suppress the stable CI gate" if events.fetch("pus
 
 jobs = workflow.fetch("jobs")
 expected_jobs = %w[
-  plan kuikly-artifacts android android-device
+  plan android android-device
   android-minimum-supported-attachment-runtime android-canonical-final-actual-host
   ios ci-gate
 ]
@@ -62,19 +62,15 @@ raise "gitlink publication still calls the unavailable REST Issues API" if
   publish_step.fetch("run", "").include?("issues/$PR_NUMBER/comments")
 
 expected_needs = {
-  "kuikly-artifacts" => ["plan"],
-  "android" => ["plan", "kuikly-artifacts"],
+  "android" => ["plan"],
   "android-device" => ["plan", "android"],
   "android-minimum-supported-attachment-runtime" => ["plan", "android"],
   "android-canonical-final-actual-host" => ["plan", "android"],
-  "ios" => ["plan", "kuikly-artifacts"],
+  "ios" => ["plan"],
 }
 expected_needs.each do |job, needs|
   raise "#{job} needs drifted" unless Array(jobs.dig(job, "needs")) == needs
 end
-raise "Kuikly manifest gate must follow every Kuikly consumer platform" unless
-  jobs.dig("kuikly-artifacts", "if").include?("run_android") &&
-  jobs.dig("kuikly-artifacts", "if").include?("run_ios")
 raise "Android compile is not Android-path gated" unless jobs.dig("android", "if").include?("run_android")
 raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?("run_ios")
 raise "android-device suite is not device-suite gated" unless
@@ -104,13 +100,12 @@ fixture_build_tokens.each do |argument|
   raise "Android visual-fixture build lost #{argument}" unless
     includes_shell_tokens?(fixture_build, [argument])
 end
-kuikly_steps = jobs.fetch("kuikly-artifacts").fetch("steps")
-raise "Kuikly manifest admission gate is not hosted" unless kuikly_steps.any? do |step|
-  step["run"]&.include?("verify_kuikly_release_manifest.sh")
-end
-raise "Kuikly gate regressed to gitlink/source publication" if kuikly_steps.any? do |step|
+# Kuikly UI left Mobile in the CMP switch (scripts/ci/test_kuikly_raft_consumer_contract.py
+# guards the retired plumbing); no Test job may rebuild or admit it again.
+raise "Test workflow re-wired retired Kuikly UI plumbing" if jobs.values.flat_map { |job| Array(job["steps"]) }.any? do |step|
   run = step["run"].to_s
-  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") || run.include?("mavenLocal")
+  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") ||
+    run.include?("verify_kuikly_release_manifest.sh")
 end
 
 plan_outputs = jobs.fetch("plan").fetch("outputs").keys

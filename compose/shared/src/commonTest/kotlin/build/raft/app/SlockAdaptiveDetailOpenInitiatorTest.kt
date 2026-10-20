@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.SharedAdaptiveScrollAnchorStore
 import build.raft.app.data.SlockEnhancedNotifyCenter
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking

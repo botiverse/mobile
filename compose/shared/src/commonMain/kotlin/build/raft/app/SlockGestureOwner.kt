@@ -4,9 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.input.pointer.PointerInputScope
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
 
 internal data class SlockGestureSemanticIdentity(
     val surface: String,

@@ -1493,11 +1493,15 @@ internal class SlockSharedStoreProvider private constructor(
                     prediction.owner.toProcessActivityUnreadOwner(),
                     reason = "read_prediction:${prediction.revision}"
                 )
-                homeStores.entries().forEach { (_, store) ->
-                    store.dispatch(SharedHomeIntent.ApplyReadReceiptPrediction(prediction))
+                homeStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeStoreScopes.get(shellScope)) {
+                        store.dispatch(SharedHomeIntent.ApplyReadReceiptPrediction(prediction))
+                    }
                 }
-                homeActivityStores.entries().forEach { (_, store) ->
-                    store.dispatch(SharedActivityIntent.ApplyReadReceiptPrediction(prediction))
+                homeActivityStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                        store.dispatch(SharedActivityIntent.ApplyReadReceiptPrediction(prediction))
+                    }
                 }
             },
             onResult = { request, result ->
@@ -1530,11 +1534,15 @@ internal class SlockSharedStoreProvider private constructor(
                     request.owner.toProcessActivityUnreadOwner(),
                     reason = "read_failure:${request.revision}"
                 )
-                homeStores.entries().forEach { (_, store) ->
-                    store.dispatch(SharedHomeIntent.ApplyReadReceiptFailure(request))
+                homeStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeStoreScopes.get(shellScope)) {
+                        store.dispatch(SharedHomeIntent.ApplyReadReceiptFailure(request))
+                    }
                 }
-                homeActivityStores.entries().forEach { (_, store) ->
-                    store.dispatch(SharedActivityIntent.ApplyReadReceiptFailure(request))
+                homeActivityStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                        store.dispatch(SharedActivityIntent.ApplyReadReceiptFailure(request))
+                    }
                 }
                 sharedWarnLogger("SlockReadReceipt", "process_read_receipt")(
                     "failure owner=${request.owner.serverId}:${request.owner.accountId} " +
@@ -1543,6 +1551,17 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             }
         )
+    }
+
+    /**
+     * The read-receipt coordinator reports predictions/failures on its caller's thread (the thread
+     * store's page scope: Kuikly's context thread before, the main thread under CMP). Home and
+     * activity stores apply those intents synchronously, so hop onto the store's own scope (the
+     * serial store dispatcher in production) instead of writing their state from that thread. The
+     * serial dispatcher runs tasks in order, so a prediction still lands before its failure.
+     */
+    private fun runOnStoreScope(storeScope: CoroutineScope?, block: () -> Unit) {
+        if (storeScope == null) block() else storeScope.launch { block() }
     }
 
     private fun processReadReceiptRepository(owner: ReadReceiptOwner): RealReadReceiptRepository =

@@ -1,25 +1,13 @@
 package build.raft.app.shared
 
 import build.raft.app.core.data.diagnostics.SlockAppLog
-import com.tencent.kuikly.core.render.android.adapter.IKRThreadAdapter
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicInteger
 
-internal object SlockKuiklyThreadAdapter : IKRThreadAdapter {
-    /**
-     * Stack size for Kuikly's Android context thread (HRContextQueueHandlerThread).
-     *
-     * Compose layout placement recurses once per nested layout level, and Kuikly
-     * runs that recursion on its context thread, which otherwise gets the 1 MB
-     * platform default (IKRThreadAdapter.stackSize() == 0). Deep trees such as the
-     * desktop split layout opening a thread pane exhausted that default with a
-     * StackOverflowError made entirely of placement frames. 8 MB matches the iOS
-     * main-thread budget and applies to this one thread only.
-     */
-    private const val CONTEXT_THREAD_STACK_SIZE_BYTES: Long = 8L shl 20
-
+/** Background executor for native bridge work (formerly also Kuikly's thread adapter). */
+internal object SlockKuiklyThreadAdapter {
     private val threadIds = AtomicInteger(1)
     private val executor: ExecutorService =
             Executors.newFixedThreadPool(
@@ -30,12 +18,6 @@ internal object SlockKuiklyThreadAdapter : IKRThreadAdapter {
                         }
                     }
             )
-
-    override fun stackSize(): Long = CONTEXT_THREAD_STACK_SIZE_BYTES
-
-    override fun executeOnSubThread(task: () -> Unit) {
-        execute(label = "kuikly-adapter", task = task)
-    }
 
     fun execute(label: String, task: () -> Unit) {
         executor.execute {

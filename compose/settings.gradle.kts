@@ -52,17 +52,17 @@ plugins {
 }
 
 dependencyResolutionManagement {
-    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyRelease() {
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKbaMetadata() {
         exclusiveContent {
             forRepository {
                 maven {
-                    name = "RaftArtifactsKuiklyRelease"
+                    name = "RaftArtifactsKbaMetadata"
                     url = uri("https://maven.artifacts.botiverse.dev")
                 }
             }
             filter {
-                includeGroup("com.tencent.kuikly-open")
-                includeGroupByRegex("com\\.tencent\\.kuikly-open\\.compose\\..+")
+                // Kuikly UI (com.tencent.kuikly-open) left the Gradle build with the CMP
+                // switch; this repo now only serves the KBA metadata below.
                 // KuiklyBase resource-core 0.1.0-raft.5 / knoi 0.0.4 still declare these
                 // KuiklyBase (KBA) versions; conflict resolution upgrades them to the
                 // upstream Kotlin/atomicfu pins, but their metadata must stay resolvable.
@@ -108,7 +108,7 @@ dependencyResolutionManagement {
     }
 
     repositories {
-        raftArtifactsKuiklyRelease()
+        raftArtifactsKbaMetadata()
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         mavenLocal()
@@ -126,3 +126,4 @@ include(":androidApp")
 include(":core")
 include(":shared")
 include(":designsystem")
+include(":ui-cmp")

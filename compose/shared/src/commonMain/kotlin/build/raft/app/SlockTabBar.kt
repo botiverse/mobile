@@ -1,48 +1,43 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
-import com.tencent.kuikly.compose.extension.setEvent
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.event.Event
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -445,87 +440,14 @@ private fun SlockNativeFloatingTabBar(
     bottomSafeArea: Dp,
     modifier: Modifier = Modifier
 ) {
-    MakeKuiklyComposeNode<SlockNativeFloatingTabBarView>(
-        factory = { SlockNativeFloatingTabBarView() },
-        modifier = modifier.setEvent("select") { payload ->
-            val key =
-                (payload as? JSONObject)?.optString("key")
-                    ?: (payload as? Map<*, *>)?.get("key")?.toString()
-                    ?: ""
-            if (key.isNotBlank()) {
-                onSelect(key)
-            }
-        },
-        viewInit = {
-            getViewAttr().run {
-                keys(items.tabJoin { it.key })
-                labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName.wireName })
-                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
-                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
-                bottomSafeArea(bottomSafeArea.value)
-            }
-        },
-        viewUpdate = { view ->
-            view.getViewAttr().run {
-                keys(items.tabJoin { it.key })
-                labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName.wireName })
-                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
-                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
-                bottomSafeArea(bottomSafeArea.value)
-            }
-        }
+    // TODO(cmp-switch): the native floating tab bars (iOS liquid glass / Android floating) were
+    // Kuikly native views; render the shared Compose floating dock until a CMP interop exists.
+    SlockFloatingDockTabBar(
+        items = items,
+        onSelect = onSelect,
+        modifier = modifier,
+        bottomSafeArea = bottomSafeArea
     )
-}
-
-private fun List<SlockBottomTabItemPayload>.tabJoin(value: (SlockBottomTabItemPayload) -> String): String =
-    joinToString("\u001F") { value(it).replace("\u001F", " ") }
-
-private class SlockNativeFloatingTabBarView : DeclarativeBaseView<SlockNativeFloatingTabBarAttr, SlockNativeFloatingTabBarEvent>() {
-    override fun createAttr(): SlockNativeFloatingTabBarAttr = SlockNativeFloatingTabBarAttr()
-
-    override fun createEvent(): SlockNativeFloatingTabBarEvent = SlockNativeFloatingTabBarEvent()
-
-    override fun viewName(): String = VIEW_NAME
-
-    companion object {
-        const val VIEW_NAME = "SlockNativeFloatingTabBarView"
-    }
-}
-
-private class SlockNativeFloatingTabBarEvent : Event()
-
-private class SlockNativeFloatingTabBarAttr : Attr() {
-    fun keys(value: String): SlockNativeFloatingTabBarAttr {
-        "keysText" with value
-        return this
-    }
-
-    fun labels(value: String): SlockNativeFloatingTabBarAttr {
-        "labelsText" with value
-        return this
-    }
-
-    fun icons(value: String): SlockNativeFloatingTabBarAttr {
-        "iconsText" with value
-        return this
-    }
-
-    fun enabled(value: String): SlockNativeFloatingTabBarAttr {
-        "enabledText" with value
-        return this
-    }
-
-    fun selectedKey(value: String): SlockNativeFloatingTabBarAttr {
-        "selectedKey" with value
-        return this
-    }
-
-    fun bottomSafeArea(value: Float): SlockNativeFloatingTabBarAttr {
-        "bottomSafeArea" with value
-        return this
-    }
 }
 
 @Composable

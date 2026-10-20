@@ -2,7 +2,7 @@
 // Regenerate: node scripts/generate_pixel_avatars.mjs (set SLOCK_SOURCE_REPO to a botiverse/slock checkout).
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 
 /** Canonical pixelAvatars.json `version` this table was generated from. */
 internal const val PixelAvatarDataVersion = 1

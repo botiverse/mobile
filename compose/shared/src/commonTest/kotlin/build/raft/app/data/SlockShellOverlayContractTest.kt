@@ -5,7 +5,7 @@ import build.raft.app.optDouble
 import build.raft.app.optJsonArray
 import build.raft.app.optJsonObject
 import build.raft.app.optString
-import com.tencent.kuikly.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

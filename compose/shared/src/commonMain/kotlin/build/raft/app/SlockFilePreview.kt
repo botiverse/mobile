@@ -56,79 +56,73 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.layout.aspectRatio
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.extension.nativeRef
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.coil3.rememberAsyncImageBitmap
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
-import com.tencent.kuikly.compose.material3.LinearProgressIndicator
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
-import com.tencent.kuikly.compose.ui.graphics.StrokeCap
-import com.tencent.kuikly.compose.ui.graphics.drawscope.DrawScope
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewRef
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
-import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -142,6 +136,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -609,7 +605,6 @@ internal const val SlockFilePreviewRouteEphemeral = "ephemeral"
 private const val SlockFilePreviewLaunchContractVersion = 1
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
-private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
 private const val SlockScopedNavigationLogTag = "slock_scoped_navigation"
 
@@ -1844,7 +1839,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     val onComposerImageEditCaptureRef =
         remember(composerImageEditCaptureOwner) {
-            { ref: ViewRef<DeclarativeBaseView<*, *>> ->
+            { ref: RaftViewCaptureRef ->
                 composerImageEditCaptureSlot.value =
                     composerImageEditCaptureSlot.value.bind(
                         owner = composerImageEditCaptureOwner,
@@ -3476,7 +3471,7 @@ private fun SlockFilePreviewStandalonePageContent() {
 
     fun requestComposerImageEditSave() {
         if (composerImageEditSaving || composerImageFinalizing) return
-        val captureView = composerImageEditCaptureSlot.value.ref?.view
+        val captureView = composerImageEditCaptureSlot.value.ref
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
@@ -3487,25 +3482,27 @@ private fun SlockFilePreviewStandalonePageContent() {
             ) ?: return
         composerImageEditSaving = true
         val captureTerminal = atomic(false)
-        captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
+        // CMP: the editor subtree is recorded into a GraphicsLayer (Modifier.raftCaptureRef) and
+        // encoded to a cache PNG, replacing Kuikly `toImage(ImageType.FILE, 1)`. The capture runs
+        // NonCancellable so a produced file always reaches the gate check below for cleanup.
+        val onCaptured: (RaftViewCaptureResult) -> Unit = toImage@{ result ->
             if (!captureTerminal.compareAndSet(false, true)) return@toImage
-            val fileRef = result?.optString("data")?.trim().orEmpty()
-            // `toImage` has no cancellation handle. If the page went away while the renderer
-            // was producing its snapshot, retire the late file but never touch page state.
+            val fileRef = result.fileRef?.trim().orEmpty()
+            // The capture has no cancellation handle. If the page went away while the snapshot
+            // was being produced, retire the late file but never touch page state.
             if (!composerImageOperationGate.isCurrent(token)) {
                 fileRef.takeIf { it.isNotBlank() }?.let { ref ->
                     cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
                 return@toImage
             }
-            val code = result?.optInt("code", -1) ?: -1
-            if (code != 0 || fileRef.isBlank()) {
+            if (fileRef.isBlank()) {
                 fileRef.takeIf { it.isNotBlank() }?.let { ref ->
                     cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
                 composerImageOperationGate.complete(token)
                 composerImageEditSaving = false
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                bridge.toast(result.errorMessage.orEmpty().ifBlank { imageEditorExportFailed })
                 return@toImage
             }
             if (!trackEphemeralTemporaryFileRef(fileRef)) {
@@ -3624,6 +3621,17 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
             activeComposerImageOperationJob.value = operationJob
             operationJob.start()
+        }
+        coroutineScope.launch {
+            withContext(NonCancellable) {
+                val result =
+                    try {
+                        captureView.captureToPngFile()
+                    } catch (error: Throwable) {
+                        RaftViewCaptureResult(fileRef = null, errorMessage = error.message)
+                    }
+                onCaptured(result)
+            }
         }
     }
     DisposableEffect(launchPayloadTrace.sessionId, launchPayloadTrace.routeKind) {
@@ -4345,11 +4353,11 @@ internal data class SlockComposerImageEditCaptureOwner(
 
 internal data class SlockComposerImageEditCaptureSlot(
     val owner: SlockComposerImageEditCaptureOwner,
-    val ref: ViewRef<DeclarativeBaseView<*, *>>? = null,
+    val ref: RaftViewCaptureRef? = null,
 ) {
     fun bind(
         owner: SlockComposerImageEditCaptureOwner,
-        ref: ViewRef<DeclarativeBaseView<*, *>>,
+        ref: RaftViewCaptureRef,
     ): SlockComposerImageEditCaptureSlot =
         if (owner == this.owner) copy(ref = ref) else this
 }
@@ -4359,7 +4367,7 @@ internal fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     state: SlockComposerImageEditorState,
     saving: Boolean,
-    onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
+    onCaptureRef: (RaftViewCaptureRef) -> Unit,
     onDone: () -> Unit,
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
@@ -4576,7 +4584,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             .height(captureSize.height.dp)
                             .clipToBounds()
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
-                            .nativeRef { ref -> onCaptureRef(ref) }
+                            .raftCaptureRef(onCaptureRef)
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == SlockComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
@@ -5341,8 +5349,8 @@ private fun SlockFilePreviewBorderlessIconButton(
     onClick: () -> Unit,
     enabled: Boolean,
     iconColor: String = SlockColor.TextBlackArgb,
-    size: com.tencent.kuikly.compose.ui.unit.Dp = SlockSize.IconButton,
-    iconSize: com.tencent.kuikly.compose.ui.unit.Dp = 22.dp,
+    size: androidx.compose.ui.unit.Dp = SlockSize.IconButton,
+    iconSize: androidx.compose.ui.unit.Dp = 22.dp,
     modifier: Modifier = Modifier,
 ) {
     Button(
@@ -5384,8 +5392,8 @@ internal fun slockFilePreviewPencilOptionsExpandedAfterToolSelection(
 
 internal fun slockFilePreviewEditorControlsHeight(
     secondaryControlsVisible: Boolean,
-    bottomPadding: com.tencent.kuikly.compose.ui.unit.Dp,
-): com.tencent.kuikly.compose.ui.unit.Dp =
+    bottomPadding: androidx.compose.ui.unit.Dp,
+): androidx.compose.ui.unit.Dp =
     6.dp +
         bottomPadding +
         SlockSize.IconButton +
@@ -5393,9 +5401,9 @@ internal fun slockFilePreviewEditorControlsHeight(
 
 internal fun slockFilePreviewEditorBottomPadding(
     keyboardInsetDp: Float,
-    bottomSafeArea: com.tencent.kuikly.compose.ui.unit.Dp,
+    bottomSafeArea: androidx.compose.ui.unit.Dp,
     keyboardInsetExcludesBottomSafeArea: Boolean,
-): com.tencent.kuikly.compose.ui.unit.Dp {
+): androidx.compose.ui.unit.Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
     val safeAreaInset =
         if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) {
@@ -8386,29 +8394,18 @@ internal fun SlockFilePreviewKuiklyVideo(
     onFirstFrame: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MakeKuiklyComposeNode(
-        factory = { VideoView() },
-        modifier = modifier,
-        viewUpdate = { view ->
-            view.getViewAttr().apply {
-                src(source)
-                resizeModeToContain()
-                muted(false)
-                rate(1f)
-                playControl(playControl)
-                seekRequest?.let { seekToTimeMs(it) }
-            }
-            view.getViewEvent().apply {
-                playStateDidChanged { state, _ -> onPlayStateChanged(state) }
-                playTimeDidChanged { current, total -> onPlayTimeChanged(current, total) }
-                firstFrameDidDisplay { onFirstFrame() }
-            }
-        }
+    RaftVideoPlayer(
+        source = source,
+        playControl = playControl,
+        seekRequestId = seekRequest?.id,
+        seekTimeMs = seekRequest?.timeMs ?: 0,
+        muted = false,
+        rate = 1f,
+        onPlayStateChanged = onPlayStateChanged,
+        onPlayTimeChanged = onPlayTimeChanged,
+        onFirstFrame = onFirstFrame,
+        modifier = modifier
     )
-}
-
-private fun com.tencent.kuikly.core.views.VideoAttr.seekToTimeMs(request: SlockFilePreviewVideoSeekRequest) {
-    setProp(SlockFilePreviewVideoSeekProp, "${request.id}:${request.timeMs}")
 }
 
 internal data class SlockFilePreviewVideoStateTerms(
@@ -9679,7 +9676,7 @@ internal fun SlockFilePreviewPageScaffold(
     iconName: SlockLucideIconName,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
+    contentPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Md,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     overflowMenuItems: List<SlockRaftUiMenuItem> = emptyList(),
     onOverflowMenuSelect: (String) -> Unit = {},
@@ -10293,8 +10290,8 @@ internal fun SlockFilePreviewImagePanel(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String? = null,
-    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
-    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default,
+    backgroundColor: androidx.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
+    borderWidth: androidx.compose.ui.unit.Dp = SlockStroke.Default,
     zoomable: Boolean = true
 ) {
     SlockAspectFitImagePreviewSurface(

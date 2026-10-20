@@ -5,7 +5,6 @@ plugins {
     kotlin("native.cocoapods")
     kotlin("plugin.serialization")
     id("com.android.library")
-    id("com.google.devtools.ksp")
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
@@ -13,7 +12,6 @@ plugins {
     id("com.tencent.kuiklybase.resource.generator")
 }
 
-val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val generatedSlockDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
@@ -85,7 +83,8 @@ kotlin {
 
     androidTarget {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            // Coil 3 ships JVM 11 bytecode with inline functions :shared calls.
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
         publishLibraryVariants("release")
     }
@@ -111,6 +110,9 @@ kotlin {
                     "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
             isStatic = true
             license = "MIT"
+            // Compose Multiplatform pages: Swift/ObjC reach SlockCmpIos (view controller factory,
+            // routing, bridge/navigator protocols). Not transitive: :core stays unexported.
+            export(project(":ui-cmp"))
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
         extraSpecAttributes["resources"] = "['src/commonMain/assets/**', 'src/commonMain/resources/MR/assets/**']"
@@ -129,14 +131,32 @@ kotlin {
                 // commonTest instead (see below) — exactly one source set per build, so the
                 // same declarations are never compiled twice.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
+            } else {
+                // Empty RaftVisualFixturePages (the generated one lives in src/visualFixtures).
+                kotlin.srcDir("src/visualFixturesOff/kotlin")
             }
             dependencies {
                 // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
                 // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
                 api(project(":core"))
-                implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")
+                // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
+                // through the :ui-cmp hosts (SlockCmpRoot). The Kuikly compose fork, Kuikly core
+                // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API
+                // surface lives in the build.raft.app.compat package (TODO(cmp-switch) shims).
+                api(project(":ui-cmp"))
+                implementation(project(":designsystem"))
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.ui)
+                implementation(compose.material3)
+                implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composePlugin.get()}")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+                // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
+                implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+                // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
+                // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
+                implementation("io.coil-kt.coil3:coil-svg:3.2.0")
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
@@ -148,6 +168,11 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
+                // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
+                // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
+                implementation("build.raft.mermaid:mermaid-core:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val commonTest by getting {
@@ -169,14 +194,15 @@ kotlin {
         val androidMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
-                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
-                    isChanging = true
-                }
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
+                // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
+                // VideoView adapter that lived in androidApp).
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.androidx.media3.ui)
+                implementation(libs.androidx.core.ktx)
+                implementation(libs.androidx.activity.compose)
+                // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
+                implementation(libs.androidx.webkit)
             }
         }
         val androidUnitTest by getting {
@@ -189,7 +215,6 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val androidInstrumentedTest by getting {
@@ -210,10 +235,6 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val iosX64Test by getting
@@ -254,10 +275,6 @@ sqldelight {
     }
 }
 
-ksp {
-    arg(KEY_PAGE_NAME, getPageName())
-}
-
 fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
     kotlin.setSrcDirs(
         kotlin.srcDirs.filterNot { sourceDir ->
@@ -281,6 +298,14 @@ tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
 
 tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
     dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+}
+
+// The afterEvaluate setSrcDirs above drops the SQLDelight source dir's task dependency; the
+// Kuikly KSP tasks used to carry it. Kotlin compilations now depend on the generator directly.
+tasks.matching { task ->
+    task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
+}.configureEach {
+    dependsOn("generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
@@ -344,18 +369,14 @@ gradle.taskGraph.whenReady {
     }
 }
 
-dependencies {
-    compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
-        add("kspAndroid", this)
-        add("kspIosArm64", this)
-        add("kspIosX64", this)
-        add("kspIosSimulatorArm64", this)
-    }
-}
-
 android {
     namespace = "build.raft.app.shared"
-    compileSdk = 34
+    // Upstream Compose 1.8 (CMP 1.8.2) requires compileSdk 35, same as :ui-cmp.
+    compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
     defaultConfig {
         minSdk = 21
         targetSdk = 34
@@ -460,10 +481,6 @@ tasks.matching { task ->
         task.name.startsWith("compileKotlinIos")
 }.configureEach {
     dependsOn(verifyNetworkCurlCaBundle)
-}
-
-fun getPageName(): String {
-    return (project.properties[KEY_PAGE_NAME] as? String) ?: ""
 }
 
 fun getCommonCompilerArgs(): List<String> {

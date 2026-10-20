@@ -5,7 +5,7 @@ import build.raft.app.data.InMemorySlockKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
 import build.raft.app.data.SlockShellStoreScope
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 
 /**
  * Task #130 Phase D: the developer-route input is a caller-local
- * [com.tencent.kuikly.compose.ui.text.input.TextFieldValue]. Programmatic
+ * [androidx.compose.ui.text.input.TextFieldValue]. Programmatic
  * replacement (suggestion pick / route row tap) must leave the caret at the end
  * of the injected text so the next keystroke appends instead of landing at a
  * stale offset.

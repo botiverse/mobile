@@ -9,21 +9,17 @@ import build.raft.app.SlockAdaptivePanePagerEvent
 import build.raft.app.SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.SlockEnhancedNotifyCenter
 import build.raft.app.data.SlockStoreThreading
-import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.ComposeContainer
-import com.tencent.kuikly.compose.setContent as setKuiklyContent
-import com.tencent.kuikly.core.module.Module
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IModuleCreator
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.core.reactive.handler.*
+import build.raft.app.compat.pager.ComposeContainer
+import build.raft.app.compat.module.Module
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
 
 internal abstract class BasePager : ComposeContainer() {
-    private var nightModel: Boolean? by observable(null)
+    private var nightModel: Boolean? = null
     protected var slockPageVisibleResumeTick by mutableStateOf(0)
         private set
     protected var slockPageVisible by mutableStateOf(false)
@@ -37,10 +33,9 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     override fun willInit() {
-        configureSlockComposeSnapshotConsumption()
         registerSlockExternalModuleCreators()
         super.willInit()
-        configureKuiklyThreadVerification()
+        configureStoreThreadVerification()
     }
 
     /**
@@ -48,8 +43,8 @@ internal abstract class BasePager : ComposeContainer() {
      * Member functions win over extensions at each page's existing `setContent { ... }` callsite,
      * which keeps the non-production environment indicator above auth and product surfaces alike.
      */
-    protected fun setContent(content: @Composable () -> Unit) {
-        setKuiklyContent {
+    override fun setContent(content: @Composable () -> Unit) {
+        super.setContent {
             SlockEnvironmentIndicatorHost(
                 enabled = slockEnvironmentIndicatorEnabledForPage(pageData.params),
                 content = content,
@@ -128,38 +123,16 @@ internal abstract class BasePager : ComposeContainer() {
         return false
     }
 
-    private fun configureKuiklyThreadVerification() {
-        val params = pageData.params
-        val verifyThread = params.optBoolean(KEY_VERIFY_THREAD, false)
-        val verifyReactiveObserver =
-            params.optBoolean(KEY_VERIFY_REACTIVE_OBSERVER, verifyThread)
-
-        Pager.VERIFY_THREAD = verifyThread
-        Pager.VERIFY_REACTIVE_OBSERVER = verifyReactiveObserver
-
-        if (!verifyThread && !verifyReactiveObserver) {
-            return
-        }
-
-        Pager.verifyFailed { exception ->
-            slockLogError(
-                TAG_VERIFY,
-                "kuikly_verify_failed verifyThread=$verifyThread " +
-                    "verifyReactiveObserver=$verifyReactiveObserver " +
-                    "type=${exception::class.simpleName} message=${exception.message.orEmpty()}"
-            )
-            throw exception
-        }
-        if (verifyThread) {
-            // Debug thread verification also reports process-wide store writes made outside the
-            // store dispatcher (logged, not thrown: see SlockStoreThreading for the known gaps).
-            SlockStoreThreading.installViolationHandler { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
-        }
-        slockLogInfo(
-            TAG_VERIFY,
-            "kuikly_verify_enabled verifyThread=$verifyThread " +
-                "verifyReactiveObserver=$verifyReactiveObserver"
-        )
+    /**
+     * Kuikly's renderer thread verification is gone with Kuikly; the store-dispatcher violation
+     * report it switched on stays behind the same pageData flag.
+     */
+    private fun configureStoreThreadVerification() {
+        if (!pageData.params.optBoolean(KEY_VERIFY_THREAD, false)) return
+        // Debug thread verification also reports process-wide store writes made outside the
+        // store dispatcher (logged, not thrown: see SlockStoreThreading for the known gaps).
+        SlockStoreThreading.installViolationHandler { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
+        slockLogInfo(TAG_VERIFY, "store_verify_enabled")
     }
 
     companion object {
@@ -169,8 +142,4 @@ internal abstract class BasePager : ComposeContainer() {
         private const val TAG_VERIFY = "SlockKuiklyVerify"
     }
 
-}
-
-internal fun configureSlockComposeSnapshotConsumption() {
-    ComposeContainer.enableConsumeSnapshot = slockPlatformConsumesSnapshotsFromKuikly()
 }

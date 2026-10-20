@@ -33,60 +33,60 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
-import com.tencent.kuikly.compose.material3.Text as KuiklyText
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.Role
-import com.tencent.kuikly.compose.ui.semantics.role
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.stateDescription
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.boundsInRoot
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.InlineBoxSpanStyle
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
-import com.tencent.kuikly.compose.ui.text.Placeholder
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.TextLayoutResult
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.text.withLink
-import com.tencent.kuikly.compose.ui.text.withStyle
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.TextUnit
-import com.tencent.kuikly.compose.ui.unit.isSpecified
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material3.Text as KuiklyText
+import androidx.compose.ui.Alignment
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import build.raft.app.compat.pager.Pager
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
 import com.tencent.kuiklybase.markdown.compose.Markdown
@@ -857,6 +857,7 @@ internal fun slockMarkdownActionSpinnerInlineTextContent(): InlineTextContent =
             Placeholder(
                 width = 12.sp,
                 height = 12.sp,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
             )
     ) {
         SlockLucideIcon(
@@ -1066,7 +1067,12 @@ private fun AnnotatedString.Builder.appendSlockRichTextToken(
             linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
         )
     ) {
-        append(label)
+        // Chip box / coloured underline are annotations painted by raftInlineDecorations.
+        withRaftInlineBox(slockMarkdownRichTextTagInlineBoxStyle(token.chrome)) {
+            withRaftInlineUnderline(slockMarkdownRichTextTagInlineUnderlineStyle(token.chrome)) {
+                append(label)
+            }
+        }
         if (token.active && token.trailingIndicator.isEmpty()) {
             append(" ")
             appendInlineContent(slockMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
@@ -1110,7 +1116,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         fontSize: TextUnit,
         fontStyle: FontStyle?,
         fontWeight: FontWeight?,
-        fontFamily: com.tencent.kuikly.compose.ui.text.font.FontFamily?,
+        fontFamily: androidx.compose.ui.text.font.FontFamily?,
         letterSpacing: TextUnit,
         textDecoration: TextDecoration?,
         textAlign: TextAlign?,
@@ -1177,7 +1183,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         fontSize: TextUnit,
         fontStyle: FontStyle?,
         fontWeight: FontWeight?,
-        fontFamily: com.tencent.kuikly.compose.ui.text.font.FontFamily?,
+        fontFamily: androidx.compose.ui.text.font.FontFamily?,
         letterSpacing: TextUnit,
         textDecoration: TextDecoration?,
         textAlign: TextAlign?,
@@ -1282,9 +1288,16 @@ private object SlockMarkdownTextProvider : TextProvider {
                     }
                 }
             }
+        val inlineDecorations =
+            remember(resolvedText, resolvedStyle.fontSize, fontSize) {
+                resolvedText.raftInlineDecorations(
+                    if (fontSize.isSpecified) fontSize else resolvedStyle.fontSize
+                )
+            }
+        var decorationLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
         KuiklyText(
             text = resolvedText,
-            modifier = modifier,
+            modifier = modifier.raftInlineDecorations(inlineDecorations) { decorationLayout },
             color = color,
             fontSize = fontSize,
             fontStyle = fontStyle,
@@ -1299,7 +1312,10 @@ private object SlockMarkdownTextProvider : TextProvider {
             maxLines = maxLines,
             minLines = minLines,
             inlineContent = resolvedInlineContent,
-            onTextLayout = resolvedOnTextLayout,
+            onTextLayout = { result ->
+                if (!inlineDecorations.isEmpty) decorationLayout = result
+                resolvedOnTextLayout(result)
+            },
             style = resolvedStyle
         )
     }
@@ -1455,7 +1471,7 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
 /**
  * Rewrites canonical Raft message-link annotations into one generic boxed
  * text span. The URL remains the click identity; renderer input contains only
- * ordinary text/link data plus [InlineBoxSpanStyle].
+ * ordinary text/link data plus a [RaftInlineBoxStyle] annotation.
  */
 internal fun AnnotatedString.withSlockMessagePermalinkChips(
     resolveLabel: SlockMessagePermalinkLabelResolver = { null }
@@ -1509,7 +1525,8 @@ private fun AnnotatedString.withSlockMessagePermalinkChipContent(
         val iconId = "$inlinePrefix-icon"
         val iconGapId = "$inlinePrefix-icon-gap"
         val suffixGapId = "$inlinePrefix-suffix-gap"
-        builder.withLink(
+        builder.withRaftInlineBox(slockMessagePermalinkChipBoxStyle()) {
+          withLink(
             LinkAnnotation.Url(
                 url = link.url,
                 styles = slockMessagePermalinkChipLinkStyles(),
@@ -1540,6 +1557,7 @@ private fun AnnotatedString.withSlockMessagePermalinkChipContent(
             ) {
                 append(kindLabel)
             }
+          }
         }
         inlineContent[iconId] = slockMessagePermalinkIconInlineContent()
         inlineContent[iconGapId] = slockMessagePermalinkSpacerInlineContent(4.sp)
@@ -1559,6 +1577,7 @@ private fun slockMessagePermalinkIconInlineContent(): InlineTextContent {
             Placeholder(
                 width = 12.sp,
                 height = 12.sp,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
             )
     ) {
         SlockLucideIcon(
@@ -1572,7 +1591,7 @@ private fun slockMessagePermalinkIconInlineContent(): InlineTextContent {
 
 private fun slockMessagePermalinkSpacerInlineContent(width: TextUnit): InlineTextContent =
     InlineTextContent(
-        placeholder = Placeholder(width = width, height = 1.sp),
+        placeholder = Placeholder(width = width, height = 1.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
     ) {}
 
 private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipTargetLabel(
@@ -1632,31 +1651,32 @@ private fun AnnotatedString.withoutLinksInsideSlockInlineCode(): AnnotatedString
         .toAnnotatedString()
 }
 
+internal fun slockMessagePermalinkChipBoxStyle(): RaftInlineBoxStyle =
+    RaftInlineBoxStyle(
+        backgroundColor = SlockMessagePermalinkChipBackground,
+        borderColor = SlockColor.BorderBlack,
+        borderWidth = 1.dp,
+        paddingStart = 4.dp,
+        paddingEnd = 4.dp,
+        paddingTop = 1.dp,
+        paddingBottom = 1.dp,
+        marginStart = 2.dp,
+        marginEnd = 2.dp
+    )
+
 private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
     val base =
         slockMarkdownTagBaseSpanStyle().copy(
             color = SlockColor.TextBlack,
             textDecoration = null,
             background = Color.Unspecified,
-            inlineBoxStyle =
-                InlineBoxSpanStyle(
-                    backgroundColor = SlockMessagePermalinkChipBackground,
-                    borderColor = SlockColor.BorderBlack,
-                    borderWidth = 1.dp,
-                    paddingStart = 4.dp,
-                    paddingEnd = 4.dp,
-                    paddingTop = 1.dp,
-                    paddingBottom = 1.dp,
-                    marginStart = 2.dp,
-                    marginEnd = 2.dp
-                )
         )
+    // The chip box itself is a RaftInlineBoxStyle annotation (see slockMessagePermalinkChipBoxStyle).
+    // TODO(cmp-switch): Kuikly swapped the box fill to BrandYellow while pressed; link styles
+    // cannot reach the annotation, so the pressed state paints a span background instead.
     return TextLinkStyles(
         style = base,
-        pressedStyle =
-            base.copy(
-                inlineBoxStyle = base.inlineBoxStyle?.copy(backgroundColor = SlockColor.BrandYellow)
-            )
+        pressedStyle = base.copy(background = SlockColor.BrandYellow)
     )
 }
 
@@ -2641,9 +2661,9 @@ private fun SlockMarkdownHorizontalRule() {
 internal fun slockMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
         color = SlockMarkdownLinkBlue,
+        // TODO(cmp-switch): upstream SpanStyle has no underline thickness/offset; Kuikly drew
+        // SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP / _OFFSET_SP here.
         textDecoration = TextDecoration.Underline,
-        textDecorationThickness = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP.sp,
-        textDecorationOffset = SLOCK_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP.sp
     )
 
 // A getter, not a val: text/line colours follow SlockThemeState.
@@ -2654,7 +2674,7 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors
         inlineCodeText = SlockColor.TextBlack,
         linkText = SlockMarkdownLinkBlue,
         codeBackground = SlockMarkdownCodeBlockBackground,
-        // InlineBoxSpanStyle is the single inline-code chrome painter.
+        // RaftInlineBoxStyle is the single inline-code chrome painter.
         inlineCodeBackground = Color.Unspecified,
         dividerColor = SlockColor.BorderBlack,
         tableText = SlockColor.TextBlack,
@@ -2879,8 +2899,7 @@ internal fun slockMarkdownTagLinkStyles(
     active: Boolean = false
 ): TextLinkStyles {
     val defaultStyle = slockMarkdownTagSpanStyle(kind, highlighted = highlighted, active = active)
-    val pressedStyle =
-        slockMarkdownTagSpanStyle(kind, highlighted = highlighted, active = true)
+    val pressedStyle = SlockRichTextChromeKind.Active.styleToken.toPressedTagSpanStyle()
     return TextLinkStyles(
         style = defaultStyle,
         pressedStyle = pressedStyle
@@ -2891,7 +2910,7 @@ internal fun slockMarkdownRichTextTagLinkStyles(
     chromeKind: SlockRichTextChromeKind?
 ): TextLinkStyles {
     val defaultStyle = slockMarkdownRichTextTagSpanStyle(chromeKind)
-    val pressedStyle = slockMarkdownRichTextTagSpanStyle(SlockRichTextChromeKind.Active)
+    val pressedStyle = SlockRichTextChromeKind.Active.styleToken.toPressedTagSpanStyle()
     return TextLinkStyles(
         style = defaultStyle,
         pressedStyle = pressedStyle
@@ -2930,41 +2949,65 @@ private fun SlockRichTextChromeStyleToken.applyToTextStyle(base: TextStyle): Tex
         fontWeight = fontWeight.toSlockFontWeight()
     )
 
+/**
+ * Text attributes of a tag. The box chrome ([toInlineBoxSpanStyle]) and the coloured reference
+ * underline ([toRaftInlineUnderlineStyle]) are not SpanStyle attributes on upstream Compose: they
+ * travel as annotations (see [appendSlockRichTextToken]) and [raftInlineDecorations] paints them.
+ */
 private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
     val inlineBoxStyle = toInlineBoxSpanStyle()
     return slockMarkdownTagBaseSpanStyle()
         .copy(
             color = foreground.toSlockMarkdownColor(),
-            textDecoration = if (inlineBoxStyle == null) textDecoration.toComposeTextDecoration() else null,
-            textDecorationColor =
-                if (inlineBoxStyle == null) textDecorationColor.toSlockMarkdownColorOrUnspecified()
+            textDecoration = null,
+            // The box paints the chip fill; a span background would cover its border.
+            background =
+                if (inlineBoxStyle == null) background.toSlockMarkdownColorOrUnspecified()
                 else Color.Unspecified,
-            textDecorationThickness =
-                if (inlineBoxStyle == null) textDecorationThicknessSp.toSpOrUnspecified()
-                else TextUnit.Unspecified,
-            textDecorationOffset =
-                if (inlineBoxStyle == null) textDecorationOffsetSp.toSpOrUnspecified()
-                else TextUnit.Unspecified,
-            background = background.toSlockMarkdownColorOrUnspecified(),
-            inlineBoxStyle = inlineBoxStyle
         )
 }
+
+/** Pressed-state tag style: a span background stands in for the Active chip box. */
+private fun SlockRichTextChromeStyleToken.toPressedTagSpanStyle(): SpanStyle =
+    toTagSpanStyle().copy(
+        // TODO(cmp-switch): Kuikly swapped to the Active chip box (fill + ink edge + padding).
+        background = (chipFill ?: background).toSlockMarkdownColorOrUnspecified()
+    )
+
+internal fun SlockRichTextChromeStyleToken.toRaftInlineUnderlineStyle(): RaftInlineUnderlineStyle? {
+    if (toInlineBoxSpanStyle() != null) return null
+    if (textDecoration.toComposeTextDecoration() == null) return null
+    return RaftInlineUnderlineStyle(
+        color = textDecorationColor.toSlockMarkdownColorOrUnspecified()
+            .takeIf { it != Color.Unspecified } ?: foreground.toSlockMarkdownColor(),
+        thickness = textDecorationThicknessSp?.sp ?: 1.sp,
+        offset = textDecorationOffsetSp?.sp ?: 0.sp,
+    )
+}
+
+internal fun slockMarkdownRichTextTagInlineBoxStyle(chromeKind: SlockRichTextChromeKind?): RaftInlineBoxStyle? =
+    (chromeKind ?: SlockRichTextChromeKind.OrdinaryMention).styleToken.toInlineBoxSpanStyle()
+
+internal fun slockMarkdownRichTextTagInlineUnderlineStyle(
+    chromeKind: SlockRichTextChromeKind?
+): RaftInlineUnderlineStyle? =
+    (chromeKind ?: SlockRichTextChromeKind.OrdinaryMention).styleToken.toRaftInlineUnderlineStyle()
 
 /**
  * Compatibility lowering for the original Slock semantic chrome tokens.
  *
- * New consumers should construct [InlineBoxSpanStyle] directly. Existing
+ * New consumers should construct [RaftInlineBoxStyle] directly. Existing
  * semantic tokens lower through this adapter while render backends migrate
  * away from understanding Slock kinds.
  */
-internal fun slockMarkdownInlineBoxStyle(kind: SlockRichTextChromeKind): InlineBoxSpanStyle =
+internal fun slockMarkdownInlineBoxStyle(kind: SlockRichTextChromeKind): RaftInlineBoxStyle =
     requireNotNull(kind.styleToken.toInlineBoxSpanStyle())
 
 internal fun slockMarkdownInlineCodeEdgeStyle(
     leading: Boolean,
     trailing: Boolean = !leading,
-): InlineBoxSpanStyle =
-    InlineBoxSpanStyle(
+): RaftInlineBoxStyle =
+    RaftInlineBoxStyle(
         backgroundColor = SlockRichTextChromeKind.InlineCode.styleToken.chipFill.toSlockMarkdownColor(),
         borderColor = Color.Transparent,
         borderWidth = 0.dp,
@@ -2977,7 +3020,7 @@ internal fun slockMarkdownInlineCodeEdgeStyle(
         cornerRadius = 0.dp,
     )
 
-private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanStyle? {
+private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): RaftInlineBoxStyle? {
     if (id == SlockRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null
     val isInlineCode = id == SlockRichTextChromeStyleTokens.InlineCode.id
@@ -2988,7 +3031,7 @@ private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanS
     // sticker radius with no ink edge; only the self-mention / active sticker
     // keeps its ink outline.
     val inkEdge = !isInlineCode && chipFill == background
-    return InlineBoxSpanStyle(
+    return RaftInlineBoxStyle(
         backgroundColor = fill.toSlockMarkdownColor(),
         borderColor = if (inkEdge) SlockColor.BorderBlack else Color.Transparent,
         borderWidth = if (inkEdge) SlockRichTextInlineBoxBorderWidthDp.dp else 0.dp,
@@ -3056,5 +3099,3 @@ private fun SlockRichTextTextDecorationToken?.toComposeTextDecoration(): TextDec
     }
 
 private fun Float?.orZero(): Float = this ?: 0f
-
-private fun Float?.toSpOrUnspecified(): TextUnit = this?.sp ?: TextUnit.Unspecified

@@ -3,12 +3,12 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 private const val SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"

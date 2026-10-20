@@ -7,8 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000003 /* SlockCmpBridgeHost.m */; };
+		A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000004 /* SlockPageControllerFactory.swift */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
-		04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */; };
+		04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* RaftPageRouter.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
 		058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */; };
 		0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8FDA997E9DD2D474C82E853 /* Foundation.framework */; };
@@ -37,18 +39,6 @@
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D41350122E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */; };
 		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
-		D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */; };
-		D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */; };
-		D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */; };
-		D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */; };
-		D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */; };
-		D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */; };
-		D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
-		D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */; };
-		D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */; };
-		D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
-		D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */; };
-		D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
@@ -75,15 +65,13 @@
 		D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163172E14000100C0DE01 /* space_mono_bold.ttf */; };
 		D9E4627AB87B13FE4B46DA69 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */; };
 		FD8955B78ECFD1C7E8071ED2 /* SlockAdaptiveEditorSnapshotTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */; };
-		FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */; };
+		FF6B714429A2A174009349F1 /* RaftPageViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* RaftPageViewController.m */; };
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
-		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
-		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
+		FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* RaftPageView.swift */; };
 		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
-		A17400010000000000000001 /* SlockMediaAudioSessionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A17400020000000000000001 /* SlockMediaAudioSessionTests.m */; };
 		A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300020000000000000001 /* SlockInteractivePopGestureTests.m */; };
 		A20500010000000000000001 /* SlockRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */; };
-		A15900010000000000000001 /* SlockImageLoaderTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A15900020000000000000001 /* SlockImageLoaderTests.m */; };
+		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
 		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
 		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
 /* End PBXBuildFile section */
@@ -106,11 +94,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A51000020000000000000002 /* SlockCmpBridgeHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockCmpBridgeHost.h; sourceTree = "<group>"; };
+		A51000020000000000000003 /* SlockCmpBridgeHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockCmpBridgeHost.m; sourceTree = "<group>"; };
+		A51000020000000000000004 /* SlockPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockPageControllerFactory.swift; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
-		04E32B3C29F01971000A6BC5 /* KRRouterHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KRRouterHandler.h; sourceTree = "<group>"; };
-		04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KRRouterHandler.m; sourceTree = "<group>"; };
+		04E32B3C29F01971000A6BC5 /* RaftPageRouter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftPageRouter.h; sourceTree = "<group>"; };
+		04E32B3D29F01975000A6BC5 /* RaftPageRouter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftPageRouter.m; sourceTree = "<group>"; };
 		058557BA273AAA24004C7B11 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -150,24 +141,6 @@
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkPathMonitor.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
-		D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKuiklyPageView.h; sourceTree = "<group>"; };
-		D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKuiklyPageView.m; sourceTree = "<group>"; };
-		D43B80182E0F000100C0DE03 /* SlockKRVideoViewHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockKRVideoViewHandler.h; sourceTree = "<group>"; };
-		D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockKRVideoViewHandler.m; sourceTree = "<group>"; };
-		D43B80212E0F100100C0DE04 /* SlockSandboxWebView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebView.h; sourceTree = "<group>"; };
-		D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebView.m; sourceTree = "<group>"; };
-		D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockLucideIconView.h; sourceTree = "<group>"; };
-		D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockLucideIconView.m; sourceTree = "<group>"; };
-		D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockPixelAvatarView.h; sourceTree = "<group>"; };
-		D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockPixelAvatarView.m; sourceTree = "<group>"; };
-		D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockNativeFloatingTabBarView.h; sourceTree = "<group>"; };
-		D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockNativeFloatingTabBarView.m; sourceTree = "<group>"; };
-		D43B80332E18000100C0DE11 /* SlockStackedItemTabBar.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockStackedItemTabBar.h; sourceTree = "<group>"; };
-		D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBar.m; sourceTree = "<group>"; };
-		D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBarTests.m; sourceTree = "<group>"; };
-		D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewTests.m; sourceTree = "<group>"; };
-		D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewNavigationCommit.m; sourceTree = "<group>"; };
-		D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebViewNavigationCommit.h; sourceTree = "<group>"; };
 		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
 		D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_regular.ttf; sourceTree = "<group>"; };
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
@@ -194,19 +167,16 @@
 		D49163172E14000100C0DE01 /* space_mono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_bold.ttf; sourceTree = "<group>"; };
 		E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp_iosAppTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAD586BEDBD0772EDC4E4B96 /* Pods-iosApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.release.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.release.xcconfig"; sourceTree = "<group>"; };
-		FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderViewController.m; sourceTree = "<group>"; };
+		FF6B713F29A2A173009349F1 /* RaftPageViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftPageViewController.m; sourceTree = "<group>"; };
 		FF6B714129A2A173009349F1 /* HRBridgeModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HRBridgeModule.m; sourceTree = "<group>"; };
 		FF6B714229A2A173009349F1 /* HRBridgeModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HRBridgeModule.h; sourceTree = "<group>"; };
-		FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderViewController.h; sourceTree = "<group>"; };
-		FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KuiklyRenderViewPage.swift; sourceTree = "<group>"; };
+		FF6B714329A2A174009349F1 /* RaftPageViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftPageViewController.h; sourceTree = "<group>"; };
+		FF6B714629A2A315009349F1 /* RaftPageView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RaftPageView.swift; sourceTree = "<group>"; };
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
-		FF6B714E29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderComponentExpandHandler.h; sourceTree = "<group>"; };
-		FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderComponentExpandHandler.m; sourceTree = "<group>"; };
 		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
-		A17400020000000000000001 /* SlockMediaAudioSessionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockMediaAudioSessionTests.m; sourceTree = "<group>"; };
 		A19300020000000000000001 /* SlockInteractivePopGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockInteractivePopGestureTests.m; sourceTree = "<group>"; };
 		A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockRouterLoginTransitionTests.m; sourceTree = "<group>"; };
-		A15900020000000000000001 /* SlockImageLoaderTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockImageLoaderTests.m; sourceTree = "<group>"; };
+		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -248,6 +218,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A51000020000000000000001 /* Cmp */ = {
+			isa = PBXGroup;
+			children = (
+				A51000020000000000000004 /* SlockPageControllerFactory.swift */,
+				A51000020000000000000002 /* SlockCmpBridgeHost.h */,
+				A51000020000000000000003 /* SlockCmpBridgeHost.m */,
+				FF6B714329A2A174009349F1 /* RaftPageViewController.h */,
+				FF6B713F29A2A173009349F1 /* RaftPageViewController.m */,
+				04E32B3C29F01971000A6BC5 /* RaftPageRouter.h */,
+				04E32B3D29F01975000A6BC5 /* RaftPageRouter.m */,
+			);
+			path = Cmp;
+			sourceTree = "<group>";
+		};
 		0474A3EF29F6A3FE00F43E31 /* Vendor */ = {
 			isa = PBXGroup;
 			children = (
@@ -323,14 +307,15 @@
 			isa = PBXGroup;
 			children = (
 				0474A3EF29F6A3FE00F43E31 /* Vendor */,
-				FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */,
+				FF6B714629A2A315009349F1 /* RaftPageView.swift */,
 				D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */,
 				D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */,
 				D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */,
 				D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */,
 				D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */,
 				A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */,
-				FF6B713E29A2A10E009349F1 /* KuiklyExpand */,
+				FF6B713E29A2A10E009349F1 /* Host */,
+				A51000020000000000000001 /* Cmp */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
 				D49163102E14000100C0DE01 /* Fonts */,
 				7555FF82242A565900829871 /* ContentView.swift */,
@@ -363,38 +348,14 @@
 				A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */,
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
-				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
 				A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */,
-				D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */,
 				J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */,
-				A15900020000000000000001 /* SlockImageLoaderTests.m */,
-				A17400020000000000000001 /* SlockMediaAudioSessionTests.m */,
 				A19300020000000000000001 /* SlockInteractivePopGestureTests.m */,
 				A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */,
+				RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */,
 				J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */,
 			);
 			path = iosAppTests;
-			sourceTree = "<group>";
-		};
-		D43B80132E0E500100C0DE01 /* Components */ = {
-			isa = PBXGroup;
-			children = (
-				D43B80152E0E500100C0DE01 /* SlockKuiklyPageView.h */,
-				D43B80162E0E500100C0DE01 /* SlockKuiklyPageView.m */,
-				D43B80212E0F100100C0DE04 /* SlockSandboxWebView.h */,
-				D43B80222E0F100100C0DE04 /* SlockSandboxWebView.m */,
-				D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */,
-				D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */,
-				D43B80272E0F400100C0DE06 /* SlockLucideIconView.h */,
-				D43B80282E0F400100C0DE06 /* SlockLucideIconView.m */,
-				D43B802A2E0F400100C0DE07 /* SlockPixelAvatarView.h */,
-				D43B802B2E0F400100C0DE07 /* SlockPixelAvatarView.m */,
-				D43B802D2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.h */,
-				D43B802E2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m */,
-				D43B80332E18000100C0DE11 /* SlockStackedItemTabBar.h */,
-				D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */,
-			);
-			path = Components;
 			sourceTree = "<group>";
 		};
 		D49163102E14000100C0DE01 /* Fonts */ = {
@@ -438,41 +399,16 @@
 			path = Pods;
 			sourceTree = "<group>";
 		};
-		FF6B713E29A2A10E009349F1 /* KuiklyExpand */ = {
-			isa = PBXGroup;
-			children = (
-				FF6B714D29A2A6BA009349F1 /* Handler */,
-				D43B80132E0E500100C0DE01 /* Components */,
-				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
-				A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */,
-				A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */,
-				A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */,
-				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
-				FF6B714029A2A173009349F1 /* Modules */,
-			);
-			path = KuiklyExpand;
-			sourceTree = "<group>";
-		};
-		FF6B714029A2A173009349F1 /* Modules */ = {
+		FF6B713E29A2A10E009349F1 /* Host */ = {
 			isa = PBXGroup;
 			children = (
 				FF6B714129A2A173009349F1 /* HRBridgeModule.m */,
 				FF6B714229A2A173009349F1 /* HRBridgeModule.h */,
+				A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */,
+				A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */,
+				A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */,
 			);
-			path = Modules;
-			sourceTree = "<group>";
-		};
-		FF6B714D29A2A6BA009349F1 /* Handler */ = {
-			isa = PBXGroup;
-			children = (
-				04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */,
-				04E32B3C29F01971000A6BC5 /* KRRouterHandler.h */,
-				FF6B714E29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.h */,
-				FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */,
-				D43B80182E0F000100C0DE03 /* SlockKRVideoViewHandler.h */,
-				D43B80192E0F000100C0DE03 /* SlockKRVideoViewHandler.m */,
-			);
-			path = Handler;
+			path = Host;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -672,7 +608,7 @@
 			name = "[CP-User] Copy kmmresource MR bundle to app";
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n\n# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.\n# The runtime reads assets via the moko convention: relativePath with '/'\n# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,\n# #409). Inject every MR/assets file flattened to the bundle root, e.g.\n#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png\nMR_ASSETS_SRC=\"$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets\"\nMR_BUNDLE_DST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle\"\nif [ -d \"$MR_ASSETS_SRC\" ] && [ -d \"$MR_BUNDLE_DST\" ]; then\n  # Land under Contents/Resources/ to exactly match the verified-working Debug\n  # simulator bundle shape (KMP task #22 evidence: assets live at\n  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there\n  # first. Create the dir if the Release bundle didn't have it.\n  MR_DEST=\"$MR_BUNDLE_DST/Contents/Resources\"\n  mkdir -p \"$MR_DEST\"\n  find \"$MR_ASSETS_SRC\" -type f | while IFS= read -r f; do\n    rel=${f#\"$MR_ASSETS_SRC/\"}\n    flat=$(printf '%s' \"$rel\" | tr '/' '+')\n    cp -f \"$f\" \"$MR_DEST/$flat\"\n    echo \"MR asset injected: Contents/Resources/$flat\"\n  done\nelse\n  echo \"warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)\" >&2\nfi\n";
+			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources\n# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;\n# compose.ios.resources.sync=false keeps the CMP plugin from doing it.\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  :ui-cmp:syncComposeResourcesForXcodeApp \\\n  -Praft.cmp.resources.dir=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources\" \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n\n# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.\n# The runtime reads assets via the moko convention: relativePath with '/'\n# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,\n# #409). Inject every MR/assets file flattened to the bundle root, e.g.\n#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png\nMR_ASSETS_SRC=\"$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets\"\nMR_BUNDLE_DST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle\"\nif [ -d \"$MR_ASSETS_SRC\" ] && [ -d \"$MR_BUNDLE_DST\" ]; then\n  # Land under Contents/Resources/ to exactly match the verified-working Debug\n  # simulator bundle shape (KMP task #22 evidence: assets live at\n  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there\n  # first. Create the dir if the Release bundle didn't have it.\n  MR_DEST=\"$MR_BUNDLE_DST/Contents/Resources\"\n  mkdir -p \"$MR_DEST\"\n  find \"$MR_ASSETS_SRC\" -type f | while IFS= read -r f; do\n    rel=${f#\"$MR_ASSETS_SRC/\"}\n    flat=$(printf '%s' \"$rel\" | tr '/' '+')\n    cp -f \"$f\" \"$MR_DEST/$flat\"\n    echo \"MR asset injected: Contents/Resources/$flat\"\n  done\nelse\n  echo \"warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)\" >&2\nfi\n";
 		};
 		6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -840,9 +776,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */,
+				FF6B714429A2A174009349F1 /* RaftPageViewController.m in Sources */,
 				A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */,
-				04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */,
+				04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */,
+				A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */,
+				A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
@@ -854,19 +792,10 @@
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
 				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
 				D41350122E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift in Sources */,
-				FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */,
+				FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
 				A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */,
-				FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */,
-				D43B80172E0F000100C0DE03 /* SlockKRVideoViewHandler.m in Sources */,
-				D43B80142E0E500100C0DE01 /* SlockKuiklyPageView.m in Sources */,
-				D43B80202E0F100100C0DE04 /* SlockSandboxWebView.m in Sources */,
-				D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */,
-				D43B80262E0F400100C0DE06 /* SlockLucideIconView.m in Sources */,
-				D43B80292E0F400100C0DE07 /* SlockPixelAvatarView.m in Sources */,
-				D43B802C2E0F500100C0DE08 /* SlockNativeFloatingTabBarView.m in Sources */,
-				D43B80302E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -891,15 +820,10 @@
 				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
 				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
-				D43B80312E18000100C0DE11 /* SlockStackedItemTabBar.m in Sources */,
-				D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */,
-				D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */,
-				D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */,
 				J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */,
-				A15900010000000000000001 /* SlockImageLoaderTests.m in Sources */,
-				A17400010000000000000001 /* SlockMediaAudioSessionTests.m in Sources */,
 				A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */,
 				A20500010000000000000001 /* SlockRouterLoginTransitionTests.m in Sources */,
+				RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */,
 				J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

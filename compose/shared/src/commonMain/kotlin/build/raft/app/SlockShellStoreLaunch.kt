@@ -4,9 +4,9 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.Pager
 
 internal const val SLOCK_SHELL_INSTANCE_ID = "slockShellInstanceId"
 internal const val SLOCK_SHELL_SERVER_ID = "slockShellServerId"

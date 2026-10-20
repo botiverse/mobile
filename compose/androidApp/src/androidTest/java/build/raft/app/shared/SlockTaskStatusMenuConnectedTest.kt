@@ -26,7 +26,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_message_row_visual")
                 .putExtra(
                     "pageData",
@@ -36,9 +36,9 @@ class SlockTaskStatusMenuConnectedTest {
                         .put("interactionProbe", "task-status-owner")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -68,7 +68,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -77,9 +77,9 @@ class SlockTaskStatusMenuConnectedTest {
                         .put("fixture", "anchor-lease-lazy")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -106,7 +106,7 @@ class SlockTaskStatusMenuConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -115,9 +115,9 @@ class SlockTaskStatusMenuConnectedTest {
                         .put("fixture", "task-status-menu")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
             instrumentation.waitForIdleSync()
@@ -186,7 +186,7 @@ class SlockTaskStatusMenuConnectedTest {
         }
     }
 
-    private fun captureActivity(scenario: ActivityScenario<SlockKuiklyActivity>): RootCapture {
+    private fun captureActivity(scenario: ActivityScenario<SlockCmpActivity>): RootCapture {
         var capture: RootCapture? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView
@@ -283,7 +283,7 @@ class SlockTaskStatusMenuConnectedTest {
             Color.green(this) <= 24 &&
             Color.blue(this) <= 24
 
-    private fun SlockKuiklyActivity.hideSystemBarsForTaskStatusMenuTest() {
+    private fun SlockCmpActivity.hideSystemBarsForTaskStatusMenuTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

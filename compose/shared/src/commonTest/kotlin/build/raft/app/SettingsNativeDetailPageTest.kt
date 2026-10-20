@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsPageContentOwner
 import build.raft.app.data.SlockShellStoreScope
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking

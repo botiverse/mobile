@@ -1,12 +1,12 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode

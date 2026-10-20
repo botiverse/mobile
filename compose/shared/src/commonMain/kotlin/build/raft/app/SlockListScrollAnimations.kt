@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListState
 
 private const val SlockExpressiveTopSettleScreens = 2
 private const val SlockExpressiveTopMinSettleItems = 8

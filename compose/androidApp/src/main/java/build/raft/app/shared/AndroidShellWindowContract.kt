@@ -110,7 +110,7 @@ internal fun resolveAndroidShellLaunchTarget(
 ): AndroidShellLaunchTarget {
     val serverId =
         pageData.optString(ANDROID_SHELL_SERVER_ID_KEY).trim().takeIf { it.isNotBlank() }
-            ?: pageData.optString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
+            ?: pageData.optString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
                 .trim()
                 .takeIf { it.isNotBlank() }
     val routeOwner = pageData.androidShellRouteOwnerOrNull()

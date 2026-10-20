@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalInputField
@@ -63,8 +64,8 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
-import com.tencent.kuikly.core.manager.BridgeManager
-import com.tencent.kuikly.core.module.RouterModule
+import build.raft.app.compat.pager.BridgeManager
+import build.raft.app.compat.module.RouterModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -77,89 +78,88 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.coil3.AsyncImagePainter
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.extension.scrollToTop
-import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.clip
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.ui.draw.drawBehind
-import com.tencent.kuikly.compose.foundation.Image
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.hoverable
-import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
-import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import build.raft.app.compat.ui.scrollToTop
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import build.raft.app.compat.ui.rememberPullToRefreshState
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
 // `inbox.*` / `tabbar.*` phase names).
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.rotate
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.Path
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.semantics.isTraversalGroup
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.stateDescription
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
 import kotlinx.coroutines.launch
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.format
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.math.PI
@@ -2317,6 +2317,7 @@ private fun SlockStructuralHomeShellContent(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
+                                    .raftPullToRefresh(pullToRefreshState, enabled = pullToRefreshEnabled)
                                     .touchListener { type, _ ->
                                         if (type == TouchType.Move) {
                                             homeUserScrollGeneration.value += 1
@@ -2328,7 +2329,6 @@ private fun SlockStructuralHomeShellContent(
                                         }
                                     },
                             verticalArrangement = Arrangement.spacedBy(2.dp),
-                            beyondBoundsItemCount = homeBeyondBoundsItemCount
                         ) {
                             if (pullToRefreshEnabled) {
                                 slockRaftPullToRefreshItem(
@@ -4427,7 +4427,7 @@ private fun HomeTitlebar(
     // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam.
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(SlockColor.Frame)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam).align(Alignment.BottomCenter))
-        com.tencent.kuikly.compose.foundation.layout.Row(
+        androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .padding(top = topSafeArea)
@@ -4529,7 +4529,7 @@ private fun SlockLogoBadge(
     }
 
     Box(modifier = modifier) {
-        com.tencent.kuikly.compose.foundation.layout.Row(
+        androidx.compose.foundation.layout.Row(
             modifier = Modifier
                 .background(SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
                 .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
@@ -4556,7 +4556,7 @@ private fun SlockTiltedLogoBadge(
 ) {
     key(text, showDropdown, publicPageLive) {
         SlockTiltedBadgeSurface(modifier = modifier) {
-            com.tencent.kuikly.compose.foundation.layout.Row(
+            androidx.compose.foundation.layout.Row(
                 modifier = Modifier.padding(
                     horizontal = HomeServerBadgeHorizontalInset,
                     vertical = HomeServerBadgeVerticalInset
@@ -4796,7 +4796,7 @@ private fun HomeAppUpdateBanner(
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.FillMuted).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.FillMuted).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(MR.strings.home_notification_center_title), style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text(
                 if (notifications.isEmpty()) {
@@ -4860,7 +4860,7 @@ private fun HomeNotificationCenterEmptyState() {
 private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView: () -> Unit, onDismiss: () -> Unit) {
     val title = notification.title.ifBlank { notification.body }
     val body = if (notification.title.isBlank()) "" else notification.body
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+    androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor(), RoundedCornerShape(SlockRadius.Sticker)).border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)), contentAlignment = Alignment.Center) {
             SlockLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp))
         }
@@ -4869,7 +4869,7 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
             if (body.isNotBlank()) {
                 Text(body, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
             }
-            com.tencent.kuikly.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                 if (notification.actionLabel.isNotBlank()) {
                     HomeNotificationActionButton(
                         notification.actionLabel,
@@ -5063,7 +5063,6 @@ private fun HomeServerDrawerPanel(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
                 ) {
                     items(rows.size, key = { index -> rows[index].key }) { index ->
                         when (val row = rows[index]) {
@@ -5183,7 +5182,6 @@ internal fun HomeServerDrawerHostedPanel(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    beyondBoundsItemCount = 2
                 ) {
                     sections.forEach { hostedSection ->
                         val section = hostedSection.header
@@ -5658,7 +5656,6 @@ internal fun ServerSwitcherPanel(
                 LazyColumn(
                     state = listState,
                     modifier = serverLazyListModifier,
-                    beyondBoundsItemCount = homeServerSwitcherBeyondBoundsItemCount(order.size),
                     userScrollEnabled = draggedId == null
                 ) {
                     items(order.size, key = { index -> "server-${order[index]}" }) { index ->
@@ -5795,7 +5792,7 @@ private fun HardShadowPanel(
     modifier: Modifier = Modifier,
     minWidth: Dp,
     maxWidth: Dp,
-    content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     SlockBrutalPanel(
         modifier = modifier,
@@ -5817,7 +5814,7 @@ private fun ServerSwitcherRow(
     modifier: Modifier = Modifier
 ) {
     val clickModifier = onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier
-    com.tencent.kuikly.compose.foundation.layout.Row(
+    androidx.compose.foundation.layout.Row(
         modifier =
             modifier
                 .fillMaxWidth()
@@ -6014,7 +6011,7 @@ private fun ServerSwitcherAvatarPrewarmSurface(
 
 @Composable
 private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
-    com.tencent.kuikly.compose.foundation.layout.Row(
+    androidx.compose.foundation.layout.Row(
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -6149,7 +6146,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
             .then(clickModifier)
             .hoverable(hoverInteractionSource)
     ) {
-        com.tencent.kuikly.compose.foundation.layout.Row(
+        androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -6419,7 +6416,7 @@ private fun ChannelRow(
                     .then(rowDragModifier)
                     .then(hoverableModifier)
         ) {
-        com.tencent.kuikly.compose.foundation.layout.Row(
+        androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -6961,7 +6958,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .then(clickModifier)
                     .then(hoverableModifier)
         ) {
-        com.tencent.kuikly.compose.foundation.layout.Row(
+        androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -6979,7 +6976,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     cacheServerId = cacheServerId
                 )
             }
-            com.tencent.kuikly.compose.foundation.layout.Row(
+            androidx.compose.foundation.layout.Row(
                 modifier =
                     Modifier
                         .padding(start = SidebarActionLabelGap)

@@ -3,8 +3,8 @@ package build.raft.app
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

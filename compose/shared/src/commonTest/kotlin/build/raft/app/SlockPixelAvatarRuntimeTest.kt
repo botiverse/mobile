@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.InMemorySlockKeyValueStore
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

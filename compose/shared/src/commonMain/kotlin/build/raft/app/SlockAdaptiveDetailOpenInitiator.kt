@@ -4,7 +4,7 @@ import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.SharedAdaptiveScrollAnchorStore
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEventBus
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext

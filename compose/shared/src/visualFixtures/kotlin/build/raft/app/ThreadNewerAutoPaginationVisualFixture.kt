@@ -22,10 +22,9 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred

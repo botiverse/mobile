@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedAuthRuntimeCapabilities
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

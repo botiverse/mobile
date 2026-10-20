@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.FontPreference
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.PendingAdaptiveDetailOpen
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import kotlin.test.Test
 import kotlin.test.assertEquals

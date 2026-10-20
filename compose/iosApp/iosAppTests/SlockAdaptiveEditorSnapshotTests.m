@@ -1,5 +1,5 @@
 #import <XCTest/XCTest.h>
-#import "../iosApp/KuiklyExpand/SlockAdaptiveEditorSnapshot.h"
+#import "../iosApp/Host/SlockAdaptiveEditorSnapshot.h"
 
 @interface SlockAdaptiveEditorSnapshotTests : XCTestCase
 @end

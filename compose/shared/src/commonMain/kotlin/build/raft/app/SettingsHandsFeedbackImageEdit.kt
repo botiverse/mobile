@@ -5,7 +5,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException

@@ -541,66 +541,24 @@ or helper scripts as a workaround for branch protection.
   members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or
   caption-sized action text for ordinary page actions.
 
-## Kuikly References And Skills
+## Kuikly Status
 
-- Workspace-level Kuikly guidance lives under `.agents/`:
-  - `.agents/skills/kuikly-*` contains the vendored skills from
-    `Tencent-TDS/KuiklyUI-AI`.
-  - `.agents/skills/slock-*` contains Slock-specific workflow guidance
-    (currently `slock-android-adb-audit`, `slock-android-packaging`,
-    `slock-launch-contract`).
-  - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
-    the Kuikly Compose / Kuikly DSL rules.
-  - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
-- For Kuikly, shared shell, navigation, assets, native bridge, or
-  recomposition work, read the relevant workspace skill/rule first instead of
-  relying on Android-native assumptions.
-- The local Tencent KuiklyUI upstream reference lives at
-  `.agents/skills/kuikly-ui-framework/references/KuiklyUI/`. Keep KuiklyUI
-  reference/demo/source lookup there instead of adding another copy under
-  `third_party/`.
-- Useful KuiklyUI reference paths:
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/demo/src/commonMain/kotlin/com/tencent/kuikly/demo/pages/compose/`
-    for Compose DSL demos such as popups, gestures, Canvas, dialogs, lazy lists,
-    and text/input behavior.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/androidApp/` for the
-    Android host shell.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
-    render/runtime implementation details.
-- Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
-  unless explicitly asked; for Slock product fixes, change Slock shared/app code.
-- Cross-platform visual states must not rely on parent/view opacity when the
-  intended result is a specific token color. Kuikly Compose emits
-  `Modifier.alpha(...)` as an `opacity` prop; Android applies that through
-  `View.alpha`, while other Kuikly renderers apply it through their own native
-  opacity primitive. The final subtree blending can differ, especially for disabled buttons/icons on light
-  backgrounds. Prefer explicit ARGB colors such as
-  `AccentPink.copy(alpha = 0.3f)` and matching icon colors (`#4D000000`) for
-  disabled/pressed states instead of wrapping the whole component in
-  `Modifier.alpha(0.3f)`.
-- To refresh the `.agents/` Kuikly AI skill/rule bundle from upstream, run:
+- The mobile UI runs on JetBrains Compose Multiplatform; Kuikly UI was removed
+  (see `compose/designsystem` for the design-system module). The vendored
+  Kuikly AI skills, rules and the KuiklyUI reference tree were removed too; do
+  not re-add them. New UI is Compose Multiplatform.
+- `.agents/skills/slock-*` contains Slock-specific workflow guidance
+  (currently `slock-android-adb-audit`, `slock-android-packaging`,
+  `slock-launch-contract`).
 
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-scripts/sync_kuikly_ai_skills.sh
-```
+## KuiklyUI Release (retired)
 
-## KuiklyUI Release
-
-- Mobile consumes the immutable Raft release pinned in
-  `compose/gradle/kuikly-release-closure.json`; it does not carry a Kuikly
-  source gitlink or build Kuikly into Maven Local.
-- `scripts/ci/verify_kuikly_release_manifest.sh` is the fail-closed version
-  admission gate. Android/KMP then resolve exact coordinates from the
-  exclusive Raft repository, while iOS artifacts are fetched from the same
-  manifest with byte verification. Set `KUIKLY_FULL_READBACK=1` only
-  for an explicit audit/recovery run that must re-read the full release set.
-- Fork development and publication happen in the KuiklyUI repository. To
-  upgrade Mobile, publish a complete immutable successor first, then update
-  the closure, exact Gradle versions, and CocoaPods lock together.
-- The `.agents/skills/kuikly-ui-framework/references/KuiklyUI` tree remains a
-  vendor reference for API and implementation research; it is not a build
-  input or consumer fallback.
+- Since the Compose Multiplatform switch neither the Gradle build nor the iOS
+  Podfile consumes Kuikly UI (`com.tencent.kuikly-open` / OpenKuiklyIOSRender).
+  The immutable release closure, manifest gate and artifact fetcher were
+  removed; `scripts/ci/test_kuikly_raft_consumer_contract.py` now fails if a
+  Kuikly UI consumer comes back. KuiklyBase libraries that are not Kuikly UI
+  (NetworkKMM `com.tencent.kuiklybase:network`, `resource-core`) stay.
 
 ## HarmonyOS (OHOS) Status
 

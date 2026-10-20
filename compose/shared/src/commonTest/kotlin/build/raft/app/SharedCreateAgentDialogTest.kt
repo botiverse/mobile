@@ -8,7 +8,7 @@ import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.supportsRuntimeCustomModelName
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

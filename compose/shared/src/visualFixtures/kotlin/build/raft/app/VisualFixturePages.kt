@@ -23,20 +23,19 @@ import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
@@ -1283,8 +1282,8 @@ internal class ComposeThreadInlineAudioControlsVisualPage : BasePager() {
         super.willInit()
         setContent {
             Column(
-                modifier = com.tencent.kuikly.compose.ui.Modifier.padding(16.dp),
-                verticalArrangement = com.tencent.kuikly.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+                modifier = androidx.compose.ui.Modifier.padding(16.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
             ) {
                 // Paused at the start, playing mid-way, and finished.
                 ThreadInlineAudioControls(false, true, 0, 135_000, {}, {})

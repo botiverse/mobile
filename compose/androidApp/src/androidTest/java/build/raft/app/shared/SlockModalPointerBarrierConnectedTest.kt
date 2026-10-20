@@ -24,7 +24,7 @@ class SlockModalPointerBarrierConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -33,9 +33,9 @@ class SlockModalPointerBarrierConnectedTest {
                         .put("fixture", "modal-text-field")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -69,7 +69,7 @@ class SlockModalPointerBarrierConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -78,9 +78,9 @@ class SlockModalPointerBarrierConnectedTest {
                         .put("fixture", "modal-text-field")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -115,7 +115,7 @@ class SlockModalPointerBarrierConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
                 .putExtra(
                     "pageData",
@@ -124,9 +124,9 @@ class SlockModalPointerBarrierConnectedTest {
                         .put("fixture", "modal")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -159,7 +159,7 @@ class SlockModalPointerBarrierConnectedTest {
     }
 
     private fun tapPx(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         x: Float,
         y: Float
     ) {
@@ -178,7 +178,7 @@ class SlockModalPointerBarrierConnectedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView
@@ -238,7 +238,7 @@ class SlockModalPointerBarrierConnectedTest {
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
             abs(Color.blue(this) - Color.blue(target)) <= tolerance
 
-    private fun SlockKuiklyActivity.hideSystemBarsForPointerBarrierTest() {
+    private fun SlockCmpActivity.hideSystemBarsForPointerBarrierTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

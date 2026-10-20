@@ -25,7 +25,7 @@ import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.resources.MR
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals

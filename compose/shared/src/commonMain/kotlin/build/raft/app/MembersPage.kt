@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
@@ -172,73 +173,72 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.requiredWidth
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.LazyRow
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.extension.NestedScrollMode
-import com.tencent.kuikly.compose.extension.nestedScroll
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.boundsInRoot
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.core.views.KeyboardParams
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.module.CodecModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.compat.ui.NestedScrollMode
+import build.raft.app.compat.ui.nestedScroll
+import androidx.compose.material3.Text
+import build.raft.app.compat.ui.rememberPullToRefreshState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import build.raft.app.compat.ui.KeyboardParams
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.module.CodecModule
+import build.raft.app.compat.json.JSONArray
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -4947,9 +4947,9 @@ internal fun MembersListContent(
             modifier = Modifier
                 .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
                 .fillMaxSize()
+                .raftPullToRefresh(pullToRefreshState, enabled = showPullToRefreshItem)
                 .padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (showPullToRefreshItem) {
                 slockRaftPullToRefreshItem(
@@ -5966,7 +5966,6 @@ private fun MembersDetailContent(
                             state = agentTabListStates.getValue(pageTab),
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                         ) {
                             if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
@@ -6146,7 +6145,6 @@ private fun MembersDetailContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
                     item(key = "member-detail-${member.id.value}-human-content") {
                         MembersHumanDetailSections(
@@ -12670,7 +12668,6 @@ private fun MembersWorkspaceTreeView(
             .fillMaxWidth()
             .heightIn(min = 280.dp, max = 560.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
     ) {
         items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
             val row = rows[index]
@@ -13048,7 +13045,6 @@ private fun MembersAgentActivityTab(
                         scrollDown = NestedScrollMode.SELF_FIRST
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
-                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
                     MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)

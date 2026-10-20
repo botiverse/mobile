@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.views.VideoPlayControl
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 
 /** Source-scoped playback commands and callbacks for the inline audio card. */
 internal data class ThreadInlineAudioPlayback(

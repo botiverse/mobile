@@ -1,6 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 import build.raft.app.data.StoredAuthSession
 
 internal fun Pager.openSettingsFeedbackWebViewPage(storeScope: build.raft.app.data.SlockShellStoreScope) {

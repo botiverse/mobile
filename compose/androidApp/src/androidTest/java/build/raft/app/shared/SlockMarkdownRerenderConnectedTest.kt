@@ -21,7 +21,7 @@ class SlockMarkdownRerenderConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.MARKDOWN_RERENDER_VISUAL)
                 .putExtra(
                     "pageData",
@@ -29,9 +29,9 @@ class SlockMarkdownRerenderConnectedTest {
                         .put("instanceId", "markdown-rerender-connected-test")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             val result =
                 waitForMarkdownChipRows(
                     scenario = scenario,
@@ -52,7 +52,7 @@ class SlockMarkdownRerenderConnectedTest {
     }
 
     private fun waitForMarkdownChipRows(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation,
         outputDir: File?,
         minRows: Int
@@ -78,7 +78,7 @@ class SlockMarkdownRerenderConnectedTest {
         return best
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

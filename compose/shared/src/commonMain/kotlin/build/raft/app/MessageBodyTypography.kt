@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 
 internal fun slockMessageBodyTextStyle(preferenceKey: String?): TextStyle =
     when (preferenceKey?.trim()?.lowercase()) {

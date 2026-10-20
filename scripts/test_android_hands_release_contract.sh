@@ -189,8 +189,8 @@ ruby -e '
   main_manifest = File.read("compose/androidApp/src/main/AndroidManifest.xml")
   raise "Hands source manifest no longer declares REQUEST_INSTALL_PACKAGES" unless main_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES})
   raise "Hands release manifest must retain the source permission" if File.exist?("compose/androidApp/src/release/AndroidManifest.xml") && File.read("compose/androidApp/src/release/AndroidManifest.xml").include?(%q{tools:node="remove"})
-  kuikly_activity = File.read("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt")
-  raise "Play carrier does not gate the Hands updater bridge" unless kuikly_activity.include?("BuildConfig.HANDS_APK_UPDATE_ENABLED") && kuikly_activity.include?("handsApkUpdateDisabledResponse()")
+  host_activity = File.read("compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt")
+  raise "Play carrier does not gate the Hands updater bridge" unless host_activity.include?("BuildConfig.HANDS_APK_UPDATE_ENABLED") && host_activity.include?("handsApkUpdateDisabledResponse()")
   resolve_outputs = resolve_job.fetch("outputs")
   raise "release resolver does not expose artifact-upload policy" unless resolve_outputs.key?("upload_android_artifacts")
   raise "release resolver does not receive artifact-upload input" unless resolve_env.fetch("INPUT_UPLOAD_ANDROID_ARTIFACTS") == "${{ inputs.upload_android_artifacts }}"

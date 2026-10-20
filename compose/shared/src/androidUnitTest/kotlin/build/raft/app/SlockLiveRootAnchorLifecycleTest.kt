@@ -9,19 +9,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEvent
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
-import com.tencent.kuikly.compose.ui.input.pointer.PointerId
-import com.tencent.kuikly.compose.ui.input.pointer.PointerInputChange
-import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.node.PointerInputModifierNode
-import com.tencent.kuikly.compose.ui.platform.ViewConfiguration
-import com.tencent.kuikly.compose.ui.unit.Density
-import com.tencent.kuikly.compose.ui.unit.DpSize
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.platform.ViewConfiguration
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import java.lang.reflect.Proxy
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -46,7 +46,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Drives Kuikly's real LayoutNode and pointer-input element contracts. Internal Kotlin
+ * Drives Compose's real LayoutNode and pointer-input element contracts. Internal Kotlin
  * declarations remain JVM-public with module-suffixed method names, so reflection lets the app
  * module verify production Modifier.Node wiring instead of stopping at helper-only tests.
  */
@@ -114,11 +114,11 @@ class SlockLiveRootAnchorLifecycleTest {
         assertSame(firstOwner.tapDispatchScope, recreatedOwner.tapDispatchScope)
         assertTrue(recreatedOwner.pressed)
         assertEquals(Offset(12f, 34f), recreatedOwner.pressRippleOrigin)
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerModifier("tap_movement", firstOwner),
             pointerModifier("tap_movement", recreatedOwner)
         )
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerModifier("actions", firstOwner),
             pointerModifier("actions", recreatedOwner)
         )
@@ -150,7 +150,7 @@ class SlockLiveRootAnchorLifecycleTest {
 
         assertFalse(oldCallbackInvoked)
         assertTrue(replacementCallbackInvoked)
-        assertEquals(
+        assertPointerHandlerKeptAcrossUpdate(
             pointerBeforeReplacement,
             pointerModifier("actions", owner)
         )
@@ -442,6 +442,32 @@ class SlockLiveRootAnchorLifecycleTest {
         }
     }
 
+    /**
+     * CMP switch: Kuikly's pointer-input element compared equal across recompositions. Upstream
+     * `SuspendPointerInputElement.equals` also compares the handler instance (a fresh lambda per
+     * composition), but `SuspendingPointerInputModifierNodeImpl.update` only restarts the running
+     * gesture coroutine when a key changed or the handler *class* changed. Assert exactly that
+     * reset condition, so a recomposition never cancels an in-flight press.
+     */
+    private fun assertPointerHandlerKeptAcrossUpdate(before: Modifier, after: Modifier) {
+        fun Modifier.field(name: String): Any? =
+            javaClass.getMethod("get" + name.replaceFirstChar { it.uppercase() }).invoke(this)
+        assertEquals(
+            "androidx.compose.ui.input.pointer.SuspendPointerInputElement",
+            before.javaClass.name
+        )
+        assertEquals(before.javaClass, after.javaClass)
+        assertEquals(before.field("key1"), after.field("key1"))
+        assertEquals(before.field("key2"), after.field("key2"))
+        assertTrue(
+            (before.field("keys") as Array<*>?).contentEquals(after.field("keys") as Array<*>?)
+        )
+        assertSame(
+            before.field("pointerInputEventHandler")!!.javaClass,
+            after.field("pointerInputEventHandler")!!.javaClass
+        )
+    }
+
     private fun pointerModifier(role: String, owner: ThreadMessageLongPressGestureOwner): Modifier =
         Modifier.threadMessagePointerInput(
             role = role,
@@ -463,8 +489,8 @@ class SlockLiveRootAnchorLifecycleTest {
         private val coroutineContext: CoroutineContext = EmptyCoroutineContext
     ) {
         private val endApplyChangesListeners = mutableListOf<Function0<*>>()
-        private val layoutNodeClass = Class.forName("com.tencent.kuikly.compose.ui.node.LayoutNode")
-        private val ownerClass = Class.forName("com.tencent.kuikly.compose.ui.node.Owner")
+        private val layoutNodeClass = Class.forName("androidx.compose.ui.node.LayoutNode")
+        private val ownerClass = Class.forName("androidx.compose.ui.node.Owner")
         private val owner =
             Proxy.newProxyInstance(ownerClass.classLoader, arrayOf(ownerClass)) { _, method, args ->
                 when (method.name) {

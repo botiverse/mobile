@@ -1,3 +1,4 @@
 package build.raft.app.shared
 
-class SlockDocumentShellActivity : SlockKuiklyActivity()
+/** Document-mode app shell host (multi-window shells); see [SlockAppShellActivity]. */
+internal class SlockDocumentShellActivity : SlockCmpActivity()

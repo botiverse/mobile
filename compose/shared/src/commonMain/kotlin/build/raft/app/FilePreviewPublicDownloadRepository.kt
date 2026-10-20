@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 
 /**
  * Exact identity used to inspect the one durable public attachment download.

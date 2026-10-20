@@ -19,7 +19,7 @@ class AndroidShellWindowContractTest {
 
     @Test
     fun notificationServerUsesDefaultSingleShellIdentity() {
-        val pageData = JSONObject().put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
+        val pageData = JSONObject().put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
 
         val target = resolveAndroidShellLaunchTarget(pageData)
 
@@ -50,7 +50,7 @@ class AndroidShellWindowContractTest {
         )
 
         val target = resolveAndroidShellLaunchTarget(
-            JSONObject().put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
+            JSONObject().put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
         )
 
         assertEquals("android-default-app-shell", target.shellInstanceId)
@@ -114,17 +114,17 @@ class AndroidShellWindowContractTest {
             JSONObject()
                 .put(ANDROID_SHELL_INSTANCE_ID_KEY, "server-shell:server-b")
                 .put(ANDROID_DOCUMENT_SHELL_KEY, true)
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-b")
-                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-b")
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-b")
+                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-b")
 
         val normalized = normalizeAndroidAppShellPageData(source)
 
         assertEquals("android-default-app-shell", normalized.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
         assertEquals("server-b", normalized.getString(ANDROID_SHELL_SERVER_ID_KEY))
         assertFalse(normalized.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
-        assertEquals("thread-b", normalized.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
-        assertEquals("message-b", normalized.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
+        assertEquals("thread-b", normalized.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertEquals("message-b", normalized.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
     }
 
     @Test

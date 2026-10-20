@@ -1,7 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Size
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 

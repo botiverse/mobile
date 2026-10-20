@@ -16,11 +16,11 @@ internal const val HOME_COLD_START_SPLASH_TIMEOUT_MILLIS = 5_000L
 internal const val HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS = 10_000L
 
 internal fun shouldInstallHomeColdStartSplash(pageName: String, pageDataText: String?): Boolean {
-    if (pageName != SlockKuiklyActivity.PAGE_APP_SHELL) return false
+    if (pageName != SlockCmpActivity.PAGE_APP_SHELL) return false
     val initialTab =
         runCatching {
             JSONObject(pageDataText.orEmpty())
-                .optString(SlockKuiklyActivity.KEY_APP_SHELL_INITIAL_TAB)
+                .optString(SlockCmpActivity.KEY_APP_SHELL_INITIAL_TAB)
         }
             .getOrDefault("")
     return initialTab.isBlank() || initialTab == "home"
@@ -30,11 +30,15 @@ internal fun isHomeAppShellChildPageData(pageDataText: String): Boolean =
     runCatching { JSONObject(pageDataText).optString("tab") == "home" }
         .getOrDefault(false)
 
+/**
+ * Host Activity for [pageName]: the app shell gets its task-owning [SlockAppShellActivity], every
+ * other page a [SlockCmpActivity] (all pages render on Compose Multiplatform).
+ */
 internal fun slockKuiklyHostActivityClass(pageName: String): Class<out Activity> =
-    if (pageName == SlockKuiklyActivity.PAGE_APP_SHELL) {
+    if (pageName == SlockCmpActivity.PAGE_APP_SHELL) {
         SlockAppShellActivity::class.java
     } else {
-        SlockKuiklyActivity::class.java
+        SlockCmpActivity::class.java
     }
 
 internal fun slockAppShellHostActivityClass(

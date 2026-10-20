@@ -25,12 +25,32 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ConversationKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AndroidAppScopeRealtimeOwnerTest {
+    // AndroidAppScopeRealtimeOwner's scope runs on Dispatchers.Main.immediate; since the CMP switch
+    // (kotlinx-coroutines 1.10) a JVM unit test has no platform Main dispatcher to fall back to.
+    @Before
+    fun installTestMainDispatcher() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+    }
+
+    @After
+    fun resetTestMainDispatcher() {
+        Dispatchers.resetMain()
+    }
+
     @Test
     fun processVisibilityTracksStartedActivitiesAndIgnoresPageDuplicates() {
         val transitions = mutableListOf<Pair<Boolean, Long>>()
@@ -88,11 +108,11 @@ class AndroidAppScopeRealtimeOwnerTest {
     @Test
     fun lifecycleEventsKeepTheActualActivityPageIdentity() {
         assertEquals(
-            SlockKuiklyActivity.PAGE_THREAD,
-            normalizedAndroidLifecyclePageName(SlockKuiklyActivity.PAGE_THREAD)
+            SlockCmpActivity.PAGE_THREAD,
+            normalizedAndroidLifecyclePageName(SlockCmpActivity.PAGE_THREAD)
         )
         assertEquals(
-            SlockKuiklyActivity.PAGE_APP_SHELL,
+            SlockCmpActivity.PAGE_APP_SHELL,
             normalizedAndroidLifecyclePageName("  ")
         )
     }

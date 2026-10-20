@@ -33,10 +33,10 @@ class SlockKuiklyNotificationLaunchTest {
 
     @Test
     fun androidHostNavigationExclusionStaysOffForEdgeToEdgeHost() {
-        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(2))
-        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(1))
-        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(0))
-        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(null))
+        assertFalse(SlockCmpActivity.androidHostExcludesNavigationBarForMode(2))
+        assertFalse(SlockCmpActivity.androidHostExcludesNavigationBarForMode(1))
+        assertFalse(SlockCmpActivity.androidHostExcludesNavigationBarForMode(0))
+        assertFalse(SlockCmpActivity.androidHostExcludesNavigationBarForMode(null))
     }
 
     @Test
@@ -238,7 +238,7 @@ class SlockKuiklyNotificationLaunchTest {
     @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {
         val pageData =
-            SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
+            SlockCmpActivity.buildUnreadNotificationThreadPageData(
                 JSONObject()
                     .put("threadId", "channel-1")
                     .put("channelId", "channel-1")
@@ -249,7 +249,7 @@ class SlockKuiklyNotificationLaunchTest {
 
         assertNotNull(pageData)
         val payload = JSONObject(pageData!!.getString("payload"))
-        assertEquals(SlockKuiklyActivity.PAGE_THREAD, pageData.getString(SlockKuiklyActivity.KEY_PAGE_NAME))
+        assertEquals(SlockCmpActivity.PAGE_THREAD, pageData.getString(SlockCmpActivity.KEY_PAGE_NAME))
         assertEquals("notification-thread-channel-1-msg-42", pageData.getString("instanceId"))
         assertEquals("channel", payload.getString("surfaceKind"))
         assertEquals("channel-1", payload.getString("sourceThreadId"))
@@ -261,7 +261,7 @@ class SlockKuiklyNotificationLaunchTest {
     @Test
     fun unreadNotificationLaunchesDmThreadFocusedOnMessage() {
         val pageData =
-            SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
+            SlockCmpActivity.buildUnreadNotificationThreadPageData(
                 JSONObject()
                     .put("threadId", "dm-1")
                     .put("messageId", "msg-dm")
@@ -280,7 +280,7 @@ class SlockKuiklyNotificationLaunchTest {
     @Test
     fun unreadNotificationLaunchesReplyThreadWithParentIdentity() {
         val pageData =
-            SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
+            SlockCmpActivity.buildUnreadNotificationThreadPageData(
                 JSONObject()
                     .put("threadId", "thread-message-1")
                     .put("channelId", "thread-message-1")
@@ -305,7 +305,7 @@ class SlockKuiklyNotificationLaunchTest {
     @Test
     fun unreadNotificationAppShellLaunchCarriesThreadIntent() {
         val pageData =
-            SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(
+            SlockCmpActivity.buildUnreadNotificationAppShellPageData(
                 JSONObject()
                     .put("serverId", "server-1")
                     .put("threadId", "channel-1")
@@ -316,16 +316,16 @@ class SlockKuiklyNotificationLaunchTest {
             )
 
         assertNotNull(pageData)
-        assertEquals(SlockKuiklyActivity.PAGE_APP_SHELL, pageData!!.getString(SlockKuiklyActivity.KEY_PAGE_NAME))
+        assertEquals(SlockCmpActivity.PAGE_APP_SHELL, pageData!!.getString(SlockCmpActivity.KEY_PAGE_NAME))
         assertEquals("notification-app-shell-channel-1-msg-42", pageData.getString("instanceId"))
-        assertEquals("server-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
+        assertEquals("server-1", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
         assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
         assertEquals(true, pageData.optBoolean("slockWebLoginSupported", false))
-        assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
-        assertEquals("channel-1", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID))
-        assertEquals("msg-42", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
-        assertEquals("channel", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_KIND))
-        assertEquals("channel_unread", pageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_CATEGORY))
+        assertEquals("channel-1", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertEquals("channel-1", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID))
+        assertEquals("msg-42", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
+        assertEquals("channel", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_KIND))
+        assertEquals("channel_unread", pageData.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_CATEGORY))
         assertFalse(pageData.has("slockNotificationThreadLaunchPayload"))
         assertFalse(pageData.has("slockNativeTabBarRenderer"))
     }
@@ -333,7 +333,7 @@ class SlockKuiklyNotificationLaunchTest {
     @Test
     fun unreadNotificationWithoutThreadIdentityFallsBackToDefaultLaunch() {
         val pageData =
-            SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
+            SlockCmpActivity.buildUnreadNotificationThreadPageData(
                 JSONObject()
                     .put("messageId", "msg-42")
                     .put("category", "channel_unread")

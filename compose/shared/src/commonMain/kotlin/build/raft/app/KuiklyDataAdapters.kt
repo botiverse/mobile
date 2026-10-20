@@ -4,7 +4,7 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockSharedStoreProvider
 import build.raft.app.data.SlockSharedStoreRegistry
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 
 /*
  * Kuikly-side adapters onto the host-agnostic data layer: Kuikly pages hold a [BridgeModule] and

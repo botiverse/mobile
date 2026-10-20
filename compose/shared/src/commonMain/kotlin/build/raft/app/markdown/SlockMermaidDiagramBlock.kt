@@ -1,24 +1,59 @@
 package build.raft.app.markdown
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.text.TextStyle
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.TextStyle
+import build.raft.mermaid.core.MermaidParseResult
+import build.raft.mermaid.core.MermaidParser
+import build.raft.mermaid.layout.LayoutConfig
+import build.raft.mermaid.layout.LayoutScene
+import build.raft.mermaid.layout.simple.FixedWidthTextMeasurer
+import build.raft.mermaid.layout.simple.SimpleMermaidLayout
 
 /**
- * Native Kuikly Compose component that renders a Mermaid diagram block.
+ * Renders a Mermaid diagram block.
  *
- * `expect`/`actual` split (see #329 / #373): the real Mermaid renderer
- * (parse → layout → Kuikly Canvas draw) lives in the target-specific `actual`
- * source sets where the `build.raft.mermaid` artifacts are resolvable.
- * commonMain keeps only this signature so mermaid types never enter the
- * common classpath. Android and iOS consume the `build.raft.mermaid` artifacts
- * from their own source sets.
+ * Parse → layout runs on the multiplatform `build.raft.mermaid` artifacts; the resulting
+ * [LayoutScene] is drawn by [RaftMermaidCanvas] (Compose Canvas, replacing the Kuikly
+ * `CanvasView` + `MermaidKuiklyRenderer` of the Kuikly build) inside [SlockMermaidCard].
  *
- * Contract: if Mermaid source parses and lays out, render the native Canvas diagram
- * with interactive zoom; otherwise gracefully fall back to [fallback].
+ * Contract: if Mermaid source parses and lays out, render the diagram with interactive zoom;
+ * otherwise gracefully fall back to [fallback].
  */
 @Composable
-internal expect fun SlockMermaidDiagramBlock(
+internal fun SlockMermaidDiagramBlock(
     code: String,
     style: TextStyle,
     fallback: @Composable () -> Unit
-)
+) {
+    val layoutScene: LayoutScene? = remember(code) { raftMermaidLayoutScene(code) }
+
+    if (layoutScene != null && layoutScene.width > 0 && layoutScene.height > 0) {
+        SlockMermaidCard(
+            code = code,
+            diagramWidth = layoutScene.width.toFloat(),
+            codeContent = fallback,
+            diagramContent = { scale ->
+                RaftMermaidCanvas(scene = layoutScene, scale = scale, textStyle = style)
+            }
+        )
+    } else {
+        fallback()
+    }
+}
+
+internal fun raftMermaidLayoutScene(code: String): LayoutScene? =
+    try {
+        val parseResult = MermaidParser.parse(code.trim())
+        if (parseResult is MermaidParseResult.Success) {
+            SimpleMermaidLayout.layout(
+                diagram = parseResult.diagram,
+                textMeasurer = FixedWidthTextMeasurer,
+                config = LayoutConfig()
+            )
+        } else {
+            null
+        }
+    } catch (_: Throwable) {
+        null
+    }

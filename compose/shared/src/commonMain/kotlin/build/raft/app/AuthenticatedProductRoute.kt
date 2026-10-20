@@ -6,8 +6,7 @@ import build.raft.app.base.Utils
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** Executable inventory of independently mounted authenticated production routes. */

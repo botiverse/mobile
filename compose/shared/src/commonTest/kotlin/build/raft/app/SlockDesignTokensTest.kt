@@ -7,11 +7,11 @@ import build.raft.app.components.SlockSpinnerSize
 import build.raft.app.components.slockSpinnerLitCell
 import build.raft.app.components.slockSpinnerStepAt
 import build.raft.app.data.FontPreference
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.text.font.FontListFontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontListFontFamily
+import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.compat.ui.raftFontResourceName
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -89,7 +89,7 @@ class SlockDesignTokensTest {
                 SlockType.ButtonBold to "$psPrefix-Bold",
             )
         expected.forEach { (style, name) ->
-            assertEquals(name, style.fontFamily.slockFontName(), "default face $defaultFace")
+            assertEquals(raftFontResourceName(name), style.fontFamily.slockFontName(), "default face $defaultFace")
         }
     }
 
@@ -184,5 +184,6 @@ class SlockDesignTokensTest {
     }
 
     private fun Any?.slockFontName(): String? =
-        ((this as? FontListFontFamily)?.fonts?.singleOrNull() as? KuiklyFont)?.fontName
+        // CMP switch: compares the normalized bundled-face key (see raftTestBundledFontKey).
+        (this as? FontListFontFamily)?.fonts?.singleOrNull()?.raftTestBundledFontKey()
 }

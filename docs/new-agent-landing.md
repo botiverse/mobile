@@ -58,8 +58,6 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | Raft Mobile / KMP app | `/Users/artin/AndroidStudioProjects/Slock` | `origin = git@github.com:botiverse/mobile.git` |
 | Mobile worktrees | `/Users/artin/AndroidStudioProjects/Slock-worktrees` | Local worktrees based on the mobile repo |
 | React / server source reference | External checkout via `SLOCK_SOURCE_REPO` | `github.com/botiverse/slock` (default branch `staging`) |
-| Kuikly release consumed by mobile | `compose/gradle/kuikly-release-closure.json` | Immutable Raft Maven release manifest |
-| Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
 
 The mobile repo vendors no KMP fork sources. HarmonyOS (OHOS) support is
 frozen: `1.14.x` is the last OHOS release and is built only from the

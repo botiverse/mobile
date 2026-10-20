@@ -2,6 +2,8 @@ package build.raft.app
 
 import android.app.Application
 import android.content.Context
+import build.raft.app.cmp.SlockCmpRouter
+import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
@@ -12,6 +14,7 @@ import build.raft.app.data.slockReadStoredFontPreferenceForDiagnostics
 import build.raft.app.data.slockRestoreStoredFontPreferenceOnColdStart
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
+import build.raft.app.shared.RaftAndroidHostHooks
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.SlockAndroidWebViewWarmup
@@ -33,6 +36,11 @@ class SlockApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Page routing: every :shared page renders through RaftPageRegistry; debug builds also
+        // admit the debug-only :ui-cmp pages.
+        SlockCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
+        RaftPageRegistry.install()
+        RaftAndroidHostHooks.install(this)
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)

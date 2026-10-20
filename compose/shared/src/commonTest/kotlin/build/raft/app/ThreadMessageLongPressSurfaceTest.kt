@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemorySlockKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.putBoolean
-import com.tencent.kuikly.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

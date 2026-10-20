@@ -2,12 +2,12 @@ package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.views.PlayState
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

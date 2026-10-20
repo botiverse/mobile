@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
-#import "KuiklyRenderViewController.h"
+#import "RaftPageViewController.h"
 #import "SlockConversationForwardGestureAdmission.h"
 #import "SlockInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
@@ -128,9 +128,9 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 - (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
 {
     UINavigationController *navigationController = self.navigationController;
-    KuiklyRenderViewController *topViewController =
-        [navigationController.topViewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)navigationController.topViewController
+    RaftPageViewController *topViewController =
+        [navigationController.topViewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)navigationController.topViewController
             : nil;
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
@@ -338,15 +338,17 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         self.interactivePopGestureRecognizer.enabled = NO;
     }
 
-    KuiklyRenderViewController *renderViewController =
-        [viewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)viewController
+    RaftPageViewController *renderViewController =
+        [viewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)viewController
             : nil;
     if (renderViewController) {
-        // Every pushed Kuikly page can be returned from. The admission policy
-        // still requires a navigation stack above root; text-input and native
-        // horizontal-scroll conflicts are rejected by the gesture delegate.
-        renderViewController.fd_interactivePopAllowsFullScreen = YES;
+        // Every pushed page can be returned from, but only from the leading edge strip:
+        // CMP content has no UIScrollView, so the delegate cannot see a Compose horizontal
+        // scroller consuming a right drag and full-screen admission would steal it.
+        // TODO(cmp-switch): restore full-screen admission once shared code reports
+        // horizontal-scroll consumption to the host.
+        renderViewController.fd_interactivePopAllowsFullScreen = NO;
     }
     [self fd_setConversationForwardGestureEnabled:
         renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
@@ -372,9 +374,9 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     if (progress < 0.12 && velocity.x > -300.0) {
         return;
     }
-    KuiklyRenderViewController *topViewController =
-        [self.topViewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)self.topViewController
+    RaftPageViewController *topViewController =
+        [self.topViewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)self.topViewController
             : nil;
     [topViewController slockRequestConversationForward];
 }

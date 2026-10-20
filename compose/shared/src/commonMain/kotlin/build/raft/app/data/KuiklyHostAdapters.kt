@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.toJsonObject
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 

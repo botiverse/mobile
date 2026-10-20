@@ -3,9 +3,9 @@
 // https://github.com/saket/extended-spans
 package com.tencent.kuiklybase.markdown.compose.extendedspans.internal
 
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.isUnspecified
-import com.tencent.kuikly.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.graphics.toArgb
 
 internal fun Color?.serialize(): String {
     return if (this == null || isUnspecified) "null" else "${toArgb()}"

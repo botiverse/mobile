@@ -274,10 +274,10 @@ class SharedThreadComposerDraftStoreTest {
         val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
         owner.acceptEditorValue(
             owner.editorSessionId,
-            com.tencent.kuikly.compose.ui.text.input.TextFieldValue(
+            androidx.compose.ui.text.input.TextFieldValue(
                 text = "ni",
-                selection = com.tencent.kuikly.compose.ui.text.TextRange(2),
-                composition = com.tencent.kuikly.compose.ui.text.TextRange(0, 2),
+                selection = androidx.compose.ui.text.TextRange(2),
+                composition = androidx.compose.ui.text.TextRange(0, 2),
             )
         )
 
@@ -300,7 +300,7 @@ class SharedThreadComposerDraftStoreTest {
 
         assertEquals("ni", store.state.value.seedText)
         assertEquals("ni", persistence.read(draftKey)?.text)
-        assertEquals(com.tencent.kuikly.compose.ui.text.TextRange(0, 2), owner.value.composition)
+        assertEquals(androidx.compose.ui.text.TextRange(0, 2), owner.value.composition)
     }
 
     @Test

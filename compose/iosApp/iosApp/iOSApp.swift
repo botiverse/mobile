@@ -654,6 +654,17 @@ private func slockCurlCaBundlePath() -> String {
     return ""
 }
 
+/// Records Kotlin unhandled exceptions (`RaftIosHostHooks` installs the runtime hook) through the
+/// synchronous critical diagnostics path, so the record survives the termination that follows.
+/// Runs on the throwing thread.
+final class RaftIosUnhandledExceptionRecorder: NSObject, RaftIosUnhandledExceptionSink {
+    func recordUnhandledException(reason: String, stack: String) {
+        // TODO(cmp-switch): report the visible page name; the hook is process-wide and the
+        // CMP runtime does not track the current page for it yet.
+        SlockIosDiagnosticsRecordUnhandledException("unknown", 0, reason, stack)
+    }
+}
+
 @main
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
@@ -666,10 +677,11 @@ struct iOSApp: App {
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
         SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
-        // task #436: register the SVG coder so SDWebImage (used by the image
-        // load path Kuikly delegates to) can decode SVG assets — e.g. the
-        // Google/GitHub provider icons, which are shipped as SVG and otherwise
-        // render blank on iOS (UIImage has no native SVG support).
+        // CMP page routing: debug builds also admit the debug-only :ui-cmp pages.
+        SlockPageControllerFactory.configure()
+        // task #436: register the SVG coder with SDWebImage, which the durable avatar store
+        // (SlockIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
+        // otherwise rejected (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
@@ -689,6 +701,14 @@ struct iOSApp: App {
         SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         SlockIosPushHost.install()
         SlockIosSharedLogBridge.install()
+        // Every page renders through Compose Multiplatform: install the :shared page registry
+        // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
+        // after the network transport (NetworkKMM image downloads), before the first page.
+        // Kotlin unhandled exceptions are recorded into diagnostics before termination.
+        RaftIosHostHooks.shared.install(
+            managedImages: SlockIosAvatarCacheHost.shared,
+            unhandledExceptions: RaftIosUnhandledExceptionRecorder()
+        )
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 

@@ -20,16 +20,16 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CancellationException
 
@@ -51,8 +51,8 @@ internal fun Pager.openReleaseNotesPage(
     versionCode: String = "",
     storeScope: build.raft.app.data.SlockShellStoreScope,
 ) {
-    acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-        com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+    acquireModule<build.raft.app.compat.module.RouterModule>(
+        build.raft.app.compat.module.RouterModule.MODULE_NAME
     ).openPage(
         RELEASE_NOTES_PAGE,
         JSONObject().apply {
@@ -292,8 +292,8 @@ internal fun ReleaseNotesWebViewBody(
         }
 
     fun closePage() {
-        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+        pager.acquireModule<build.raft.app.compat.module.RouterModule>(
+            build.raft.app.compat.module.RouterModule.MODULE_NAME
         ).closePage()
     }
 

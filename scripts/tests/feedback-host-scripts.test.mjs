@@ -5,13 +5,16 @@ import test from 'node:test';
 
 const root = new URL('../../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
-const android = read('compose/androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt')
-  .match(/private const val hostBridgeScript = """([\s\S]*?)"""/)[1];
-const iosLiteral = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSandboxWebView.m')
-  .match(/NSString \*bridge = @("(?:\\.|[^"\\])*");/)[1];
-const ios = JSON.parse(iosLiteral);
-const androidNative = read('compose/androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt');
-const iosNative = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSandboxWebView.m');
+// Since the CMP switch both WebView hosts live in :shared (RaftSandboxWebView.{android,ios}.kt).
+const androidNative = read('compose/shared/src/androidMain/kotlin/build/raft/app/RaftSandboxWebView.android.kt');
+const iosNative = read('compose/shared/src/iosMain/kotlin/build/raft/app/RaftSandboxWebView.ios.kt');
+const android = androidNative.match(/const val HOST_BRIDGE_SCRIPT = """([\s\S]*?)"""/)[1];
+// The iOS bridge is a concatenation of Kotlin string literals: join and unescape them.
+const ios = iosNative
+  .match(/private const val RaftIosHostBridgeScript =([\s\S]*?)\n\n/)[1]
+  .match(/"(?:\\.|[^"\\])*"/g)
+  .map(literal => JSON.parse(literal))
+  .join('');
 const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt')
   .split('internal fun feedbackWebViewBootstrapJavaScript(')[1]
   .match(/return """([\s\S]*?)"""/)[1]
@@ -127,10 +130,10 @@ test('feedback bootstrap does not materialize a session on an untrusted path', (
 
 test('native hosts fence auth script and runtime updates to trusted documents', () => {
   assert.match(androidNative, /!allowNavigation && !isAllowedMainDocumentUrl\(activeUrl\)/);
-  assert.match(androidNative, /same-origin history routes must not retain access to the native bridge/);
+  assert.match(androidNative, /Same-origin history routes must not keep access to the native bridge/);
   assert.match(androidNative, /allowedNavigationSchemes\.isNotEmpty\(\) && \(!allowNavigation/);
-  assert.match(iosNative, /forMainFrameOnly:!self\.allowNavigation/);
-  assert.match(iosNative, /isSameOriginURL:activeURL/);
-  assert.match(iosNative, /!self\.allowNavigation && !\[self isAllowedMainDocumentURL:activeURL\]/);
-  assert.match(iosNative, /evaluateJavaScript:script completionHandler:nil/);
+  assert.match(iosNative, /forMainFrameOnly = !allowNavigation/);
+  assert.match(iosNative, /isSameOriginURL\(activeURL\)/);
+  assert.match(iosNative, /!allowNavigation && \(activeURL == null \|\| !isAllowedMainDocumentURL\(activeURL\)\)/);
+  assert.match(iosNative, /evaluateJavaScript\(script, completionHandler = null\)/);
 });

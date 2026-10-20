@@ -1,9 +1,9 @@
 package com.tencent.kuiklybase.markdown.compose
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
 import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponents
 import com.tencent.kuiklybase.markdown.model.ParseResult

@@ -185,7 +185,7 @@ internal object AndroidUnreadNotificationPoster {
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
         val appContext = context.applicationContext
         val basePageData =
-            SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+            SlockCmpActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
         val multiShellHostEnabled =
             runCatching {
                 KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
@@ -199,8 +199,8 @@ internal object AndroidUnreadNotificationPoster {
         val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
         val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
         return Intent(appContext, slockAppShellHostActivityClass(target))
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(resolvedPageData).text)
+            .putExtra(SlockCmpActivity.KEY_PAGE_NAME, SlockCmpActivity.PAGE_APP_SHELL)
+            .putExtra(SlockCmpActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(resolvedPageData).text)
             .apply {
                 if (target.documentShell) {
                     data = Uri.parse(target.shellInstanceId)

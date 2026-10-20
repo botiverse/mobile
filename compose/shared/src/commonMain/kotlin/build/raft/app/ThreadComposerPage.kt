@@ -30,58 +30,64 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.RowScope
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.foundation.text.KeyboardActions
-import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.ModalBottomSheet
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.SolidColor
-import com.tencent.kuikly.compose.ui.focus.FocusRequester
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.FocusRequester
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -807,6 +813,17 @@ internal fun threadComposerSuggestionSelectedIndexAfterMove(
             if (current == itemCount - 1) 0 else current + 1
     }
 }
+
+/**
+ * Only a hardware Enter defers to an open IME composition (Enter commits the conversion). The soft
+ * keyboard's Send key always acts: Gboard keeps the Latin word being typed in composition, so
+ * gating it would make Send a no-op; the Send snapshot reader commits the composition instead
+ * (raftWithFinishedComposition).
+ */
+internal fun threadComposerEnterDeferredByComposition(
+    fromHardwareEnter: Boolean,
+    composition: TextRange?,
+): Boolean = fromHardwareEnter && composition != null
 
 internal fun threadComposerEnterAction(
     trigger: KuiklyComposerSuggestionTrigger,
@@ -2471,7 +2488,7 @@ internal fun ThreadComposerContentLeaf(
         }
     }
 
-    fun handleKeyboardSend() {
+    fun handleKeyboardSend(fromHardwareEnter: Boolean) {
         when (
             threadComposerEnterAction(
                 trigger = suggestionTrigger,
@@ -2479,7 +2496,7 @@ internal fun ThreadComposerContentLeaf(
                 memberCount = filteredMemberSuggestions.size,
                 channelCount = filteredChannelSuggestions.size,
                 canSend = canSend,
-                isImeComposing = fieldValue.composition != null
+                isImeComposing = threadComposerEnterDeferredByComposition(fromHardwareEnter, fieldValue.composition)
             )
         ) {
             ThreadComposerEnterAction.AcceptMemberSuggestion ->
@@ -2500,7 +2517,7 @@ internal fun ThreadComposerContentLeaf(
     }
     val composerKeyboardActions =
         if (composerUsesImeAction) {
-            KeyboardActions(onSend = { handleKeyboardSend() })
+            KeyboardActions(onSend = { handleKeyboardSend(fromHardwareEnter = this === RaftHardwareEnterKeyboardActionScope) })
         } else {
             KeyboardActions.Default
         }
@@ -3745,6 +3762,7 @@ private fun MentionActionNotice(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PendingMentionActionBanner(
     actions: List<KuiklyPendingMentionActionItem>,
@@ -3832,12 +3850,24 @@ private fun PendingMentionActionBanner(
         }
     }
     val mentionSheetBottomSafeArea = slockBottomSafeAreaPadding()
-    ModalBottomSheet(
-        visible = detailsVisible,
+    val mentionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val mentionSheetScope = rememberCoroutineScope()
+    val closeMentionSheet: () -> Unit = {
+        mentionSheetScope
+            .launch { mentionSheetState.hide() }
+            .invokeOnCompletion { detailsVisible = false }
+    }
+    // Kuikly's sheet took `visible`/`dismissOnDrag`; the M3 sheet is shown while composed and
+    // swipe-to-dismiss is on by default. Kuikly drew no drag handle, surface or insets.
+    if (detailsVisible) ModalBottomSheet(
         onDismissRequest = { detailsVisible = false },
+        sheetState = mentionSheetState,
         modifier = Modifier.padding(horizontal = 12.dp),
+        shape = RectangleShape,
         containerColor = Color.Transparent,
-        dismissOnDrag = true
+        tonalElevation = 0.dp,
+        dragHandle = null,
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         // task #176: ModalBottomSheet applies no insets; lift the card (and its
         // Add all / Done buttons) above the system navigation bar.
@@ -3866,7 +3896,7 @@ private fun PendingMentionActionBanner(
                     onNotify = onNotify,
                     onDismiss = onDismiss,
                     onAddAll = onAddAll,
-                    onClose = { detailsVisible = false }
+                    onClose = closeMentionSheet
                 )
             }
         }

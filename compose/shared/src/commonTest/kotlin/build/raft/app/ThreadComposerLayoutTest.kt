@@ -3,12 +3,12 @@ package build.raft.app
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1130,6 +1130,25 @@ class ThreadComposerLayoutTest {
                 channelCount = 0,
                 canSend = true,
                 isImeComposing = true
+            )
+        )
+    }
+
+    @Test
+    fun onlyHardwareEnterDefersToImeComposition() {
+        // Gboard keeps the Latin word in composition: the soft Send key must still send.
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = false, composition = TextRange(0, 5)))
+        assertTrue(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = TextRange(0, 5)))
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = null))
+        assertEquals(
+            ThreadComposerEnterAction.Send,
+            threadComposerEnterAction(
+                trigger = KuiklyComposerSuggestionTrigger.None,
+                panelState = ThreadComposerSuggestionPanelState.Hidden,
+                memberCount = 0,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = threadComposerEnterDeferredByComposition(false, TextRange(0, 5)),
             )
         )
     }

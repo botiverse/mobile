@@ -33,8 +33,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FILES = {
-    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"),
-    "ios": Path("compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m"),
+    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"),
+    "ios": Path("compose/iosApp/iosApp/Host/HRBridgeModule.m"),
 }
 
 # Each marker must appear in the named host source. The android cancelled arm

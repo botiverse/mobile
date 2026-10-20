@@ -10,6 +10,7 @@ set -euo pipefail
 source_roots=(
   "compose/shared/src/commonMain/kotlin"
   "compose/core/src/commonMain/kotlin"
+  "compose/ui-cmp/src/commonMain/kotlin"
 )
 # The store implementation legitimately uses the low-level primitives internally.
 store_file="build/raft/app/data/AuthSessionStore.kt"

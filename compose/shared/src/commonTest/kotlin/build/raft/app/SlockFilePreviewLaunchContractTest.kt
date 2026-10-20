@@ -6,7 +6,7 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEventBus
 import build.raft.app.resources.MR
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json

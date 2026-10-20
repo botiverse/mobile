@@ -17,20 +17,20 @@ class HomeColdStartSplashGateTest {
 
     @Test
     fun installsOnlyForHomeAppShellLaunches() {
-        assertTrue(shouldInstallHomeColdStartSplash(SlockKuiklyActivity.PAGE_APP_SHELL, null))
+        assertTrue(shouldInstallHomeColdStartSplash(SlockCmpActivity.PAGE_APP_SHELL, null))
         assertTrue(
             shouldInstallHomeColdStartSplash(
-                SlockKuiklyActivity.PAGE_APP_SHELL,
+                SlockCmpActivity.PAGE_APP_SHELL,
                 """{"slockInitialTab":"home"}"""
             )
         )
         assertFalse(
             shouldInstallHomeColdStartSplash(
-                SlockKuiklyActivity.PAGE_APP_SHELL,
+                SlockCmpActivity.PAGE_APP_SHELL,
                 """{"slockInitialTab":"tasks"}"""
             )
         )
-        assertFalse(shouldInstallHomeColdStartSplash(SlockKuiklyActivity.PAGE_THREAD, null))
+        assertFalse(shouldInstallHomeColdStartSplash(SlockCmpActivity.PAGE_THREAD, null))
     }
 
     @Test
@@ -75,11 +75,11 @@ class HomeColdStartSplashGateTest {
     fun appShellUsesStartingThemeHostWithoutAffectingStandalonePages() {
         assertEquals(
             SlockAppShellActivity::class.java,
-            slockKuiklyHostActivityClass(SlockKuiklyActivity.PAGE_APP_SHELL)
+            slockKuiklyHostActivityClass(SlockCmpActivity.PAGE_APP_SHELL)
         )
         assertEquals(
-            SlockKuiklyActivity::class.java,
-            slockKuiklyHostActivityClass(SlockKuiklyActivity.PAGE_THREAD)
+            SlockCmpActivity::class.java,
+            slockKuiklyHostActivityClass(SlockCmpActivity.PAGE_THREAD)
         )
         assertEquals(
             SlockAppShellActivity::class.java,

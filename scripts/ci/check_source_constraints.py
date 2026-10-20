@@ -52,7 +52,7 @@ TASKS_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/Ta
 SLOCK_SHARED_STORE_PROVIDER = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
 )
-ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"
 VISUAL_FIXTURE_DATA = (
     "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
 )
@@ -150,7 +150,8 @@ def check_retained_pointer_gesture_owners(sources: dict[str, str]) -> None:
     These lazy/recycled or lifecycle-sensitive surfaces must route pointer handlers through a
     composition owner token plus a current callback slot. A raw pointerInput in any protected
     region can keep an old rememberUpdatedState holder, scope, anchor, or presentation state when
-    Kuikly reuses an equal modifier element.
+    Kuikly reuses an equal modifier element. The guarantee still applies on CMP: upstream
+    pointerInput keeps its suspend block alive while its keys stay equal, and lazy rows are reused.
     """
     for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
         source = sources.get(path)
@@ -344,9 +345,12 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
     """Incident: task #924 (system selection menu replaced by app chrome).
 
     The full-screen Select Text destination must expose the immutable message
-    body through Kuikly's native ``SelectableText`` bridge. Reintroducing a
-    ``SelectionContainer`` or business-owned copy/select controls suppresses
-    platform actions such as Android PROCESS_TEXT and iOS Look Up/Translate.
+    body through ``RaftNativeSelectableText`` -- the CMP ``expect`` composable
+    whose actuals host the platform text view (Android selectable ``TextView``
+    via ``AndroidView``; iOS non-editable selectable ``UITextView`` via
+    ``UIKitView``). Reintroducing a Compose ``SelectionContainer`` or
+    business-owned copy/select controls suppresses platform actions such as
+    Android PROCESS_TEXT and iOS Look Up/Translate/Share.
     """
     match = re.search(
         r"private fun ThreadMessageTextSelectionDialog\(.*?"
@@ -367,10 +371,10 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
     required = {
         "val originalText = message.body": "bind the immutable message body",
         "LazyColumn(": "keep long text externally scrollable",
-        "SelectableText(": "render through the native selectable-text bridge",
+        "RaftNativeSelectableText(": "render through the platform text view (RaftNativeSelectableText)",
         "text = originalText": "pass original message bytes to the native surface",
         '.testTag("thread_message_selection_text")': (
-            "project a stable native resource id for physical UIAutomator admission"
+            "expose a stable resource id for physical UIAutomator admission"
         ),
         "Modal(onWillDismiss = { onDismiss() })": "dispose the surface on dismissal",
     }
@@ -498,35 +502,46 @@ def check_composer_native_send_snapshot_wiring(
 ) -> None:
     """Incident: task #127 (Send snapshot was wired to CoreTextField's outer Box).
 
-    Kuikly splits ordinary modifiers onto an outer Box, while getTextInputState belongs to the
-    nested AutoHeightTextAreaView. Pin both that production traversal and the bounded opaque-token
-    timeout; pure snapshot/gate tests alone cannot prove either production callsite is connected.
+    Under Kuikly the Send snapshot read the native editor, and was wired to the wrong view. On
+    CMP the editing state lives in Compose, so the snapshot reader must be bound to the
+    TextField's *live* TextFieldValue (RaftLiveTextFieldValue: the onValueChange wrapper records
+    an IME edit before the caller recomposes, and each composition records the caller's value, so
+    a reader bound in an earlier composition still sees the latest text/composition even when IME
+    commit and Send land in one frame) and unbound when the field leaves composition. The bounded opaque-token timeout in the composer still applies; pure
+    snapshot/gate tests alone cannot prove either production callsite is connected.
     """
-    text_field_start = basic_widget.find("internal fun TextField(")
-    text_field_end = basic_widget.find(
-        "private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP",
-        text_field_start,
-    )
-    if text_field_start < 0 or text_field_end < 0:
+    text_field = ""
+    search_from = 0
+    while True:
+        text_field_start = basic_widget.find("internal fun TextField(", search_from)
+        if text_field_start < 0:
+            break
+        text_field_end = basic_widget.find("\n}\n", text_field_start)
+        candidate = basic_widget[text_field_start : text_field_end if text_field_end >= 0 else None]
+        if "nativeEditingStateReader: SlockTextFieldNativeEditingStateReader?" in candidate:
+            text_field = candidate
+            break
+        search_from = text_field_start + 1
+    if not text_field:
         raise Violation("task #127 anchor missing: shared TextField region is not auditable")
-    text_field = basic_widget[text_field_start:text_field_end]
     basic_required = (
-        "is AutoHeightTextAreaView -> this",
-        "is ViewContainer<*, *> ->",
-        "templateChildren().firstNotNullOfOrNull",
-        "val nativeEditorRoot = this",
-        "nativeEditorRoot.findSlockNativeTextEditor()",
-        "nativeEditor.getTextInputState(",
+        "val liveValueForReader = remember { RaftLiveTextFieldValue(value) }",
+        "SideEffect { liveValueForReader.recordComposed(value) }",
+        "liveValueForReader.recordEdit(next)",
+        "onValueChange = onValueChangeRecordingLive,",
+        "nativeEditingStateReader.bind(nativeEditingStateBindingOwner)",
+        "state = liveValueForReader.value.toSlockTextInputState()",
+        "nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner)",
     )
     for token in basic_required:
-        if token not in basic_widget and token not in text_field:
+        if token not in text_field:
             raise Violation(
-                f"task #127 regression: native Send snapshot lost inner-editor wiring {token!r}"
+                f"task #127 regression: Send snapshot reader lost live-value wiring {token!r}"
             )
-    if "nativeEditorRoot.renderView" in text_field:
+    if re.search(r"state\s*=\s*(value|currentValueForReader)\.toSlockTextInputState\(\)", text_field):
         raise Violation(
-            "task #127 regression: Send snapshot calls CoreTextField's outer Box renderView; "
-            "resolve and call AutoHeightTextAreaView instead"
+            "task #127 regression: Send snapshot reader captures the composition-time value; "
+            "read liveValueForReader.value instead"
         )
 
     composer_required = (
@@ -1191,19 +1206,40 @@ def self_test() -> None:
             else:
                 raise AssertionError(f"{label}: expected a Violation, got none")
     good_snapshot_basic_widget = """
-internal fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor() = when (this) {
-    is AutoHeightTextAreaView -> this
-    is ViewContainer<*, *> -> templateChildren().firstNotNullOfOrNull { child -> child }
-    else -> null
+@Composable
+internal fun TextField(value: String = "", onValueChange: (String) -> Unit) {
+    TextField(value = TextFieldValue(value), onValueChange = {})
 }
-internal fun TextField() {
-    Modifier.nativeRef {
-        val nativeEditorRoot = this
-        val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
-        nativeEditor.getTextInputState(callback)
+
+@Composable
+internal fun TextField(
+    value: TextFieldValue,
+    nativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+) {
+    DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
+        onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
+    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
+    SideEffect { liveValueForReader.recordComposed(value) }
+    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
+        remember(liveValueForReader) {
+            { next ->
+                liveValueForReader.recordEdit(next)
+                currentOnValueChange(next)
+            }
+        }
+    if (nativeEditingStateReader != null) {
+        SideEffect {
+            nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
+                callback(SlockTextFieldNativeEditorRead(state = liveValueForReader.value.toSlockTextInputState()))
+            }
+        }
+    }
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChangeRecordingLive,
+    )
 }
-private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
 """
     good_snapshot_composer_page = """
 internal class ThreadComposerSendSnapshotGate {
@@ -1224,9 +1260,12 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
         good_snapshot_composer_page,
     )
     for source_name, token in (
-        ("basic", "is AutoHeightTextAreaView -> this"),
-        ("basic", "nativeEditorRoot.findSlockNativeTextEditor()"),
-        ("basic", "nativeEditor.getTextInputState("),
+        ("basic", "val liveValueForReader = remember { RaftLiveTextFieldValue(value) }"),
+        ("basic", "SideEffect { liveValueForReader.recordComposed(value) }"),
+        ("basic", "liveValueForReader.recordEdit(next)"),
+        ("basic", "onValueChange = onValueChangeRecordingLive,"),
+        ("basic", "nativeEditingStateReader.bind(nativeEditingStateBindingOwner)"),
+        ("basic", "nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner)"),
         ("composer", "if (pendingToken !== token) return false"),
         ("composer", "delay(ThreadComposerNativeSnapshotTimeoutMillis)"),
         ("composer", 'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)'),
@@ -1246,6 +1285,19 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
             raise SystemExit(
                 f"self-test: task #127 native snapshot checker accepted missing {token!r}"
             )
+
+    try:
+        check_composer_native_send_snapshot_wiring(
+            good_snapshot_basic_widget.replace(
+                "state = liveValueForReader.value.toSlockTextInputState()",
+                "state = value.toSlockTextInputState()",
+            ),
+            good_snapshot_composer_page,
+        )
+    except Violation:
+        pass
+    else:
+        raise SystemExit("self-test: task #127 checker accepted a composition-time value capture")
 
     good_gesture_sources: dict[str, str] = {}
     for path, start_token, end_token, surface in GESTURE_OWNER_REGIONS:
@@ -1461,7 +1513,7 @@ private fun ThreadMessageTextSelectionDialog(message: Message, onDismiss: () -> 
             modifier = Modifier
         ) {
             item {
-                SelectableText(
+                RaftNativeSelectableText(
                     text = originalText,
                     modifier = Modifier.testTag("thread_message_selection_text")
                 )
@@ -1491,7 +1543,7 @@ private fun ThreadMessageMenuChrome() = Unit
         ("internal neighbour", good_dialog_internal_neighbour),
     ):
         for token in (
-            "SelectableText(",
+            "RaftNativeSelectableText(",
             "LazyColumn(",
             "val originalText = message.body",
             "text = originalText",
@@ -1511,7 +1563,9 @@ private fun ThreadMessageMenuChrome() = Unit
                     f"under {variant_name}"
                 )
     for bad in (
-        good_dialog.replace("SelectableText(", "SelectionContainer("),
+        good_dialog.replace("RaftNativeSelectableText(", "SelectionContainer {\n Text("),
+        good_dialog.replace("RaftNativeSelectableText(", "SelectableText("),
+        good_dialog.replace("item {", "SelectionContainer { }\n            item {", 1),
         good_dialog.replace('.testTag("thread_message_selection_text")', ""),
         good_dialog.replace(
             "item {",

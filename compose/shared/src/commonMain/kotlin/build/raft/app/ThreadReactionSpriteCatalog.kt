@@ -2,8 +2,8 @@ package build.raft.app
 
 import build.raft.app.base.putIfAbsent
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.resources.DrawableResource
-import com.tencent.kuikly.compose.resources.InternalResourceApi
+import build.raft.app.compat.ui.DrawableResource
+import build.raft.app.compat.ui.InternalResourceApi
 import com.tencent.tmm.kmmresource.resource.AssetResource
 
 internal data class ThreadReactionAtlasResource(

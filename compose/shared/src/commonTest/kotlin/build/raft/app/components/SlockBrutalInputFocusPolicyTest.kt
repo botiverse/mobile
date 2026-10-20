@@ -1,8 +1,8 @@
 package build.raft.app.components
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame

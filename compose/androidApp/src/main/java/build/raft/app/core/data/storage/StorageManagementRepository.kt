@@ -15,7 +15,7 @@ private const val SlockDatabaseName = SlockAndroidSqlDatabaseContext.DatabaseFil
 private const val SlockImageDiskCacheDir = SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME
 private const val SlockAttachmentDownloadCacheDir = ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
 
-/** Picked/compressed thread attachments; written by SlockKuiklyActivity. */
+/** Picked/compressed thread attachments; written by SlockCmpActivity. */
 internal const val SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
 
 data class StorageManagementSnapshot(

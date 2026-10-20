@@ -2,8 +2,8 @@ package com.tencent.kuiklybase.markdown.compose.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Modifier
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
 import com.tencent.kuiklybase.markdown.compose.LocalReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownBlockQuote

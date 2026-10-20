@@ -36,8 +36,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.messageStreamChannelId
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -687,16 +687,19 @@ internal class SharedHomeStore(
      * make the first paint wait behind the auth refresh. The durable slice remains the sole cache
      * reader; no product content is transported through route/pageData.
     */
-    internal suspend fun hydrateCachedHome(serverId: ServerId): Boolean {
-        withStateDiagnosticsContext(SharedHomeIntent.Start) {
-            hydrateCachedHomeForServer(serverId)
+    internal suspend fun hydrateCachedHome(serverId: ServerId): Boolean =
+        // Called from the app shell's LaunchedEffect (main thread): hop onto the store dispatcher
+        // like dispatch() does, so the Loading write and the diagnostics context stay confined.
+        scope.raftWithStoreScope {
+            withStateDiagnosticsContext(SharedHomeIntent.Start) {
+                hydrateCachedHomeForServer(serverId)
+            }
+            val content = _state.value.content as? SharedHomeContentState.Content ?: return@raftWithStoreScope false
+            content.isDurableIdentityCache &&
+                content.needsNetworkRefresh &&
+                content.snapshot.server.id == serverId &&
+                content.snapshot.currentMember.id.value == content.session.user.id
         }
-        val content = _state.value.content as? SharedHomeContentState.Content ?: return false
-        return content.isDurableIdentityCache &&
-            content.needsNetworkRefresh &&
-            content.snapshot.server.id == serverId &&
-            content.snapshot.currentMember.id.value == content.session.user.id
-    }
 
     private suspend fun hydrateCachedHomeForServer(serverId: ServerId) {
         val session = authStore.readSession() ?: return

@@ -2,7 +2,7 @@ package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.ui.Modifier
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownText
 
 interface MarkdownAnimations {

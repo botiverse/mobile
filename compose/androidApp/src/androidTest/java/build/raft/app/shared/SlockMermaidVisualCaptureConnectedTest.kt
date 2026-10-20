@@ -19,7 +19,7 @@ class SlockMermaidVisualCaptureConnectedTest {
         val outputDir = File("/sdcard/Download/mermaid-visual").apply { mkdirs() }
 
         val mdContent = "### Diagram: $name\n\n```mermaid\n$mermaidCode\n```\n\nFooter note."
-        val intent = Intent(context, SlockKuiklyActivity::class.java)
+        val intent = Intent(context, SlockCmpActivity::class.java)
             .putExtra("pageName", SlockKuiklyPages.MARKDOWN_RERENDER_VISUAL)
             .putExtra(
                 "pageData",
@@ -28,9 +28,9 @@ class SlockMermaidVisualCaptureConnectedTest {
                     .put("rawMarkdown", mdContent)
                     .toString()
             )
-            .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+            .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             SystemClock.sleep(1200) // allow kuikly canvas to measure, layout and draw
             instrumentation.waitForIdleSync()

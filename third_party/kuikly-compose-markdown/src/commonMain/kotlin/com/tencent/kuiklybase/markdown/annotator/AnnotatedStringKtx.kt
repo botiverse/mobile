@@ -1,15 +1,15 @@
 package com.tencent.kuiklybase.markdown.annotator
 
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.runtime.Composable
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
@@ -24,8 +24,8 @@ import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
 import com.tencent.kuiklybase.markdown.utils.innerList
 import com.tencent.kuiklybase.markdown.utils.mapAutoLinkToType
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.withLink
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.withLink
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -37,6 +37,7 @@ import org.intellij.markdown.parser.MarkdownParser
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
 import build.raft.app.slockFirstComposedCharacterEnd
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
@@ -660,10 +661,12 @@ internal fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(
     firstComposedCharacterEnd: Int?,
 ) {
     if (codeText.isEmpty()) return
-    pushStyle(
-        SpanStyle(
-            inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
-        )
+    // Raft (CMP switch): upstream SpanStyle has no inlineBoxStyle; the chip box is a string
+    // annotation painted by build.raft.app.markdown.raftInlineDecorations. Both pop() calls
+    // below close this annotation.
+    pushStringAnnotation(
+        tag = RAFT_INLINE_BOX_ANNOTATION_TAG,
+        annotation = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true).encode()
     )
     // task #104: a platform without a composed-character segmenter (OHOS) must
     // still own the chip chrome. A single-child group is the exact shape a

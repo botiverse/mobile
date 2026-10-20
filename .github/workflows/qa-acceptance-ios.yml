@@ -136,9 +136,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       # Reused blacksmith macOS runners can carry a stale KSP incremental cache in
       # compose/shared/build from a prior job on a DIFFERENT commit. That stale state
       # intermittently corrupts :shared:kspKotlinIosSimulatorArm64 FIR resolution

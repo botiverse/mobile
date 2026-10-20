@@ -2,27 +2,38 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.os.Bundle
-import android.text.Spanned
-import android.view.View
-import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
-import com.tencent.kuikly.core.render.android.expand.component.text.HRLineHeightSpan
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
+/**
+ * The first committed character must already use the composer's configured line height and
+ * baseline; the second edit must not move them (the Kuikly-era bug applied the line-height span
+ * only from the second edit on). On CMP the composer is a Compose BasicTextField, so the
+ * assertions read its TextLayoutResult through semantics instead of an EditText Layout.
+ */
 class SlockComposerFirstCharacterBaselineTest {
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
     @Test
     fun firstCharacterUsesConfiguredLineHeightBeforeSecondEdit() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
@@ -31,9 +42,9 @@ class SlockComposerFirstCharacterBaselineTest {
                         .put("visualFixture", "empty")
                         .toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             // Recover emulator-owned focus before waitForIdleSync/editor checks. A launcher
             // ANR can leave this activity rendered but unable to receive window focus.
             // Keep the host readiness and first-character assertions below unchanged.
@@ -46,117 +57,45 @@ class SlockComposerFirstCharacterBaselineTest {
             println(recoveryReceipt)
             assertTrue("fixture did not acquire the active window; $recoveryReceipt", recovery.acquired)
 
-            waitUntil("composer EditText should attach and finish its empty layout") {
-                var ready = false
-                scenario.onActivity { activity ->
-                    val editText = activity.window.decorView.findComposerEditText()
-                    ready = editText != null && editText.layout?.text?.isEmpty() == true
-                }
-                ready
+            composeRule.waitUntil(timeoutMillis = 12_000L) {
+                composerEditorCount() == 1
             }
-
+            // Window focus only: semantics queries must not run on the main thread (onActivity).
             scenario.awaitVisualInputHostReadyForEditorFocus(
                 "first-character fixture composer"
-            ) { activity -> activity.window.decorView.findComposerEditText() != null }
-            scenario.onActivity { activity ->
-                val editText = activity.window.decorView.findComposerEditText()
-                assertNotNull("composer EditText should be present", editText)
-                editText!!
-                val emptySpan = editText.requireLineHeightSpan()
-                assertEquals(0, editText.text.getSpanStart(emptySpan))
-                assertEquals(0, editText.text.getSpanEnd(emptySpan))
-                assertEquals(
-                    Spanned.SPAN_INCLUSIVE_INCLUSIVE,
-                    editText.text.getSpanFlags(emptySpan) and Spanned.SPAN_POINT_MARK_MASK
-                )
-                assertTrue("composer EditText should accept focus", editText.requestFocus())
-                editText.commitImeText("a")
-            }
+            ) { _ -> true }
 
-            waitUntil("first character should reach the laid-out editor") {
-                var ready = false
-                scenario.onActivity { activity ->
-                    val editText = activity.window.decorView.findComposerEditText()
-                    ready = editText?.text?.toString() == "a" && editText.layout?.text?.toString() == "a"
-                }
-                ready
-            }
+            val editor = composeRule.onNode(hasSetTextAction(), useUnmergedTree = true)
+            assertEquals("", editor.editableText())
+            editor.performTextInput("a")
+            composeRule.waitUntil(timeoutMillis = 12_000L) { editor.editableText() == "a" }
+            val first = editor.textLayout()
+            assertEquals("a", first.layoutInput.text.text)
+            val firstBaseline = first.getLineBaseline(0)
+            val firstLineHeight = first.getLineBottom(0) - first.getLineTop(0)
+            assertTrue("configured line height should produce a visible line", firstLineHeight > 0f)
 
-            var firstBaseline = Int.MIN_VALUE
-            var firstLineHeight = Int.MIN_VALUE
-            scenario.onActivity { activity ->
-                val editText = activity.window.decorView.findComposerEditText()!!
-                assertEquals("a", editText.text.toString())
-                val firstSpan = editText.requireLineHeightSpan()
-                assertEquals(0, editText.text.getSpanStart(firstSpan))
-                assertEquals(1, editText.text.getSpanEnd(firstSpan))
-                firstBaseline = editText.layout.getLineBaseline(0)
-                firstLineHeight = editText.layout.getLineBottom(0) - editText.layout.getLineTop(0)
-                assertTrue("configured line height should produce a visible line", firstLineHeight > 0)
-                editText.commitImeText("f")
-            }
-
-            waitUntil("second character should reach the laid-out editor") {
-                var ready = false
-                scenario.onActivity { activity ->
-                    val editText = activity.window.decorView.findComposerEditText()
-                    ready = editText?.text?.toString() == "af" && editText.layout?.text?.toString() == "af"
-                }
-                ready
-            }
-
-            scenario.onActivity { activity ->
-                val editText = activity.window.decorView.findComposerEditText()!!
-                assertEquals("af", editText.text.toString())
-                val secondSpan = editText.requireLineHeightSpan()
-                assertEquals(0, editText.text.getSpanStart(secondSpan))
-                assertEquals(2, editText.text.getSpanEnd(secondSpan))
-                assertEquals(firstBaseline, editText.layout.getLineBaseline(0))
-                assertEquals(
-                    firstLineHeight,
-                    editText.layout.getLineBottom(0) - editText.layout.getLineTop(0)
-                )
-            }
+            editor.performTextInput("f")
+            composeRule.waitUntil(timeoutMillis = 12_000L) { editor.editableText() == "af" }
+            val second = editor.textLayout()
+            assertEquals("af", second.layoutInput.text.text)
+            assertEquals(firstBaseline, second.getLineBaseline(0), 0.01f)
+            assertEquals(firstLineHeight, second.getLineBottom(0) - second.getLineTop(0), 0.01f)
         }
     }
+
+    private fun composerEditorCount(): Int =
+        composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true)
+            .fetchSemanticsNodes(atLeastOneRootRequired = false)
+            .size
 }
 
-private fun EditText.commitImeText(value: String) {
-    val inputConnection = onCreateInputConnection(EditorInfo())
-    assertNotNull("composer should expose an InputConnection", inputConnection)
-    assertTrue("IME commit should succeed for '$value'", inputConnection!!.commitText(value, 1))
-}
+private fun SemanticsNodeInteraction.editableText(): String? =
+    fetchSemanticsNode().config.getOrNull(SemanticsProperties.EditableText)?.text
 
-private fun waitUntil(
-    message: String,
-    timeoutMs: Long = 12_000L,
-    stepMs: Long = 100L,
-    condition: () -> Boolean
-) {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val deadline = System.currentTimeMillis() + timeoutMs
-    while (System.currentTimeMillis() < deadline) {
-        instrumentation.waitForIdleSync()
-        if (condition()) {
-            return
-        }
-        Thread.sleep(stepMs)
-    }
-    throw AssertionError(message)
-}
-
-private fun EditText.requireLineHeightSpan(): HRLineHeightSpan {
-    val spans = text.getSpans(0, text.length, HRLineHeightSpan::class.java)
-    assertEquals("composer should have exactly one line-height span", 1, spans.size)
-    return spans.single()
-}
-
-private fun View.findComposerEditText(): EditText? {
-    if (this is EditText) return this
-    if (this is ViewGroup) {
-        for (index in 0 until childCount) {
-            getChildAt(index).findComposerEditText()?.let { return it }
-        }
-    }
-    return null
+private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
+    val results = mutableListOf<TextLayoutResult>()
+    val action = fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action
+    assertTrue("composer must expose its text layout", action?.invoke(results) == true)
+    return results.single()
 }

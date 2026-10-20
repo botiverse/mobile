@@ -1,9 +1,9 @@
 package build.raft.app
 
 import build.raft.app.model.TaskStatus
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 internal data class SharedTaskStatusChipMeta(
     val status: TaskStatus,

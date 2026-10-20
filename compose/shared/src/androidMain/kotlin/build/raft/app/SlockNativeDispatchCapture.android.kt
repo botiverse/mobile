@@ -1,7 +1,6 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.input.pointer.nativeDispatchCapture
+import androidx.compose.ui.Modifier
 
-internal actual fun Modifier.slockNativeDispatchCapture(): Modifier =
-    nativeDispatchCapture()
+/** Kuikly's Android native dispatch capture has no CMP counterpart (one touch system). */
+internal actual fun Modifier.slockNativeDispatchCapture(): Modifier = this

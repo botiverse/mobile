@@ -29,12 +29,12 @@ class SlockRealThreadMarkdownConnectedTest {
         val launchSpec = args.realThreadLaunchSpec()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, SlockCmpActivity::class.java)
                 .putExtra("pageName", launchSpec.pageName)
                 .putExtra("pageData", launchSpec.pageData.toString())
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
             val result =
                 waitForMentionChipText(
                     scenario = scenario,
@@ -57,7 +57,7 @@ class SlockRealThreadMarkdownConnectedTest {
         getString(ArgPageData)?.takeIf { it.isNotBlank() }?.let { pageData ->
             return RealThreadLaunchSpec(
                 pageName = getString(ArgPageName)?.takeIf { name -> name.isNotBlank() }
-                    ?: SlockKuiklyActivity.PAGE_APP_SHELL,
+                    ?: SlockCmpActivity.PAGE_APP_SHELL,
                 pageData = JSONObject(pageData)
             )
         }
@@ -67,19 +67,19 @@ class SlockRealThreadMarkdownConnectedTest {
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::JSONObject)
         val pageData =
-            notificationPayload?.let(SlockKuiklyActivity::buildUnreadNotificationAppShellPageData)
+            notificationPayload?.let { payload -> SlockCmpActivity.buildUnreadNotificationAppShellPageData(payload) }
         assumeTrue(
             "Missing slockRealThreadPageData or valid slockRealThreadNotificationPayload",
             pageData != null
         )
         return RealThreadLaunchSpec(
-            pageName = SlockKuiklyActivity.PAGE_APP_SHELL,
+            pageName = SlockCmpActivity.PAGE_APP_SHELL,
             pageData = pageData!!
         )
     }
 
     private fun waitForMentionChipText(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<SlockCmpActivity>,
         instrumentation: Instrumentation,
         timeoutMs: Long
     ): MentionChipTextScanResult {
@@ -101,7 +101,7 @@ class SlockRealThreadMarkdownConnectedTest {
         return best
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView

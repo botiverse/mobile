@@ -38,12 +38,12 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
                     .put("slockShellInstanceId", "canonical-final-app-$nonce")
                     .put("slockShellServerId", ServerA)
             val intent =
-                Intent(context, SlockKuiklyActivity::class.java)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
-                    .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                Intent(context, SlockCmpActivity::class.java)
+                    .putExtra(SlockCmpActivity.KEY_PAGE_NAME, PageName)
+                    .putExtra(SlockCmpActivity.KEY_PAGE_DATA, pageData.toString())
+                    .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-            ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
+            ActivityScenario.launch<SlockCmpActivity>(intent).use {
                 val evidence = waitForTerminalEvidence(nonce)
                 verifyEvidence(evidence, nonce)
                 assertTrue(

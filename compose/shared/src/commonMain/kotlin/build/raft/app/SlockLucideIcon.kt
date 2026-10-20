@@ -1,120 +1,40 @@
 package build.raft.app
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.animation.core.animateFloat
-import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
-import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
-import com.tencent.kuikly.compose.animation.core.tween
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
-import com.tencent.kuikly.core.base.Attr
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.event.Event
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.layout.ContentScale
+import build.raft.app.compat.ui.raftColorFromArgbHex
 import kotlin.math.roundToInt
 
+/*
+ * Lucide icons rendered with Compose ImageVectors built from the generated path table
+ * (RaftLucideIconPaths.kt, see scripts/generate_lucide_icons.py) via RaftLucideImageVectors.
+ *
+ * Semantics carried over from the old native Kuikly renderers:
+ * - the icon is fitted (aspect preserved, centred) into the modifier's bounds; the stroke width is
+ *   in 24x24 viewBox units so it scales with the icon size;
+ * - `strokeWidth` (> 0) overrides the stroke width of every stroked path (the Android renderer only
+ *   honoured it for `check`, the only icon callers pass a non-default width for);
+ * - a non-blank `fill` switches to the filled variant when one exists (bookmark) and tints the whole
+ *   icon with the fill colour;
+ * - unknown names draw nothing but keep the layout slot.
+ */
+
 private const val SlockIconSpinDurationSeconds = 0.9f
-
-internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Event>() {
-    private var appliedName: String? = null
-    private var appliedColor: String? = null
-    private var appliedFill: String? = null
-    private var appliedStrokeWidth: Float? = null
-    private var appliedVerticalOffsetDp: Float? = null
-    private var appliedNativeSpinning: Boolean? = null
-    private var appliedNativeRotationDegrees: Float? = null
-
-    override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
-
-    override fun createEvent(): Event = Event()
-
-    override fun viewName(): String = VIEW_NAME
-
-    fun applyIconAttrs(
-        name: String,
-        color: String,
-        fill: String,
-        strokeWidth: Float,
-        verticalOffsetDp: Float,
-        nativeSpinning: Boolean,
-        nativeRotationDegrees: Float?,
-        force: Boolean = false
-    ) {
-        if (
-            !force &&
-                appliedName == name &&
-                appliedColor == color &&
-                appliedFill == fill &&
-                appliedStrokeWidth == strokeWidth &&
-                appliedVerticalOffsetDp == verticalOffsetDp &&
-                appliedNativeSpinning == nativeSpinning &&
-                appliedNativeRotationDegrees == nativeRotationDegrees
-        ) {
-            return
-        }
-        appliedName = name
-        appliedColor = color
-        appliedFill = fill
-        appliedStrokeWidth = strokeWidth
-        appliedVerticalOffsetDp = verticalOffsetDp
-        appliedNativeSpinning = nativeSpinning
-        appliedNativeRotationDegrees = nativeRotationDegrees
-        getViewAttr().run {
-            name(name)
-            color(color)
-            fill(fill)
-            strokeWidth(strokeWidth)
-            verticalOffsetDp(verticalOffsetDp)
-            spinning(nativeSpinning)
-            nativeRotationDegrees?.let { rotationDegrees(it) }
-        }
-    }
-
-    companion object {
-        const val VIEW_NAME = "SlockLucideIconView"
-    }
-}
-
-internal class SlockLucideIconAttr : Attr() {
-    fun name(value: String): SlockLucideIconAttr {
-        "name" with value
-        return this
-    }
-
-    fun color(value: String): SlockLucideIconAttr {
-        "color" with value
-        return this
-    }
-
-    fun fill(value: String): SlockLucideIconAttr {
-        "fill" with value
-        return this
-    }
-
-    fun strokeWidth(value: Float): SlockLucideIconAttr {
-        "strokeWidth" with value
-        return this
-    }
-
-    fun verticalOffsetDp(value: Float): SlockLucideIconAttr {
-        "verticalOffsetDp" with value
-        return this
-    }
-
-    fun rotationDegrees(value: Float): SlockLucideIconAttr {
-        "rotationDegrees" with value
-        return this
-    }
-
-    fun spinning(value: Boolean): SlockLucideIconAttr {
-        "spinning" with value
-        return this
-    }
-}
 
 @Composable
 @NonRestartableComposable
@@ -180,24 +100,24 @@ internal fun SlockLucideIconByName(
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
 ) {
-    val resolvedFill = fill ?: ""
-    val resolvedStrokeWidth = strokeWidth ?: 0f
-    val usesNativeRotation = slockPlatformUsesNativeLucideIconRotation()
-    val nativeSpinning = usesNativeRotation && spinning
     val appliedRotationDegrees =
-        if (!usesNativeRotation && spinning) {
+        if (spinning) {
             val transition = rememberInfiniteTransition(label = "slock-icon-spin")
             val rotation by transition.animateFloat(
                 initialValue = 0f,
                 targetValue = 360f,
                 animationSpec =
                     infiniteRepeatable(
-                        animation = tween(durationMillis = (SlockIconSpinDurationSeconds * 1000f).roundToInt())
+                        animation =
+                            tween(
+                                durationMillis = (SlockIconSpinDurationSeconds * 1000f).roundToInt(),
+                                easing = LinearEasing
+                            )
                     ),
                 label = "slock-icon-spin-rotation"
             )
             rotation
-        } else if (!spinning && rotationAnimationDurationSeconds > 0f) {
+        } else if (rotationAnimationDurationSeconds > 0f) {
             val rotation by animateFloatAsState(
                 targetValue = rotationDegrees,
                 animationSpec = tween(durationMillis = (rotationAnimationDurationSeconds * 1000f).roundToInt()),
@@ -207,42 +127,37 @@ internal fun SlockLucideIconByName(
         } else {
             rotationDegrees
         }
-    val nativeRotationDegrees = if (usesNativeRotation) appliedRotationDegrees else null
-    val iconModifier =
-        if (!usesNativeRotation && (spinning || appliedRotationDegrees != 0f)) {
-            modifier.graphicsLayer(rotationZ = appliedRotationDegrees)
-        } else {
-            modifier
+    val iconName = remember(name) { SlockLucideIconName.fromWireName(RaftLucideImageVectors.normalizeName(name)) }
+    val fillColor = fill?.takeIf { it.isNotBlank() }?.let(::raftColorFromArgbHex)
+    val tint = fillColor ?: raftColorFromArgbHex(color)
+    val layerModifier =
+        modifier.graphicsLayer {
+            rotationZ = appliedRotationDegrees
+            translationY = verticalOffsetDp * density
         }
-    val updateIconAttrs =
-        remember(name, color, resolvedFill, resolvedStrokeWidth, verticalOffsetDp, nativeSpinning, nativeRotationDegrees) {
-            { view: SlockLucideIconView ->
-                view.applyIconAttrs(
-                    name = name,
-                    color = color,
-                    fill = resolvedFill,
-                    strokeWidth = resolvedStrokeWidth,
-                    verticalOffsetDp = verticalOffsetDp,
-                    nativeSpinning = nativeSpinning,
-                    nativeRotationDegrees = nativeRotationDegrees
-                )
+    if (iconName == null) {
+        Spacer(layerModifier)
+        return
+    }
+    val filled = fillColor != null
+    val strokeOverride = strokeWidth?.takeIf { it > 0f }
+    val tintable =
+        remember(iconName, filled) { RaftLucideImageVectors.isTintable(RaftLucideImageVectors.spec(iconName, filled)) }
+    val vector =
+        if (tintable) {
+            remember(iconName, filled, strokeOverride) {
+                RaftLucideImageVectors.vector(iconName, filled, strokeOverride)
+            }
+        } else {
+            remember(iconName, filled, strokeOverride, tint) {
+                RaftLucideImageVectors.vector(iconName, filled, strokeOverride, currentColor = tint)
             }
         }
-    MakeKuiklyComposeNode<SlockLucideIconView>(
-        factory = { SlockLucideIconView() },
-        modifier = iconModifier,
-        viewInit = {
-            applyIconAttrs(
-                name = name,
-                color = color,
-                fill = resolvedFill,
-                strokeWidth = resolvedStrokeWidth,
-                verticalOffsetDp = verticalOffsetDp,
-                nativeSpinning = nativeSpinning,
-                nativeRotationDegrees = nativeRotationDegrees,
-                force = true
-            )
-        },
-        viewUpdate = updateIconAttrs
+    Image(
+        painter = rememberVectorPainter(vector),
+        contentDescription = null,
+        modifier = layerModifier,
+        contentScale = ContentScale.Fit,
+        colorFilter = if (tintable) remember(tint) { ColorFilter.tint(tint) } else null
     )
 }

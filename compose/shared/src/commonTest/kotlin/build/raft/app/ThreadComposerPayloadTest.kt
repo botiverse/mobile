@@ -1,8 +1,8 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.core.views.TextInputState
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.ui.TextInputState
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -330,6 +330,47 @@ class ThreadComposerPayloadTest {
         result = null
         reader.readCurrentValue { result = it }
         assertSame(SlockTextFieldNativeEditingStateReadResult.Unavailable, result)
+    }
+
+    @Test
+    fun sendSnapshotCommitsOpenImeCompositionWithoutDroppingCharacters() {
+        // Mid-dictation / mid-CJK composition: the composing characters are part of the text the
+        // user sees. The action-boundary read must hand Send that text with the composition
+        // finished (Kuikly's finishComposingText barrier), never an open composing region.
+        val reader = SlockTextFieldNativeEditingStateReader()
+        val bindingOwner = Any()
+        val live =
+            TextFieldValue(
+                text = "hello nihao",
+                selection = TextRange(11),
+                composition = TextRange(6, 11),
+            )
+        reader.bind(bindingOwner) { callback ->
+            callback(
+                SlockTextFieldNativeEditorRead(
+                    state = live.toSlockTextInputState().raftWithFinishedComposition(),
+                    editorNativeRef = -1,
+                )
+            )
+        }
+        var result: SlockTextFieldNativeEditingStateReadResult? = null
+
+        reader.readCurrentValue { result = it }
+
+        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        assertEquals("hello nihao", available.value.text)
+        assertEquals(TextRange(11), available.value.selection)
+        assertEquals(null, available.value.composition)
+        // Text and selection unchanged, composition cleared: the write-back is a
+        // composition-only change, which is what makes Compose restart input and end the IME's
+        // composition.
+        assertEquals(live.copy(composition = null), available.value)
+    }
+
+    @Test
+    fun finishedCompositionLeavesCommittedStateUntouched() {
+        val committed = TextInputState(text = "done", selectionStart = 4, selectionEnd = 4)
+        assertEquals(committed, committed.raftWithFinishedComposition())
     }
 
     @Test

@@ -8,7 +8,7 @@ import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.runCatchingPreservingCancellation
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
