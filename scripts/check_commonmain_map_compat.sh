@@ -62,7 +62,12 @@ check_merge_import() {
     return 0
   fi
 
-  echo "::error file=${file}::commonMain calls .merge(...) without import build.raft.app.base.merge. For an intentional non-Map merge, add // common-map-compat: allow-nonmap-merge on the call or preceding line." >&2
+  echo "::error file=${file}::commonMain calls .merge(...) without import build.raft.app.base.merge." >&2
+  echo "::error::To decide which one applies, check the receiver and the arity:" >&2
+  echo "::error::  - receiver is a MutableMap and the call passes (key, value, remappingFunction)" >&2
+  echo "::error::    -> it is the Map default method: add 'import build.raft.app.base.merge'." >&2
+  echo "::error::  - otherwise -> intentional non-Map merge: add '// common-map-compat: allow-nonmap-merge'" >&2
+  echo "::error::    on the call line, or on the line IMMEDIATELY above it (further-above does not count)." >&2
   return 1
 }
 
