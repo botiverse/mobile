@@ -1509,8 +1509,8 @@
     <string name="translation_state_show_original">显示原文</string>
     <string name="translation_state_show_translation">显示翻译</string>
     <string name="translation_state_prefer_original">优先原文</string>
-    <string name="thread_show_more">展开</string>
-    <string name="thread_show_less">收起</string>
+    <string name="thread_long_message_show_more">展开全文</string>
+    <string name="thread_long_message_show_less">收起</string>
     <string name="pagination_prev">上一页</string>
     <string name="pagination_next">下一页</string>
     <string name="announcement_action_got_it">知道了</string>
@@ -1750,9 +1750,14 @@
     <string name="settings_mobile_compact_enabled">隐藏重复头像</string>
     <string name="settings_mobile_compact_disabled">显示每条消息的头像</string>
     <string name="settings_mobile_long_message_collapse">折叠长消息</string>
-    <string name="settings_mobile_long_message_collapse_detail">将长消息折叠为 8 行预览，需要时可展开查看完整内容。</string>
-    <string name="settings_mobile_long_message_collapse_enabled">预览前 8 行</string>
+    <string name="settings_mobile_long_message_collapse_detail">超过屏幕大部分高度的消息会被折叠，点「展开全文」查看完整内容。各频道和私信可在各自的设置中单独开关。</string>
+    <string name="settings_mobile_long_message_collapse_enabled">长消息折叠显示</string>
     <string name="settings_mobile_long_message_collapse_disabled">显示完整消息</string>
+    <string name="conversation_long_message_collapse">折叠长消息</string>
+    <string name="conversation_long_message_collapse_follows_global_on">跟随移动端设置：开</string>
+    <string name="conversation_long_message_collapse_follows_global_off">跟随移动端设置：关</string>
+    <string name="conversation_long_message_collapse_override_on">仅此会话开启（移动端设置为关）</string>
+    <string name="conversation_long_message_collapse_override_off">仅此会话关闭（移动端设置为开）</string>
     <string name="settings_mobile_single_tap_thread">单击打开消息列</string>
     <string name="settings_mobile_single_tap_thread_detail">单击消息正文即可打开消息列。关闭后仍可通过回复入口或消息菜单打开。</string>
     <string name="settings_mobile_single_tap_thread_enabled">单击消息正文打开消息列</string>

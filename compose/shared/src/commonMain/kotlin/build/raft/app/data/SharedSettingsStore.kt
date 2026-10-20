@@ -4254,7 +4254,7 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnap
         enabled = longMessageCollapseEnabled,
         available = true,
         statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
-        detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+        detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSnapshot(): SettingsMobileToggleSnapshot =

@@ -18,6 +18,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.markdown.normalizeThreadMarkdownBody
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -46,18 +47,56 @@ internal fun JSONObject.toThreadForwardBundleRouteOrNull(): ThreadForwardBundleR
 
 internal fun ForwardMessageBundle.inlinePreviewMessages(): List<ForwardMessageItemPreview> =
     messages.take(ThreadForwardBundleInlinePreviewLimit).map { item ->
-        val plan =
-            threadLongMessageRenderPlan(
+        val truncatedBody =
+            raftForwardPreviewTruncatedText(
                 body = item.body,
                 lineLimit = ThreadForwardBundlePreviewLineLimit,
                 charLimit = ThreadForwardBundlePreviewCharLimit
             )
         ForwardMessageItemPreview(
             item = item,
-            body = if (plan.collapsible) plan.collapsedDisplayText else item.body,
-            truncated = plan.collapsible
+            body = truncatedBody ?: item.body,
+            truncated = truncatedBody != null
         )
     }
+
+/**
+ * Plain-text preview of a forwarded item for the inline bundle card: the first [lineLimit] lines
+ * (or [charLimit] characters, preferring a whitespace boundary) followed by an ellipsis, or null
+ * when the body fits. Never splits a surrogate pair.
+ */
+internal fun raftForwardPreviewTruncatedText(body: String, lineLimit: Int, charLimit: Int): String? {
+    val text = body.normalizeThreadMarkdownBody().trimEnd()
+    if (text.isEmpty()) return null
+    val safeLineLimit = lineLimit.coerceAtLeast(1)
+    val safeCharLimit = charLimit.coerceAtLeast(1)
+    var lineCount = 1
+    var lineCutIndex = text.length
+    for (index in 0 until minOf(text.length, safeCharLimit)) {
+        if (text[index] == '\n') {
+            lineCount += 1
+            if (lineCount == safeLineLimit + 1) {
+                lineCutIndex = index
+                break
+            }
+        }
+    }
+    if (lineCutIndex == text.length && text.length <= safeCharLimit) return null
+    var cutIndex = minOf(lineCutIndex, safeCharLimit, text.length)
+    if (cutIndex == safeCharLimit && safeCharLimit < lineCutIndex) {
+        val preferredBoundaryStart = maxOf((cutIndex * 3) / 4, cutIndex - 160)
+        for (index in cutIndex downTo (preferredBoundaryStart + 1)) {
+            if (text[index - 1].isWhitespace()) {
+                cutIndex = index - 1
+                break
+            }
+        }
+    }
+    if (cutIndex > 0 && cutIndex < text.length && text[cutIndex - 1].isHighSurrogate() && text[cutIndex].isLowSurrogate()) {
+        cutIndex -= 1
+    }
+    return text.substring(0, cutIndex).trimEnd() + "…"
+}
 
 internal data class ForwardMessageItemPreview(
     val item: ForwardMessageItem,

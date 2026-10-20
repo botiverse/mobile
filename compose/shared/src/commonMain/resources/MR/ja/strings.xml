@@ -781,8 +781,8 @@
     <string name="thread_open_task_number">タスク #%1$d を開く</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">このスレッドを検索…</string>
-    <string name="thread_show_more">もっと見る</string>
-    <string name="thread_show_less">折りたたむ</string>
+    <string name="thread_long_message_show_more">全文を表示</string>
+    <string name="thread_long_message_show_less">折りたたむ</string>
     <string name="composer_placeholder_message_design">デザインについてメッセージを送信</string>
     <string name="composer_state_no_matching_members">一致するメンバーがいません</string>
     <string name="composer_state_no_matching_channels">一致するチャンネルがありません</string>
@@ -1750,9 +1750,14 @@
     <string name="settings_mobile_compact_enabled">繰り返しのアバターを非表示</string>
     <string name="settings_mobile_compact_disabled">すべてのメッセージのアバターを表示</string>
     <string name="settings_mobile_long_message_collapse">長いメッセージを折りたたむ</string>
-    <string name="settings_mobile_long_message_collapse_detail">長いメッセージを 8 行のプレビューに折りたたみます。全文を読みたいときに、メッセージごとに展開できます。</string>
-    <string name="settings_mobile_long_message_collapse_enabled">最初の 8 行をプレビュー</string>
+    <string name="settings_mobile_long_message_collapse_detail">画面の大部分を超える長いメッセージを折りたたみ、「全文を表示」で全体を表示します。チャンネルや DM ごとに、それぞれの設定で個別に切り替えられます。</string>
+    <string name="settings_mobile_long_message_collapse_enabled">長いメッセージを折りたたんで表示</string>
     <string name="settings_mobile_long_message_collapse_disabled">メッセージ全文を表示</string>
+    <string name="conversation_long_message_collapse">長いメッセージを折りたたむ</string>
+    <string name="conversation_long_message_collapse_follows_global_on">モバイル設定に従う：オン</string>
+    <string name="conversation_long_message_collapse_follows_global_off">モバイル設定に従う：オフ</string>
+    <string name="conversation_long_message_collapse_override_on">この会話のみオン（モバイル設定はオフ）</string>
+    <string name="conversation_long_message_collapse_override_off">この会話のみオフ（モバイル設定はオン）</string>
     <string name="settings_mobile_single_tap_thread">シングルタップでスレッドを開く</string>
     <string name="settings_mobile_single_tap_thread_detail">メッセージ本文を 1 回タップしてスレッドを開きます。オフの場合も、返信とメッセージメニューは引き続き利用できます。</string>
     <string name="settings_mobile_single_tap_thread_enabled">メッセージ本文をタップしてスレッドを開く</string>

@@ -129,7 +129,7 @@ class LocalPreferencesTest {
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
         assertEquals(true, snapshot.desktopModeOnLargeScreen)
         assertEquals(true, snapshot.compactConsecutiveMessages)
-        assertEquals(false, snapshot.longMessageCollapseEnabled)
+        assertEquals(true, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.threadUnreadJumpEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
