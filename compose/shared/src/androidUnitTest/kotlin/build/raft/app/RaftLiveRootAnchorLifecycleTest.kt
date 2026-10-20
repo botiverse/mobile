@@ -491,7 +491,7 @@ class RaftLiveRootAnchorLifecycleTest {
         private val endApplyChangesListeners = mutableListOf<Function0<*>>()
         private val layoutNodeClass = Class.forName("androidx.compose.ui.node.LayoutNode")
         private val ownerClass = Class.forName("androidx.compose.ui.node.Owner")
-        // Compose UI 1.12 attaches every LayoutNode to `Owner.rectManager` (non-null); build the
+        // Compose UI 1.11+ attaches every LayoutNode to `Owner.rectManager` (non-null); build the
         // real one through its all-defaults synthetic constructor (mask 0b11 = both parameters).
         private val rectManager: Any by lazy {
             val rectManagerClass = Class.forName("androidx.compose.ui.spatial.RectManager")

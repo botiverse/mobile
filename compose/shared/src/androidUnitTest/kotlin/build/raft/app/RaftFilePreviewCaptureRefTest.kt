@@ -1,12 +1,18 @@
 package build.raft.app
 
 import kotlin.test.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 // CMP switch: moved from commonTest. The capture handle is now RaftViewCaptureRef (a GraphicsLayer
 // handle with an internal constructor, not constructible off-device), so the slot's identity
 // contract is exercised with opaque instances allocated without running the constructor.
+// Robolectric: loading RaftViewCaptureRef initialises Compose's GraphicsLayer (its `$stable`
+// stability field), whose static init reads android.os.Build since Compose UI 1.11; the plain
+// android.jar stubs leave Build.FINGERPRINT null.
+@RunWith(RobolectricTestRunner::class)
 class RaftFilePreviewCaptureRefTest {
     @Test
     fun captureSlotBindsOnlyTheCurrentEditorOwner() {
