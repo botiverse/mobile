@@ -99,6 +99,13 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
 - `RaftTheme { }` provides `LocalRaftColors`, `LocalRaftTypography`, `LocalRaftShapes`,
   `LocalRaftIsDark` and `LocalRaftContentColor` (CSS `currentColor`, `--foreground` at the
   root). Read them through `RaftTheme.colors` / `.typography` / `.shapes` / `.isDark`.
+- **Strings.** The module has no string resources. The few words the components write
+  themselves (the "(optional)" label marker, the dialog's "Close", a text field's "Clear",
+  a busy button's and spinner's "Loading") come from `LocalRaftStrings` (`RaftStrings`,
+  read as `RaftTheme.strings`), English by default. The app provides its translations once
+  round its design-system screens (`LocalRaftStrings provides RaftStrings(optional =
+  stringResource(MR.strings.common_optional_suffix), …)`); `closeLabel` / `loadingLabel`
+  parameters default to it and still take a per-call value.
 - `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `brand-soft`
   (raft-web `::selection`), the handles `foreground`.
 - `LocalRaftSurfaceColor` (`RaftTheme.surfaceColor`) is the opaque surface under the
@@ -172,7 +179,7 @@ Other checks:
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
 | `RaftTextField` | Input, InputGroup | Done | Placeholder, value, focus ring on any focus (tap included), invalid, disabled, read-only (`fill-muted`, hairline, muted text); icon and text addons (`/` prefix, suffix) ring the whole group |
 | `RaftTextarea`, `RaftTextareaCounter` | Textarea | Done | Grows to `maxHeight`; counter turns bold red past the limit or when invalid |
-| `RaftField`, `RaftFieldLabel`, `RaftFieldItem`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FieldItem, FormSection | Done | Label (required `*`, "(optional)", sm / md, at its style's full line height); `labelTrailing`: a switch or text link at the end of the label row (centred, 8dp, own name; the label takes one line); `RaftFieldItem` (sm / md, matching its label) puts a checkbox, radio or switch 8dp before its label, centred on the label's first line; the label names the control and a tap on it works the control; help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
+| `RaftField`, `RaftFieldLabel`, `RaftFieldItem`, `RaftFieldDescription`, `RaftFieldError`, `RaftFormSection` | Field, Label, FieldItem, FormSection | Done | Label (required `*`, "(optional)" from `LocalRaftStrings`, sm / md, at its style's full line height); `labelTrailing`: a switch or text link at the end of the label row (centred, 8dp, own name; the label takes one line); `RaftFieldItem` (sm / md, matching its label) puts a checkbox, radio or switch 8dp before its label, centred on the label's first line; the label names the control and a tap on it works the control; help or error line; through `LocalRaftFieldState` the control is invalid, named by the label and carries the error in semantics; the error line is a polite live region |
 | `RaftCheckbox`, `RaftCheckboxRow`, `RaftCheckboxIndicator` | Checkbox, CheckboxIndicator, FieldItem | Done | Unchecked, checked (ink block), indeterminate, focused, disabled; the row toggles as a whole, the box on the label's first line even when it wraps. `RaftCheckboxIndicator` is the box alone (no role or focus) for a row that owns the semantics, square or `Circle` (an ink disc with the check, not a radio dot) |
 | `RaftRadio`, `RaftRadioGroup`, `RaftRadioRow` | RadioGroup | Done | Ring with an ink dot; rows with descriptions (reset-agent list) |
 | `RaftSwitch` | Switch | Done | Off, on (brand sticker, die-cut in dark), focused, disabled; the knob slides; `label` names it (pass the row's title) |

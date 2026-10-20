@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
@@ -318,7 +319,7 @@ fun RaftButton(
     size: RaftButtonSize = RaftButtonSize.Md,
     enabled: Boolean = true,
     loading: Boolean = false,
-    loadingLabel: String = "Loading",
+    loadingLabel: String = LocalRaftStrings.current.loading,
     leadingIcon: (@Composable () -> Unit)? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
@@ -401,7 +402,7 @@ fun RaftIconButton(
     size: RaftIconButtonSize = RaftIconButtonSize.Md,
     enabled: Boolean = true,
     loading: Boolean = false,
-    loadingLabel: String = "Loading",
+    loadingLabel: String = LocalRaftStrings.current.loading,
     interactionSource: MutableInteractionSource? = null,
     contentDescription: String? = tooltip,
     onLongClick: (() -> Unit)? = null,

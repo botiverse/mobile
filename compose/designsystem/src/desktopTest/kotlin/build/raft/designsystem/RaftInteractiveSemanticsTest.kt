@@ -51,6 +51,12 @@ import kotlin.math.abs
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftDialogSurface
+import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.theme.LocalRaftStrings
+import build.raft.designsystem.theme.RaftStrings
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftCheckbox
@@ -154,6 +160,28 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
                 .performClick()
             assertTrue(on, "the trailing switch works")
+        }
+
+    /** The app's words reach the optional marker, the dialog's × and a busy button. */
+    @Test
+    fun providedStringsReplaceTheEnglishDefaults() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    CompositionLocalProvider(
+                        LocalRaftStrings provides RaftStrings(optional = "(facultatif)", close = "Fermer", loading = "Chargement"),
+                    ) {
+                        Column {
+                            RaftFieldLabel("Description", optional = true)
+                            RaftDialogSurface(title = "Renommer", onClose = {})
+                            RaftButton("Créer", {}, loading = true)
+                        }
+                    }
+                },
+            )
+            onNodeWithText("Description (facultatif)").assertIsDisplayed()
+            onNodeWithContentDescription("Fermer").assertIsDisplayed()
+            onNodeWithContentDescription("Chargement").assertExists()
         }
 
     @Test

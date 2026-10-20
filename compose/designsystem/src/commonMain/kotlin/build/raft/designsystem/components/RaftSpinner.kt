@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import kotlinx.coroutines.delay
@@ -79,7 +80,7 @@ fun RaftSpinner(
     size: RaftSpinnerSize = RaftSpinnerSize.Sm,
     variant: RaftSpinnerVariant = RaftSpinnerVariant.Default,
     color: Color = Color.Unspecified,
-    contentDescription: String = "Loading",
+    contentDescription: String = LocalRaftStrings.current.loading,
     stillStep: Int? = null,
 ) {
     val ink =

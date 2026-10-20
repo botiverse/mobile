@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftStrings
+import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 
 /** raft-ui `FieldLabel` `size`. */
@@ -140,7 +142,8 @@ fun RaftField(
 
 /**
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The
- * required asterisk and the "(optional)" suffix follow the text after a space (`ml-1`).
+ * required asterisk and the "(optional)" suffix ([RaftStrings.optional], from
+ * [LocalRaftStrings]) follow the text after a space (`ml-1`).
  * It takes the full line height of its style (raft-ui 0.8.0 dropped `leading-none`), so
  * a control beside it can centre on that line ([RaftFieldItem]). [maxLines] cuts a long
  * label with an ellipsis (a label beside a [RaftField] `labelTrailing` slot takes one line).
@@ -156,6 +159,7 @@ fun RaftFieldLabel(
     maxLines: Int = Int.MAX_VALUE,
 ) {
     val colors = RaftTheme.colors
+    val optionalText = LocalRaftStrings.current.optional
     val ink = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     val markInk = if (enabled) colors.foregroundHint else colors.foregroundDisabled
     val annotated =
@@ -164,7 +168,7 @@ fun RaftFieldLabel(
             if (required) {
                 withStyle(SpanStyle(color = markInk)) { append(" *") }
             } else if (optional) {
-                withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(" (optional)") }
+                withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(" " + optionalText) }
             }
         }
     RaftText(annotated, modifier, style = raftFieldLabelStyle(size), color = ink, maxLines = maxLines, overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis)

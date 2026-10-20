@@ -43,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -80,7 +81,7 @@ fun RaftDialogSurface(
     size: RaftDialogSize = RaftDialogSize.Md,
     description: String? = null,
     onClose: (() -> Unit)? = null,
-    closeLabel: String = "Close",
+    closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
@@ -162,7 +163,7 @@ fun RaftDialog(
     description: String? = null,
     dismissOnClickOutside: Boolean = true,
     showClose: Boolean = true,
-    closeLabel: String = "Close",
+    closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {

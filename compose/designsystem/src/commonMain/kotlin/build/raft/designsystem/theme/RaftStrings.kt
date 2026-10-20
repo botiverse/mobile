@@ -1,0 +1,38 @@
+package build.raft.designsystem.theme
+
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/**
+ * The few words the components write themselves. The module has no string resources: these
+ * are raft-ui's English defaults, and an app provides its translations once, round the
+ * screens that host the components (with its own resources, e.g. moko `MR.strings`):
+ *
+ * ```
+ * CompositionLocalProvider(
+ *     LocalRaftStrings provides RaftStrings(
+ *         optional = stringResource(MR.strings.common_optional_suffix),
+ *         close = stringResource(MR.strings.common_close),
+ *         clear = stringResource(MR.strings.common_clear),
+ *         loading = stringResource(MR.strings.common_loading),
+ *     ),
+ * ) { content() }
+ * ```
+ *
+ * A parameter that takes one of them on a component (`closeLabel`, `loadingLabel`, ...)
+ * defaults to it, so a call can still pass its own words.
+ */
+@Immutable
+data class RaftStrings(
+    /** The marker after an optional field's label (raft-ui `LabelOptional`), drawn after a space. */
+    val optional: String = "(optional)",
+    /** The dialog's and popover's × button (raft-ui `DialogClose` `aria-label`). */
+    val close: String = "Close",
+    /** A text field's clear action ([build.raft.designsystem.components.RaftTextFieldClearAction]). */
+    val clear: String = "Clear",
+    /** A busy button's and a spinner's name (raft-ui `loadingLabel`). */
+    val loading: String = "Loading",
+)
+
+/** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */
+val LocalRaftStrings = staticCompositionLocalOf { RaftStrings() }
