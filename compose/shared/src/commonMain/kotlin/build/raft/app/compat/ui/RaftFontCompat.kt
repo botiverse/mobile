@@ -10,7 +10,8 @@ import androidx.compose.ui.text.font.FontWeight
  * build FontFamily objects outside composition.
  *
  * Android: the TTFs are :shared Android resources (res/font/space_grotesk_bold.ttf, ...).
- * iOS: the app registers the same TTFs through UIAppFonts; Skia resolves them by name.
+ * iOS: the same TTFs ship in the app bundle (UIAppFonts); Compose loads the file's bytes
+ * (Skia cannot resolve a PostScript name as a SystemFont family).
  * Unknown names fall back to the platform's Space Grotesk Regular / system face.
  */
 expect fun KuiklyFont(name: String, weight: FontWeight = FontWeight.Normal, style: FontStyle = FontStyle.Normal): Font

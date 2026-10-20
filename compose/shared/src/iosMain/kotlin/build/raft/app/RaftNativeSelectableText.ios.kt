@@ -14,7 +14,7 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontListFontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.platform.SystemFont
+import androidx.compose.ui.text.platform.PlatformFont
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
@@ -107,13 +107,16 @@ private fun raftAttributedText(
     return NSAttributedString.create(string = text, attributes = attributes)
 }
 
-/** The app font registered via UIAppFonts (KuiklyFont -> SystemFont(name)), matched by weight. */
+/**
+ * The app font registered via UIAppFonts, matched by weight: KuiklyFont's identity is the face's
+ * PostScript name, which UIFont(name:) resolves (the Compose side loads the same TTF's bytes).
+ */
 @OptIn(ExperimentalTextApi::class)
 private fun TextStyle.raftIosFontName(): String? {
     val fonts = (fontFamily as? FontListFontFamily)?.fonts ?: return null
     val weight = fontWeight ?: FontWeight.Normal
     val match = fonts.firstOrNull { it.weight == weight } ?: fonts.firstOrNull()
-    return (match as? SystemFont)?.identity
+    return (match as? PlatformFont)?.identity
 }
 
 private fun TextUnit.ptOrNull(fontSizePt: Double? = null): Double? =
