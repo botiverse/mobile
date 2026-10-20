@@ -1,6 +1,8 @@
 package build.raft.app.image
 
+import coil3.ImageLoader
 import coil3.PlatformContext
+import coil3.request.allowHardware
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.Path
@@ -14,3 +16,7 @@ internal actual suspend fun raftReadBundledImageAsset(context: PlatformContext, 
 
 internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path? =
     context.cacheDir?.resolve("raft_image_cache")?.toOkioPath()
+
+/** Software bitmaps only: see the expect declaration (hardware bitmaps crash software canvases). */
+internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder =
+    allowHardware(false)
