@@ -174,7 +174,7 @@ class RaftDisplayLooksTest {
     @Test
     fun optionCardTakesTheFieldBorder() {
         val option = raftCardLook(RaftCardVariant.Option, light)
-        assertEquals(1.5.dp, option.border)
+        assertEquals(1.dp, option.border)
         assertEquals(light.lineField, option.borderColor)
         assertEquals(8.dp, option.radius)
         val card = raftCardLook(RaftCardVariant.Default, light)

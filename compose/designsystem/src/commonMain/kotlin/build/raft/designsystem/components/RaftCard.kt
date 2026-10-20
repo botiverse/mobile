@@ -52,7 +52,7 @@ enum class RaftCardVariant {
     Inset,
 
     /**
-     * A choice inside a form: control radius, the 1.5dp field border and a field-size
+     * A choice inside a form: control radius, the 1dp field border and a field-size
      * title. The pick is shown by its checkbox or radio, never by the card; with an
      * `onClick` the whole card is the target (see [RaftCard]).
      */
@@ -88,7 +88,7 @@ internal fun raftCardLook(variant: RaftCardVariant, colors: RaftUiThemeColors): 
         RaftCardVariant.Option ->
             RaftCardLook(
                 RaftRadius.Control,
-                RaftStroke.Control,
+                RaftStroke.Field,
                 colors.lineField,
                 PaddingValues(12.dp),
                 PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -107,7 +107,7 @@ private fun raftCardTitleStyle(variant: RaftCardVariant, typography: RaftTypogra
 /**
  * raft-ui 0.8.0 Card: one subject on a page. Flat on `layer-card` with no shadow:
  * [RaftCardVariant.Default] and `Inset` have a 1dp `line-hairline` edge and the container
- * radius, `Option` the 1.5dp `line-field` edge and the control radius. The card clips its
+ * radius, `Option` the 1dp `line-field` edge and the control radius. The card clips its
  * content (`overflow-hidden`), so don't put stickers on its edge.
  *
  * The header is [title] (sentence case) with an optional [description] line under it,

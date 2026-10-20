@@ -36,12 +36,15 @@ object RaftRadius {
 /**
  * raft-ui stroke widths (raft-design Shape): 1px for lines (`line-hairline`, `line-seam`;
  * they differ by colour), 1.5px for `line-strong`, the ink edge of controls and stickers.
+ * [Field] is the 1px `line-field` frame of text fields, selects, option cards and the
+ * composer (raft-ui 0.10.0 dropped it from 1.5px, on the phone too).
  * [Strong] is not a line width: it is the 2px edge of the presence light on a 99px avatar
  * and the 2px quote bar.
  */
 object RaftStroke {
     val Hairline = 1.dp
     val Control = 1.5.dp
+    val Field = 1.dp
     val Strong = 2.dp
 }
 

@@ -36,7 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.math.max
 import kotlin.math.min
@@ -71,19 +70,19 @@ internal object RaftTextLinkMetrics {
 internal data class RaftTextLinkLook(val ink: Color, val weight: FontWeight, val underline: Color?)
 
 /**
- * text-link.tsx: muted is `foreground-muted` 500 and turns `foreground` on hover; strong is
- * `foreground` 600 and its underline turns `attention` on hover. The underline is the text
- * colour (`currentColor`). Disabled: `foreground-disabled`, no underline. Touch has no
- * hover, so [active] (pressed) takes the hover look.
+ * text-link.tsx (raft-ui 0.9.4+): no underline at rest; on hover it underlines in its own
+ * colour (`currentColor`) and never turns pink. Muted is `foreground-muted` 500 and turns
+ * `foreground` on hover; strong is `foreground` 600. Disabled: `foreground-disabled`, no
+ * underline. Touch has no hover, so [active] (pressed) takes the hover look.
  */
 internal fun raftTextLinkLook(variant: RaftTextLinkVariant, enabled: Boolean, active: Boolean, colors: RaftUiThemeColors): RaftTextLinkLook =
     when {
         !enabled -> RaftTextLinkLook(colors.foregroundDisabled, variant.weight, underline = null)
         variant == RaftTextLinkVariant.Muted -> {
             val ink = if (active) colors.foreground else colors.foregroundMuted
-            RaftTextLinkLook(ink, variant.weight, underline = ink)
+            RaftTextLinkLook(ink, variant.weight, underline = ink.takeIf { active })
         }
-        else -> RaftTextLinkLook(colors.foreground, variant.weight, underline = if (active) RaftUiPalette.attention else colors.foreground)
+        else -> RaftTextLinkLook(colors.foreground, variant.weight, underline = colors.foreground.takeIf { active })
     }
 
 /**
@@ -95,9 +94,8 @@ internal fun raftTextLinkLook(variant: RaftTextLinkVariant, enabled: Boolean, ac
  *
  * - No height, padding, border or box of its own: it takes the size and line height of
  *   the text around it, so pass that text's [style] (default `body`, as [RaftText]).
- * - Underline 1.5dp, 3dp under the baseline, in the text colour. Never coloured: emphasis
- *   comes from weight and ink, and pink appears only as the strong link's pressed underline.
- * - Pressed: the web's hover look (muted turns ink; strong's underline turns pink).
+ * - No underline at rest. Pressed (the web's hover): a 1.5dp underline 3dp under the
+ *   baseline in the text colour, never pink; muted also turns ink.
  * - Focus (keyboard only): the focus ring on a 2dp radius, outside the text.
  * - Disabled: `foreground-disabled`, no underline, not focusable.
  * - Title Case, starting with a verb or naming the place. It is a button for
