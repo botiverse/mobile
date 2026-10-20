@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -21817,8 +21818,12 @@ private fun SharedHomeSearchFilters(
     // (web `appliedFilterProps`); the brutal register keeps its yellow sticker.
     val appliedFill = if (raftActive()) RaftColor.InfoSoft else RaftColor.BrandYellow
     SharedHomeSearchControlsBlock {
+        val backSwipeRowState = rememberLazyListState()
+        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
         LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+            state = backSwipeRowState,
+            userScrollEnabled = backSwipeRow.userScrollEnabled,
+            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             homeSearchFilterOrder(showSenderFilter).forEach { filter ->

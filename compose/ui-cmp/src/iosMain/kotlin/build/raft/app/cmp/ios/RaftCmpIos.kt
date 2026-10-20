@@ -14,6 +14,7 @@ import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
+import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.experimental.ExperimentalObjCName
 import kotlin.native.ObjCName
 import kotlinx.serialization.json.JsonObject
@@ -86,11 +87,22 @@ interface RaftIosPageListener {
  */
 class RaftIosPage internal constructor(
     private val events: RaftHostEvents,
+    private val backSwipeRegions: RaftBackSwipeRegions,
     content: (RaftIosPage) -> UIViewController,
 ) {
     private val sticky = LinkedHashMap<String, JsonObject>()
 
     val viewController: UIViewController = content(this)
+
+    /**
+     * Main thread. True when a back-direction drag starting at ([x], [y]) (points in
+     * [viewController]'s view) would be consumed by the page's horizontal content (a tab pager past
+     * its first page, a scroller away from its start): the host's full-page interactive pop must
+     * then not begin. Content registers through `rememberRaftBackSwipeScroll` /
+     * `rememberRaftBackSwipeRegion`.
+     */
+    fun contentConsumesBackSwipe(x: Double, y: Double): Boolean =
+        backSwipeRegions.contentConsumesBackSwipeAtPoint(x, y)
 
     /**
      * Delivers [event] with [dataJson] (a JSON object as text; blank or malformed -> `{}`) to the
@@ -153,7 +165,8 @@ object RaftCmpIos {
             )
         val args = RaftCmpPageArgs.fromJsonText(pageName, pageDataJson)
         val onDarkThemeResolved: ((Boolean) -> Unit)? = listener?.let { target -> { dark -> target.onDarkThemeResolved(dark) } }
-        return RaftIosPage(events) { page ->
+        val backSwipeRegions = RaftBackSwipeRegions()
+        return RaftIosPage(events, backSwipeRegions) { page ->
             var controller: UIViewController? = null
             ComposeUIViewController(
                 configure = {
@@ -171,6 +184,7 @@ object RaftCmpIos {
                     host = host,
                     onDarkThemeResolved = onDarkThemeResolved,
                     onCanvasColorResolved = { color -> controller?.raftPaintHostCanvas(color) },
+                    backSwipeRegions = backSwipeRegions,
                 )
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.
                 LaunchedEffect(Unit) { page.replayStickyEvents() }
