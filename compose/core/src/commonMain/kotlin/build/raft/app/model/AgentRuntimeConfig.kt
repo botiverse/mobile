@@ -247,7 +247,23 @@ fun getDefaultModel(runtimeId: String): String =
     RUNTIME_MODELS[runtimeId]?.firstOrNull()?.id ?: "sonnet"
 
 fun getModelLabel(runtimeId: String, modelId: String): String =
-    RUNTIME_MODELS[runtimeId]?.firstOrNull { it.id == modelId }?.label ?: modelId
+    RUNTIME_MODELS[runtimeId]?.firstOrNull { it.id == modelId }?.label
+        ?: claudeVersionedModelLabel(runtimeId, modelId)
+        ?: modelId
+
+private val CLAUDE_VERSIONED_MODEL_ID = Regex("""claude-(opus|sonnet|haiku|fable)-(\d+)-(\d+)""")
+
+/**
+ * `claude-opus-5-5` → `Claude Opus 5.5` for Claude models newer than [RUNTIME_MODELS]. The
+ * profile page gets these names from the machine's model catalog, but message headers only have
+ * the static table, so they showed the raw id.
+ */
+private fun claudeVersionedModelLabel(runtimeId: String, modelId: String): String? {
+    if (runtimeId != "claude") return null
+    val match = CLAUDE_VERSIONED_MODEL_ID.matchEntire(modelId) ?: return null
+    val (family, major, minor) = match.destructured
+    return "Claude ${family.replaceFirstChar { it.uppercase() }} $major.$minor"
+}
 
 /**
  * Mirrors React `canonicalizeCodexPresentation`.

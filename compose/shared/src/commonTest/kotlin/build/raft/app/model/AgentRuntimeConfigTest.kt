@@ -127,6 +127,15 @@ class AgentRuntimeConfigTest {
     }
 
     @Test
+    fun getModelLabelNamesVersionedClaudeModelsMissingFromTheTable() {
+        assertEquals("Claude Opus 5.5", getModelLabel("claude", "claude-opus-5-5"))
+        assertEquals("Claude Fable 5.1", getModelLabel("claude", "claude-fable-5-1"))
+        assertEquals("Claude Opus 4.8", getModelLabel("claude", "claude-opus-4-8"))
+        assertEquals("claude-opus-5-5", getModelLabel("codex", "claude-opus-5-5"))
+        assertEquals("claude-opus-5-5[1m]", getModelLabel("claude", "claude-opus-5-5[1m]"))
+    }
+
+    @Test
     fun capabilityPredicatesAreCorrect() {
         assertTrue(supportsRuntimeApiUrl("claude"))
         assertFalse(supportsRuntimeApiUrl("codex"))
