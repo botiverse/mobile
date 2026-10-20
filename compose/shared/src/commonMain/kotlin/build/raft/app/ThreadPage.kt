@@ -5647,6 +5647,16 @@ internal fun ChannelAddMemberPanelVisualScreen() {
             addMemberErrorCode = null,
             channelName = "design",
             canCreateAgents = true,
+            // React add-panel: every agent candidate carries the yellow activity badge.
+            agentStatusResolver = { memberId ->
+                flowOf(
+                    if (memberId?.startsWith("agent-") == true) {
+                        raftAgentStatusIndicatorState(status = null, presence = Presence.Away, external = false)
+                    } else {
+                        null
+                    }
+                )
+            },
             onDismiss = {},
             onSubmit = {}
         )
@@ -33424,13 +33434,13 @@ private fun ThreadAddMemberModalBody(
                             )
                             RaftAvatarWithStatus(
                                 statusColor = status?.color,
-                                avatarSize = 20.dp,
+                                avatarSize = 19.dp,
                                 statusPulsing = status?.pulsing == true
                             ) {
                                 RaftAppAvatar(
                                     avatarWireValue = avatarWireValue,
                                     label = if (member.kind.equals("agent", ignoreCase = true)) member.modalAvatarLabel() else "",
-                                    avatarSize = 20.dp,
+                                    avatarSize = 19.dp,
                                     cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
                                     cacheServerId = member.sourceServerId,
                                     fallbackFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull())

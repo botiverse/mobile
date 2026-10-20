@@ -20200,7 +20200,8 @@ private fun SharedCreateChannelDialog(
             }
         }
         }
-        RaftDialogFooter {
+        // Web form `stack-y-4` then the actions row's `pt-1`.
+        RaftDialogFooter(modifier = Modifier.padding(top = 4.dp)) {
             RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !submitting,
@@ -20323,7 +20324,8 @@ private fun SharedCreateChannelMemberPicker(
                 // Web: a multi-select list in a `Card` (`max-h-48 overflow-y-auto p-1.5`):
                 // grouped by kind, a check box per option, sized to its rows up to 192dp.
                 SharedCreateChannelMemberPickerCard(
-                    modifier = Modifier.retainInputFocusForInteractions(),
+                    // `stack-y-2` under the search field (the column's own gap is the label's 6dp).
+                    modifier = Modifier.padding(top = 2.dp).retainInputFocusForInteractions(),
                     listModifier =
                         Modifier
                             .bouncesEnable(false)
@@ -20452,7 +20454,8 @@ private fun SharedCreateChannelMemberRow(
         RaftAppAvatar(
             avatarWireValue = if (isAgent) member.avatarWireValueForAvatarSlot() else null,
             label = if (isAgent) member.raftAvatarName() else "",
-            avatarSize = 20.dp,
+            // raft-ui `2xs` (sidebar-list): 19dp.
+            avatarSize = 19.dp,
             cacheSubject = member.raftAvatarCacheSubject(),
             cacheServerId = member.serverId?.value,
             fallbackFill = raftAvatarFallbackFill(member.kind)
