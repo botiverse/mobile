@@ -1629,6 +1629,8 @@
     <string name="home_section_move_to">セクションに移動</string>
     <string name="home_section_remove_from">セクションから外す</string>
     <string name="home_section_new_menu">新規セクション…</string>
+    <string name="home_sidebar_row_menu_action">その他の操作</string>
+    <string name="home_sidebar_section_menu_action">%1$sのオプション</string>
     <string name="home_section_rename">名前変更 / アイコン変更…</string>
     <string name="home_section_delete">セクションを削除</string>
     <string name="home_section_delete_message">「%1$s」を削除しますか？含まれる会話はデフォルトのセクションに戻ります。</string>

@@ -1625,6 +1625,8 @@
     <string name="home_section_move_to">Move to section</string>
     <string name="home_section_remove_from">Remove from section</string>
     <string name="home_section_new_menu">New section…</string>
+    <string name="home_sidebar_row_menu_action">More actions</string>
+    <string name="home_sidebar_section_menu_action">%1$s options</string>
     <string name="home_section_rename">Rename / change icon…</string>
     <string name="home_section_delete">Delete section</string>
     <string name="home_section_delete_message">Delete "%1$s"? Its conversations will return to their default sections.</string>

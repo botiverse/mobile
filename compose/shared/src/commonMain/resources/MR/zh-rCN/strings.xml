@@ -1625,6 +1625,8 @@
     <string name="home_section_move_to">移动到分区</string>
     <string name="home_section_remove_from">移出分区</string>
     <string name="home_section_new_menu">新建分区…</string>
+    <string name="home_sidebar_row_menu_action">更多操作</string>
+    <string name="home_sidebar_section_menu_action">%1$s选项</string>
     <string name="home_section_rename">重命名 / 更换图标…</string>
     <string name="home_section_delete">删除分区</string>
     <string name="home_section_delete_message">删除“%1$s”？其中的会话将返回默认分区。</string>

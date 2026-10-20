@@ -8,11 +8,12 @@ import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftGlyph
-import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemIcon
+import build.raft.designsystem.components.RaftSidebarItemVariant
+import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarItemMarks
 import build.raft.designsystem.components.RaftSidebarItemMeta
 import build.raft.designsystem.components.RaftSidebarSectionAction
@@ -22,13 +23,8 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftDesignSystemTheme
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.semantics.onLongClick
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
@@ -165,6 +161,8 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -213,8 +211,7 @@ private val ChannelAvatarFontSize = 11.sp
 private val HomeSidebarSkeletonRowHeight = 44.dp
 /** raft-ui `SidebarItem` `pl-2` inside its 1.5dp edge. */
 private val HomeSidebarSkeletonRowStartPadding = 9.5.dp
-/** `SidebarItemIcon` (16dp glyph in the leading slot) and `SidebarItemMetaIcon` (14dp in the aside). */
-private val HomeSidebarIconSize = 16.dp
+/** `SidebarItemMetaIcon`: 14dp after the name and in the aside. */
 private val HomeSidebarMetaIconSize = 14.dp
 private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowShadowOffset = 2.dp
@@ -2171,7 +2168,6 @@ private fun RaftStructuralHomeShellContent(
             // before the effect gets the viewport retires this intent.
             homeUserScrollGeneration.value
         }
-    val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listState, currentServerId) {
         val snapshotServerId = currentServerId
@@ -2450,6 +2446,7 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = pinnedExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:pinned",
+                                                menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Pinned,
                                                 attention = pinnedSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.pinned}",
                                                 onSortClick = { anchor ->
@@ -2485,6 +2482,12 @@ private fun RaftStructuralHomeShellContent(
                                                 // original-section copy of the same conversation both
                                                 // render Selected when their conversationId matches.
                                                 val pinnedSelected = pinned != null && sidebarSelection.conversationId == pinned.id
+                                                val pinnedMenuOpen =
+                                                    if (pinned != null) {
+                                                        activePinMenuConversationId == pinned.id && activeMenuSection == RaftHomeSortSection.Pinned
+                                                    } else {
+                                                        activePinnedMemberMenuKey == pinnedRow.key
+                                                    }
                                                 val handleLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
                                                     when {
                                                         pinned != null -> {
@@ -2528,7 +2531,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = pinned?.activityMuted == true,
                                                         unreadCount = pinned?.unreadCount ?: 0,
                                                         selected = pinnedSelected,
-                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        menuOpen = pinnedMenuOpen,
                                                         onClick =
                                                             if (sidebarInteractionsEnabled) {
                                                                 {
@@ -2570,7 +2573,7 @@ private fun RaftStructuralHomeShellContent(
                                                         unreadCount = pinned.unreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
                                                         selected = pinnedSelected,
-                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        menuOpen = pinnedMenuOpen,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
                                                         onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
                                                         modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
@@ -2589,6 +2592,7 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = jointChannelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:joint",
+                                                menuOpen = activeSystemSectionMenu == RaftHomeSortSection.JointChannels,
                                                 attention = jointChannelSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.jointChannels}",
                                                 onSortClick = { anchor ->
@@ -2628,7 +2632,7 @@ private fun RaftStructuralHomeShellContent(
                                                     unreadCount = channel.unreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("joint", channel.id),
                                                     selected = jointSelected,
-                                                    captureLongPressAnchor = captureRowAnchors,
+                                                    menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.JointChannels,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                                         onChannelLongPressWithDismiss(channel.id, anchor)
@@ -2651,6 +2655,7 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = channelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:channels",
+                                                menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Channels,
                                                 attention = channelSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.channels}",
                                                 onSortClick = { anchor ->
@@ -2688,7 +2693,7 @@ private fun RaftStructuralHomeShellContent(
                                                     unreadCount = channel.unreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("channel", channel.id),
                                                     selected = channelSelected,
-                                                    captureLongPressAnchor = captureRowAnchors,
+                                                    menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.Channels,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                                         onChannelLongPressWithDismiss(channel.id, anchor)
@@ -2716,6 +2721,7 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = directMessagesExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:dms",
+                                                menuOpen = activeSystemSectionMenu == RaftHomeSortSection.DirectMessages,
                                                 attention = directMessageSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.directMessages}",
                                                 onSortClick = { anchor ->
@@ -2760,7 +2766,7 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = dm.activityMuted,
                                                     unreadCount = dm.unreadCount,
                                                     selected = dmSelected,
-                                                    captureLongPressAnchor = captureRowAnchors,
+                                                    menuOpen = activePinMenuConversationId == dm.id && activeMenuSection == RaftHomeSortSection.DirectMessages,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                                         onChannelLongPressWithDismiss(dm.id, anchor)
@@ -2805,6 +2811,7 @@ private fun RaftStructuralHomeShellContent(
                                                     }
                                                 },
                                                 longPressIdentity = "$currentServerId:${customSection.id}",
+                                                menuOpen = activeSectionMenuId == customSection.id,
                                                 attention = sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
@@ -2831,6 +2838,7 @@ private fun RaftStructuralHomeShellContent(
                                                 val item = sectionRows.items[index]
                                                 val customRowKey = "custom:${customSection.id}:${item.id}"
                                                 val customSelected = sidebarSelection.conversationId == item.id
+                                                val customMenuOpen = activePinMenuConversationId == item.id && activeMenuSection == null
                                                 val customLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
                                                     onChannelLongPressWithDismiss(item.id, anchor)
                                                     activePinMenuConversationId = item.id
@@ -2853,7 +2861,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = item.activityMuted,
                                                         unreadCount = item.unreadCount,
                                                         selected = customSelected,
-                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        menuOpen = customMenuOpen,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
                                                         onLongPress = if (sidebarInteractionsEnabled) customLongPress else null
                                                     )
@@ -2868,7 +2876,7 @@ private fun RaftStructuralHomeShellContent(
                                                         unreadCount = item.unreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
                                                         selected = customSelected,
-                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        menuOpen = customMenuOpen,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
                                                         onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
                                                         modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
@@ -6280,124 +6288,62 @@ private fun HomeSidebarEntryRow(
         onClick = onClick,
         selected = selected,
         leading = { HomeSidebarLucideIcon(icon) },
-        trailing = trailing
+        trailing = trailing,
+        variant = RaftSidebarItemVariant.Entry
     )
 }
 
 /**
  * A lucide glyph the designsystem does not draw, in the enclosing sidebar row's icon ink
- * (`foreground-hint`, `sticker-ink` on a selected row): 16dp in the leading slot
- * (`SidebarItemIcon`), 14dp in the aside (`SidebarItemMetaIcon`).
+ * (`foreground-hint`, `sticker-ink` on a selected row): in the leading slot at the row's
+ * icon size ([raftSidebarItemIconSize]: 16dp, 20dp in an entry row), 14dp after the name
+ * and in the aside (`SidebarItemMetaIcon`).
  */
 @Composable
-private fun HomeSidebarLucideIcon(icon: RaftLucideIconName, size: Dp = HomeSidebarIconSize) {
+private fun HomeSidebarLucideIcon(icon: RaftLucideIconName, size: Dp = raftSidebarItemIconSize()) {
     RaftLucideIcon(icon, Modifier.size(size), color = raftArgbHex(LocalRaftContentColor.current))
 }
 
 internal fun formatHomeSavedCount(savedCount: Int): String? =
     formatHomeSidebarBadgeCount(savedCount)
 
-@Composable
-private fun Modifier.homeRowAnchorCapture(
-    enabled: Boolean,
-    anchorRef: RaftLiveRootAnchorRef
-): Modifier = this.raftCaptureLiveRootAnchor(anchorRef = anchorRef, enabled = enabled)
-
-private data class HomeSidebarLongPressCallbacks(
-    val onLongPress: ((RaftPopoverAnchor) -> Unit)?,
-    val anchorRef: RaftLiveRootAnchorRef,
-    val anchorAt: (Offset) -> RaftPopoverLocalPoint,
-    val onCapturingChange: (Boolean) -> Unit
+/**
+ * The long-press of a Home row or section header. The designsystem part takes it as its own
+ * long click (`combinedClickable`: the press look, the long-click action and its label for
+ * TalkBack / VoiceOver, and a long press that does not also click). A long click has no touch
+ * point, so the menu opens under the part's bounds: [anchorModifier] keeps them live
+ * (re-captured on every placement, so a scrolled or recycled row anchors where it is now).
+ */
+private class HomeSidebarLongClick(
+    val anchorModifier: Modifier,
+    val onLongClick: (() -> Unit)?
 )
 
-/**
- * The long-press of a Home row or section header drawn by a designsystem sidebar part, whose
- * own `clickable` keeps the tap, the press look, the button role and focus. Web opens the
- * row's / section's context menu on a long-press; the designsystem parts have no long-click,
- * so this watches the gesture without taking it. It reads the Final pass (after the part's
- * clickable and the list's scroll) and gives up when the finger lifts or the list scrolls.
- * Once the long-press timeout passes it opens the menu, anchored under the press, and
- * consumes the rest of the gesture on the Initial pass, so the part's clickable sees a
- * consumed up and does not also click.
- *
- * [longClickSemantics] also offers the menu to TalkBack / VoiceOver as the long-click action;
- * only for a part whose clickable shares this node (a row, not a section header).
- */
 @Composable
-private fun Modifier.homeSidebarLongPress(
+private fun rememberHomeSidebarLongClick(
     identity: String,
-    onLongPress: ((RaftPopoverAnchor) -> Unit)?,
-    captureAnchor: Boolean = true,
-    longClickSemantics: Boolean = true,
-    anchorAt: (Offset) -> RaftPopoverLocalPoint = { RaftPopoverLocalPoint.BottomAtX(it.x) }
-): Modifier {
+    onLongPress: ((RaftPopoverAnchor) -> Unit)?
+): HomeSidebarLongClick {
     val anchorRef = remember(identity) { RaftLiveRootAnchorRef(identity = identity) }
-    var capturing by remember(identity) { mutableStateOf(false) }
-    val owner =
-        rememberRaftGestureOwner(
-            surface = "home-sidebar-long-press",
-            semanticIdentity = identity,
-            callbacks =
-                HomeSidebarLongPressCallbacks(
-                    onLongPress = onLongPress,
-                    anchorRef = anchorRef,
-                    anchorAt = anchorAt,
-                    onCapturingChange = { capturing = it }
-                )
-        )
-    if (onLongPress == null) return this
-    return this
-        .homeRowAnchorCapture(captureAnchor || capturing, anchorRef)
-        .then(
-            if (longClickSemantics) {
-                Modifier.semantics {
-                    onLongClick {
-                        anchorRef.resolve(anchorAt(Offset.Zero))?.let { anchor ->
-                            onLongPress(anchor)
-                            true
-                        } ?: false
-                    }
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val hasLongPress = onLongPress != null
+    return remember(anchorRef, hasLongPress) {
+        if (hasLongPress) {
+            HomeSidebarLongClick(
+                anchorModifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
+                onLongClick = {
+                    anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let { anchor -> currentOnLongPress?.invoke(anchor) }
                 }
-            } else {
-                Modifier
-            }
-        )
-        .raftGesturePointerInput(owner) { gestureOwner -> detectHomeSidebarLongPress(gestureOwner) }
-}
-
-private suspend fun PointerInputScope.detectHomeSidebarLongPress(owner: RaftGestureOwner<HomeSidebarLongPressCallbacks>) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        val session = owner.beginGesture()
-        session.currentCallbacksOrNull()?.onCapturingChange?.invoke(true)
-        try {
-            val held =
-                withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                    var released = false
-                    while (!released) {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        // Lifted (a tap: the part's clickable has it), or the list took the drag.
-                        released =
-                            event.changes.all { !it.pressed } ||
-                                event.changes.any { it.previousPressed && it.isConsumed }
-                    }
-                    false
-                } ?: true
-            if (!held) return@awaitEachGesture
-            session.currentCallbacksOrNull()?.let { callbacks ->
-                callbacks.anchorRef.resolve(callbacks.anchorAt(down.position))?.let { anchor ->
-                    callbacks.onLongPress?.invoke(anchor)
-                }
-            }
-            do {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                event.changes.forEach { it.consume() }
-            } while (event.changes.any { it.pressed })
-        } finally {
-            session.currentCallbacksOrNull()?.onCapturingChange?.invoke(false)
+            )
+        } else {
+            HomeSidebarLongClick(anchorModifier = Modifier, onLongClick = null)
         }
     }
 }
+
+/** A conversation name: user content, so Han characters keep the zh-Hans forms in any UI language. */
+private fun homeSidebarUserContentName(name: String): AnnotatedString =
+    AnnotatedString(name, spanStyles = listOf(AnnotatedString.Range(SpanStyle(localeList = RaftUserContentLocaleList), 0, name.length)))
 
 /**
  * raft-ui SidebarItem tone of a Home conversation row: not joined reads `away` (unless it is
@@ -6419,9 +6365,10 @@ internal fun homeConversationRowTone(
 /**
  * A channel in the Home list: raft-ui SidebarChannelItem ([RaftSidebarChannelItem]) for `#`
  * and private channels; a joint channel's `git-branch` and a public-page channel's
- * hash-globe go through the same [RaftSidebarItem] with their own glyph. Web ChannelRow
- * aside: the bridge badge and the muted bell, then the pink unread count, else the grey
- * number of a quiet (muted / not joined) unread, else the draft pencil.
+ * hash-globe go through the same [RaftSidebarItem] with their own glyph. Right after the
+ * name (it truncates, they do not): the bridge badge and the muted bell. Web ChannelRow
+ * aside: the pink unread count, else the grey number of a quiet (muted / not joined)
+ * unread, else the draft pencil. [menuOpen]: this row's long-press menu is open.
  */
 @Composable
 private fun HomeSidebarChannelRow(
@@ -6435,7 +6382,7 @@ private fun HomeSidebarChannelRow(
     hasDraft: Boolean = false,
     bridgeProvider: String? = null,
     interactionIdentity: String = "channel:$symbol:$name",
-    captureLongPressAnchor: Boolean = true,
+    menuOpen: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
@@ -6444,40 +6391,63 @@ private fun HomeSidebarChannelRow(
     val quietLabel = badge.label?.takeIf { badge.tone == HomeSidebarBadgeTone.Quiet }
     val showBridge = externalBridgeBadgeVisible(bridgeProvider)
     val showDraft = hasDraft && badge.label == null
-    val aside: (@Composable RowScope.() -> Unit)? =
-        if (showBridge || muted || quietLabel != null || showDraft) {
+    val mutedIcon = homeConversationMutedIndicatorIcon(muted)
+    val titleTrailing: (@Composable () -> Unit)? =
+        if (showBridge || mutedIcon != null) {
             {
-                if (showBridge) RaftExternalBridgeBadge(bridgeProvider)
-                homeConversationMutedIndicatorIcon(muted)?.let { HomeSidebarLucideIcon(it, HomeSidebarMetaIconSize) }
-                when {
-                    quietLabel != null -> RaftSidebarItemMeta(quietLabel)
-                    showDraft -> HomeSidebarLucideIcon(RaftLucideIconName.Pencil, HomeSidebarMetaIconSize)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showBridge) RaftExternalBridgeBadge(bridgeProvider)
+                    mutedIcon?.let { HomeSidebarLucideIcon(it, HomeSidebarMetaIconSize) }
                 }
             }
         } else {
             null
         }
+    val aside: (@Composable RowScope.() -> Unit)? =
+        when {
+            quietLabel != null -> {
+                { RaftSidebarItemMeta(quietLabel) }
+            }
+            showDraft -> {
+                { HomeSidebarLucideIcon(RaftLucideIconName.Pencil, HomeSidebarMetaIconSize) }
+            }
+            else -> null
+        }
     val tone = homeConversationRowTone(muted = muted, joined = joined, selected = selected, loudUnread = loudCount > 0)
-    val rowModifier = modifier.homeSidebarLongPress(interactionIdentity, onLongPress, captureLongPressAnchor)
+    val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
+    val rowModifier = modifier.then(longClick.anchorModifier)
+    val title = remember(name) { homeSidebarUserContentName(name) }
+    val longClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_row_menu_action) }
     traceMarkdownSection(RaftHomeTraceNames.CHANNEL_ROW_RENDER, name.length) {
         if (symbol == "#" || symbol == "lock") {
             RaftSidebarChannelItem(
-                name = name,
+                name = title,
                 modifier = rowModifier,
                 onClick = onClick,
                 selected = selected,
                 tone = tone,
                 isPrivate = symbol == "lock",
                 unreadCount = loudCount,
-                trailing = aside
+                trailing = aside,
+                onLongClick = longClick.onLongClick,
+                onLongClickLabel = longClickLabel,
+                menuOpen = menuOpen,
+                titleTrailing = titleTrailing
             )
         } else {
             RaftSidebarItem(
-                title = name,
+                title = title,
                 modifier = rowModifier,
                 onClick = onClick,
                 selected = selected,
                 tone = tone,
+                onLongClick = longClick.onLongClick,
+                onLongClickLabel = longClickLabel,
+                menuOpen = menuOpen,
+                titleTrailing = titleTrailing,
                 leading = { HomeSidebarChannelGlyph(symbol) },
                 trailing =
                     if (aside != null || loudCount > 0) {
@@ -6499,8 +6469,8 @@ private fun HomeSidebarChannelGlyph(symbol: String) {
     when (symbol) {
         "#" -> RaftSidebarItemIcon(RaftGlyph.Hash)
         "lock" -> RaftSidebarItemIcon(RaftGlyph.Lock)
-        HomeChannelSymbolHashGlobe -> RaftHashGlobeIcon(size = HomeSidebarIconSize, color = raftArgbHex(LocalRaftContentColor.current))
-        else -> RaftLucideIcon(symbol, Modifier.size(HomeSidebarIconSize), color = raftArgbHex(LocalRaftContentColor.current))
+        HomeChannelSymbolHashGlobe -> RaftHashGlobeIcon(size = raftSidebarItemIconSize(), color = raftArgbHex(LocalRaftContentColor.current))
+        else -> RaftLucideIcon(symbol, Modifier.size(raftSidebarItemIconSize()), color = raftArgbHex(LocalRaftContentColor.current))
     }
 }
 
@@ -6508,8 +6478,9 @@ private fun HomeSidebarChannelGlyph(symbol: String) {
  * A Home list section header: raft-ui SidebarSectionHeader ([RaftSidebarSectionHeader]) with
  * the section's controls (sort, create), the pink attention pixel while a collapsed section
  * holds something unread, and a long-press that opens the section menu (web right-click /
- * long-press). [longPressIdentity] must name the section (an id, not its label), so two
- * same-named sections never share a popover anchor.
+ * long-press) under the header; [menuOpen] while that menu is open. [longPressIdentity] must
+ * name the section (an id, not its label), so two same-named sections never share a popover
+ * anchor.
  */
 @Composable
 private fun HomeSidebarSectionHeader(
@@ -6526,21 +6497,20 @@ private fun HomeSidebarSectionHeader(
     addLabel: String? = null,
     onAddClick: (() -> Unit)? = null,
     addEnabled: Boolean = true,
+    menuOpen: Boolean = false,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val hasSort = sortLabel != null && onSortClick != null
     val hasAdd = addLabel != null && onAddClick != null
+    val longClick = rememberHomeSidebarLongClick("section-header:$longPressIdentity", onLongPress)
     RaftSidebarSectionHeader(
         title = title,
         expanded = expanded,
         onExpandedChange = onExpandedChange,
-        modifier =
-            modifier.homeSidebarLongPress(
-                identity = "section-header:$longPressIdentity",
-                onLongPress = onLongPress,
-                longClickSemantics = false,
-                anchorAt = { RaftPopoverLocalPoint.BottomStart }
-            ),
+        modifier = modifier.then(longClick.anchorModifier),
+        onLongClick = longClick.onLongClick,
+        onLongClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_section_menu_action, title) },
+        menuOpen = menuOpen,
         count = count,
         attention = attention,
         icon = emoji?.let { glyph -> @Composable { RaftText(glyph, style = RaftTheme.typography.footnote, maxLines = 1) } },
@@ -6558,21 +6528,16 @@ private fun HomeSidebarSectionHeader(
     )
 }
 
-/**
- * The section's Sort control: [RaftSidebarSectionAction]'s ghost icon button with the
- * lucide `arrow-up-down` (not a designsystem glyph); the sort menu opens under it.
- */
+/** The section's Sort control, `arrow-up-down`; the sort menu opens under it. */
 @Composable
 private fun HomeSidebarSortAction(label: String, onClick: (RaftPopoverAnchor) -> Unit) {
     val anchorRef = remember(label) { RaftLiveRootAnchorRef(identity = label) }
-    RaftIconButton(
-        onClick = { anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick) },
+    RaftSidebarSectionAction(
+        glyph = RaftGlyph.ArrowUpDown,
         tooltip = label,
-        modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
-        variant = RaftButtonVariant.Ghost
-    ) {
-        HomeSidebarLucideIcon(RaftLucideIconName.ArrowUpDown)
-    }
+        onClick = { anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick) },
+        modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef)
+    )
 }
 
 // #372 React parity: outlined-circle + gray-bar skeleton row sized like a
@@ -6876,7 +6841,7 @@ private fun HomeSidebarSortRow(
             Text("$position", style = RaftType.Button, color = RaftColor.TextMutedGray, textAlign = TextAlign.End)
         }
         RaftSidebarItem(
-            title = item.name,
+            title = remember(item.name) { homeSidebarUserContentName(item.name) },
             modifier = Modifier.weight(1f),
             onClick = if (held) ({}) else null,
             tone = if (item.joined || isDirectMessage) RaftRowTone.Default else RaftRowTone.Away,
@@ -6895,8 +6860,9 @@ private fun HomeSidebarSortRow(
 /**
  * A person or agent conversation in the Home list (web `SidebarPeerRowBody`): a
  * [RaftSidebarItem] led by the 19dp avatar with the agent's status pixel on its corner, the
- * name with the description as its subtitle, then the aside: the muted bell, and the unread
- * count alone, otherwise the draft mark and the agent's meta (capped at 58% of the row).
+ * name with the muted bell right after it and the description as its subtitle, then the
+ * aside: the unread count alone, otherwise the draft mark and the agent's meta (capped at 58%
+ * of the row). [menuOpen]: this row's long-press menu is open.
  */
 @Composable
 private fun HomeSidebarDirectMessageRow(
@@ -6914,7 +6880,7 @@ private fun HomeSidebarDirectMessageRow(
     unreadCount: Int = 0,
     hasDraft: Boolean = false,
     interactionIdentity: String = "dm:${memberId.orEmpty()}:$name",
-    captureLongPressAnchor: Boolean = true,
+    menuOpen: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
@@ -6926,14 +6892,21 @@ private fun HomeSidebarDirectMessageRow(
     val agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() }
     val trailingSlots = raftHomeDmTrailingSlots(badge = badge.label, hasDraft = hasDraft, isAgent = agentMemberId != null)
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
+    val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
+    val title = remember(name) { homeSidebarUserContentName(name) }
     traceMarkdownSection(RaftHomeTraceNames.DIRECT_MESSAGE_ROW_RENDER, name.length) {
         RaftSidebarItem(
-            title = name,
-            modifier = modifier.homeSidebarLongPress(interactionIdentity, onLongPress, captureLongPressAnchor),
+            title = title,
+            modifier = modifier.then(longClick.anchorModifier),
             onClick = onClick,
             selected = selected,
             tone = homeConversationRowTone(muted = muted, joined = true, selected = selected, loudUnread = badge.hasUnread),
             subtitle = description?.takeIf { it.isNotBlank() },
+            onLongClick = longClick.onLongClick,
+            onLongClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_row_menu_action) },
+            menuOpen = menuOpen,
+            titleTrailing = mutedIcon?.let { icon -> @Composable { HomeSidebarLucideIcon(icon, HomeSidebarMetaIconSize) } },
+            variant = RaftSidebarItemVariant.Peer,
             leading = {
                 DirectMessageAvatar(
                     agentMemberId = agentMemberId,
@@ -6946,9 +6919,8 @@ private fun HomeSidebarDirectMessageRow(
                 )
             },
             trailing =
-                if (mutedIcon != null || trailingSlots.isNotEmpty()) {
+                if (trailingSlots.isNotEmpty()) {
                     {
-                        mutedIcon?.let { HomeSidebarLucideIcon(it, HomeSidebarMetaIconSize) }
                         trailingSlots.forEach { slot ->
                             when (slot) {
                                 RaftHomeDmTrailingSlot.UnreadBadge ->
