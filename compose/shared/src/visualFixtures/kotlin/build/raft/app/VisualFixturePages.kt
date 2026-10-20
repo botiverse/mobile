@@ -521,7 +521,7 @@ private fun installSettingsVisualFixtureData() {
 internal class ComposeHomeSearchVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSearchVisualContent() }
+        setContent { HomeSearchResultsParityVisualContent() }
     }
 }
 
@@ -585,7 +585,7 @@ internal class ComposeHomeSearchHumanPinVisualPage : BasePager() {
 internal class ComposeHomeSearchChannelDropdownVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeSearchVisualContent(initialOpenFilterId = "channel") }
+        setContent { HomeSearchChannelDropdownParityVisualContent() }
     }
 }
 

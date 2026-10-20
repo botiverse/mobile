@@ -539,6 +539,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.theme.LocalRaftContentColor
+import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftIconTile
@@ -916,36 +923,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     )
                 }
             }
-    }
-}
-
-// search-message `messageSender`: a 14dp avatar and the name in `text-callout` bold ink.
-@Composable
-private fun SharedHomeSearchSenderMeta(
-    sender: String,
-    avatarWireValue: String?,
-    avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftAppAvatar(
-            avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
-            label = sender,
-            avatarSize = RaftSearchMetrics.SenderAvatar,
-            cacheSubject = avatarCacheIdentity?.subject,
-            cacheServerId = avatarCacheIdentity?.serverId
-        )
-        RaftText(
-            text = sender,
-            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -20531,6 +20508,7 @@ internal fun SharedHomeSearchPanel(
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
     interactiveSearchField: Boolean = true,
+    previewSearchFieldFocused: Boolean = false,
     includeTopSafeArea: Boolean = true,
     showSenderFilter: Boolean = true,
     initialOpenFilterId: String? = null,
@@ -20698,6 +20676,7 @@ internal fun SharedHomeSearchPanel(
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                     onClose = onClose,
                     interactive = interactiveSearchField,
+                    previewFocused = previewSearchFieldFocused,
                     autoFocus = initialFocusInput,
                     topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                     placeholder = stringResource(MR.strings.search_placeholder)
@@ -20858,7 +20837,10 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (entityResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
+                            SharedHomeSearchSectionLabel(
+                                stringResource(MR.strings.search_section_entities),
+                                count = entityResults.size
+                            )
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                             SharedHomeSearchEntityRow(
@@ -20888,7 +20870,10 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_messages))
+                            SharedHomeSearchSectionLabel(
+                                stringResource(MR.strings.search_section_messages),
+                                count = state.totalCount.takeIf { it > 0 && !state.loading }
+                            )
                         }
                     }
                     groupedResults.forEachIndexed { groupIndex, group ->
@@ -21346,28 +21331,24 @@ private fun SharedHomeSearchToolbar(
     onClear: () -> Unit,
     onClose: (() -> Unit)?,
     interactive: Boolean = true,
+    previewFocused: Boolean = false,
     autoFocus: Boolean = false,
     topSafeAreaPadding: Dp = 0.dp,
     placeholder: String
 ) {
-    SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
+    // web MessageSearchPage PanelHeader: a 44dp ghost back button (22dp arrow) on the phone,
+    // then the search field itself — it carries the search glyph, so no icon tile.
+    SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding, hasBack = onClose != null) {
         if (onClose != null) {
-            RaftBrutalIconButton(
-                iconName = RaftLucideIconName.ArrowLeft,
+            RaftIconButton(
                 onClick = onClose,
-                contentDescription = stringResource(MR.strings.common_back),
-                backgroundColor = RaftColor.SurfaceWhite,
-                size = RaftMetrics.ControlHeightLg,
-                iconSize = 14.dp
-            )
-        }
-        RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Sm) {
-            RaftLucideIcon(
-                RaftLucideIconName.Search,
-                color = raftArgbHex(RaftColor.StickerInk),
-                strokeWidth = 2f,
-                modifier = Modifier.size(RaftIconTileSize.Sm.icon)
-            )
+                tooltip = stringResource(MR.strings.common_back),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg
+            ) {
+                val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftColor.TextBlack
+                RaftLucideIcon(RaftLucideIconName.ArrowLeft, color = raftArgbHex(ink), modifier = Modifier.size(22.dp))
+            }
         }
         SharedHomeSearchInput(
             query = editor.value,
@@ -21380,14 +21361,21 @@ private fun SharedHomeSearchToolbar(
             onSubmit = onSubmit,
             onClear = { editor.clear(onClear) },
             raftField = true,
+            previewFocused = previewFocused,
             modifier = Modifier.weight(1f)
         )
     }
 }
 
+/**
+ * The search head row: `h-14` with the seam drawn under it ([SharedHomeSearchDivider]), the
+ * 44dp field centred. With a back button the row starts 3dp in (button, then `gap-2`) and
+ * the field ends 6dp from the edge, where web's phone header puts them.
+ */
 @Composable
 private fun SharedHomeSearchControlsRow(
     topSafeAreaPadding: Dp,
+    hasBack: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
@@ -21396,8 +21384,8 @@ private fun SharedHomeSearchControlsRow(
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
-                .height(56.dp)
-                .padding(horizontal = SearchControlsHorizontalPadding),
+                .height(55.dp)
+                .padding(start = if (hasBack) 3.dp else SearchControlsHorizontalPadding, end = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
@@ -21754,6 +21742,7 @@ private fun SharedHomePanelSearchField(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
@@ -21784,17 +21773,15 @@ private fun SharedHomeSearchFilters(
     // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
     // (web `appliedFilterProps`).
     val appliedFill = RaftColor.InfoSoft
+    // web SearchShellFilters: `px-4 py-3`, the chips wrap (`flex flex-wrap gap-2`).
     SharedHomeSearchControlsBlock {
-        val backSwipeRowState = rememberLazyListState()
-        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-        LazyRow(
-            state = backSwipeRowState,
-            userScrollEnabled = backSwipeRow.userScrollEnabled,
-            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             homeSearchFilterOrder(showSenderFilter).forEach { filter ->
-                item(key = "search-filter-${filter.id}") {
+                key("search-filter-${filter.id}") {
                     when (filter) {
                         HomeSearchFilter.Sender ->
                             RaftAnchoredToolbarChip(
@@ -21863,7 +21850,7 @@ private fun SharedHomeSearchFilters(
                     }
                 }
             }
-            item {
+            key("search-filter-sort") {
                 RaftAnchoredToolbarChip(
                     label = state.sort.localizedSearchLabel(),
                     anchorIdentity = "search_filter:sort",
@@ -21881,22 +21868,13 @@ private fun SharedHomeSearchFilters(
                 )
             }
             if (hasActiveFilters) {
-                item {
-                    RaftToolbarChip(
-                        label = stringResource(MR.strings.search_filter_clear_all),
-                        active = false,
-                        enabled = true,
-                        uppercase = false,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
-                    )
-                }
-            }
-            if (!showSenderFilter) {
-                item {
-                    Spacer(Modifier.width(0.dp))
-                }
+                // web: a ghost `sm` Button.
+                RaftButton(
+                    text = stringResource(MR.strings.search_filter_clear_all),
+                    onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Md
+                )
             }
         }
     }
@@ -22448,9 +22426,12 @@ internal fun TextStyle.withHomeSearchVisualTextScale(scale: Float): TextStyle {
 private fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
+    count: Int? = null,
 ) {
     RaftSearchSectionHeading(
         label = label,
+        count = count?.toString(),
+        countStyle = sharedHomeSearchTimestampTextStyle().withHomeSearchVisualTextScale(visualTextScale),
         style =
             RaftTheme.typography.footnote
                 .copy(fontWeight = FontWeight.Bold)
@@ -22539,9 +22520,8 @@ private fun SharedHomeSearchEntityRow(
         SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftSearchHitText(
+                RaftText(
                     text = result.title,
-                    query = query,
                     style =
                         typography.body
                             .copy(fontWeight = FontWeight.SemiBold)
@@ -22560,9 +22540,8 @@ private fun SharedHomeSearchEntityRow(
                     )
                 }
             }
-            RaftSearchHitText(
+            RaftText(
                 text = result.subtitle,
-                query = query,
                 style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
                 color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
                 maxLines = 1,
@@ -22653,7 +22632,8 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = f
                 SearchEntityType.Agent -> stringResource(MR.strings.search_entity_dm)
                 SearchEntityType.Computer -> stringResource(MR.strings.search_entity_computer)
             },
-        appearance = if (muted) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        // web EntityResultRow: the kind is an `outline` Badge (a machine label after the name).
+        appearance = RaftBadgeAppearance.Outline,
         variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
     )
 }
@@ -22785,69 +22765,92 @@ private fun SharedHomeSearchMessageResultRow(
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    Column(
+    // web MessageHitRow: the 27dp sender identity sits in its own column (16dp edge, 12dp top)
+    // and the text column starts at 16 + 27 + 12 = 55dp, where the hairline starts too.
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.EntitySeparatorInset, RaftColor.BorderHairline)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        if (!sender.isNullOrBlank()) {
+            RaftAppAvatar(
+                avatarWireValue =
+                    item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
+                        ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
+                label = sender,
+                avatarSize = RaftSearchMetrics.EntityLeading,
+                cacheSubject = avatarCacheIdentity?.subject,
+                cacheServerId = avatarCacheIdentity?.serverId
+            )
+        } else {
+            Spacer(Modifier.size(RaftSearchMetrics.EntityLeading))
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!sender.isNullOrBlank()) {
-                    SharedHomeSearchSenderMeta(
-                        sender = sender,
-                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                        avatarCacheIdentity = avatarCacheIdentity,
-                        modifier = Modifier.widthIn(max = 180.dp)
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!sender.isNullOrBlank()) {
+                        RaftText(
+                            text = sender,
+                            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 180.dp)
+                        )
+                    }
+                    if (!nested) {
+                        Text(
+                            text = searchResultSourceLabel(item),
+                            style = metaStyle,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                    if (item.kind == InboxItemKind.Thread && !nested) {
+                        SharedHomeSearchThreadMeta(metaStyle)
+                    }
+                    if (item.hasDraft) {
+                        SharedHomeDraftPencilIcon(compact = true)
+                    }
                 }
-                if (!nested) {
-                    Text(
-                        text = searchResultSourceLabel(item),
+                if (!time.isNullOrBlank()) {
+                    RaftRelativeTimestampText(
+                        value = time,
+                        timeContext = timeContext,
                         style = metaStyle,
                         color = RaftColor.ForegroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        maxLines = 1
                     )
                 }
-                if (item.kind == InboxItemKind.Thread && !nested) {
-                    SharedHomeSearchThreadMeta(metaStyle)
-                }
-                if (item.hasDraft) {
-                    SharedHomeDraftPencilIcon(compact = true)
-                }
             }
-            if (!time.isNullOrBlank()) {
-                RaftRelativeTimestampText(
-                    value = time,
-                    timeContext = timeContext,
-                    style = metaStyle,
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1
-                )
-            }
+            RaftSearchHitText(
+                text = preview,
+                query = query,
+                style = RaftTheme.typography.callout,
+                color = RaftColor.TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        RaftSearchHitText(
-            text = preview,
-            query = query,
-            style = RaftTheme.typography.callout,
-            color = RaftColor.TextMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -22864,7 +22867,7 @@ private fun SharedHomeSearchThreadMeta(style: TextStyle) {
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text = stringResource(MR.strings.search_meta_thread),
+            text = stringResource(MR.strings.search_meta_thread_inline),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -23439,9 +23442,14 @@ internal fun homeSearchEntityCandidates(
                         key = "conversation:${conversation.threadId.value}",
                         type = type,
                         title = conversation.name,
+                        // web searchEntities: a channel row's description is its kind
+                        // ("Channel"); a DM keeps its subtitle.
                         subtitle =
-                            conversation.subtitle?.takeIf { it.isNotBlank() }
-                                ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
+                            if (type == SearchEntityType.Channel) {
+                                channelLabel
+                            } else {
+                                conversation.subtitle?.takeIf { it.isNotBlank() } ?: dmLabel
+                            },
                         threadId = conversation.threadId.value,
                         memberIdentity = conversationIdentity.dmPeerIdentity,
                         conversationIdentity = conversationIdentity,

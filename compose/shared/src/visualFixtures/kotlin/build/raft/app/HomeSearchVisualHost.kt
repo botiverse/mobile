@@ -321,13 +321,150 @@ private val homeSearchHomeVisualSearchState =
             ),
     )
 
+// Parity fixture for the shared cases components.home.search.results /
+// components.home.search.channel-dropdown: the rows of slock
+// packages/visual-testing/shared/searchResultsFixture.json (two message hits for "android",
+// Cindy in #design and artin's thread reply under #design) and the entities the React host
+// finds for that query (the android-artifacts channel only: its sender list is the owner and
+// Cindy). The React capture applies the case props it can parse from the URL — range=7d and
+// sort=recent for the results case; sender=artin / channel=design are not ids, so the From
+// and Channel chips stay unset — and none for the dropdown case. Relative time labels are what
+// React renders for the fixture ISO stamps against the shared fixture clock
+// (VisualFixtureData.Locale.NOW_EPOCH_MILLIS, 2026-06-19T12:30Z): both hits are 2026-06-22.
+private val homeSearchParitySenderFilters =
+    listOf(
+        SearchSenderFilterItem(
+            id = VisualFixtureData.Humans.Owner.ID,
+            label = VisualFixtureData.Humans.Owner.DISPLAY_NAME,
+            handle = VisualFixtureData.Humans.Owner.NAME,
+            kind = MemberKind.Human,
+            sourceServerId = homeSearchVisualServer.id,
+            isSelf = true
+        ),
+        SearchSenderFilterItem(
+            id = VisualFixtureData.Agents.Cindy.ID,
+            label = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
+            handle = VisualFixtureData.Agents.Cindy.NAME,
+            kind = MemberKind.Agent,
+            sourceServerId = homeSearchVisualServer.id,
+            avatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR
+        )
+    )
+
+private const val HomeSearchParityHitTimeLabel = "in 3 days"
+
+private val homeSearchParityItems =
+    listOf(
+        InboxItem(
+            key = "msg-visual-search-1",
+            kind = InboxItemKind.Channel,
+            channelId = ChannelId(VisualFixtureData.Channels.Design.ID),
+            channelName = VisualFixtureData.Channels.Design.NAME,
+            lastMessageId = MessageId("msg-visual-search-1"),
+            lastMessagePreview = VisualFixtureData.Messages.THREAD_DEFAULT,
+            lastMessageAt = HomeSearchParityHitTimeLabel,
+            lastMessageSenderName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
+            lastMessageSenderId = VisualFixtureData.Agents.Cindy.ID,
+            lastMessageSenderKind = MemberKind.Agent,
+            lastMessageSenderAvatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR
+        ),
+        InboxItem(
+            key = "msg-visual-search-2",
+            kind = InboxItemKind.Thread,
+            channelId = ChannelId("thread-msg-agent-reply"),
+            channelName = VisualFixtureData.Channels.Design.NAME,
+            lastMessageId = MessageId("msg-visual-search-2"),
+            lastMessagePreview = VisualFixtureData.Messages.COMPOSER_SEED,
+            lastMessageAt = HomeSearchParityHitTimeLabel,
+            lastMessageSenderName = VisualFixtureData.Humans.Owner.DISPLAY_NAME,
+            lastMessageSenderId = VisualFixtureData.Humans.Owner.ID,
+            lastMessageSenderKind = MemberKind.Human,
+            parentChannelId = ChannelId(VisualFixtureData.Channels.Design.ID),
+            parentChannelName = VisualFixtureData.Channels.Design.NAME,
+            parentChannelKind = ConversationKind.Channel,
+            parentMessageId = MessageId("msg-agent-reply"),
+            parentMessagePreview = VisualFixtureData.Messages.THREAD_DEFAULT
+        )
+    )
+
+private fun homeSearchParityVisualSearchState(
+    timeRange: SearchTimeRange,
+    sort: SearchSort
+) = SharedHomeSearchPanelState(
+    query = "android",
+    sort = sort,
+    timeRange = timeRange,
+    searched = true,
+    senderFilters = homeSearchParitySenderFilters,
+    items = homeSearchParityItems,
+    totalCount = homeSearchParityItems.size,
+    hasMore = false
+)
+
+private val homeSearchParityVisualHomeState =
+    homeSearchVisualHomeState.copy(
+        content =
+            (homeSearchVisualHomeState.content as SharedHomeContentState.Content).let { content ->
+                content.copy(
+                    snapshot =
+                        content.snapshot.copy(
+                            channels =
+                                listOf(
+                                    ConversationSummary(
+                                        threadId = ThreadId(VisualFixtureData.Channels.Design.ID),
+                                        channelId = ChannelId(VisualFixtureData.Channels.Design.ID),
+                                        kind = ConversationKind.Channel,
+                                        name = VisualFixtureData.Channels.Design.NAME,
+                                        subtitle = VisualFixtureData.Channels.Design.DESCRIPTION,
+                                        memberCount = VisualFixtureData.Channels.Design.MEMBER_COUNT
+                                    ).toHomeChannelRow(),
+                                    ConversationSummary(
+                                        threadId = ThreadId(VisualFixtureData.Channels.AndroidArtifacts.ID),
+                                        channelId = ChannelId(VisualFixtureData.Channels.AndroidArtifacts.ID),
+                                        kind = ConversationKind.Channel,
+                                        name = VisualFixtureData.Channels.AndroidArtifacts.NAME,
+                                        subtitle = VisualFixtureData.Channels.AndroidArtifacts.DESCRIPTION,
+                                        memberCount = VisualFixtureData.Channels.AndroidArtifacts.MEMBER_COUNT
+                                    ).toHomeChannelRow()
+                                ),
+                            directMessages = emptyList()
+                        )
+                )
+            }
+    )
+
 // Canonical saved-messages entries (task #370): ported verbatim from
 // packages/visual-testing/shared/savedMessagesFixture.json in the slock repo
 // (total 5 → "5 saved" header, 3 rendered entries, hasMore → Load More).
 // Relative time labels match what react renders for the fixture ISO stamps.
 
+/** components.home.search.results: React applies range=7d and sort=recent; its field keeps focus. */
 @Composable
-internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
+internal fun HomeSearchResultsParityVisualContent() {
+    HomeSearchVisualContent(
+        state = homeSearchParityVisualSearchState(SearchTimeRange.Last7Days, SearchSort.Recent),
+        homeState = homeSearchParityVisualHomeState,
+        searchFieldFocused = true
+    )
+}
+
+/** components.home.search.channel-dropdown: no case props apply; the channel menu is open. */
+@Composable
+internal fun HomeSearchChannelDropdownParityVisualContent() {
+    HomeSearchVisualContent(
+        initialOpenFilterId = "channel",
+        state = homeSearchParityVisualSearchState(SearchTimeRange.Any, SearchSort.Relevance),
+        homeState = homeSearchParityVisualHomeState
+    )
+}
+
+@Composable
+internal fun HomeSearchVisualContent(
+    initialOpenFilterId: String? = null,
+    state: SharedHomeSearchPanelState = homeSearchVisualSearchState,
+    homeState: SharedHomeState = homeSearchVisualHomeState,
+    searchFieldFocused: Boolean = false
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val openFilterId =
         initialOpenFilterId ?: pager.pageData.params.optString("openFilterId").takeIf { it.isNotBlank() }
@@ -338,11 +475,12 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     // aligned with the react baseline. (visual case components.home.search.*-dropdown)
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
-            state = homeSearchVisualSearchState,
-            homeState = homeSearchVisualHomeState,
+            state = state,
+            homeState = homeState,
             onIntent = {},
             onClose = {},
             interactiveSearchField = false,
+            previewSearchFieldFocused = searchFieldFocused,
             includeTopSafeArea = false,
             showSenderFilter = true,
             initialOpenFilterId = openFilterId,

@@ -1655,7 +1655,7 @@
     <string name="search_empty_query_detail">请尝试其他关键词或更短的短语。</string>
     <string name="search_empty_filters_detail">请尝试其他筛选组合。</string>
     <string name="search_section_channels_dms">频道和私信</string>
-    <string name="search_section_entities">频道、成员和计算机</string>
+    <string name="search_section_entities">服务器内容</string>
     <string name="search_section_messages">消息</string>
     <string name="search_action_load_more_results">加载更多结果</string>
     <string name="search_filter_scope">范围</string>
@@ -1669,7 +1669,7 @@
     <string name="search_filter_time">时间</string>
     <string name="search_filter_sort">排序</string>
     <string name="search_filter_channel">频道</string>
-    <string name="search_filter_clear_all">全部清除</string>
+    <string name="search_filter_clear_all">清除筛选</string>
     <string name="search_scope_mentioned">@ 我</string>
     <string name="search_scope_humans">人类</string>
     <string name="search_scope_agents">Agent</string>
@@ -1688,6 +1688,7 @@
     <string name="search_entity_members">成员</string>
     <string name="search_entity_computer">计算机</string>
     <string name="search_meta_thread">消息列</string>
+    <string name="search_meta_thread_inline">消息列</string>
     <string name="search_hits_count">%1$d 条命中</string>
     <string name="search_state_no_preview">暂无预览</string>
     <string name="search_thread_discussion">消息列讨论</string>

@@ -4,6 +4,21 @@ import build.raft.app.RaftColor
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.TextField
+import build.raft.app.raftArgbHex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,36 +50,166 @@ import androidx.compose.ui.unit.sp
 
 
 /**
- * raft-ui Input / InputGroup metrics for the Home search field ([raftField]): 44dp tall,
- * 12dp side padding, `text-field` 16/24, `foreground-hint` placeholder; the read-only
- * stand-in draws the same control (card fill, 1.5dp `line-field` edge, control radius).
+ * The Home search field ([raftField]) is web MessageSearchPage's `searchFieldInner`: a raft-ui
+ * InputGroup 44dp tall with a 1dp `line-field` border on `layer-card` (control radius), an
+ * 18dp `foreground-hint` search glyph 12dp in from the border and 8dp before the text
+ * (`text-field` 16/24), and, while there is text, a 32dp ghost clear button (18dp X in
+ * `foreground`) 12dp from the end. Focused, the focus ring (`shadow-focus`: 2dp gap, 2dp
+ * `line-strong`) goes round the whole group.
  */
-private val RaftSearchFieldHeight = RaftMetrics.FieldHeight
+private val RaftSearchFieldHeight = 44.dp
+private val RaftSearchFieldBorder = 1.dp
+private val RaftSearchFieldAddonInset = 12.dp
+private val RaftSearchFieldIconSize = 18.dp
+private val RaftSearchFieldClearButtonSize = 32.dp
 
 private fun raftSearchFieldTextStyle() = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
+
+private fun Modifier.raftSearchFieldFocusRing(focused: Boolean): Modifier =
+    if (!focused) {
+        this
+    } else {
+        drawBehind {
+            val gap = 2.dp.toPx()
+            val ring = 2.dp.toPx()
+            val outset = gap + ring / 2f
+            drawRoundRect(
+                color = RaftColor.LineField,
+                topLeft = Offset(-outset, -outset),
+                size = Size(size.width + outset * 2f, size.height + outset * 2f),
+                cornerRadius = CornerRadius(RaftAppRadius.Control.toPx() + outset),
+                style = Stroke(ring)
+            )
+        }
+    }
+
+@Composable
+private fun RaftSearchFieldGroup(
+    focused: Boolean,
+    showClear: Boolean,
+    onClear: () -> Unit,
+    modifier: Modifier,
+    content: @Composable () -> Unit
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    Row(
+        modifier =
+            modifier
+                .height(RaftSearchFieldHeight)
+                .raftSearchFieldFocusRing(focused)
+                .background(RaftColor.Card, shape)
+                .border(RaftSearchFieldBorder, RaftColor.LineField, shape)
+                .padding(horizontal = RaftSearchFieldBorder),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.Search,
+            color = raftArgbHex(RaftColor.ForegroundHint),
+            modifier = Modifier.padding(start = RaftSearchFieldAddonInset, end = 8.dp).size(RaftSearchFieldIconSize)
+        )
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            content()
+        }
+        if (showClear) {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(end = RaftSearchFieldAddonInset)
+                        .size(RaftSearchFieldClearButtonSize)
+                        .clip(shape)
+                        .clickable(onClick = onClear),
+                contentAlignment = Alignment.Center
+            ) {
+                RaftLucideIcon(
+                    RaftLucideIconName.X,
+                    color = raftArgbHex(RaftColor.TextBlack),
+                    modifier = Modifier.size(RaftSearchFieldIconSize)
+                )
+            }
+        } else {
+            Spacer(Modifier.width(RaftSearchFieldAddonInset))
+        }
+    }
+}
 
 @Composable
 private fun RaftSearchFieldPreview(
     text: String,
     placeholder: String,
+    focused: Boolean,
     modifier: Modifier
 ) {
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    Box(
-        modifier =
-            modifier
-                .height(RaftSearchFieldHeight)
-                .background(RaftColor.Card, shape)
-                .border(RaftAppStroke.Control, RaftColor.LineField, shape)
-                .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
-        contentAlignment = Alignment.CenterStart
-    ) {
+    RaftSearchFieldGroup(focused = focused, showClear = text.isNotEmpty(), onClear = {}, modifier = modifier) {
         Text(
             text = text.ifBlank { placeholder },
             style = raftSearchFieldTextStyle(),
             color = if (text.isBlank()) RaftColor.ForegroundHint else RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun RaftSearchFieldEditor(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    autoFocus: Boolean,
+    focusRequester: FocusRequester,
+    keyboardActions: KeyboardActions,
+    onClear: () -> Unit,
+    modifier: Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
+    RaftSearchFieldGroup(focused = focused, showClear = value.text.isNotEmpty(), onClear = onClear, modifier = modifier) {
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            placeholderColor = RaftColor.ForegroundHint,
+            autoFocus = autoFocus,
+            onFocus = { focused = true },
+            onBlur = { focused = false },
+            maxLines = 1,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = keyboardActions,
+            textStyle = raftSearchFieldTextStyle(),
+            cursorBrush = SolidColor(RaftColor.TextBlack),
+            focusRequester = focusRequester,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun RaftSearchFieldTextEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    autoFocus: Boolean,
+    focusRequester: FocusRequester,
+    keyboardActions: KeyboardActions,
+    onClear: () -> Unit,
+    modifier: Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
+    RaftSearchFieldGroup(focused = focused, showClear = value.isNotEmpty(), onClear = onClear, modifier = modifier) {
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            placeholderColor = RaftColor.ForegroundHint,
+            autoFocus = autoFocus,
+            onFocus = { focused = true },
+            onBlur = { focused = false },
+            maxLines = 1,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = keyboardActions,
+            textStyle = raftSearchFieldTextStyle(),
+            cursorBrush = SolidColor(RaftColor.TextBlack),
+            focusRequester = focusRequester,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -124,11 +269,29 @@ internal fun SharedHomeSearchInput(
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
     raftField: Boolean = false,
+    previewFocused: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val raft = raftField && raftActive()
     if (!interactive && raft) {
-        RaftSearchFieldPreview(query, placeholder, modifier)
+        RaftSearchFieldPreview(query, placeholder, previewFocused, modifier)
+        return
+    }
+    if (interactive && raft) {
+        RaftSearchFieldTextEditor(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = placeholder,
+            autoFocus = autoFocus,
+            focusRequester = focusRequester ?: remember { FocusRequester() },
+            keyboardActions =
+                KeyboardActions(
+                    onSearch = { submitSharedHomeSearchInput(query, loading, onSubmit) },
+                    onDone = { submitSharedHomeSearchInput(query, loading, onSubmit) }
+                ),
+            onClear = onClear,
+            modifier = modifier
+        )
         return
     }
     if (interactive) {
@@ -196,11 +359,29 @@ internal fun SharedHomeSearchInput(
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
     raftField: Boolean = false,
+    previewFocused: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val raft = raftField && raftActive()
     if (!interactive && raft) {
-        RaftSearchFieldPreview(query.text, placeholder, modifier)
+        RaftSearchFieldPreview(query.text, placeholder, previewFocused, modifier)
+        return
+    }
+    if (interactive && raft) {
+        RaftSearchFieldEditor(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = placeholder,
+            autoFocus = autoFocus,
+            focusRequester = focusRequester ?: remember { FocusRequester() },
+            keyboardActions =
+                KeyboardActions(
+                    onSearch = { submitSharedHomeSearchInput(query.text, loading, onSubmit) },
+                    onDone = { submitSharedHomeSearchInput(query.text, loading, onSubmit) }
+                ),
+            onClear = onClear,
+            modifier = modifier
+        )
         return
     }
     if (interactive) {
