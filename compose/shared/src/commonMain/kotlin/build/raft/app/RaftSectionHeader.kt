@@ -25,12 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyListState
-import build.raft.app.compat.ui.PullToRefreshState
 import androidx.compose.material3.Text
-import build.raft.app.compat.ui.pullToRefreshItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +46,6 @@ private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val PullRefreshCarrierColor: Color get() = RaftColor.Canvas
 internal val RaftCollapsibleSectionContentGap = 4.dp
 internal val RaftCollapsibleSectionCountTextStyle =
     RaftType.SectionLabel.copy(fontFamily = RaftMonoFamily, letterSpacing = 0.sp)
@@ -312,63 +307,6 @@ internal fun RaftPanelAction(
         content = content
     )
 }
-
-internal fun LazyListScope.raftPullToRefreshItem(
-    state: PullToRefreshState,
-    scrollState: LazyListState,
-    onRefresh: () -> Unit
-) {
-    pullToRefreshItem(
-        state = state,
-        scrollState = scrollState,
-        holdRefreshInset = true,
-        onRefresh = onRefresh,
-        content = { pullProgress, isRefreshing, refreshThreshold ->
-            RaftPullRefreshIndicator(
-                pullProgress = pullProgress,
-                isRefreshing = isRefreshing,
-                refreshThreshold = refreshThreshold
-            )
-        }
-    )
-}
-
-@Composable
-internal fun RaftPullRefreshIndicator(
-    pullProgress: Float,
-    isRefreshing: Boolean,
-    refreshThreshold: Dp,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(refreshThreshold)
-                .background(PullRefreshCarrierColor),
-        contentAlignment = Alignment.Center
-    ) {
-        if (raftPullRefreshIndicatorVisible(pullProgress, isRefreshing)) {
-            RaftLucideIcon(
-                RaftLucideIconName.LoaderCircle,
-                modifier = Modifier.size(LoadingSpinnerSize),
-                color = RaftColor.TextBlackArgb,
-                spinning = isRefreshing,
-                rotationDegrees = raftPullRefreshIndicatorRotationDegrees(pullProgress, isRefreshing)
-            )
-        }
-    }
-}
-
-internal fun raftPullRefreshIndicatorVisible(pullProgress: Float, isRefreshing: Boolean): Boolean =
-    isRefreshing || pullProgress > 0f
-
-internal fun raftPullRefreshIndicatorRotationDegrees(pullProgress: Float, isRefreshing: Boolean): Float =
-    if (isRefreshing) {
-        0f
-    } else {
-        pullProgress.coerceIn(0f, 1f) * 360f
-    }
 
 @Composable
 internal fun RaftCenteredLoading(

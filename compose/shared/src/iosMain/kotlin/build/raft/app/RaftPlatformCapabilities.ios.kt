@@ -9,8 +9,6 @@ import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
 
-internal actual fun raftPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
-
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 
 internal actual fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean = true
