@@ -1574,7 +1574,7 @@
     <string name="home_action_mark_as_unread">标记未读</string>
     <string name="home_action_mute">静音</string>
     <string name="home_action_unmute">取消静音</string>
-    <string name="home_action_close_chat">关闭私信</string>
+    <string name="home_action_close_chat">关闭会话</string>
     <string name="home_action_archive">归档</string>
     <string name="home_action_sort">排序</string>
     <string name="home_action_save_sort">保存排序</string>
@@ -1593,6 +1593,14 @@
     <string name="home_section_name_label">名称</string>
     <string name="home_section_name_placeholder">我的项目</string>
     <string name="home_section_emoji_label">表情</string>
+    <string name="home_section_move_to_pinned">已置顶</string>
+    <string name="home_section_menu_sort_title">排序</string>
+    <string name="home_section_menu_display_title">显示</string>
+    <string name="home_section_hide_empty">隐藏空的分区</string>
+    <string name="home_section_create_channel">创建频道</string>
+    <string name="home_section_empty">没有会话</string>
+    <string name="home_section_pinned_empty">长按频道或私信即可置顶</string>
+    <string name="home_section_joint_empty">还没有联合频道</string>
     <string name="home_action_add_channel">添加频道</string>
     <string name="home_state_no_servers">没有可用的服务器</string>
     <string name="home_server_switcher_join_chinese_community">加入中文社区</string>

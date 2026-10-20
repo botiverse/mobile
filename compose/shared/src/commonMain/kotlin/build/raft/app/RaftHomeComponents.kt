@@ -33,6 +33,7 @@ import build.raft.app.data.SettingsServerSidebarSectionPlacement
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_AGENT
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL
 import build.raft.app.data.normalizeSidebarSectionOrder
+import build.raft.app.data.RaftSidebarHideEmptySectionsDefault
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
@@ -556,6 +557,15 @@ data class RaftHomeShellLabels(
     val sortAz: String = "A-Z",
     // task #512: custom sidebar sections (web channel-sections port).
     val moveToSection: String = "Move to section",
+    /** Move-to-section target for the pinned section (web `layout.sidebar.pinned`). */
+    val pinnedTarget: String = "Pinned",
+    val sortMenuTitle: String = "Sort",
+    val displaySection: String = "Display",
+    val hideEmptySections: String = "Hide empty sections",
+    val createChannel: String = "Create channel",
+    val sectionEmpty: String = "No conversations",
+    val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
+    val jointChannelsEmpty: String = "No joint channels yet",
     val removeFromSection: String = "Remove from section",
     val newSectionMenu: String = "New section…",
     val renameSection: String = "Rename / change icon…",
@@ -597,6 +607,14 @@ data class RaftHomeShellLabels(
             sortRecent = stringResource(MR.strings.home_sort_recent),
             sortAz = stringResource(MR.strings.home_sort_az),
             moveToSection = stringResource(MR.strings.home_section_move_to),
+            pinnedTarget = stringResource(MR.strings.home_section_move_to_pinned),
+            sortMenuTitle = stringResource(MR.strings.home_section_menu_sort_title),
+            displaySection = stringResource(MR.strings.home_section_menu_display_title),
+            hideEmptySections = stringResource(MR.strings.home_section_hide_empty),
+            createChannel = stringResource(MR.strings.home_section_create_channel),
+            sectionEmpty = stringResource(MR.strings.home_section_empty),
+            pinnedSectionEmpty = stringResource(MR.strings.home_section_pinned_empty),
+            jointChannelsEmpty = stringResource(MR.strings.home_section_joint_empty),
             removeFromSection = stringResource(MR.strings.home_section_remove_from),
             newSectionMenu = stringResource(MR.strings.home_section_new_menu),
             renameSection = stringResource(MR.strings.home_section_rename),
@@ -1420,6 +1438,7 @@ internal data class RaftStructuralHomeShellData(
     val savedSelected: Boolean = false,
     val channelOrder: List<String> = emptyList(),
     val channelSortMode: String = "manual",
+    val jointChannelSortMode: String = "manual",
     val dmOrder: List<String> = emptyList(),
     val dmSortMode: String = "manual",
     val pinnedChannelIds: List<String> = emptyList(),
@@ -1432,6 +1451,8 @@ internal data class RaftStructuralHomeShellData(
     val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
     val sectionOrder: List<String> = emptyList(),
     val sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
+    /** Web "Display > Hide Empty Sections" (a local, not server-synced, preference). */
+    val hideEmptySections: Boolean = RaftSidebarHideEmptySectionsDefault,
     val canArchiveChannels: Boolean = false,
     val showLoadingSkeletons: Boolean = false,
     val selectedTabKey: String = "home",
@@ -1466,12 +1487,14 @@ internal class RaftStructuralHomeShellCallbacks(
     val onInlineErrorAction: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    val onJointChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    val onHideEmptySectionsChange: (Boolean) -> Unit = {},
     val onSidebarOrderChange: (target: RaftSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     val onDmSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     val onPinnedSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     // task #512: custom sidebar sections (web channel-sections port).
     val onSidebarSectionSortModeChange: (sectionId: String, RaftSidebarSortMode) -> Unit = { _, _ -> },
-    val onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    val onSidebarSectionCreate: (RaftHomeSectionCreateRequest) -> Unit = {},
     val onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
     val onSidebarSectionDelete: (sectionId: String) -> Unit = {},
     /** [sectionId] null returns the conversation to its default section. */
@@ -1522,6 +1545,7 @@ internal fun RaftStructuralHomeShell(
     savedSelected: Boolean = false,
     channelOrder: List<String> = emptyList(),
     channelSortMode: String = "manual",
+    jointChannelSortMode: String = "manual",
     dmOrder: List<String> = emptyList(),
     dmSortMode: String = "manual",
     pinnedChannelIds: List<String> = emptyList(),
@@ -1534,6 +1558,7 @@ internal fun RaftStructuralHomeShell(
     customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
     sectionOrder: List<String> = emptyList(),
     sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
+    hideEmptySections: Boolean = RaftSidebarHideEmptySectionsDefault,
     canArchiveChannels: Boolean = false,
     // #372 React parity: while home content is loading (session known,
     // channels / directMessages still empty) render static skeleton rows
@@ -1563,12 +1588,14 @@ internal fun RaftStructuralHomeShell(
     onInlineErrorAction: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    onJointChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    onHideEmptySectionsChange: (Boolean) -> Unit = {},
     onSidebarOrderChange: (target: RaftSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     onDmSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     // task #512: custom sidebar sections (web channel-sections port).
     onSidebarSectionSortModeChange: (sectionId: String, RaftSidebarSortMode) -> Unit = { _, _ -> },
-    onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    onSidebarSectionCreate: (RaftHomeSectionCreateRequest) -> Unit = {},
     onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
     onSidebarSectionDelete: (sectionId: String) -> Unit = {},
     onMoveConversationToSection: (conversationId: String, sectionId: String?) -> Unit = { _, _ -> },
@@ -1624,6 +1651,7 @@ internal fun RaftStructuralHomeShell(
                 savedSelected = savedSelected,
                 channelOrder = channelOrder,
                 channelSortMode = channelSortMode,
+                jointChannelSortMode = jointChannelSortMode,
                 dmOrder = dmOrder,
                 dmSortMode = dmSortMode,
                 pinnedChannelIds = pinnedChannelIds,
@@ -1635,6 +1663,7 @@ internal fun RaftStructuralHomeShell(
                 customSections = customSections,
                 sectionOrder = sectionOrder,
                 sectionPlacements = sectionPlacements,
+                hideEmptySections = hideEmptySections,
                 canArchiveChannels = canArchiveChannels,
                 showLoadingSkeletons = showLoadingSkeletons,
                 selectedTabKey = selectedTabKey,
@@ -1665,6 +1694,8 @@ internal fun RaftStructuralHomeShell(
                 onInlineErrorAction = onInlineErrorAction,
                 onRefresh = onRefresh,
                 onChannelSortModeChange = onChannelSortModeChange,
+                onJointChannelSortModeChange = onJointChannelSortModeChange,
+                onHideEmptySectionsChange = onHideEmptySectionsChange,
                 onSidebarOrderChange = onSidebarOrderChange,
                 onDmSortModeChange = onDmSortModeChange,
                 onPinnedSortModeChange = onPinnedSortModeChange,
@@ -1726,6 +1757,7 @@ private fun RaftStructuralHomeShellContent(
     val savedSelected = data.savedSelected
     val channelOrder = data.channelOrder
     val channelSortMode = data.channelSortMode
+    val jointChannelSortMode = data.jointChannelSortMode
     val dmOrder = data.dmOrder
     val dmSortMode = data.dmSortMode
     val pinnedChannelIds = data.pinnedChannelIds
@@ -1737,6 +1769,7 @@ private fun RaftStructuralHomeShellContent(
     val customSections = data.customSections
     val sectionOrder = data.sectionOrder
     val sectionPlacements = data.sectionPlacements
+    val hideEmptySections = data.hideEmptySections
     val canArchiveChannels = data.canArchiveChannels
     val showLoadingSkeletons = data.showLoadingSkeletons
     val selectedTabKey = data.selectedTabKey
@@ -1763,6 +1796,8 @@ private fun RaftStructuralHomeShellContent(
     val onInlineErrorAction = callbacks.onInlineErrorAction
     val onRefresh = callbacks.onRefresh
     val onChannelSortModeChange = callbacks.onChannelSortModeChange
+    val onJointChannelSortModeChange = callbacks.onJointChannelSortModeChange
+    val onHideEmptySectionsChange = callbacks.onHideEmptySectionsChange
     val onSidebarOrderChange = callbacks.onSidebarOrderChange
     val onDmSortModeChange = callbacks.onDmSortModeChange
     val onPinnedSortModeChange = callbacks.onPinnedSortModeChange
@@ -1800,6 +1835,7 @@ private fun RaftStructuralHomeShellContent(
     // original copy. Row key format is `<section>:<conversationId>`.
     var pressedRowKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(channelSortMode)) }
+    var jointChannelSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(jointChannelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(dmSortMode)) }
     var pinnedSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(pinnedSortMode)) }
     var activeSortMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
@@ -1807,8 +1843,9 @@ private fun RaftStructuralHomeShellContent(
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var activePinnedMemberMenuKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var pinMenuAnchor by remember(currentServerId) { mutableStateOf<RaftPopoverAnchor?>(null) }
-    LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
+    LaunchedEffect(currentServerId, channelSortMode, jointChannelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = RaftSidebarSortMode.fromWireValue(channelSortMode)
+        jointChannelSortModeState = RaftSidebarSortMode.fromWireValue(jointChannelSortMode)
         directMessageSortMode = RaftSidebarSortMode.fromWireValue(dmSortMode)
         pinnedSortModeState = RaftSidebarSortMode.fromWireValue(pinnedSortMode)
         activeSortMenu = null
@@ -1877,6 +1914,38 @@ private fun RaftStructuralHomeShellContent(
     var sectionDialogTarget by remember(currentServerId) { mutableStateOf<RaftHomeSectionDialogTarget?>(null) }
     var sectionDeleteConfirmId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var moveToSectionConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    // Web parity: long-pressing a system section header (web right-click)
+    // opens that section's menu — sort, display, new section.
+    var activeSystemSectionMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
+    var systemSectionMenuAnchor by remember(currentServerId) { mutableStateOf<RaftPopoverAnchor?>(null) }
+    val systemSectionSortMode: (RaftHomeSortSection) -> RaftSidebarSortMode = { section ->
+        when (section) {
+            RaftHomeSortSection.Channels -> channelSortModeState
+            RaftHomeSortSection.JointChannels -> jointChannelSortModeState
+            RaftHomeSortSection.DirectMessages -> directMessageSortMode
+            RaftHomeSortSection.Pinned -> pinnedSortModeState
+        }
+    }
+    val selectSystemSectionSortMode: (RaftHomeSortSection, RaftSidebarSortMode) -> Unit = { section, nextMode ->
+        when (section) {
+            RaftHomeSortSection.Channels -> {
+                channelSortModeState = nextMode
+                onChannelSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.JointChannels -> {
+                jointChannelSortModeState = nextMode
+                onJointChannelSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.DirectMessages -> {
+                directMessageSortMode = nextMode
+                onDmSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.Pinned -> {
+                pinnedSortModeState = nextMode
+                onPinnedSortModeChange(nextMode)
+            }
+        }
+    }
     val allChannelId = remember(channels) { channels.firstOrNull { it.name == "all" }?.id }
     // task #512: conversations claimed by a custom section leave their default
     // system section (web customPlacedChannelIds / customPlacedAgentIds).
@@ -1894,12 +1963,12 @@ private fun RaftStructuralHomeShellContent(
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
-    val displayedJointChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds) {
+    val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds) {
         channels
             .filter { it.kind == JointChannelKindWireValue }
             .filter { it.id !in customPlacedConversationIds }
             .orderedBySidebarIds(channelOrder)
-            .sortedForSidebar(channelSortModeState) { it.name }
+            .sortedForSidebar(jointChannelSortModeState) { it.name }
     }
     val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
     val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet, customPlacedConversationIds) {
@@ -1947,7 +2016,7 @@ private fun RaftStructuralHomeShellContent(
     }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
     // task #512: custom sections interleave with the system sections in web's
-    // sectionOrder order; empty ones stay hidden (mobile always hides empties).
+    // sectionOrder order; like web, custom sections show even when empty.
     val displayedCustomSections =
         remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedIdSet) {
             sidebarCustomSectionRows(
@@ -1961,14 +2030,26 @@ private fun RaftStructuralHomeShellContent(
         }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
+    // Keep the DMs section while its rows are still loading (skeletons).
+    val hasDisplayedDirectMessages = displayedDirectMessages.isNotEmpty() || showLoadingSkeletons
     val displayedSidebarSections =
-        remember(sectionOrder, customSections, displayedCustomSections, hasDisplayedPinned, hasDisplayedJointChannels) {
+        remember(
+            sectionOrder,
+            customSections,
+            displayedCustomSections,
+            hasDisplayedPinned,
+            hasDisplayedJointChannels,
+            hasDisplayedDirectMessages,
+            hideEmptySections
+        ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
                 customSections = customSections,
                 customSectionRows = displayedCustomSections,
                 hasPinned = hasDisplayedPinned,
-                hasJointChannels = hasDisplayedJointChannels
+                hasJointChannels = hasDisplayedJointChannels,
+                hasDirectMessages = hasDisplayedDirectMessages,
+                hideEmptySections = hideEmptySections
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2294,8 +2375,24 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.Pinned
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:pinned",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             )
+                                        }
+                                        if (pinnedExpanded && displayedPinned.isEmpty()) {
+                                            item(key = "pinned-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.pinnedSectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (pinnedExpanded) {
                                             items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
@@ -2432,8 +2529,31 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = jointChannelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                                 showCollapsedUnreadDot = jointChannelSectionHasUnread,
+                                                sortContentDescription = "${labels.sortChannels} ${labels.jointChannels}",
+                                                onSortClick = { anchor ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.JointChannels) null else RaftHomeSortSection.JointChannels
+                                                        sortMenuAnchor = anchor
+                                                    }
+                                                },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.JointChannels
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:joint",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             )
+                                        }
+                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty()) {
+                                            item(key = "joint-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (jointChannelsExpanded) {
                                             items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
@@ -2494,6 +2614,17 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.Channels
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:channels",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             ) {
                                                 RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
@@ -2564,9 +2695,25 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.DirectMessages
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:dms",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                                 trailingContent = null
                                             )
+                                        }
+                                        if (directMessagesExpanded && displayedDirectMessages.isEmpty() && !showLoadingSkeletons) {
+                                            item(key = "dms-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (directMessagesExpanded) {
                                             items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
@@ -2665,6 +2812,11 @@ private fun RaftStructuralHomeShellContent(
                                                         }
                                                     }
                                                 )
+                                            }
+                                        }
+                                        if (customSectionExpanded && sectionRows.items.isEmpty()) {
+                                            item(key = "custom-section-empty:$currentServerId:${customSection.id}") {
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
                                             }
                                         }
                                         if (customSectionExpanded) {
@@ -2825,29 +2977,39 @@ private fun RaftStructuralHomeShellContent(
                 RaftBaseMenuOverlay(
                     anchor = resolvedSortAnchor,
                     items = raftHomeSortMenuItems(labels),
-                    selectedId = when (section) {
-                        RaftHomeSortSection.Channels, RaftHomeSortSection.JointChannels -> channelSortModeState.wireValue
-                        RaftHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
-                        RaftHomeSortSection.Pinned -> pinnedSortModeState.wireValue
-                    },
+                    selectedId = systemSectionSortMode(section).wireValue,
                     onDismiss = { activeSortMenu = null },
                     onSelect = { selected ->
-                        val nextMode = RaftSidebarSortMode.fromWireValue(selected)
-                        when (section) {
-                            RaftHomeSortSection.Channels, RaftHomeSortSection.JointChannels -> {
-                                channelSortModeState = nextMode
-                                onChannelSortModeChange(nextMode)
-                            }
-                            RaftHomeSortSection.DirectMessages -> {
-                                directMessageSortMode = nextMode
-                                onDmSortModeChange(nextMode)
-                            }
-                            RaftHomeSortSection.Pinned -> {
-                                pinnedSortModeState = nextMode
-                                onPinnedSortModeChange(nextMode)
-                            }
-                        }
+                        selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(selected))
                         activeSortMenu = null
+                    }
+                )
+            }
+            activeSystemSectionMenu?.let { section ->
+                val resolvedAnchor = systemSectionMenuAnchor ?: return@let
+                RaftBaseMenuOverlay(
+                    anchor = resolvedAnchor,
+                    items =
+                        raftHomeSectionMenuItems(
+                            labels = labels,
+                            sortMode = systemSectionSortMode(section),
+                            hideEmptySections = hideEmptySections,
+                            custom = false,
+                            canCreateChannel = section == RaftHomeSortSection.Channels
+                        ),
+                    selectedId = "",
+                    onDismiss = { activeSystemSectionMenu = null },
+                    onSelect = { actionId ->
+                        when {
+                            actionId.startsWith("sort:") ->
+                                selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(actionId.removePrefix("sort:")))
+                            actionId == "toggle-hide-empty" -> onHideEmptySectionsChange(!hideEmptySections)
+                            actionId == "create" ->
+                                sectionDialogTarget =
+                                    RaftHomeSectionDialogTarget.Create(insertBeforeSectionId = section.sidebarSectionOrderId())
+                            actionId == "create-channel" -> onCreateChannelClick()
+                        }
+                        activeSystemSectionMenu = null
                     }
                 )
             }
@@ -2881,8 +3043,7 @@ private fun RaftStructuralHomeShellContent(
                     pinTargetIsPinned = pinTargetIsPinned,
                     sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
                     activeIsDirectMessage = activeIsDirectMessage,
-                    activeCanArchive = activeCanArchive,
-                    hasCustomSections = customSections.isNotEmpty()
+                    activeCanArchive = activeCanArchive
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -2947,8 +3108,13 @@ private fun RaftStructuralHomeShellContent(
                 if (resolvedSectionAnchor != null) {
                     RaftBaseMenuOverlay(
                         anchor = resolvedSectionAnchor,
-                        items = raftHomeSectionMenuItems(labels),
-                        selectedId = "sort:${activeSectionMenuSection.sortMode}",
+                        items =
+                            raftHomeSectionMenuItems(
+                                labels = labels,
+                                sortMode = RaftSidebarSortMode.fromWireValue(activeSectionMenuSection.sortMode),
+                                hideEmptySections = hideEmptySections
+                            ),
+                        selectedId = "",
                         onDismiss = { activeSectionMenuId = null },
                         onSelect = { actionId ->
                             val sectionId = activeSectionMenuSection.id
@@ -2958,10 +3124,11 @@ private fun RaftStructuralHomeShellContent(
                                         sectionId,
                                         RaftSidebarSortMode.fromWireValue(actionId.removePrefix("sort:"))
                                     )
+                                actionId == "toggle-hide-empty" -> onHideEmptySectionsChange(!hideEmptySections)
                                 actionId == "rename" ->
                                     sectionDialogTarget = RaftHomeSectionDialogTarget.Edit(sectionId)
                                 actionId == "create" ->
-                                    sectionDialogTarget = RaftHomeSectionDialogTarget.Create
+                                    sectionDialogTarget = RaftHomeSectionDialogTarget.Create(insertBeforeSectionId = sectionId)
                                 actionId == "delete" -> sectionDeleteConfirmId = sectionId
                             }
                             activeSectionMenuId = null
@@ -2970,10 +3137,11 @@ private fun RaftStructuralHomeShellContent(
                 }
             }
             val moveToSectionTarget = moveToSectionConversationId
-            if (moveToSectionTarget != null && customSections.isNotEmpty()) {
+            if (moveToSectionTarget != null) {
                 val resolvedMoveAnchor = pinMenuAnchor
                 if (resolvedMoveAnchor != null) {
                     val moveTargetDm = directMessages.firstOrNull { it.id == moveToSectionTarget }
+                    val moveTargetIsPinned = moveToSectionTarget in pinnedIdSet
                     val moveTargetCurrentSectionId =
                         sectionPlacements
                             .firstOrNull { placement ->
@@ -2988,13 +3156,29 @@ private fun RaftStructuralHomeShellContent(
                             ?.sectionId
                     RaftBaseMenuOverlay(
                         anchor = resolvedMoveAnchor,
-                        items = raftHomeMoveToSectionMenuItems(customSections, moveTargetCurrentSectionId, labels),
-                        selectedId = "section:${moveTargetCurrentSectionId.orEmpty()}",
+                        items =
+                            raftHomeMoveToSectionMenuItems(
+                                customSections = customSections,
+                                currentSectionId = moveTargetCurrentSectionId,
+                                labels = labels,
+                                pinned = moveTargetIsPinned
+                            ),
+                        selectedId = "",
                         onDismiss = { moveToSectionConversationId = null },
                         onSelect = { actionId ->
-                            if (actionId.startsWith("section:")) {
-                                val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
-                                onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                            when {
+                                // Web moveItemToPinned: pin it (pinning also drops
+                                // any custom-section placement in the store).
+                                actionId == "pinned" -> if (!moveTargetIsPinned) onPinToggle(moveToSectionTarget)
+                                actionId == "create" ->
+                                    sectionDialogTarget =
+                                        RaftHomeSectionDialogTarget.Create(moveConversationId = moveToSectionTarget)
+                                actionId.startsWith("section:") -> {
+                                    val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
+                                    if (targetSectionId == null || targetSectionId != moveTargetCurrentSectionId) {
+                                        onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                                    }
+                                }
                             }
                             moveToSectionConversationId = null
                         }
@@ -3018,8 +3202,15 @@ private fun RaftStructuralHomeShellContent(
                         onSubmit = { name, emoji ->
                             if (editingSection != null) {
                                 onSidebarSectionRename(editingSection.id, name, emoji)
-                            } else {
-                                onSidebarSectionCreate(name, emoji)
+                            } else if (target is RaftHomeSectionDialogTarget.Create) {
+                                onSidebarSectionCreate(
+                                    RaftHomeSectionCreateRequest(
+                                        name = name,
+                                        emoji = emoji,
+                                        moveConversationId = target.moveConversationId,
+                                        insertBeforeSectionId = target.insertBeforeSectionId
+                                    )
+                                )
                             }
                             sectionDialogTarget = null
                         }
@@ -3295,29 +3486,42 @@ internal sealed interface RaftHomeSidebarSection {
  * `normalizeSidebarSectionOrder` output: so system and custom sections
  * interleave in the user's order, and ids missing from it fall back to system
  * sections in canonical order, then custom sections in declaration order.
- * Visibility keeps mobile's rules: pinned and joint hide when empty, custom
- * sections appear only if [customSectionRows] has them (non-empty), DMs always show.
+ * Visibility follows web's "Hide Empty Sections" display preference
+ * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / Joint Channels /
+ * DMs drop out; Channels always shows (it carries the empty-state hint) and so
+ * does every custom section in [customSectionRows], empty or not.
  */
 internal fun homeSidebarSectionOrder(
     sectionOrder: List<String>,
     customSections: List<SettingsServerSidebarCustomSection>,
     customSectionRows: List<RaftHomeCustomSectionRows>,
     hasPinned: Boolean,
-    hasJointChannels: Boolean
+    hasJointChannels: Boolean,
+    hasDirectMessages: Boolean = true,
+    hideEmptySections: Boolean = true
 ): List<RaftHomeSidebarSection> {
     val rowsBySectionId = customSectionRows.associateBy { it.section.id }
     return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
         when (id) {
-            "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned }
-            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels }
+            "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned || !hideEmptySections }
+            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels || !hideEmptySections }
             "system:channels" -> RaftHomeSidebarSection.Channels
-            "system:dms" -> RaftHomeSidebarSection.DirectMessages
+            "system:dms" -> RaftHomeSidebarSection.DirectMessages.takeIf { hasDirectMessages || !hideEmptySections }
             else -> rowsBySectionId[id]?.let { RaftHomeSidebarSection.Custom(it) }
         }
     }
 }
 
 private enum class RaftHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
+
+/** The section's id in web's `sectionOrder` (`system:*`). */
+private fun RaftHomeSortSection.sidebarSectionOrderId(): String =
+    when (this) {
+        RaftHomeSortSection.Pinned -> "system:pinned"
+        RaftHomeSortSection.JointChannels -> "system:joint"
+        RaftHomeSortSection.Channels -> "system:channels"
+        RaftHomeSortSection.DirectMessages -> "system:dms"
+    }
 
 internal fun raftHomeConversationMenuItems(
     conversation: RaftHomeConversationItem,
@@ -3326,15 +3530,34 @@ internal fun raftHomeConversationMenuItems(
     sortableFromMenu: Boolean,
     activeIsDirectMessage: Boolean,
     activeCanArchive: Boolean,
-    hasCustomSections: Boolean = false
+    canMoveToSection: Boolean = true
 ): List<RaftBaseMenuItem> =
     buildList {
+        // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
+        // then read / pin / mute, then close (DMs) or archive (channels).
+        if (canMoveToSection) {
+            add(
+                RaftBaseMenuItem(
+                    id = "move-to-section",
+                    label = labels.moveToSection,
+                    icon = RaftLucideIconName.FolderInput
+                )
+            )
+        }
         val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
         add(
             RaftBaseMenuItem(
                 id = if (hasUnread) "mark-read" else "mark-unread",
                 label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
-                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
+                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail,
+                dividerBefore = canMoveToSection
+            )
+        )
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-pin",
+                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
+                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
             )
         )
         if (conversation.activityMuteSupported) {
@@ -3346,24 +3569,7 @@ internal fun raftHomeConversationMenuItems(
                 )
             )
         }
-        add(
-            RaftBaseMenuItem(
-                id = "toggle-pin",
-                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
-                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
-            )
-        )
-        // task #512: web parity (MoveToSectionMenuItem) — only when at least one
-        // custom section exists to move into.
-        if (hasCustomSections) {
-            add(
-                RaftBaseMenuItem(
-                    id = "move-to-section",
-                    label = labels.moveToSection,
-                    icon = RaftLucideIconName.Folder
-                )
-            )
-        }
+        // Mobile-only: the manual reorder overlay stands in for web drag-and-drop.
         if (sortableFromMenu) {
             add(
                 RaftBaseMenuItem(
@@ -3374,7 +3580,7 @@ internal fun raftHomeConversationMenuItems(
             )
         }
         if (activeIsDirectMessage) {
-            add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X))
+            add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X, dividerBefore = true))
         } else if (activeCanArchive) {
             add(
                 RaftBaseMenuItem(
@@ -3399,56 +3605,133 @@ internal fun raftHomePinnedMemberMenuItems(
     )
 
 /**
- * task #512: custom-section header menu — sort radios first (the overlay's
- * selectedId marks the current mode), then rename / new / delete. Mirrors web's
- * section context menu (Sidebar.tsx) minus the desktop-only display toggles.
+ * Section header menu (long-press on a section header, the mobile stand-in
+ * for web's right-click). Mirrors web Sidebar.tsx's section context menu:
+ * [create channel (Channels only)] / Sort: Manual, Recent, A-Z (current one
+ * checked) / Display: Hide Empty Sections (checked when on) / [rename] /
+ * New Section… / [delete]. Rename and delete only exist on custom sections.
+ * Web also offers "Create Joint Channel" on the Joint Channels menu; mobile
+ * has no create-joint-channel flow yet, so it is omitted.
  */
-internal fun raftHomeSectionMenuItems(labels: RaftHomeShellLabels = RaftHomeShellLabels()): List<RaftBaseMenuItem> =
-    RaftSidebarSortMode.entries.map { mode ->
-        RaftBaseMenuItem(
-            id = "sort:${mode.wireValue}",
-            label =
-                when (mode) {
-                    RaftSidebarSortMode.Manual -> labels.sortManual
-                    RaftSidebarSortMode.Recent -> labels.sortRecent
-                    RaftSidebarSortMode.Az -> labels.sortAz
-                }
+internal fun raftHomeSectionMenuItems(
+    labels: RaftHomeShellLabels = RaftHomeShellLabels(),
+    sortMode: RaftSidebarSortMode = RaftSidebarSortMode.Manual,
+    hideEmptySections: Boolean = false,
+    custom: Boolean = true,
+    canCreateChannel: Boolean = false
+): List<RaftBaseMenuItem> =
+    buildList {
+        if (canCreateChannel) {
+            add(RaftBaseMenuItem(id = "create-channel", label = labels.createChannel, icon = RaftLucideIconName.Plus))
+        }
+        RaftSidebarSortMode.entries.forEachIndexed { index, mode ->
+            add(
+                RaftBaseMenuItem(
+                    id = "sort:${mode.wireValue}",
+                    label =
+                        when (mode) {
+                            RaftSidebarSortMode.Manual -> labels.sortManual
+                            RaftSidebarSortMode.Recent -> labels.sortRecent
+                            RaftSidebarSortMode.Az -> labels.sortAz
+                        },
+                    checked = mode == sortMode,
+                    dividerBefore = index == 0 && canCreateChannel,
+                    groupLabel = if (index == 0) labels.sortMenuTitle else null
+                )
+            )
+        }
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-hide-empty",
+                label = labels.hideEmptySections,
+                checked = hideEmptySections,
+                dividerBefore = true,
+                groupLabel = labels.displaySection
+            )
         )
-    } +
-        listOf(
-            RaftBaseMenuItem(id = "rename", label = labels.renameSection, icon = RaftLucideIconName.Pencil, dividerBefore = true),
-            RaftBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = RaftLucideIconName.Plus),
-            RaftBaseMenuItem(id = "delete", label = labels.deleteSection, icon = RaftLucideIconName.Trash2, dividerBefore = true)
+        if (custom) {
+            add(RaftBaseMenuItem(id = "rename", label = labels.renameSection, icon = RaftLucideIconName.Pencil, dividerBefore = true))
+        }
+        add(
+            RaftBaseMenuItem(
+                id = "create",
+                label = labels.newSectionMenu,
+                icon = RaftLucideIconName.FolderPlus,
+                dividerBefore = !custom
+            )
         )
+        if (custom) {
+            add(RaftBaseMenuItem(id = "delete", label = labels.deleteSection, icon = RaftLucideIconName.Trash2, dividerBefore = true))
+        }
+    }
 
 /**
- * task #512: "move to section" submenu rows — one per custom section plus a
- * remove entry (only when the conversation is currently placed). Item ids carry
- * the target: `section:<id>`; the bare `section:` id means the default section.
+ * "Move to section" submenu. Mirrors web Sidebar.tsx: Pinned (checked and
+ * disabled when the conversation is already pinned), one row per custom
+ * section (the current one checked), then New Section… and — only when the
+ * conversation sits in a custom section — Remove from Section. Item ids carry
+ * the target: `pinned`, `section:<id>`, `create`, and the bare `section:` for
+ * "back to the default section".
  */
 internal fun raftHomeMoveToSectionMenuItems(
     customSections: List<SettingsServerSidebarCustomSection>,
     currentSectionId: String?,
-    labels: RaftHomeShellLabels = RaftHomeShellLabels()
+    labels: RaftHomeShellLabels = RaftHomeShellLabels(),
+    pinned: Boolean = false
 ): List<RaftBaseMenuItem> =
     buildList {
-        if (currentSectionId != null) {
-            add(RaftBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = RaftLucideIconName.X))
-        }
+        add(
+            RaftBaseMenuItem(
+                id = "pinned",
+                label = labels.pinnedTarget,
+                icon = RaftLucideIconName.Pin,
+                checked = pinned,
+                enabled = !pinned
+            )
+        )
         customSections.forEach { section ->
             add(
                 RaftBaseMenuItem(
                     id = "section:${section.id}",
                     label = section.sidebarSectionHeaderLabel(),
-                    icon = RaftLucideIconName.Folder
+                    icon = RaftLucideIconName.FolderInput,
+                    checked = section.id == currentSectionId
                 )
             )
         }
+        add(RaftBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = RaftLucideIconName.FolderPlus, dividerBefore = true))
+        if (currentSectionId != null) {
+            add(RaftBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = RaftLucideIconName.X))
+        }
     }
+
+/** A "New section…" submission: the section, plus where it came from. */
+data class RaftHomeSectionCreateRequest(
+    val name: String,
+    val emoji: String?,
+    /** The row whose Move to Section > New Section… opened the dialog; it moves into the new section. */
+    val moveConversationId: String? = null,
+    /** sectionOrder id of the section whose header menu opened the dialog; the new section goes before it. */
+    val insertBeforeSectionId: String? = null
+)
+
+/** Web `SidebarSectionDescription` hint under an empty, expanded section. */
+@Composable
+private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = RaftType.Caption,
+        color = RaftColor.TextMutedGray,
+        modifier = modifier.fillMaxWidth().padding(start = RaftAppSpacing.Lg, top = RaftAppSpacing.Xs, bottom = RaftAppSpacing.Xs)
+    )
+}
 
 /** task #512: create/rename target for the custom-section dialog. */
 private sealed interface RaftHomeSectionDialogTarget {
-    data object Create : RaftHomeSectionDialogTarget
+    data class Create(
+        val moveConversationId: String? = null,
+        val insertBeforeSectionId: String? = null
+    ) : RaftHomeSectionDialogTarget
 
     data class Edit(val sectionId: String) : RaftHomeSectionDialogTarget
 }
@@ -4202,8 +4485,9 @@ internal data class RaftHomeCustomSectionRows(
  * sectionOrder order. Mirrors web Sidebar.tsx `customSectionItems`: placements
  * resolve channels and DM channels by id (kind "channel") or agent-peer DMs by
  * member id (kind "agent"); pinned conversations stay in the pinned section
- * (the two stay mutually exclusive); empty sections keep mobile's always-hidden
- * behavior; each section's items follow its own sort mode.
+ * (the two stay mutually exclusive); every custom section is listed, empty
+ * ones too (web renders them with a "No conversations" hint); each section's
+ * items follow its own sort mode.
  */
 internal fun sidebarCustomSectionRows(
     channels: List<RaftHomeConversationItem>,
@@ -4213,7 +4497,7 @@ internal fun sidebarCustomSectionRows(
     sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
     pinnedConversationIds: Set<String>
 ): List<RaftHomeCustomSectionRows> {
-    if (customSections.isEmpty() || sectionPlacements.isEmpty()) return emptyList()
+    if (customSections.isEmpty()) return emptyList()
     val sectionById = customSections.associateBy { it.id }
     val conversationById = buildMap {
         channels.forEach { put(it.id, it) }
@@ -4242,7 +4526,6 @@ internal fun sidebarCustomSectionRows(
         .mapNotNull { sectionId ->
             val section = sectionById[sectionId] ?: return@mapNotNull null
             val items = itemsBySection[sectionId].orEmpty()
-            if (items.isEmpty()) return@mapNotNull null
             RaftHomeCustomSectionRows(
                 section = section,
                 items = items.sortedForSidebar(RaftSidebarSortMode.fromWireValue(section.sortMode)) { it.name }

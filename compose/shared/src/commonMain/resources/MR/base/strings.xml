@@ -1593,6 +1593,14 @@
     <string name="home_section_name_label">Name</string>
     <string name="home_section_name_placeholder">My Project</string>
     <string name="home_section_emoji_label">Emoji</string>
+    <string name="home_section_move_to_pinned">Pinned</string>
+    <string name="home_section_menu_sort_title">Sort</string>
+    <string name="home_section_menu_display_title">Display</string>
+    <string name="home_section_hide_empty">Hide empty sections</string>
+    <string name="home_section_create_channel">Create channel</string>
+    <string name="home_section_empty">No conversations</string>
+    <string name="home_section_pinned_empty">Long-press a channel or DM to pin it</string>
+    <string name="home_section_joint_empty">No joint channels yet</string>
     <string name="home_action_add_channel">Add channel</string>
     <string name="home_state_no_servers">No servers available</string>
     <string name="home_server_switcher_join_chinese_community">Join Chinese Community</string>
