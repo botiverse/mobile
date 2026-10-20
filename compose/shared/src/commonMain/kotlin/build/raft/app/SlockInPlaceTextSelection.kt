@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.text.TextSelectionType
 import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.testTag
 import com.tencent.kuikly.compose.ui.unit.IntOffset
@@ -48,12 +49,14 @@ internal fun SlockInPlaceTextSelection(
     var menuVisible by remember { mutableStateOf(false) }
     var frame by remember { mutableStateOf(SelectionFrame.Zero) }
     val barGapPx = with(LocalDensity.current) { 44.dp.toPx() }
+    var containerWidth by remember { mutableStateOf(0) }
+    var barWidth by remember { mutableStateOf(0) }
     fun clear() {
         state.clearSelection()
         active = false
         menuVisible = false
     }
-    Box(modifier = modifier) {
+    Box(modifier = modifier.onSizeChanged { containerWidth = it.width }) {
         SelectionContainer(
             state = state,
             modifier =
@@ -95,16 +98,18 @@ internal fun SlockInPlaceTextSelection(
                     Modifier
                         .offset {
                             IntOffset(
-                                frame.x.toInt().coerceAtLeast(0),
+                                frame.x.toInt().coerceAtMost(containerWidth - barWidth).coerceAtLeast(0),
                                 (frame.y - barGapPx).toInt().coerceAtLeast(0)
                             )
                         }
+                        .onSizeChanged { barWidth = it.width }
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
             ) {
                 SlockInPlaceTextSelectionAction(stringResource(MR.strings.thread_new_message_menu_copy)) {
                     state.getSelection { selected ->
-                        val text = selected.joinToString(separator = "")
+                        // One entry per selected text view (paragraph / block).
+                        val text = selected.joinToString(separator = "\n")
                         if (text.isNotEmpty()) onCopy(text)
                     }
                     clear()
