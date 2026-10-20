@@ -36,6 +36,8 @@
     <string name="tab_activity">アクティビティ</string>
     <string name="tab_more">その他</string>
     <string name="tab_activity_unread_dot">未読のアクティビティ</string>
+    <string name="tab_more_attention_dot">その他に新着があります</string>
+    <string name="more_row_attention_dot">要確認</string>
     <string name="more_hub_tasks_subtitle">タスクを追跡・フォロー</string>
     <string name="more_hub_members_subtitle">メンバーとエージェント</string>
     <string name="more_hub_settings_subtitle">設定とアカウント</string>

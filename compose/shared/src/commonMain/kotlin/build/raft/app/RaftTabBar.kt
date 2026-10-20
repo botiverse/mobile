@@ -106,7 +106,9 @@ internal enum class RaftAppTabBarRenderer {
     NativeHost
 }
 
-private val RaftSharedBottomTabBarHeight = 58.dp
+// The 56dp bar with its 8dp margins above and below.
+private val RaftSharedBottomTabBarHeight =
+    RaftBottomTabBarSpec.BarHeight + RaftBottomTabBarSpec.VerticalMargin * 2
 // Fixed band that hosts the native floating dock (iOS Liquid Glass, Android
 // floating). Scrollable content reserves this band plus the bottom safe area.
 private val RaftFloatingDockBottomTabBarHostHeight = 92.dp
@@ -235,47 +237,63 @@ internal fun RaftBottomTabBar(
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
     traceMarkdownSection(RaftTabBarTraceNames.BOTTOM_TAB_RENDER, items.size) {
-    // Approved mockup (activity-tab A): an edge bar on the card layer with a
-    // 1dp seam on top; every tab is a 56x32 pill slot holding a centred 23dp
-    // icon with the label 4dp below. The selected pill is the brand sticker
-    // (2dp ink border, 9dp radius); the pink count sits on the slot's top-right
-    // corner, above the pill border, and never covers the icon.
-    Box(
+    // Jasper 2026-10-20: a floating pill of tabs and, beside it, the round Search button, both
+    // 56dp tall, 8dp apart, 16dp from the screen edges. Every tab cell fills the pill's height
+    // and is at least 44dp wide; inside it the 56x32 sticker slot holds the centred 23dp icon
+    // with the label 4dp below (approved mockup A). The selected slot is the brand sticker
+    // (2dp ink border, 9dp radius); counts and dots sit on the slot's top-right corner.
+    val pillShape = RoundedCornerShape(RaftBottomTabBarSpec.BarHeight / 2)
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .height(RaftBottomTabBarSpec.BarHeight)
-            .background(RaftColor.Card)
+            .padding(horizontal = RaftBottomTabBarSpec.SideMargin),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .fillMaxHeight()
-                .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
+                .background(RaftColor.Card, pillShape)
+                .border(RaftBottomTabBarSpec.ContainerBorder, RaftColor.StickerInk, pillShape)
+                .padding(horizontal = RaftBottomTabBarSpec.PillInnerPadding),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { item ->
                 RaftBottomTabItem(
                     item = item,
                     onSelect = onSelect,
-                    modifier = Modifier.weight(1f).fillMaxHeight()
+                    modifier = Modifier
+                        .weight(1f)
+                        .widthIn(min = RaftBottomTabBarSpec.MinTabTarget)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.Center
                 )
             }
-            RaftBottomTabAccessorySlot(accessory = accessory, onSelect = onSelect)
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RaftAppStroke.Thin)
-                .background(RaftColor.BorderSeam)
-                .align(Alignment.TopCenter)
-        )
+        if (accessory != null) {
+            Spacer(Modifier.width(RaftBottomTabBarSpec.SearchGap))
+            RaftBottomTabAccessoryButton(accessory = accessory, onSelect = onSelect)
+        }
     }
     }
 }
 
-/** Geometry of the approved bottom tab bar mockup (/tmp/activity-tab-mockups gen.js `.tabbar`). */
+/**
+ * Geometry of the phone bottom bar. Outer sizes are Jasper's 2026-10-20 ruling (pill and
+ * Search 56dp, tab target >= 44dp, 8dp gap, 16dp side margins); the tab cell contents keep the
+ * approved mockup (/tmp/activity-tab-mockups gen.js `.tab`).
+ */
 internal object RaftBottomTabBarSpec {
-    val BarHeight = 58.dp
-    val TopPadding = 7.dp
+    /** Height of the tab pill and of the Search button. */
+    val BarHeight = 56.dp
+    val SideMargin = 16.dp
+    val SearchGap = 8.dp
+    val MinTabTarget = 44.dp
+    /** Outer margin above and below the bar when it sits in its own band (edge renderer). */
+    val VerticalMargin = 8.dp
+    val ContainerBorder = 2.dp
+    val PillInnerPadding = 4.dp
     val PillWidth = 56.dp
     val PillHeight = 32.dp
     val PillRadius = 9.dp
@@ -300,41 +318,25 @@ internal object RaftBottomTabBarSpec {
     // on the pill's top-right corner (web MobileNav `top-1 right-2`).
     val DotOffsetX = 44.dp
     val DotOffsetY = (-2).dp
-    // Search action beside the tabs: a round button as tall as the tab cell's pill + label.
-    val AccessorySize = 46.dp
-    val AccessoryBorder = 2.dp
+    // Search action beside the tab pill: a round button as tall as the pill.
+    val AccessorySize = BarHeight
+    val AccessoryBorder = ContainerBorder
     val AccessoryIconSize = 22.dp
-    val AccessoryEndPadding = 12.dp
 }
 
-/** The attention dot on a tab icon, announced as unread activity. */
+/** The attention dot on a tab icon, announced as unread activity / something new. */
 @Composable
-private fun RaftTabAttentionDot(modifier: Modifier = Modifier) {
-    val description = stringResource(MR.strings.tab_activity_unread_dot)
+private fun RaftTabAttentionDot(key: String, modifier: Modifier = Modifier) {
+    val description =
+        if (key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
     RaftAttentionDot(modifier = modifier.zIndex(1f).semantics { contentDescription = description })
 }
 
 /**
  * Search action beside the bottom tabs (xxchan 2026-10-20, iOS 26 system-app style): a round
- * button with the bar's surface and ink edge, outside the tab row. It is an action, never a
- * selected tab. Drawn as a trailing slot so it can later move into the tab row as a plain item.
+ * button with the pill's surface and ink edge, outside the tab pill. It is an action, never a
+ * selected tab.
  */
-@Composable
-private fun RowScope.RaftBottomTabAccessorySlot(
-    accessory: RaftBottomTabItemPayload?,
-    onSelect: (String) -> Unit,
-) {
-    if (accessory == null) return
-    Box(
-        modifier = Modifier
-            .fillMaxHeight()
-            .padding(end = RaftBottomTabBarSpec.AccessoryEndPadding),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        RaftBottomTabAccessoryButton(accessory = accessory, onSelect = onSelect)
-    }
-}
-
 @Composable
 internal fun RaftBottomTabAccessoryButton(
     accessory: RaftBottomTabItemPayload,
@@ -453,6 +455,7 @@ private fun RaftBottomTabItem(
             )
             if (item.attentionDot) {
                 RaftTabAttentionDot(
+                    key = item.key,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset(x = RaftBottomTabBarSpec.DotOffsetX, y = RaftBottomTabBarSpec.DotOffsetY)
@@ -562,11 +565,11 @@ internal fun RaftAppBottomTabBarHost(
         }
         RaftAppTabBarRenderer.SharedCompose -> Unit
     }
+    // The band reserves the bar plus its 8dp margins; the shell root paints behind it.
     Box(
         modifier = hostModifier
             .fillMaxWidth()
             .height(raftSharedBottomTabBarHostHeight(bottomSafeArea))
-            .background(RaftColor.Card)
             .raftTouchBlocker()
     ) {
         RaftBottomTabBar(
@@ -574,7 +577,8 @@ internal fun RaftAppBottomTabBarHost(
             onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter),
+                .align(Alignment.TopCenter)
+                .padding(top = RaftBottomTabBarSpec.VerticalMargin),
             accessory = accessory
         )
     }
@@ -588,46 +592,22 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
     bottomSafeArea: Dp = 0.dp,
     accessory: RaftBottomTabItemPayload? = null
 ) {
-    Row(
+    // The same pill + Search bar as every Compose renderer, centred on the fixed dock band.
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea)),
-        verticalAlignment = Alignment.Top
+            .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea))
     ) {
-        Row(
+        RaftBottomTabBar(
+            items = items,
+            onSelect = onSelect,
             modifier = Modifier
-                .weight(1f)
-                // The old Android ComposeView received the dock band's exact
-                // 92dp parent constraint, so its nominal 56dp Row expanded to
-                // the full band. Preserve that rendered geometry in Kuikly.
+                .fillMaxWidth()
                 .height(RaftFloatingDockBottomTabBarHostHeight)
-                .padding(horizontal = 18.dp)
-                .background(RaftColor.SurfaceWhite.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            items.forEach { item ->
-                // Same pill / badge / label as the shared bar (approved mockup A).
-                RaftBottomTabItem(
-                    item = item,
-                    onSelect = onSelect,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.Center
-                )
-            }
-        }
-        // Search sits beside the pill, vertically centred on the dock band.
-        if (accessory != null) {
-            Box(
-                modifier = Modifier
-                    .height(RaftFloatingDockBottomTabBarHostHeight)
-                    .padding(end = 18.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftBottomTabAccessoryButton(accessory = accessory, onSelect = onSelect)
-            }
-        }
+                .align(Alignment.TopCenter)
+                .wrapContentSize(align = Alignment.Center),
+            accessory = accessory
+        )
     }
 }
 
@@ -720,20 +700,15 @@ internal fun RaftFloatingDockTabBar(
             .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea))
             .raftTouchBlocker()
     ) {
-        Box(
+        RaftBottomTabBar(
+            items = items,
+            onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(end = RaftAppStroke.Default, bottom = bottomSafeArea + RaftAppSpacing.Md + RaftAppStroke.Default)
-        ) {
-            Box(Modifier.matchParentSize().offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default).background(RaftColor.BorderBlack))
-            RaftBottomTabBar(
-                items = items,
-                onSelect = onSelect,
-                modifier = Modifier.fillMaxWidth().border(RaftAppStroke.Default, RaftColor.BorderBlack),
-                accessory = accessory
-            )
-        }
+                .padding(bottom = bottomSafeArea + RaftAppSpacing.Md),
+            accessory = accessory
+        )
     }
 }
 
@@ -892,7 +867,7 @@ private fun RaftNavigationRailTabItem(
                 modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
             )
             if (item.attentionDot) {
-                RaftTabAttentionDot(modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp))
+                RaftTabAttentionDot(key = item.key, modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp))
             }
         }
     }

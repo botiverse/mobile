@@ -36,6 +36,8 @@
     <string name="tab_activity">Activity</string>
     <string name="tab_more">More</string>
     <string name="tab_activity_unread_dot">Unread activity</string>
+    <string name="tab_more_attention_dot">Something new in More</string>
+    <string name="more_row_attention_dot">Needs attention</string>
     <string name="more_hub_tasks_subtitle">Track and follow work</string>
     <string name="more_hub_members_subtitle">Browse humans and agents</string>
     <string name="more_hub_settings_subtitle">Preferences and account</string>

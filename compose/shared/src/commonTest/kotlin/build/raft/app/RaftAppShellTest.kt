@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
+
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.AuthAuthorityChangedMessage
@@ -874,8 +876,9 @@ class RaftAppShellTest {
 
     @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
-        assertEquals(58.dp, raftSharedBottomTabBarHostHeight(0.dp))
-        assertEquals(76.dp, raftSharedBottomTabBarHostHeight(18.dp))
+        // 56dp bar with 8dp margins above and below.
+        assertEquals(72.dp, raftSharedBottomTabBarHostHeight(0.dp))
+        assertEquals(90.dp, raftSharedBottomTabBarHostHeight(18.dp))
         assertEquals(
             raftSharedBottomTabBarHostHeight(18.dp) + RaftAppSpacing.Lg,
             raftSharedBottomTabBarContentInset(18.dp)
@@ -1508,6 +1511,51 @@ class RaftAppShellTest {
         listOf("home", "activity", "tasks", "more", "unknown").forEach { tab ->
             assertNull(appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
         }
+    }
+
+    @Test
+    fun moreTabAndRowsDotFromHomeNotices() {
+        assertEquals(emptySet(), raftMoreAttentionRows(emptyList()))
+        assertEquals(emptySet(), raftMoreAttentionRows(listOf("announcement:1")))
+        assertEquals(setOf(RaftMoreRow.Settings), raftMoreAttentionRows(listOf(APP_UPDATE_HOME_NOTIFICATION_ID)))
+        assertEquals(
+            setOf(RaftMoreRow.Computers),
+            raftMoreAttentionRows(listOf("machine-offline:m1", "machine-outdated:1.2.0:m2"))
+        )
+        val both = raftMoreAttentionRows(listOf("machine-offline:m1", APP_UPDATE_HOME_NOTIFICATION_ID))
+        assertEquals(setOf(RaftMoreRow.Settings, RaftMoreRow.Computers), both)
+
+        val build = { selectedTab: String, rows: Set<RaftMoreRow> ->
+            appShellPhoneBottomTabs(
+                selectedTab = selectedTab,
+                homeLabel = "h",
+                activityLabel = "a",
+                tasksLabel = "t",
+                moreLabel = "m",
+                moreAttentionRows = rows
+            ).associate { it.key to it.attentionDot }
+        }
+        assertEquals(true, build("home", both)["more"])
+        assertEquals(false, build("home", emptySet())["more"])
+        // Never on the selected tab: More and the pages pushed from it keep More selected.
+        listOf("more", "settings", "members").forEach { tab ->
+            assertEquals(false, build(tab, both)["more"], "tab=$tab")
+        }
+        // Only the More tab picks the signal up.
+        assertEquals(false, build("home", both)["activity"])
+    }
+
+    @Test
+    fun homeListDropsSearchAndActivityRowsOnlyWhereThePhoneBarShows() {
+        assertFalse(homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar = true))
+        assertTrue(homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar = false))
+    }
+
+    @Test
+    fun bottomBarHidesWhileKeyboardIsOpen() {
+        assertTrue(raftAppShellBottomTabsShown(showBottomTabs = true, imeVisible = false))
+        assertFalse(raftAppShellBottomTabsShown(showBottomTabs = true, imeVisible = true))
+        assertFalse(raftAppShellBottomTabsShown(showBottomTabs = false, imeVisible = false))
     }
 
     @Test

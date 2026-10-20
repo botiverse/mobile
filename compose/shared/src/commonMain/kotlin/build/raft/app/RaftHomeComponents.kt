@@ -288,6 +288,10 @@ internal data class HomeConversationBadgeInput(
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): RaftLucideIconName? =
     if (muted) RaftLucideIconName.BellOff else null
 
+/** The Home list's Search and Activity entry rows show only where the phone bottom bar does not. */
+internal fun homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar: Boolean): Boolean =
+    !searchAndActivityInBottomBar
+
 /** Activity row aside: the pink unread count, or the quiet total when nothing is unread. */
 internal data class HomeActivitySidebarProjection(
     val unreadCount: Int,
@@ -1462,6 +1466,11 @@ internal data class RaftStructuralHomeShellData(
     val showLoadingSkeletons: Boolean = false,
     val selectedTabKey: String = "home",
     val showBottomBar: Boolean = true,
+    /**
+     * The phone bottom bar carries Search (action) and Activity (tab), so the list drops its
+     * Search and Activity entry rows (Jasper 2026-10-20). False on wide layouts without the bar.
+     */
+    val searchAndActivityInBottomBar: Boolean = true,
     val externalFocusLossDismissEpoch: Int = 0,
     val outerPadding: Dp = RaftAppSpacing.Md,
     val labels: RaftHomeShellLabels = RaftHomeShellLabels(),
@@ -1573,6 +1582,7 @@ internal fun RaftStructuralHomeShell(
     showLoadingSkeletons: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
+    searchAndActivityInBottomBar: Boolean = showBottomBar,
     externalFocusLossDismissEpoch: Int = 0,
     bottomContentPadding: Dp = if (showBottomBar) RaftAppSize.BottomBarHeight + RaftAppSpacing.Md else RaftAppSpacing.Lg,
     outerPadding: Dp = RaftAppSpacing.Md,
@@ -1679,6 +1689,7 @@ internal fun RaftStructuralHomeShell(
                 showLoadingSkeletons = showLoadingSkeletons,
                 selectedTabKey = selectedTabKey,
                 showBottomBar = showBottomBar,
+                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 outerPadding = outerPadding,
                 labels = labels,
@@ -1789,6 +1800,7 @@ private fun RaftStructuralHomeShellContent(
     val showLoadingSkeletons = data.showLoadingSkeletons
     val selectedTabKey = data.selectedTabKey
     val showBottomBar = data.showBottomBar
+    val searchAndActivityInBottomBar = data.searchAndActivityInBottomBar
     val externalFocusLossDismissEpoch = data.externalFocusLossDismissEpoch
     val outerPadding = data.outerPadding
     val labels = data.labels
@@ -2381,32 +2393,37 @@ private fun RaftStructuralHomeShellContent(
                                 // Rows keep their own 1dp margins (raft-ui SidebarItem `my-px`).
                             ) {
                                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
-                                item { HomeSidebarEntryRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
-                                // artin 2026-10-20: the Home 动态 row stays alongside the Activity bottom tab (muscle
-                                // memory); it opens that same kept-alive tab via openHomeSecondaryDestination(Activity).
-                                item {
-                                    val activityProjection =
-                                        homeActivitySidebarProjection(
-                                            activityUnreadCount = inboxUnreadCount,
-                                            activityTotalCount = inboxTotalCount
+                                // Jasper 2026-10-20: with the phone bar on screen, Search and Activity
+                                // live there (Search action, Activity tab); only Saved stays here. Wide
+                                // layouts without the bar keep both rows.
+                                if (homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar)) {
+                                    item { HomeSidebarEntryRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
+                                    // artin 2026-10-20: without the phone bar the Home 动态 row is the Activity entry (muscle
+                                    // memory); it opens that same kept-alive tab via openHomeSecondaryDestination(Activity).
+                                    item {
+                                        val activityProjection =
+                                            homeActivitySidebarProjection(
+                                                activityUnreadCount = inboxUnreadCount,
+                                                activityTotalCount = inboxTotalCount
+                                            )
+                                        HomeSidebarEntryRow(
+                                            RaftLucideIconName.Activity,
+                                            labels.inbox,
+                                            selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
+                                            modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
+                                            onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null,
+                                            trailing =
+                                                when {
+                                                    activityProjection.unreadCount > 0 -> {
+                                                        { RaftUnreadCount(activityProjection.unreadCount, contentDescription = null) }
+                                                    }
+                                                    activityProjection.totalLabel != null -> {
+                                                        { RaftSidebarItemMeta(activityProjection.totalLabel) }
+                                                    }
+                                                    else -> null
+                                                }
                                         )
-                                    HomeSidebarEntryRow(
-                                        RaftLucideIconName.Activity,
-                                        labels.inbox,
-                                        selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
-                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
-                                        onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null,
-                                        trailing =
-                                            when {
-                                                activityProjection.unreadCount > 0 -> {
-                                                    { RaftUnreadCount(activityProjection.unreadCount, contentDescription = null) }
-                                                }
-                                                activityProjection.totalLabel != null -> {
-                                                    { RaftSidebarItemMeta(activityProjection.totalLabel) }
-                                                }
-                                                else -> null
-                                            }
-                                    )
+                                    }
                                 }
                                 item { HomeSidebarEntryRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(savedCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                                 inlineError?.let { error ->
