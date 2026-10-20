@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -197,3 +198,49 @@ internal fun Modifier.raftControlSurface(
         .background(fill, shape)
         .border(borderWidth, border, shape)
 }
+
+/**
+ * raft option card that shows the pick itself (raft-ui RadioGroup `appearance="none"`
+ * option card): container radius, `layer-card` with a 1dp `line-hairline` edge at rest;
+ * checked, the `info-soft` wash with a 1dp `line-seam` edge (raft "Selected: content").
+ * Disabled is `fill-muted` with a hairline. No ink block fill, no offset shadow; it clips
+ * so a press wash follows the radius.
+ */
+internal fun Modifier.raftOptionSurface(
+    selected: Boolean,
+    enabled: Boolean = true,
+    radius: Dp = RaftAppRadius.Container
+): Modifier {
+    val shape = RoundedCornerShape(radius)
+    val fill =
+        when {
+            !enabled -> RaftColor.FillMuted
+            selected -> RaftColor.InfoSoft
+            else -> RaftColor.Card
+        }
+    val edge = if (selected && enabled) RaftColor.BorderSeam else RaftColor.BorderHairline
+    return this
+        .clip(shape)
+        .background(fill, shape)
+        .border(RaftAppStroke.Thin, edge, shape)
+}
+
+/**
+ * The raft-ui `-soft` wash for a legacy saturated block fill (yellow / pink / cyan / lime /
+ * orange / red / stone / lavender), for badges, chips and notices that used to paint the
+ * solid palette colour behind an ink frame. Paper fills become `fill-muted`; any other
+ * colour is returned unchanged.
+ */
+internal fun raftSoftWash(fill: Color): Color =
+    when (fill) {
+        RaftColor.BrandYellow, RaftColor.Brand -> RaftColor.BrandSoft
+        RaftColor.AccentPink, RaftColor.Attention -> RaftColor.AttentionSoft
+        RaftColor.AccentCyan, RaftColor.Info -> RaftColor.InfoSoft
+        RaftColor.AccentLime, RaftColor.Success -> RaftColor.SuccessSoft
+        RaftColor.AccentOrange, RaftColor.StateWarningBase, RaftColor.Warning -> RaftColor.WarningSoft
+        RaftColor.AccentRed, RaftColor.Danger -> RaftColor.DangerSoft
+        RaftColor.AccentStone, RaftColor.Inactive, RaftColor.EmptyStateGray, RaftColor.StatusNeutralGray -> RaftColor.InactiveSoft
+        RaftColor.AccentLavender -> RaftColor.AccentLavender.copy(alpha = 0.28f)
+        RaftColor.SurfaceWhite, RaftColor.SurfaceCream -> RaftColor.FillMuted
+        else -> fill
+    }

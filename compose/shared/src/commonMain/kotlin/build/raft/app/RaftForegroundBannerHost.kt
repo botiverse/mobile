@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
@@ -286,19 +287,13 @@ internal fun RaftForegroundMessageBannerView(
                         )
                     }
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = 3.dp, y = 3.dp)
-                        .background(RaftColor.ShadowBlack)
-            )
+            // raft overlay surface (toast/popover): container radius, popover layer, seam
+            // ring and the float shadow; no ink frame or hard offset.
             Row(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftLookOverlaySurface()
                         .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

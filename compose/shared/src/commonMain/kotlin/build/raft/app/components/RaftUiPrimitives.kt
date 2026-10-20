@@ -63,8 +63,6 @@ internal enum class RaftBrutalTone(val color: Color) {
     Warning(RaftColor.StateWarningBase)
 }
 
-private val RaftSelectedSurfaceCyan = Color(0xFFDFF7FD)
-
 /**
  * raft-ui 0.6.0 solid Badge fill for a brutal tone: `default` sticker paper, `primary`
  * yellow, `accent` pink, `information` cyan, `success` lime, `warning` orange, `danger`
@@ -119,8 +117,8 @@ internal fun RaftBrutalBadgeButton(
         onClick = onClick,
         enabled = enabled,
         pressFeedback = enabled,
-        // raft stickers do not shift when pressed; brutal keeps its 2dp press offset.
-        pressOffset = if (raftActive()) 0.dp else 2.dp,
+        // raft badges do not shift when pressed.
+        pressOffset = 0.dp,
         modifier = modifier
     ) {
         RaftBrutalBadgeChrome(
@@ -132,6 +130,8 @@ internal fun RaftBrutalBadgeButton(
     }
 }
 
+// [uppercase] is the retired brutal register's caps; raft-ui badges keep the source case.
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun RaftBrutalBadgeChrome(
     label: String,
@@ -141,48 +141,21 @@ private fun RaftBrutalBadgeChrome(
     leadingIcon: RaftLucideIconName? = null,
     contentColor: Color? = null
 ) {
-    if (raftActive()) {
+    if (tone == RaftBrutalTone.Black) {
         RaftBadgeChrome(
             label = label,
             modifier = modifier,
             fill = tone.raftFill,
-            ink = contentColor ?: if (tone == RaftBrutalTone.Black) RaftColor.ForegroundInverse else RaftColor.StickerInk,
+            ink = contentColor ?: RaftColor.ForegroundInverse,
             leadingIcon = leadingIcon
         )
-        return
-    }
-    val foreground = contentColor ?: if (tone == RaftBrutalTone.Black) RaftColor.SurfaceWhite else RaftColor.TextBlack
-    Row(
-        modifier =
-            modifier
-                .height(20.dp)
-                .widthIn(min = 0.dp)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RectangleShape)
-                .background(tone.color, RectangleShape)
-                .raftSquareCorners()
-                .padding(horizontal = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        leadingIcon?.let {
-            RaftLucideIcon(it, modifier = Modifier.size(10.dp), color = if (tone == RaftBrutalTone.Black) "#FFFFFFFF" else "#FF000000")
-        }
-        Text(
-            text = if (uppercase) label.raftDisplayUppercase() else label,
-            style =
-                RaftType.Caption
-                    .copy(
-                        fontSize = 10.sp,
-                        // Let every native text renderer use its font metrics. A forced
-                        // 10sp line box is shorter than Space Grotesk's ascent + descender
-                        // on iOS and clips p/q/y at the badge's bottom edge.
-                        lineHeight = TextUnit.Unspecified,
-                        letterSpacing = if (uppercase) 0.6.sp else 0.sp
-                    )
-                    .withRaftFontWeight(FontWeight.Bold),
-            color = foreground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+    } else {
+        RaftSoftBadgeChrome(
+            label = label,
+            modifier = modifier,
+            fill = tone.raftSoftFill,
+            ink = contentColor ?: RaftColor.TextBlack,
+            leadingIcon = leadingIcon
         )
     }
 }
@@ -238,6 +211,65 @@ internal fun RaftBadgeChrome(
     }
 }
 
+/**
+ * raft-ui Badge `appearance="soft"` wash for a tone: the label badge (status, kind, tag).
+ * Web labels are soft, not stickers: only a count or a waiting mark is a solid sticker.
+ */
+internal val RaftBrutalTone.raftSoftFill: Color
+    get() =
+        when (this) {
+            RaftBrutalTone.White,
+            RaftBrutalTone.Black -> RaftColor.FillMuted
+            RaftBrutalTone.Yellow -> RaftColor.BrandSoft
+            RaftBrutalTone.Pink -> RaftColor.AttentionSoft
+            RaftBrutalTone.Cyan -> RaftColor.InfoSoft
+            // No raft role for lavender: its hue at the soft washes' strength.
+            RaftBrutalTone.Lavender -> RaftColor.AccentLavender.copy(alpha = 0.28f)
+            RaftBrutalTone.Orange,
+            RaftBrutalTone.Warning -> RaftColor.WarningSoft
+            RaftBrutalTone.Lime -> RaftColor.SuccessSoft
+            RaftBrutalTone.Red -> RaftColor.DangerSoft
+            RaftBrutalTone.Stone -> RaftColor.InactiveSoft
+        }
+
+/**
+ * raft-ui soft Badge: 22dp tall, chip radius 6dp, 6dp side padding, the tone's `-soft`
+ * wash with no edge, 12sp semibold foreground type in the source case, 14dp icons.
+ */
+@Composable
+internal fun RaftSoftBadgeChrome(
+    label: String,
+    modifier: Modifier = Modifier,
+    fill: Color = RaftColor.FillMuted,
+    ink: Color = RaftColor.TextBlack,
+    leadingIcon: RaftLucideIconName? = null
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Chip)
+    Row(
+        modifier =
+            modifier
+                .height(22.dp)
+                .background(fill, shape)
+                .padding(horizontal = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        leadingIcon?.let {
+            RaftLucideIcon(it, modifier = Modifier.size(14.dp), color = raftArgbHex(ink))
+        }
+        Text(
+            text = label,
+            style =
+                RaftType.Caption
+                    .copy(fontSize = 12.sp, lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp)
+                    .withRaftFontWeight(FontWeight.SemiBold),
+            color = ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 @Composable
 internal fun RaftSectionHeader(
     label: String,
@@ -289,58 +321,23 @@ internal fun RaftSurfaceListItem(
     verticalPadding: Dp = 12.dp,
     content: @Composable () -> Unit
 ) {
-    if (raftActive()) {
-        // raft-ui ListRow on its own Card: container radius, card layer (selected =
-        // `--info-soft`), 1dp hairline, no ink line and no lift.
-        Box(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
-                    .let { base ->
-                        if (onClick != null) {
-                            base.clickable(enabled = true, role = Role.Button, onClick = onClick)
-                        } else {
-                            base
-                        }
+    // raft-ui ListRow on its own Card: container radius, card layer (selected =
+    // `--info-soft`), 1dp hairline, no ink line and no lift.
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
+                .let { base ->
+                    if (onClick != null) {
+                        base.clickable(enabled = true, role = Role.Button, onClick = onClick)
+                    } else {
+                        base
                     }
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
-        ) {
-            content()
-        }
-        return
-    }
-    val borderColor = if (selected) RaftColor.BorderBlack else RaftColor.BorderBlack.copy(alpha = 0.30f)
-    val backgroundColor = if (selected) RaftSelectedSurfaceCyan else RaftColor.SurfaceWhite
-    val shadowOffset = if (selected) 2.dp else 0.dp
-    Box(modifier = modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(RaftColor.ShadowBlack)
-            )
-        }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(backgroundColor, RectangleShape)
-                    .border(RaftAppStroke.Default, borderColor, RectangleShape)
-                    .raftSquareCorners()
-                    .let { base ->
-                        if (onClick != null) {
-                            base.clickable(enabled = true, role = Role.Button, onClick = onClick)
-                        } else {
-                            base
-                        }
-                    }
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
-        ) {
-            content()
-        }
+                }
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+    ) {
+        content()
     }
 }
 

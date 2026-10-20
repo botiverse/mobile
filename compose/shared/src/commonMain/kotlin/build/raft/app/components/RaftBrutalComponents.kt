@@ -2236,6 +2236,13 @@ internal fun RaftAnchoredToolbarChip(
     }
 }
 
+/**
+ * Legacy-named icon button; renders the raft-ui icon button ([RaftLookIconButton]). The
+ * border / shadow / disabled-colour parameters of the retired brutal look are accepted
+ * and ignored so call sites keep compiling; prefer
+ * `build.raft.designsystem.components.RaftIconButton` in new code.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalIconButton(
     iconName: RaftLucideIconName,
@@ -2260,79 +2267,30 @@ internal fun RaftBrutalIconButton(
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
-    if (raftActive()) {
-        RaftLookIconButton(
-            iconName = iconName,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            longClickLabel = longClickLabel,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            clickIdentity = clickIdentity,
-            enabled = enabled,
-            backgroundColor = backgroundColor,
-            iconColor = iconColor,
-            size = size,
-            iconSize = iconSize,
-            iconSpinning = iconSpinning
-        )
-        return
-    }
-    val resolvedBackground = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
-    val resolvedBorder = if (enabled) borderColor else disabledBorderColor.copy(alpha = disabledAlpha)
-    val resolvedShadow = if (enabled) shadowColor else disabledShadowColor.copy(alpha = disabledAlpha)
-    val resolvedIconColor = if (enabled) iconColor else disabledIconColor
-    Box(
-        modifier =
-            modifier
-                .size(size + shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(resolvedShadow)
-        )
-        RaftAnchorButton(
-            onClick = onClick,
-            onLongClick = onLongClick,
-            longClickLabel = longClickLabel,
-            enabled = enabled,
-            pressFeedback = enabled,
-            pressOffset = shadowOffset,
-            clickIdentity = clickIdentity,
-            modifier = Modifier
-                .size(size)
-                .then(
-                    if (contentDescription.isNullOrBlank()) {
-                        Modifier
-                    } else {
-                        Modifier.semantics {
-                            this.contentDescription = contentDescription
-                        }
-                    }
-                )
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .background(resolvedBackground)
-                        .border(RaftAppStroke.Default, resolvedBorder),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
-            }
-        }
-    }
+    RaftLookIconButton(
+        iconName = iconName,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        clickIdentity = clickIdentity,
+        enabled = enabled,
+        backgroundColor = backgroundColor,
+        iconColor = iconColor,
+        size = size,
+        iconSize = iconSize,
+        iconSpinning = iconSpinning
+    )
 }
 
 /**
- * raft-ui 0.6.0 icon button (`size="icon-md"` 32dp / `icon-lg` 44dp): the same variant
- * chrome as [RaftActionButton] on a square control-radius box, no shadow and no
- * reserved shadow gutter, press = overlay wash. The default black icon ink follows the
- * variant's ink so it reads in dark mode; an explicit [iconColor] is kept.
+ * raft-ui icon button (`size="icon-md"` 32dp / `icon-lg` 44dp) on a square control-radius
+ * box, no shadow and no reserved shadow gutter, press = overlay wash. A paper fill (the
+ * old brutal default) is the raft-ui ghost icon button: no frame, only the pressed wash,
+ * as on web headers and toolbars. A sticker fill (yellow / pink / red / orange) keeps the
+ * sticker chrome. The default black icon ink follows the variant's ink so it reads in
+ * dark mode; an explicit [iconColor] is kept.
  */
 @Composable
 private fun RaftLookIconButton(
@@ -2350,7 +2308,9 @@ private fun RaftLookIconButton(
     iconSize: Dp,
     iconSpinning: Boolean
 ) {
-    val chrome = raftButtonChrome(backgroundColor)
+    val chrome = raftButtonChrome(backgroundColor).let { base ->
+        if (base.kind == RaftButtonKind.Outline) raftButtonChrome(Color.Transparent) else base
+    }
     var pressed by remember { mutableStateOf(false) }
     val fill =
         when {

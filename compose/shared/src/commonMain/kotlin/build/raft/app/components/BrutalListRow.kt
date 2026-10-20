@@ -2,7 +2,9 @@ package build.raft.app.components
 
 import build.raft.app.Button as RaftAppButton
 import build.raft.app.RaftColor
-import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAppRadius
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
@@ -29,15 +31,15 @@ internal fun RaftBrutalListRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Box(modifier = modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
+    // raft-ui card row: container radius, card layer, 1dp hairline; no ink frame or offset shadow.
+    Box(modifier = modifier.fillMaxWidth().height(62.dp)) {
         RaftAppButton(
             onClick = if (enabled) onClick else ({}),
             enabled = enabled,
             modifier = Modifier
                 .fillMaxSize()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
+                .raftCardSurface()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Column(
@@ -54,8 +56,8 @@ internal fun RaftBrutalListRow(
                 )
                 Text(
                     text = subtitle,
-                    style = RaftType.Caption.copy(color = RaftColor.TextBlack.copy(alpha = 0.4f)),
-                    color = RaftColor.TextBlack.copy(alpha = 0.4f),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMuted),
+                    color = RaftColor.TextMuted,
                     maxLines = 1
                 )
             }
