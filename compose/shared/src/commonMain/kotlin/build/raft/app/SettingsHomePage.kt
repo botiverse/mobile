@@ -608,6 +608,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -22443,7 +22444,10 @@ private fun SharedHomeSearchEntityRow(
             semanticIdentity = gestureKey,
             callbacks = SharedHomeSearchEntityGestureCallbacks(onOpen, onContextMenu, contentAnchor)
         )
-    var pressed by remember { mutableStateOf(false) }
+    // Same delayed press as the message rows' clickable: a touch that becomes a scroll within
+    // the tap timeout never flashes the pressed fill.
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     val mutedArchived = result.archived && result.type == SearchEntityType.Channel
     val typography = RaftTheme.typography
     Row(
@@ -22454,31 +22458,29 @@ private fun SharedHomeSearchEntityRow(
                 .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.EntitySeparatorInset, RaftColor.BorderHairline)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
-                .raftGesturePointerInput(gestureOwner) { owner ->
+                .raftGesturePointerInput(gestureOwner, interactionSource) { owner ->
                     var gesture: RaftGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
-                    detectTapGestures(
-                        onPress = {
-                            gesture = owner.beginGesture()
-                            pressed = true
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                pressed = false
-                            }
-                        },
-                        onTap = {
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onOpen()
-                        },
-                        onLongPress = { localOffset ->
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                                callbacks.onContextMenu?.let { callback ->
-                                    callbacks.contentAnchor
-                                        .resolve(RaftPopoverLocalPoint.Exact(localOffset))
-                                        ?.let(callback)
+                    coroutineScope {
+                        val pressScope = this
+                        detectTapGestures(
+                            onPress = { offset ->
+                                gesture = owner.beginGesture()
+                                raftDelayedRowPress(offset, interactionSource, pressScope) { tryAwaitRelease() }
+                            },
+                            onTap = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onOpen()
+                            },
+                            onLongPress = { localOffset ->
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                                    callbacks.onContextMenu?.let { callback ->
+                                        callbacks.contentAnchor
+                                            .resolve(RaftPopoverLocalPoint.Exact(localOffset))
+                                            ?.let(callback)
+                                    }
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
                 .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),

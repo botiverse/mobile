@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import build.raft.designsystem.theme.RaftTypography
 
 // raft-ui search recipes (packages/ui/src/components/search/*.recipe.ts) for the Home search
@@ -84,6 +89,49 @@ internal fun Modifier.raftSearchRowSeparator(show: Boolean, inset: Dp, color: Co
 /** search-entity / search-message `hover:bg-fill-pressed active:bg-fill-pressed`. */
 internal fun Modifier.raftSearchRowPressed(pressed: Boolean, color: Color): Modifier =
     if (pressed) background(color) else this
+
+/** `clickable`'s press delay inside a scrolling container (Android's tap timeout). */
+internal const val RaftSearchRowPressDelayMillis = 100L
+
+/**
+ * The press feedback `clickable` gives a row in a scrolling list, for rows that run their
+ * own `detectTapGestures`: [PressInteraction.Press] lands on [interactionSource] only after
+ * [delayMillis], so a touch that turns into a scroll (or is otherwise cancelled) before then
+ * never flashes the pressed fill; a tap released sooner still gets a Press and Release.
+ * [awaitRelease] is the gesture's `tryAwaitRelease` (true on release, false on cancel); the
+ * delayed press runs in [scope].
+ */
+internal suspend fun raftDelayedRowPress(
+    offset: Offset,
+    interactionSource: MutableInteractionSource,
+    scope: CoroutineScope,
+    delayMillis: Long = RaftSearchRowPressDelayMillis,
+    awaitRelease: suspend () -> Boolean,
+) {
+    var press: PressInteraction.Press? = null
+    val delayed =
+        scope.launch {
+            delay(delayMillis)
+            val emitted = PressInteraction.Press(offset)
+            press = emitted
+            interactionSource.emit(emitted)
+        }
+    var released = false
+    try {
+        released = awaitRelease()
+    } finally {
+        if (delayed.isActive) {
+            delayed.cancel()
+            if (released) {
+                val tap = PressInteraction.Press(offset)
+                interactionSource.tryEmit(tap)
+                interactionSource.tryEmit(PressInteraction.Release(tap))
+            }
+        } else {
+            press?.let { interactionSource.tryEmit(if (released) PressInteraction.Release(it) else PressInteraction.Cancel(it)) }
+        }
+    }
+}
 
 /**
  * search `sectionHeading`: `px-4 pt-5 pb-2 text-footnote font-bold text-foreground-hint`.
