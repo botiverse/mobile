@@ -91,6 +91,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -4449,7 +4450,9 @@ private fun HomeTitlebar(
                 }
                 val blankModifier =
                     if (onBlankClick != null) {
-                        Modifier.weight(1f).height(RaftAppSize.PageHeaderContentHeight).clickable(onClick = onBlankClick)
+                        Modifier.weight(1f).height(RaftAppSize.PageHeaderContentHeight)
+                            // Blank header space: an affordance-less tap target, so no press wash.
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBlankClick)
                     } else {
                         Modifier.weight(1f)
                     }
@@ -4479,8 +4482,23 @@ private fun HomeServerIdentityCluster(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // The caller hands this cluster the header's remaining width (weight). Only the
+    // avatar + name + chevron is the switcher: the free space to its right must not be a
+    // touch target, so the clickable sits on a wrap-content row inside that width.
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed = pressSource.collectIsPressedAsState().value
+    Box(
+        modifier = modifier.height(RaftAppSize.PageHeaderContentHeight),
+        contentAlignment = Alignment.CenterStart
+    ) {
     Row(
-        modifier = modifier.height(RaftAppSize.PageHeaderContentHeight).clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxHeight()
+            .background(
+                if (pressed) RaftColor.FillFramePressed else Color.Transparent,
+                RoundedCornerShape(RaftAppRadius.Control)
+            )
+            .clickable(interactionSource = pressSource, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ServerSwitcherAvatarTile(server)
@@ -4503,6 +4521,7 @@ private fun HomeServerIdentityCluster(
             Modifier.size(HomeServerIdentityChevronSize),
             color = RaftColor.TextBlackArgb
         )
+    }
     }
 }
 
