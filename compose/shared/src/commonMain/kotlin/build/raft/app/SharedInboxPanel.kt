@@ -1450,6 +1450,10 @@ private fun SharedActivityList(
             )
         }
     }
+    val conversationListEntries =
+        remember(renderedItems, conversationList?.context) {
+            conversationList?.let { activityConversationListEntries(renderedItems, it.context) }
+        }
     // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
     // the card rows and the conversation-list rows share these exact handlers.
     fun committedRowItem(renderedItemKey: String): InboxItem? =
@@ -1467,7 +1471,8 @@ private fun SharedActivityList(
         onIntent(
             SharedActivityIntent.PrewarmActivityTail(
                 activityReplyThreadPrewarmNextAfterClick(
-                    items = renderedItems,
+                    // The next row the person sees: pins float first in the list layout.
+                    items = activityRowsInDisplayOrder(renderedItems, conversationListEntries),
                     clickedKey = currentItem.key,
                     serverId = snapshot.server.id.value
                 )
@@ -1485,10 +1490,6 @@ private fun SharedActivityList(
         activeMenuItem = currentItem
         menuAnchor = anchor
     }
-    val conversationListEntries =
-        remember(renderedItems, conversationList?.context) {
-            conversationList?.let { activityConversationListEntries(renderedItems, it.context) }
-        }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.

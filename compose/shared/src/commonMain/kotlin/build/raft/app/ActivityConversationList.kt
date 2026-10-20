@@ -231,6 +231,16 @@ internal fun activityConversationListEntries(
     return entries
 }
 
+/**
+ * The rows in the order the person sees them: the conversation-list rows (pinned first) when that layout
+ * is on, else the loaded order. "Prewarm the next thread after the clicked one" follows this order.
+ */
+internal fun activityRowsInDisplayOrder(
+    renderedItems: List<InboxItem>,
+    conversationListEntries: List<ActivityConversationListEntry>?,
+): List<InboxItem> =
+    conversationListEntries?.mapNotNull { entry -> (entry as? ActivityConversationListEntry.Row)?.item } ?: renderedItems
+
 /** What leads the row: the DM peer's face, else a neutral tile for the kind of place. */
 internal enum class ActivityConversationLeadingKind { Thread, DirectMessage, Channel }
 

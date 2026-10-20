@@ -406,4 +406,38 @@ class ActivityConversationListTest {
             activityConversationListEntries(items, ready).map { it.key },
         )
     }
+
+    @Test
+    fun prewarmAfterClickFollowsTheDisplayedOrderWithPins() {
+        fun replyThread(key: String) =
+            thread.copy(
+                key = "thread:$key",
+                channelId = ChannelId("reply-$key"),
+                threadChannelId = ChannelId("reply-$key"),
+                parentChannelId = ChannelId("parent-$key"),
+                parentMessageId = MessageId("message-$key"),
+            )
+        // Loaded order: a, #android (pinned), b. Displayed: #android under "Pinned", then a, b.
+        val loaded = listOf(replyThread("a"), channel("channel:android", "android"), replyThread("b"))
+        val entries = activityConversationListEntries(loaded, context)
+        assertEquals(listOf("channel:android", "thread:a", "thread:b"), activityRowsInDisplayOrder(loaded, entries).map { it.key })
+        // Card layout (no entries): the loaded order itself.
+        assertEquals(loaded, activityRowsInDisplayOrder(loaded, null))
+
+        data class Case(val clickedKey: String, val listLayout: Boolean, val prewarmed: List<String>)
+        val cases =
+            listOf(
+                // The pinned row is shown first: the next row the person sees is a, not b.
+                Case(clickedKey = "channel:android", listLayout = true, prewarmed = listOf("reply-a")),
+                Case(clickedKey = "channel:android", listLayout = false, prewarmed = listOf("reply-b")),
+                Case(clickedKey = "thread:a", listLayout = true, prewarmed = listOf("reply-b")),
+                Case(clickedKey = "thread:b", listLayout = true, prewarmed = emptyList()),
+            )
+        for (case in cases) {
+            val order = activityRowsInDisplayOrder(loaded, entries.takeIf { case.listLayout })
+            val prewarmed =
+                activityReplyThreadPrewarmNextAfterClick(items = order, clickedKey = case.clickedKey, serverId = "server-1")
+            assertEquals(case.prewarmed, prewarmed.map { it.key.threadChannelId }, "$case")
+        }
+    }
 }
