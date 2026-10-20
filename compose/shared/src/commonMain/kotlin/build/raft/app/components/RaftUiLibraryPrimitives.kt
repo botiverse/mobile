@@ -7,6 +7,7 @@ import build.raft.app.RaftBrutalDropdownMenuItem
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftBrutalDropdownMenuSurface
 import build.raft.app.RaftColor
+import build.raft.app.raftArgbHex
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftAppRadius
@@ -114,7 +115,13 @@ internal fun RaftUiButton(
         onClick = {},
         modifier = modifier,
         enabled = enabled,
-        backgroundColor = variant.background,
+        // The paper / cream variants read the themed token here (the enum value is fixed at init).
+        backgroundColor =
+            when (variant) {
+                RaftUiButtonVariant.Default, RaftUiButtonVariant.Outline -> RaftColor.SurfaceWhite
+                RaftUiButtonVariant.Muted -> RaftColor.SurfaceCream
+                else -> variant.background
+            },
         minHeight = if (size == RaftUiBannerSize.Small) 28.dp else 32.dp,
         minWidth = 0.dp,
         shadowOffset = if (variant == RaftUiButtonVariant.Outline) RaftShadow.BrutalSmall else RaftShadow.Brutal,
@@ -802,10 +809,10 @@ internal fun RaftUiNotificationItem(
                 Modifier
                     .size(24.dp)
                     .background(status.background, tileShape)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack, tileShape),
+                    .border(RaftAppStroke.Default, RaftColor.StickerInk, tileShape),
             contentAlignment = Alignment.Center
         ) {
-            RaftLucideIcon(status.icon, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
+            RaftLucideIcon(status.icon, modifier = Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(

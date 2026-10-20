@@ -393,7 +393,7 @@ private fun SettingsAccountSectionHeader(title: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftLucideIcon(RaftLucideIconName.User, color = "#FF737373", modifier = Modifier.size(14.dp))
+        RaftLucideIcon(RaftLucideIconName.User, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
         Text(
             title,
             style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
@@ -877,7 +877,7 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
 @Composable
 private fun SettingsMetaRow(iconName: RaftLucideIconName, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftLucideIcon(iconName, color = "#FF737373", modifier = Modifier.size(14.dp))
+        RaftLucideIcon(iconName, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
         Text(text, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -890,7 +890,7 @@ private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconNa
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (iconName != null) {
-            RaftLucideIcon(iconName, color = "#FF737373", modifier = Modifier.size(14.dp))
+            RaftLucideIcon(iconName, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
         }
         Text(text, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
@@ -898,16 +898,18 @@ private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconNa
 
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color, iconName: RaftLucideIconName? = null) {
+    // Sticker fills keep ink type in both modes; the paper (connect) badge is a themed surface.
+    val ink = if (color == RaftColor.SurfaceWhite) RaftColor.TextBlack else RaftColor.StickerInk
     Row(
-        modifier = Modifier.background(color).border(1.dp, RaftColor.BorderBlack).padding(horizontal = 6.dp, vertical = 2.dp),
+        modifier = Modifier.background(color).border(1.dp, ink).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        iconName?.let { RaftLucideIcon(it, modifier = Modifier.size(12.dp)) }
+        iconName?.let { RaftLucideIcon(it, modifier = Modifier.size(12.dp), color = raftArgbHex(ink)) }
         Text(
             text,
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, color = ink),
+            color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -943,12 +945,12 @@ private fun SettingsAccountWarning(text: String) {
 @Composable
 private fun SettingsAccountSuccess(text: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.AccentLime).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().background(RaftColor.AccentLime).border(RaftAppStroke.Default, RaftColor.StickerInk).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp))
-        Text(text, style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
+        Text(text, style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.StickerInk), color = RaftColor.StickerInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -958,7 +960,7 @@ private fun IconBox(iconName: RaftLucideIconName, color: Color, invert: Boolean 
         modifier = Modifier.size(38.dp).background(color).border(RaftAppStroke.Default, RaftColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        RaftLucideIcon(iconName, color = if (invert) "#FFFFFFFF" else "#FF000000", modifier = Modifier.size(18.dp))
+        RaftLucideIcon(iconName, color = if (invert) raftArgbHex(RaftColor.StickerPaper) else RaftColor.TextBlackArgb, modifier = Modifier.size(18.dp))
     }
 }
 

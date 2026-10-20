@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.image.RaftImageHost
 import build.raft.app.image.RaftManagedImageRead
@@ -13,6 +14,8 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
+import platform.UIKit.UITraitCollection
+import platform.UIKit.UIUserInterfaceStyle
 import platform.posix.memcpy
 
 /**
@@ -77,6 +80,12 @@ object RaftIosHostHooks {
         installed = true
         if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
         RaftPageRegistry.install()
+        // Settings > Appearance > Theme: the app-scope stores are installed (RaftIosAppScopeMMKV)
+        // before these hooks, so the stored choice applies before the first page composes.
+        RaftAppAppearanceRuntime.onSystemDarkChanged(
+            UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyle.UIUserInterfaceStyleDark
+        )
+        RaftAppAppearanceRuntime.ensureLoaded()
         if (managedImages != null) {
             RaftImageHost.managedImageReader =
                 RaftManagedImageReader { descriptor ->

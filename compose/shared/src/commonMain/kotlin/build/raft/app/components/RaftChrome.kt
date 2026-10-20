@@ -2,6 +2,7 @@ package build.raft.app.components
 
 import build.raft.app.LocalRaftTheme
 import build.raft.app.RaftColor
+import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
 import build.raft.app.isAmbient
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -75,6 +77,14 @@ internal object RaftMetrics {
 @Composable
 @ReadOnlyComposable
 internal fun raftActive(): Boolean = LocalRaftTheme.current.isAmbient
+
+/**
+ * Ink for type / edges drawn on a caller-supplied [fill]: in dark mode an opaque bright fill (every dark surface is far darker) is a
+ * sticker (stickers never invert), so it gets [RaftColor.StickerInk]; otherwise the [themed]
+ * ink. Light mode always returns [themed] (pass TextBlack / BorderBlack, which equal sticker ink there).
+ */
+internal fun raftInkOnFill(fill: Color, themed: Color): Color =
+    if (RaftAppThemeState.isDark && fill.alpha >= 0.99f && fill.luminance() > 0.18f) RaftColor.StickerInk else themed
 
 /** Lays a translucent [overlay] over an opaque [base] (raft `press-overlay`). */
 internal fun raftOverlay(overlay: Color, base: Color): Color =

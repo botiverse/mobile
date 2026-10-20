@@ -3,7 +3,7 @@
     android:id="@+id/raft_app_shell_splash_hold"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/raft_surface_cream"
+    android:background="@color/raft_window_background"
     android:clickable="true"
     android:focusable="true">
 

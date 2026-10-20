@@ -35,10 +35,11 @@ enum class RaftAppearance {
  * holder, so changing [appearance] (or the OS setting under [RaftAppearance.System])
  * recomposes every [RaftTheme] that reads it.
  *
- * It defaults to [RaftAppearance.Light]: the app pins light until every screen supports
- * dark. [RaftTheme] reports the OS setting through [onSystemDarkChanged], so hosts do
- * not have to. [App] is the process-wide instance app screens share; fixtures and tests
- * create their own.
+ * A new state defaults to [RaftAppearance.Light] (fixtures and tests create their own);
+ * [App], the process-wide instance app screens share, starts on [RaftAppearance.System]
+ * like the Web and the app applies the user's stored choice to it at startup. [RaftTheme]
+ * reports the OS setting through [onSystemDarkChanged]; hosts that know it before the first
+ * composition seed it too, so token reads outside [RaftTheme] resolve right on frame one.
  */
 @Stable
 class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
@@ -74,7 +75,7 @@ class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
 
     companion object {
         /** Process-wide state app screens follow (the RaftAppThemeState counterpart). */
-        val App: RaftThemeState = RaftThemeState()
+        val App: RaftThemeState = RaftThemeState(RaftAppearance.System)
     }
 }
 

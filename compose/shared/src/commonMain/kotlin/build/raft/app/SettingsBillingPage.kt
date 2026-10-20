@@ -285,6 +285,8 @@ internal fun settingsBillingWebViewInjectedJavaScript(
 @Composable
 private fun BillingNoticeCard(notice: RaftSettingsBillingNotice) {
     val background = billingNoticeBackground(notice.tone)
+    // Sticker tones keep ink type in both modes; the cream fallback is a themed surface.
+    val ink = if (background == RaftColor.SurfaceCream) RaftColor.TextBlack else RaftColor.StickerInk
     val iconName =
         when (notice.tone) {
             "warning" -> RaftLucideIconName.TriangleAlert
@@ -294,19 +296,19 @@ private fun BillingNoticeCard(notice: RaftSettingsBillingNotice) {
         modifier =
             Modifier.fillMaxWidth()
                 .background(background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Default, ink)
                 .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp))
-            Text(notice.title, style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = raftArgbHex(ink))
+            Text(notice.title, style = RaftType.ButtonBold.copy(color = ink), color = ink)
         }
-        Text(notice.detail, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        Text(notice.detail, style = RaftType.Body.copy(color = ink), color = ink)
         notice.rows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(row.label, style = RaftType.TabLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, modifier = Modifier.weight(1f))
-                Text(row.value, style = RaftType.TabLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+                Text(row.label, style = RaftType.TabLabel.copy(color = ink), color = ink, modifier = Modifier.weight(1f))
+                Text(row.value, style = RaftType.TabLabel.copy(color = ink), color = ink)
             }
         }
     }
@@ -320,7 +322,7 @@ private fun billingNoticeBackground(tone: String): Color =
         else -> RaftColor.SurfaceCream
     }
 
-private val SettingsBillingSoftDivider = Color(0x1A000000)
+private val SettingsBillingSoftDivider: Color get() = RaftColor.BorderHairline
 private const val SettingsBillingIncludedIconColor = "#FF15803D"
 private const val SettingsBillingExcludedIconColor = "#FFF97264"
 
@@ -669,7 +671,7 @@ private fun SettingsBillingSectionHeader(iconName: RaftLucideIconName, label: St
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = RaftColor.TextBlackArgb)
         Text(
             label,
             style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
@@ -682,14 +684,15 @@ private fun SettingsBillingSectionHeader(iconName: RaftLucideIconName, label: St
 
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color) {
+    val ink = if (color == RaftColor.EmptyStateGray) RaftColor.TextBlack else RaftColor.StickerInk
     Box(
-        modifier = Modifier.background(color).border(1.dp, RaftColor.BorderBlack).padding(horizontal = 8.dp, vertical = 3.dp),
+        modifier = Modifier.background(color).border(1.dp, ink).padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text,
-            style = RaftType.TabLabel.copy(color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
+            style = RaftType.TabLabel.copy(color = ink),
+            color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

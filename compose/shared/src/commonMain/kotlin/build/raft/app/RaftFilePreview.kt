@@ -4041,16 +4041,16 @@ private enum class RaftComposerImagePencilMode {
     Eraser,
 }
 
-private val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30)
+private val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30) // raft-color: image-editor pen palette
 private val RaftComposerImageEditorPenColors =
     listOf(
-        Color(0xFFFFFFFF),
-        Color(0xFF111111),
+        Color(0xFFFFFFFF), // raft-color: image-editor pen palette
+        Color(0xFF111111), // raft-color: image-editor pen palette
         RaftComposerImageEditorDefaultPenColor,
-        Color(0xFFFF9500),
-        Color(0xFFFFCC00),
-        Color(0xFF34C759),
-        Color(0xFF32ADE6),
+        Color(0xFFFF9500), // raft-color: image-editor pen palette
+        Color(0xFFFFCC00), // raft-color: image-editor pen palette
+        Color(0xFF34C759), // raft-color: image-editor pen palette
+        Color(0xFF32ADE6), // raft-color: image-editor pen palette
     )
 private const val RaftComposerImageMosaicTileSizePx = 18f
 private const val RaftComposerImageMosaicBrushRadius = 1
@@ -4110,7 +4110,7 @@ internal data class RaftFilePreviewAnnotationDraft(
 
 internal data class RaftComposerImageStroke(
     val points: List<Offset>,
-    val color: Color = Color(0xFFFF3B30),
+    val color: Color = Color(0xFFFF3B30), // raft-color: image-editor pen palette default
 )
 
 internal data class RaftComposerImageMosaicTile(
@@ -4446,7 +4446,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF000000))
+                    .background(Color(0xFF000000)) // raft-color: image editor stage is black in both modes
                     .border(RaftAppStroke.Default, RaftColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
@@ -4813,14 +4813,14 @@ internal fun RaftFilePreviewComposerImageEditor(
                                     )
                                 }
                             }
-                            .background(Color(0xCCFFFFFF))
-                            .border(1.dp, RaftColor.BorderBlack)
+                            .background(Color(0xCCFFFFFF)) // raft-color: text annotation drawn on the photo
+                            .border(1.dp, RaftColor.StickerInk)
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = annotation.text,
-                        style = RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)),
-                        color = Color(0xFFFF3B30),
+                        style = RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)), // raft-color: text annotation drawn on the photo
+                        color = Color(0xFFFF3B30), // raft-color: text annotation drawn on the photo
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -6009,7 +6009,7 @@ internal fun DrawScope.drawRaftCropOverlay(
     val rectHeight = rectBottom - rectTop
     if (rectWidth <= 0f || rectHeight <= 0f) return
 
-    val scrimColor = Color(0x99000000)
+    val scrimColor = Color(0x99000000) // raft-color: crop overlay drawn on the photo
     if (rectTop > 0f) {
         drawRect(
             color = scrimColor,
@@ -6041,13 +6041,13 @@ internal fun DrawScope.drawRaftCropOverlay(
 
     val borderWidth = (1.5f * density).coerceAtLeast(1f)
     drawRect(
-        color = Color(0xFFFFFFFF),
+        color = Color(0xFFFFFFFF), // raft-color: crop overlay drawn on the photo
         topLeft = Offset(rectLeft, rectTop),
         size = Size(rectWidth, rectHeight),
         style = Stroke(width = borderWidth),
     )
 
-    val gridColor = Color(0x66FFFFFF)
+    val gridColor = Color(0x66FFFFFF) // raft-color: crop overlay drawn on the photo
     val gridStroke = (1f * density).coerceAtLeast(1f)
     val oneThirdW = rectWidth / 3f
     val twoThirdW = 2f * rectWidth / 3f
@@ -6081,7 +6081,7 @@ internal fun DrawScope.drawRaftCropOverlay(
 
     val cornerLen = (18f * density).coerceIn(12f, minOf(rectWidth, rectHeight) / 2f)
     val cornerThickness = (3f * density).coerceAtLeast(2f)
-    val cornerColor = Color(0xFFFFFFFF)
+    val cornerColor = Color(0xFFFFFFFF) // raft-color: crop overlay drawn on the photo
 
     drawLine(cornerColor, Offset(rectLeft, rectTop), Offset(rectLeft + cornerLen, rectTop), strokeWidth = cornerThickness)
     drawLine(cornerColor, Offset(rectLeft, rectTop), Offset(rectLeft, rectTop + cornerLen), strokeWidth = cornerThickness)
@@ -8024,7 +8024,7 @@ private fun RaftFilePreviewVideoPanel(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF000000))
+            .background(Color(0xFF000000)) // raft-color: video viewer is black in both modes
             .padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -8035,8 +8035,8 @@ private fun RaftFilePreviewVideoPanel(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .heightIn(max = 420.dp)
-                    .background(Color(0xFF000000))
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .background(Color(0xFF000000)) // raft-color: video viewer is black in both modes
+                    .border(RaftAppStroke.Default, RaftColor.StickerInk),
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
@@ -8128,8 +8128,8 @@ private fun RaftFilePreviewVideoControls(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(Color(0xDD000000))
-                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                .background(Color(0xDD000000)) // raft-color: video scrim
+                .border(RaftAppStroke.Thin, RaftColor.StickerPaper)
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
@@ -8150,7 +8150,7 @@ private fun RaftFilePreviewVideoControls(
             Text(
                 text = raftFilePreviewLocalizedVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.SurfaceWhite,
+                color = RaftColor.StickerPaper,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -8207,8 +8207,8 @@ private fun RaftFilePreviewVideoProgressBar(
                 Modifier
                     .fillMaxWidth()
                     .height(5.dp)
-                    .background(Color(0x66000000))
-                    .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                    .background(Color(0x66000000)) // raft-color: video scrim
+                    .border(RaftAppStroke.Thin, RaftColor.StickerPaper)
         ) {
             when (percent) {
                 null -> {
@@ -8253,8 +8253,8 @@ private fun RaftFilePreviewVideoOverlayText(
     Column(
         modifier =
             modifier
-                .background(Color(0xCC000000))
-                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                .background(Color(0xCC000000)) // raft-color: video scrim
+                .border(RaftAppStroke.Thin, RaftColor.StickerPaper)
                 .padding(RaftAppSpacing.Md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
@@ -8263,7 +8263,7 @@ private fun RaftFilePreviewVideoOverlayText(
         Text(
             text = title,
             style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.SurfaceWhite,
+            color = RaftColor.StickerPaper,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
@@ -8272,7 +8272,7 @@ private fun RaftFilePreviewVideoOverlayText(
             Text(
                 text = detail,
                 style = RaftType.Caption,
-                color = RaftColor.SurfaceWhite,
+                color = RaftColor.StickerPaper,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
@@ -9683,7 +9683,7 @@ internal fun RaftFilePreviewGenericCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(72.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(72.dp), color = raftLegacyIconInk())
         Box(modifier = Modifier.height(RaftAppSpacing.Md))
         Text(
             text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
@@ -10241,7 +10241,7 @@ internal fun RaftFilePreviewMessage(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(34.dp), color = raftLegacyIconInk())
         Text(
             text = title,
             style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack),

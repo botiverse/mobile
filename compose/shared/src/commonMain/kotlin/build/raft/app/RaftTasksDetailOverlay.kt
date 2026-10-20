@@ -28,7 +28,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 /** Widest the task thread panel grows over the board (matches the web task modal width band). */
 internal val RaftTasksDetailOverlayMaxWidth = 880.dp
 
-private val RaftTasksDetailOverlayScrimColor = Color(0x66000000)
+private val RaftTasksDetailOverlayScrimColor = Color(0x66000000) // raft-color: fixed black dimming scrim over the board (40%, lighter than Backdrop)
 
 /** Share of the height / width the panel takes; the rest is scrim around it. */
 private const val RaftTasksDetailOverlayPanelFraction = 0.92f

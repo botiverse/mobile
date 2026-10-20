@@ -884,6 +884,9 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     cacheServerId: String?,
     avatarFill: Color = RaftColor.AccentLavender
 ) {
+    // Selected rows sit on the yellow sticker fill: ink type in both modes.
+    val onSticker = selected && enabled
+    val mutedInk = if (onSticker && RaftAppThemeState.isDark) RaftColor.StickerInk.copy(alpha = 0.68f) else RaftColor.TextMutedGray
     RaftAvatarWithStatus(
         statusColor = statusColor,
             avatarSize = avatarSize,
@@ -903,7 +906,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 Text(
                     text = title,
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
+                    color = if (onSticker) RaftColor.StickerInk else if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -917,14 +920,14 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                                 .widthIn(max = 88.dp)
                                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
                                 .background(RaftColor.AccentCyan.copy(alpha = 0.24f))
-                                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                                .border(RaftAppStroke.Thin, if (onSticker) RaftColor.StickerInk else RaftColor.BorderBlack)
                                 .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = if (channelPageStyle) badge else badge.raftDisplayUppercase(),
                             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
-                            color = RaftColor.TextBlack,
+                            color = if (onSticker) RaftColor.StickerInk else RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -935,14 +938,14 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 Text(
                     text = subtitle,
                     style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.TextMutedGray,
+                    color = mutedInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
         roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            Box(Modifier.background(if (channelPageStyle) Color(0xFFE7E5E4) else RaftColor.SurfaceCream)
+            Box(Modifier.background(if (channelPageStyle) (if (RaftAppThemeState.isDark) RaftColor.FillStrong else Color(0xFFE7E5E4)) else RaftColor.SurfaceCream) // raft-color: light legacy stone chip
                 .then(if (channelPageStyle) Modifier.border(1.dp, RaftColor.BorderBlack) else Modifier)
                 .padding(horizontal = 5.dp, vertical = 2.dp)) {
                 Text(text = label, style = RaftType.Caption.copy(fontSize = if (channelPageStyle) 10.sp else 12.sp), color = RaftColor.TextMutedGray,
@@ -962,7 +965,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                     RaftModalSquareActionButton(
                         icon = trailingIcon,
                         onClick = onTrailingClick,
-                        color = if (selected) RaftColor.SurfaceWhite else Color(0xFFFFF2F2),
+                        color = if (selected) RaftColor.SurfaceWhite else Color(0xFFFFF2F2), // raft-color: chrome classifier input, painted as the Card outline button
                         enabled = enabled,
                         iconColor = if (trailingMuted) "#FF777777" else "#FF000000"
                     )
@@ -971,9 +974,9 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             trailingIcon != null -> RaftLucideIcon(
                 trailingIcon,
                 modifier = Modifier.size(15.dp),
-                color = if (trailingMuted) "#FF777777" else "#FF000000"
+                color = if (trailingMuted) "#FF777777" else raftLegacyIconInk(onSticker)
             )
-            trailingText.isNotBlank() -> Text(text = trailingText, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+            trailingText.isNotBlank() -> Text(text = trailingText, style = RaftType.Caption, color = mutedInk)
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
     }
@@ -989,7 +992,7 @@ private fun RaftModalMemberRemoveButton(
         modifier =
             Modifier
                 .size(24.dp)
-                .background(if (enabled && !muted) Color(0xFFFFE5E5) else RaftColor.SurfaceCream)
+                .background(if (enabled && !muted) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFE5E5)) else RaftColor.SurfaceCream) // raft-color: light legacy remove wash
                 .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
                 .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -997,7 +1000,15 @@ private fun RaftModalMemberRemoveButton(
         RaftLucideIcon(
             icon,
             modifier = Modifier.size(12.dp),
-            color = if (enabled && !muted) "#FF000000" else "#FF777777"
+            color = if (enabled && !muted) raftLegacyIconInk() else "#FF777777"
         )
     }
 }
+
+// Black icon ink in light (unchanged); in dark the themed ink, or sticker ink on a sticker fill.
+internal fun raftLegacyIconInk(onSticker: Boolean = false): String =
+    when {
+        !RaftAppThemeState.isDark -> "#FF000000"
+        onSticker -> raftArgbHex(RaftColor.StickerInk)
+        else -> RaftColor.TextBlackArgb
+    }

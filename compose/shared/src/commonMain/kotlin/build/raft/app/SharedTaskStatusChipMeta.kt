@@ -11,7 +11,7 @@ internal data class SharedTaskStatusChipMeta(
     val label: String,
     val icon: RaftLucideIconName,
     val color: Color,
-    val foregroundColor: Color = RaftColor.TextBlack,
+    val foregroundColor: Color = RaftColor.StickerInk,
     val iconSize: Dp = 10.dp
 )
 

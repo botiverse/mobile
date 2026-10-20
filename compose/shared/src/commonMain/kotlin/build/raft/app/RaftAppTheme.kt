@@ -3,11 +3,10 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.designtokens.RaftUiThemeColors
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftThemeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -181,22 +180,22 @@ enum class RaftAppAppearance {
  * [RaftAppAppearance.System]) repaints everything composed from those tokens without
  * threading a theme through ~thousands of callsites.
  *
- * Defaults to [RaftAppAppearance.Light] until every surface reads themed tokens; dark
- * is reserved (artin, task #7) and only selectable once screens are migrated.
+ * It is a view of the designsystem's process-wide [RaftThemeState.App], the state the page
+ * root (`RaftCmpRoot` -> `RaftTheme`) resolves and reports the OS setting into, so app tokens
+ * and designsystem components never disagree. The user's choice is persisted by
+ * [RaftAppAppearanceRuntime] (Settings > Appearance > Theme, default System like the Web).
  */
 internal object RaftAppThemeState {
-    var appearance: RaftAppAppearance by mutableStateOf(RaftAppAppearance.Light)
-        private set
-    var systemDark: Boolean by mutableStateOf(false)
-        private set
+    private val state: RaftThemeState get() = RaftThemeState.App
+
+    val appearance: RaftAppAppearance
+        get() = state.appearance.toAppAppearance()
+
+    val systemDark: Boolean
+        get() = state.systemDark
 
     val isDark: Boolean
-        get() =
-            when (appearance) {
-                RaftAppAppearance.Light -> false
-                RaftAppAppearance.Dark -> true
-                RaftAppAppearance.System -> systemDark
-            }
+        get() = state.isDark
 
     val colors: RaftUiThemeColors
         get() = if (isDark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
@@ -205,19 +204,25 @@ internal object RaftAppThemeState {
         get() = if (isDark) raftDarkTheme else raftLightTheme
 
     /** @return true when the resolved theme changed. */
-    fun apply(next: RaftAppAppearance): Boolean {
-        val wasDark = isDark
-        appearance = next
-        return wasDark != isDark
-    }
+    fun apply(next: RaftAppAppearance): Boolean = state.apply(next.toDesignSystemAppearance())
 
     /** Hosts report the OS light/dark setting here; @return true when the resolved theme changed. */
-    fun onSystemDarkChanged(dark: Boolean): Boolean {
-        val wasDark = isDark
-        systemDark = dark
-        return wasDark != isDark
-    }
+    fun onSystemDarkChanged(dark: Boolean): Boolean = state.onSystemDarkChanged(dark)
 }
+
+internal fun RaftAppAppearance.toDesignSystemAppearance(): RaftAppearance =
+    when (this) {
+        RaftAppAppearance.Light -> RaftAppearance.Light
+        RaftAppAppearance.Dark -> RaftAppearance.Dark
+        RaftAppAppearance.System -> RaftAppearance.System
+    }
+
+internal fun RaftAppearance.toAppAppearance(): RaftAppAppearance =
+    when (this) {
+        RaftAppearance.Light -> RaftAppAppearance.Light
+        RaftAppearance.Dark -> RaftAppAppearance.Dark
+        RaftAppearance.System -> RaftAppAppearance.System
+    }
 
 /** Explicit subtree override (fixtures, previews); null = follow [RaftAppThemeState]. */
 internal val LocalRaftThemeOverride = staticCompositionLocalOf<RaftAppTheme?> { null }

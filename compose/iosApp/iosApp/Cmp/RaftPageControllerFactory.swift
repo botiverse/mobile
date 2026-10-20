@@ -37,7 +37,13 @@ import shared
             nativeTabBar = (hostId, bridge)
         }
         let container = RaftPageViewController(pageName: pageName, pageData: hostPageData)
-        container.raftInitialBackgroundColor = RaftCmpIos.shared.lastCanvasColor()
+        // Before the page's first composition: the last painted canvas, else the resolved app
+        // theme's canvas (the stored Light/Dark/System choice), so nothing flashes white.
+        container.raftInitialBackgroundColor =
+            RaftCmpIos.shared.lastCanvasColor()
+            ?? UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
+        // Status bar icons follow the app theme from the first frame, not only after composition.
+        container.raftSetDarkTheme(RaftAppAppearanceRuntime.shared.isDark)
         let bridge = RaftCmpBridgeHost()
         bridge.hostController = container
         let navigator = RaftCmpPageNavigator()

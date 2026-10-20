@@ -74,7 +74,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -557,7 +556,7 @@ private fun HomeActivityRouterContent(
                 modifier = Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(Color.Black),
+                    .background(RaftColor.BorderBlack),
             )
             Box(
                 modifier = Modifier

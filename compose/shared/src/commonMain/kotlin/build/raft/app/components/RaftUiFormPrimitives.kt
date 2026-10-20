@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.RaftColor
+import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
@@ -54,7 +55,8 @@ internal val RaftSlugInputPrefixBackground =
 // color block in RaftSlugInput for why per-part alpha can't match CSS group
 // opacity. (The old value, BrandYellow @ 0.55, was a Color.copy(alpha=)
 // REPLACE bug: disabled rendered MORE saturated than enabled's 0.30.)
-internal val RaftSlugInputDisabledPrefixBackground = Color(0xFFFFF7DD)
+internal val RaftSlugInputDisabledPrefixBackground: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFFF7DD) // raft-color: light legacy flattened yellow tile
 
 @Suppress("UNUSED_PARAMETER")
 @Composable

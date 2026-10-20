@@ -154,7 +154,7 @@ internal fun ThreadInlineAudioAttachmentCard(
                     RaftLucideIcon(
                         name = RaftLucideIconName.FileMusic,
                         modifier = Modifier.size(20.dp),
-                        color = "#000000"
+                        color = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#000000"
                     )
                 }
                 Column(
@@ -261,7 +261,7 @@ private fun ThreadInlineAudioSurface(
                 RaftLucideIcon(
                     name = RaftLucideIconName.LoaderCircle,
                     modifier = Modifier.size(16.dp),
-                    color = "#000000",
+                    color = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#000000",
                     spinning = true
                 )
                 Text(

@@ -3,6 +3,8 @@
     <color name="raft_brand_yellow">#FFFFD440</color>
     <color name="raft_accent_pink">#FFFE7DA8</color>
     <color name="raft_surface_cream">#FFFFFAEF</color>
+    <!-- Window / splash behind the first frame (dark: values-night). -->
+    <color name="raft_window_background">#FFFFFAEF</color>
     <color name="raft_agent_active">#FF3DDC84</color>
     <color name="raft_agent_idle">#FFFFD440</color>
     <color name="raft_agent_error">#FFFF6A3D</color>

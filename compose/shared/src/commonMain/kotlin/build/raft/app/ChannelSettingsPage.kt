@@ -462,7 +462,7 @@ private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onCl
                 ChannelStatusBadge(channel)
             }
             if (editable) {
-                RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF111111")
+                RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = RaftColor.TextBlackArgb)
             }
         }
         Text(
@@ -489,10 +489,10 @@ private fun ChannelStatusBadge(channel: HomeChannelRow) {
         modifier =
             Modifier
                 .background(if (channel.archived) RaftColor.EmptyStateGray else RaftColor.AccentLime)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Thin, if (channel.archived) RaftColor.BorderBlack else RaftColor.StickerInk)
                 .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
-        Text(text = text, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
+        Text(text = text, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold), color = if (channel.archived) RaftColor.TextBlack else RaftColor.StickerInk)
     }
 }
 
@@ -522,7 +522,7 @@ private fun ChannelMembersCard(
             )
             Spacer(Modifier.weight(1f))
             Text(text = countLabel, style = RaftType.Body, color = RaftColor.TextMutedGray)
-            RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
+            RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = if (RaftAppThemeState.isDark) RaftColor.TextMutedGrayArgb else "#FF666666")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             members.forEach { member -> ChannelSettingsMemberAvatar(member) }
@@ -535,7 +535,7 @@ private fun ChannelMembersCard(
                             .border(RaftAppStroke.Default, RaftColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
-                    RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")
+                    RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(20.dp), color = RaftColor.TextBlackArgb)
                 }
             }
         }

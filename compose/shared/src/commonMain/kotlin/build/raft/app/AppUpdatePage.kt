@@ -370,10 +370,10 @@ internal fun AppUpdateSummary(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.StickerInk),
                 contentAlignment = Alignment.Center
             ) {
-                RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp))
+                RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.StickerInk))
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

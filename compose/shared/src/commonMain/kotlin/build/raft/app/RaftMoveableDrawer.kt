@@ -122,7 +122,7 @@ internal fun rememberRaftMoveableDrawerState(
 internal fun RaftMoveableDrawer(
     state: RaftMoveableDrawerState,
     modifier: Modifier = Modifier,
-    scrimColor: Color = Color.Black.copy(alpha = 0.3f),
+    scrimColor: Color = Color.Black.copy(alpha = 0.3f), // raft-color: black dimming scrim reads in both modes
     userScrollEnabled: Boolean = true,
     drawerContent: @Composable () -> Unit,
     content: @Composable () -> Unit,

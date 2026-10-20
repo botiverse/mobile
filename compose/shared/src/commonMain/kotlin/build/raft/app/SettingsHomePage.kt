@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftRadioGroup
+import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
@@ -6705,7 +6708,7 @@ private fun RaftAppShellReadyContent(
                                         Modifier
                                             .width(RAFT_SIDE_THREAD_DIVIDER_DP.dp)
                                             .fillMaxHeight()
-                                            .background(Color.Black),
+                                            .background(if (RaftAppThemeState.isDark) RaftColor.BorderSeam else Color.Black), // raft-color: light pane divider stays pure black
                                 )
                             }
                             RaftChildPage(
@@ -6834,7 +6837,7 @@ private fun RaftAppShellReadyContent(
                                         Modifier
                                             .width(if (dualPane) RAFT_LIST_PANE_DIVIDER_DP.dp else 0.dp)
                                             .fillMaxHeight()
-                                            .background(Color.Black),
+                                            .background(if (RaftAppThemeState.isDark) RaftColor.BorderSeam else Color.Black), // raft-color: light pane divider stays pure black
                                 )
                                 Box(
                                     modifier =
@@ -7745,7 +7748,7 @@ private fun AppShellServerDrawerHost(
                             .align(Alignment.CenterEnd)
                             .fillMaxHeight()
                             .width(scrimWidth)
-                            .background(Color.Black.copy(alpha = 0.28f * drawerState.progress))
+                            .background(Color.Black.copy(alpha = 0.28f * drawerState.progress)) // raft-color: drawer dimming scrim, black in both modes
                             .semantics {
                                 contentDescription = dismissLabel
                                 traversalIndex = 1f
@@ -9185,19 +9188,21 @@ private fun SettingsConnectedAppsBadge(
     label: String,
     backgroundColor: Color
 ) {
+    // Sticker fills keep ink in both modes; the neutral loading fill is themed.
+    val ink = if (backgroundColor == RaftColor.EmptyStateGray) RaftColor.TextBlack else RaftColor.StickerInk
     Box(
         modifier =
             Modifier
                 // raft-ui Badge: sticker radius, 1.5dp sticker-ink edge.
                 .background(backgroundColor, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
+                .border(RaftAppStroke.Control, ink, RoundedCornerShape(RaftAppRadius.Sticker))
                 .padding(horizontal = 7.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            style = RaftType.TabLabel.copy(color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
+            style = RaftType.TabLabel.copy(color = ink),
+            color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -9528,6 +9533,7 @@ private fun SettingsAppearanceContent(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item { SettingsAppearanceThemeCard() }
         item {
             SettingsActivitySenderAvatarsCard(
                 enabled = activitySenderAvatarsEnabled,
@@ -9589,6 +9595,37 @@ private fun SettingsAppearanceContent(
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
+
+/**
+ * Settings > Appearance > Theme, the Web's AppearanceThemePicker: Light, Dark or System,
+ * applied at once and saved on this device ([RaftAppAppearanceRuntime]).
+ */
+@Composable
+private fun SettingsAppearanceThemeCard() {
+    val selected = RaftAppAppearanceRuntime.appearance
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Eye, title = stringResource(MR.strings.settings_appearance_theme_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_appearance_theme_description))
+        RaftDesignSystemTheme {
+            RaftRadioGroup {
+                RaftAppAppearanceOptions.forEach { (appearance, label) ->
+                    RaftRadioRow(
+                        label = stringResource(label),
+                        selected = selected == appearance,
+                        onClick = { RaftAppAppearanceRuntime.select(appearance) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The Web's order (`APP_APPEARANCE_MODES`): light, dark, system. */
+private val RaftAppAppearanceOptions =
+    listOf(
+        RaftAppAppearance.Light to MR.strings.settings_appearance_mode_light,
+        RaftAppAppearance.Dark to MR.strings.settings_appearance_mode_dark,
+        RaftAppAppearance.System to MR.strings.settings_appearance_mode_system,
+    )
 
 @Composable
 private fun SettingsActivitySenderAvatarsCard(
@@ -11858,7 +11895,8 @@ private fun SettingsConnectedAppLogoBox(
         modifier =
             Modifier
                 .size(size)
-                .background(if (hasLogo) RaftColor.SurfaceWhite else settingsConnectedAppLogoColor(seed), RoundedCornerShape(RaftAppRadius.Sticker))
+                // Logo tile is a sticker: fixed paper behind the logo, accent fill behind initials.
+                .background(if (hasLogo) RaftColor.StickerPaper else settingsConnectedAppLogoColor(seed), RoundedCornerShape(RaftAppRadius.Sticker))
                 .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
@@ -11876,9 +11914,9 @@ private fun SettingsConnectedAppLogoBox(
                     RaftType.PageTitle.copy(
                         fontSize = (size.value * 0.26f).sp,
                         lineHeight = (size.value * 0.30f).sp,
-                        color = RaftColor.TextBlack
+                        color = RaftColor.StickerInk
                     ),
-                color = RaftColor.TextBlack,
+                color = RaftColor.StickerInk,
                 textAlign = TextAlign.Center
             )
         }
@@ -12212,7 +12250,7 @@ private fun SettingsConnectedAppInfoRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = RaftColor.TextBlackArgb)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
             Text(detail.ifBlank { stringResource(MR.strings.settings_connected_apps_no_description) }, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
@@ -12291,7 +12329,7 @@ private fun SettingsServerSectionHeader(
         RaftLucideIcon(
             iconName,
             modifier = Modifier.size(16.dp),
-            color = "#FF000000",
+            color = RaftColor.TextBlackArgb,
             spinning = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
         )
         Text(title, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
@@ -12556,7 +12594,7 @@ private fun SettingsServerDeleteWarningBanner(
         RaftLucideIcon(
             RaftLucideIconName.TriangleAlert,
             modifier = Modifier.padding(top = 1.dp).size(16.dp),
-            color = "#FF000000"
+            color = RaftColor.TextBlackArgb
         )
         Text(
             message,
@@ -13448,7 +13486,7 @@ private fun SettingsServerSelectRow(
             RaftLucideIcon(
                 if (selected) RaftLucideIconName.CircleCheck else RaftLucideIconName.Circle,
                 modifier = Modifier.size(16.dp),
-                color = "#FF000000",
+                color = RaftColor.TextBlackArgb,
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
@@ -13575,12 +13613,13 @@ private fun SharedSettingsRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
-                modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.AccentCyan else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+                modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.AccentCyan else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, if (row.enabled) RaftColor.StickerInk else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
                 RaftLucideIcon(
                     row.iconName,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(18.dp),
+                    color = if (row.enabled) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -15529,7 +15568,7 @@ private fun SettingsSharedPlaceholder(
             modifier = Modifier.size(52.dp).background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
             contentAlignment = androidx.compose.ui.Alignment.Center
         ) {
-            RaftLucideIcon(iconName, modifier = Modifier.size(26.dp))
+            RaftLucideIcon(iconName, modifier = Modifier.size(26.dp), color = raftArgbHex(RaftColor.StickerInk))
         }
         Text(title, style = RaftType.PageTitle.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
         Text(detail, style = RaftType.Body.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
@@ -20532,7 +20571,7 @@ private fun SharedCreateChannelMemberRow(
             )
         }
         if (selected) {
-            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = "#FF000000")
+            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
         }
     }
 }
@@ -21755,7 +21794,7 @@ private fun SharedHomePanelHeader(
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(30.dp))
+        RaftLucideIcon(name = iconName, color = RaftColor.TextBlackArgb, modifier = Modifier.size(30.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 title,
@@ -23110,7 +23149,7 @@ private fun SharedHomeSearchSortSegmentButton(
         Text(
             text = label,
             style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = if (selected) RaftColor.TextBlack else SearchMutedTextColor,
+            color = if (selected) RaftColor.StickerInk else SearchMutedTextColor,
             maxLines = 1
         )
     }
@@ -23199,13 +23238,13 @@ private fun SharedHomePanelButton(
         onClick = onClick,
         modifier =
             modifier
-                .raftControlSurface(fill = background, border = RaftColor.BorderBlack)
+                .raftControlSurface(fill = background, border = if (enabled && selected) RaftColor.StickerInk else RaftColor.BorderBlack)
                 .padding(horizontal = if (dense) 5.dp else 11.dp, vertical = if (dense) 6.dp else 7.dp)
     ) {
         Text(
             text = label,
             style = RaftType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
-            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
+            color = if (!enabled) RaftColor.TextMutedGray else if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -25640,7 +25679,7 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RaftLucideIcon(RaftLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
+            RaftLucideIcon(RaftLucideIconName.Building2, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
             Text(
                 "PROFILE",
                 style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 1.3.sp, color = RaftColor.TextMutedGray),
@@ -26483,7 +26522,7 @@ internal fun HomeActivityHitTargetVisualContent() {
                         .raftCardSurface(fill = RaftColor.Brand)
                         .padding(4.dp),
                 style = RaftType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
-                color = RaftColor.TextBlack
+                color = RaftColor.StickerInk
             )
         }
     }

@@ -44,7 +44,16 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
             window.rootViewController = UIHostingController(rootView: ContentView())
+            // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
+            // style for the whole window (keyboards, system menus, the native tab bar);
+            // System leaves it unspecified. The dark canvas behind the first frame avoids a
+            // white flash.
+            window.backgroundColor = UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
+            window.overrideUserInterfaceStyle = UIUserInterfaceStyle(
+                rawValue: Int(RaftAppAppearanceRuntime.shared.hostStyleCode)
+            ) ?? .unspecified
             self.window = window
+            RaftIosAppearanceHost.attach()
             window.makeKeyAndVisible()
         }
 
@@ -131,6 +140,36 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             "info",
             "RaftIosShellWindow",
             "scene_released shell=\(shellInstanceId)"
+        )
+    }
+}
+
+/// Applies the app theme choice (`RaftAppAppearanceRuntime`) to every window of the app.
+enum RaftIosAppearanceHost {
+    static func attach() {
+        RaftAppAppearanceRuntime.shared.setHostListener { code in
+            let style = UIUserInterfaceStyle(rawValue: Int(truncating: code)) ?? .unspecified
+            let canvas = UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
+            for scene in UIApplication.shared.connectedScenes {
+                guard let windowScene = scene as? UIWindowScene else { continue }
+                for window in windowScene.windows {
+                    window.overrideUserInterfaceStyle = style
+                    window.backgroundColor = canvas
+                }
+            }
+        }
+    }
+}
+
+extension UIColor {
+    /// `0xAARRGGBB` as produced by Compose `Color.toArgb()`.
+    convenience init(raftArgb argb: Int32) {
+        let value = UInt32(bitPattern: argb)
+        self.init(
+            red: CGFloat((value >> 16) & 0xFF) / 255.0,
+            green: CGFloat((value >> 8) & 0xFF) / 255.0,
+            blue: CGFloat(value & 0xFF) / 255.0,
+            alpha: CGFloat((value >> 24) & 0xFF) / 255.0
         )
     }
 }

@@ -52,7 +52,7 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                     RaftLucideIcon(
                         name = RaftLucideIconName.TriangleAlert,
                         modifier = Modifier.size(22.dp),
-                        color = RaftColor.TextBlackArgb,
+                        color = raftArgbHex(RaftColor.StickerInk),
                     )
                 }
                 Text(

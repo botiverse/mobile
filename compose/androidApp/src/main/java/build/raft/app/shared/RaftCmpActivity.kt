@@ -17,7 +17,11 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import androidx.compose.ui.graphics.toArgb
+import build.raft.app.data.RaftAppAppearanceRuntime
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
@@ -906,7 +910,12 @@ internal open class RaftCmpActivity :
                 )
             }
         onBackPressedDispatcher.addCallback(this, hostSystemBackCallback)
+        // uiMode is not a handled config change, so an OS light/dark switch recreates the
+        // activity and lands here again: seed the theme before anything is drawn.
+        RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())
+        RaftAppAppearanceRuntime.ensureLoaded()
         setContentView(R.layout.activity_raft)
+        applyHostCanvasColor(hostWindowBackgroundColor())
         prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
         setupImmersiveMode()
@@ -1038,7 +1047,12 @@ internal open class RaftCmpActivity :
         val composeView =
             ComposeView(this).apply {
                 setContent {
-                    RaftCmpRoot(args, host, onDarkThemeResolved = ::applySystemBarAppearance)
+                    RaftCmpRoot(
+                        args,
+                        host,
+                        onDarkThemeResolved = ::applySystemBarAppearance,
+                        onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                    )
                 }
             }
         container.addView(
@@ -1106,6 +1120,22 @@ internal open class RaftCmpActivity :
             removeHomeColdStartNativeHold(reason = "cmp_first_frame")
             RaftAppLog.d("SlockBoot", "home_content_splash_released source=cmp_first_frame page=$pageName")
         }
+    }
+
+    private fun androidSystemDark(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    /**
+     * Before the first frame: the window colour of the resolved app theme (light keeps the cream
+     * splash colour, dark the dark canvas), whatever the OS mode the resources were resolved in.
+     */
+    private fun hostWindowBackgroundColor(): Int =
+        if (RaftAppAppearanceRuntime.isDark) RaftAppAppearanceRuntime.canvasArgb else getColor(R.color.raft_surface_cream)
+
+    /** The window and root view behind the Compose page take the app canvas, so nothing flashes. */
+    private fun applyHostCanvasColor(argb: Int) {
+        window?.setBackgroundDrawable(ColorDrawable(argb))
+        findViewById<View?>(R.id.raft_root)?.setBackgroundColor(argb)
     }
 
     /** Light theme: dark status/navigation bar icons; dark theme: light icons. */
@@ -1633,7 +1663,7 @@ internal open class RaftCmpActivity :
             android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
-                setBackgroundColor(Color.WHITE)
+                setBackgroundColor(RaftAppAppearanceRuntime.canvasArgb)
                 setPadding(dp(32), dp(32), dp(32), dp(32))
                 isClickable = true
             }
@@ -1641,7 +1671,7 @@ internal open class RaftCmpActivity :
             android.widget.TextView(this).apply {
                 text = "Something went wrong"
                 textSize = 20f
-                setTextColor(Color.BLACK)
+                setTextColor(RaftAppAppearanceRuntime.foregroundArgb)
                 typeface = Typeface.DEFAULT_BOLD
             }
         )
@@ -1649,7 +1679,7 @@ internal open class RaftCmpActivity :
             android.widget.TextView(this).apply {
                 text = "This page hit a rendering problem. A report was recorded. ($reasonCode)"
                 textSize = 14f
-                setTextColor(0xFF737373.toInt())
+                setTextColor(RaftAppAppearanceRuntime.foregroundMutedArgb)
                 setPadding(0, dp(8), 0, dp(24))
                 gravity = android.view.Gravity.CENTER
             }
@@ -2643,8 +2673,8 @@ internal open class RaftCmpActivity :
     // setupImmersiveMode, kuikly-host-alignment-audit rows 43/78): proper
     // edge-to-edge via setDecorFitsSystemWindows(false) on API 30+ instead of
     // deprecated layout flags alone, plus cutout, bar-contrast, and light
-    // status/navigation appearance handling. Slock stays light-on-white, so
-    // both bars keep the light appearance.
+    // status/navigation appearance handling. The bar icons follow the resolved
+    // app theme (light icons on dark).
     private fun setupImmersiveMode() {
         val window = window ?: return
         applyDecorFitsSystemWindows(window)
@@ -2669,7 +2699,7 @@ internal open class RaftCmpActivity :
             window.isStatusBarContrastEnforced = false
             window.isNavigationBarContrastEnforced = false
         }
-        applyLightSystemBarsAppearance(window)
+        applySystemBarAppearance(RaftAppAppearanceRuntime.isDark)
     }
 
     private fun applyDecorFitsSystemWindows(window: Window) {
@@ -2749,21 +2779,6 @@ internal open class RaftCmpActivity :
                         KEY_HOST_WINDOW_ID to hostWindowId,
                 ),
         )
-    }
-
-    private fun applyLightSystemBarsAppearance(window: Window) {
-        window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility or
-                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                        (if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
-        if (Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.setSystemBarsAppearance(
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            )
-        }
     }
 
     override fun updatePerformanceScene(action: String, sceneName: String) {

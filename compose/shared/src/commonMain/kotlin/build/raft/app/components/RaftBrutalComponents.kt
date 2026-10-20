@@ -2,6 +2,7 @@ package build.raft.app.components
 
 import build.raft.app.Button as RaftAnchorButton
 import build.raft.app.RaftColor
+import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftLucideIconName
@@ -101,14 +102,23 @@ internal data class SegmentedControlOption(
 )
 
 // Brutal error-field wash (react `bg-red-50`-ish); raft fields keep the card fill on error.
-internal val RaftFieldErrorTint = Color(0xFFFFF4F4)
+// Dark takes the raft roles (`danger-soft`; disabled `fill-muted` / `line-hairline` /
+// `foreground-disabled`); light keeps the legacy values.
+internal val RaftFieldErrorTint: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFF4F4) // raft-color: light legacy error wash
 
-internal val RaftDisabledActionBackground = Color(0xFFFFD8E5)
-internal val RaftDisabledDestructiveActionBackground = Color(0xFFFFE5E5)
-internal val RaftDisabledActionBorder = Color(0xFFB3B3B3)
-internal val RaftDisabledActionShadow = Color(0xFFB8B8B8)
-internal val RaftDisabledActionContent = RaftColor.SurfaceWhite
-internal const val RaftDisabledActionContentArgb = RaftColor.SurfaceWhiteArgb
+internal val RaftDisabledActionBackground: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.FillMuted else Color(0xFFFFD8E5) // raft-color: light legacy disabled fill
+internal val RaftDisabledDestructiveActionBackground: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.FillMuted else Color(0xFFFFE5E5) // raft-color: light legacy disabled fill
+internal val RaftDisabledActionBorder: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.BorderHairline else Color(0xFFB3B3B3) // raft-color: light legacy disabled edge
+internal val RaftDisabledActionShadow: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.BorderHairline else Color(0xFFB8B8B8) // raft-color: light legacy disabled shadow
+internal val RaftDisabledActionContent: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.ForegroundDisabled else RaftColor.SurfaceWhite
+internal val RaftDisabledActionContentArgb: String
+    get() = raftArgbHex(RaftDisabledActionContent)
 
 internal fun raftDisabledActionBackgroundFor(activeColor: Color): Color =
     when (activeColor) {
@@ -195,7 +205,7 @@ internal fun RaftAnchoredMetaChip(
         modifier
             .heightIn(min = minHeight)
             // A zero width means no edge (a soft chip); Compose would draw 0.dp as a hairline.
-            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, RaftColor.BorderBlack, chipShape) else Modifier)
+            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, raftInkOnFill(color, RaftColor.BorderBlack), chipShape) else Modifier)
             .background(color, chipShape)
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
@@ -245,19 +255,33 @@ internal fun RaftAnchoredMetaChip(
                 RaftLucideIcon(
                     it,
                     modifier = Modifier.size(iconSize),
-                    color = iconColorArgb,
+                    color =
+                        if (iconColorArgb == RaftColor.TextBlackArgb) {
+                            raftArgbHex(raftInkOnFill(color, RaftColor.TextBlack))
+                        } else {
+                            iconColorArgb
+                        },
                     fill = iconFillArgb
                 )
             }
             Text(
                 text = label,
                 style = RaftType.Caption.withRaftFontWeight(labelFontWeight).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
-                color = contentColor,
+                color = if (contentColor == RaftColor.TextBlack) raftInkOnFill(color, contentColor) else contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             trailingIconName?.let {
-                RaftLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = trailingIconColorArgb)
+                RaftLucideIcon(
+                    it,
+                    modifier = Modifier.size(trailingIconSize),
+                    color =
+                        if (trailingIconColorArgb == RaftColor.TextMutedGrayArgb) {
+                            raftArgbHex(raftInkOnFill(color, RaftColor.TextMutedGray))
+                        } else {
+                            trailingIconColorArgb
+                        }
+                )
             }
         }
     }
@@ -999,7 +1023,7 @@ internal fun RaftBrutalReadOnlyField(
 }
 
 // Brutal read-only fill (Tailwind gray-50).
-internal val RaftReadOnlyFieldLegacyBackground = Color(0xFFF9FAFB)
+internal val RaftReadOnlyFieldLegacyBackground = Color(0xFFF9FAFB) // raft-color: default-value sentinel, painted as FillMuted
 
 @Composable
 internal fun RaftBrutalReadOnlyValueField(
@@ -1181,16 +1205,16 @@ internal fun RaftBrutalActionButton(
     enabled: Boolean = true,
     backgroundColor: Color = RaftColor.SurfaceWhite,
     // react bg-palette-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
-    disabledBackgroundColor: Color = Color(0xFFE6E3E0),
+    disabledBackgroundColor: Color = Color(0xFFE6E3E0), // raft-color: unused legacy parameter
     // Same react rule as the fill above: .btn-brutal-sm:disabled is the WHOLE
     // element at opacity-40, so every part composites over white - border black
     // -> #999999, shadow ink #141111 -> #A1A0A0, text black -> #999999. Opaque
     // values on purpose: alpha on the shadow Box is unreliable in this render
     // path (the 0.40f below still drew black) and opaque matches the #508 fill
     // precedent.
-    disabledBorderColor: Color = Color(0xFF999999),
-    disabledShadowColor: Color = Color(0xFFA1A0A0),
-    disabledContentColor: Color = Color(0xFF999999),
+    disabledBorderColor: Color = Color(0xFF999999), // raft-color: unused legacy parameter
+    disabledShadowColor: Color = Color(0xFFA1A0A0), // raft-color: unused legacy parameter
+    disabledContentColor: Color = Color(0xFF999999), // raft-color: unused legacy parameter
     disabledIconColor: String = "#FF999999",
     minWidth: Dp = 82.dp,
     minHeight: Dp = 40.dp,
@@ -1514,8 +1538,15 @@ private fun RaftPickerChip(
     val ink =
         when {
             !enabled -> RaftColor.ForegroundDisabled
-            active -> RaftColor.TextBlack
+            active -> raftInkOnFill(restingFill, RaftColor.TextBlack)
             else -> RaftColor.TextMuted
+        }
+    // Count / trailing chevron: hint ink, or sticker ink on a bright active fill (BrandYellow) in dark.
+    val metaInk =
+        when {
+            !enabled -> RaftColor.ForegroundDisabled
+            active -> raftInkOnFill(restingFill, RaftColor.ForegroundHint)
+            else -> RaftColor.ForegroundHint
         }
     val ring = if (!enabled || active) Color.Transparent else RaftColor.BorderSeam
     RaftAnchorButton(
@@ -1549,7 +1580,7 @@ private fun RaftPickerChip(
                 Text(
                     text = it.toString(),
                     style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                    color = if (enabled) RaftColor.ForegroundHint else RaftColor.ForegroundDisabled,
+                    color = metaInk,
                     maxLines = 1
                 )
             }
@@ -1557,7 +1588,7 @@ private fun RaftPickerChip(
                 RaftLucideIcon(
                     it,
                     modifier = Modifier.size(14.dp),
-                    color = raftArgbHex(if (enabled) RaftColor.ForegroundHint else RaftColor.ForegroundDisabled),
+                    color = raftArgbHex(metaInk),
                     strokeWidth = 2f
                 )
             }

@@ -662,7 +662,8 @@ internal fun RaftNavigationRailTabBar(
             modifier = Modifier
                 .width(RaftNavigationRailWidth)
                 .fillMaxHeight()
-                .background(RaftColor.BrandYellow)
+                // The rail is the yellow frame: brand yellow in light, the dark frame layer in dark.
+                .background(if (RaftAppThemeState.isDark) RaftColor.Frame else RaftColor.BrandYellow)
         ) {
             if (header != null) {
                 Column(
@@ -839,7 +840,7 @@ private fun RaftNavigationRailServerTile(
                     .size(10.dp)
                     .align(Alignment.TopEnd)
                     .background(RaftColor.AccentPink)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .border(RaftAppStroke.Default, RaftColor.StickerInk)
             )
         }
     }
@@ -860,7 +861,7 @@ private fun RaftVerticalTabItem(
     onSelect: (String) -> Unit,
     itemStartPadding: Dp
 ) {
-    val textColor = if (item.enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
+    val textColor = if (item.enabled) (if (selected) RaftColor.StickerInk else RaftColor.TextBlack) else RaftColor.TextMutedGray
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -872,7 +873,7 @@ private fun RaftVerticalTabItem(
                 modifier = Modifier
                     .matchParentSize()
                     .offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default)
-                    .background(RaftColor.BorderBlack)
+                    .background(RaftColor.StickerInk)
             )
         }
         Row(
@@ -881,7 +882,7 @@ private fun RaftVerticalTabItem(
                 .height(34.dp)
                 .background(if (selected) RaftColor.AccentPink else Color.Transparent)
                 // Same as the rail item: a removed border modifier does not clear the native border.
-                .border(RaftAppStroke.Default, if (selected) RaftColor.BorderBlack else Color.Transparent)
+                .border(RaftAppStroke.Default, if (selected) RaftColor.StickerInk else Color.Transparent)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
                 .padding(start = itemStartPadding, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -889,7 +890,7 @@ private fun RaftVerticalTabItem(
         ) {
             RaftLucideIcon(
                 name = item.iconName,
-                color = if (item.enabled) "#FF000000" else "#FF737373",
+                color = if (item.enabled) raftLegacyIconInk(onSticker = selected) else RaftColor.TextMutedGrayArgb,
                 modifier = Modifier.size(14.dp)
             )
             Text(

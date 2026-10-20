@@ -714,10 +714,10 @@ internal fun SettingsWebViewErrorContent(
                 Modifier
                     .size(52.dp)
                     .background(RaftColor.BrandYellow)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .border(RaftAppStroke.Default, RaftColor.StickerInk),
             contentAlignment = Alignment.Center,
         ) {
-            RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
+            RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp), color = raftArgbHex(RaftColor.StickerInk))
         }
         Text(
             stringResource(MR.strings.settings_webview_error_title),

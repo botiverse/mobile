@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.designtokens.RaftUiThemeColors
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftThemeState
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,7 +19,8 @@ class RaftAppThemeStateTest {
     }
 
     @Test
-    fun defaultsToRaftLight() {
+    fun lightAppearanceResolvesRaftLight() {
+        RaftAppThemeState.apply(RaftAppAppearance.Light)
         assertEquals(RaftAppAppearance.Light, RaftAppThemeState.appearance)
         assertEquals(raftLightTheme, RaftAppThemeState.theme)
         assertEquals(RaftUiThemeColors.RaftLight.foreground, RaftColor.TextBlack)
@@ -34,6 +37,30 @@ class RaftAppThemeStateTest {
         assertEquals(raftArgbHex(RaftUiThemeColors.RaftDark.foreground), RaftColor.TextBlackArgb)
         // Fixed brand colours do not follow the theme.
         assertEquals(RaftUiPalette.paletteYellow, RaftColor.BrandYellow)
+        assertEquals(RaftUiPalette.stickerInk, RaftColor.StickerInk)
+        // The legacy light-only names follow it too, so screens built on them go dark.
+        assertEquals(RaftUiThemeColors.RaftDark.layerCanvas, RaftColor.SurfaceWhite)
+        assertEquals(RaftUiThemeColors.RaftDark.layerSidebar, RaftColor.SurfaceCream)
+        assertEquals(RaftUiThemeColors.RaftDark.foregroundMuted, RaftColor.TextMutedGray)
+        assertEquals(RaftUiThemeColors.RaftDark.fillStrong, RaftColor.EmptyStateGray)
+        assertEquals(RaftUiThemeColors.RaftDark.infoSoft, RaftColor.AppBgLightBlue)
+    }
+
+    @Test
+    fun legacyLightTokensKeepTheirLightValues() {
+        RaftAppThemeState.apply(RaftAppAppearance.Light)
+        assertEquals(RaftUiPalette.white, RaftColor.SurfaceWhite)
+        assertEquals(RaftUiPalette.paletteCream, RaftColor.SurfaceCream)
+        assertEquals(RaftUiPalette.neutral500, RaftColor.TextMutedGray)
+        assertEquals("#FFFFFFFF", RaftColor.SurfaceWhiteArgb)
+        assertEquals("#FF737373", RaftColor.TextMutedGrayArgb)
+    }
+
+    @Test
+    fun appStateIsTheDesignSystemAppState() {
+        RaftAppThemeState.apply(RaftAppAppearance.Dark)
+        assertEquals(RaftAppearance.Dark, RaftThemeState.App.appearance)
+        assertTrue(RaftThemeState.App.isDark)
     }
 
     @Test

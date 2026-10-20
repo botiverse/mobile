@@ -197,7 +197,12 @@
     <string name="settings_appearance_activity_sender_avatars_detail">各アクティビティ項目の横に最新の送信者アバターを表示します。</string>
     <string name="settings_appearance_activity_sender_avatars_enabled">表示</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">非表示</string>
-    <string name="settings_appearance_subtitle">メッセージのフォントサイズと表示密度</string>
+    <string name="settings_appearance_subtitle">テーマ、メッセージのフォントサイズと表示密度</string>
+    <string name="settings_appearance_theme_title">テーマ</string>
+    <string name="settings_appearance_theme_description">ライト、ダーク、またはデバイスの設定に合わせるかを選択します。選択内容はこのデバイスに保存されます。</string>
+    <string name="settings_appearance_mode_light">ライト</string>
+    <string name="settings_appearance_mode_dark">ダーク</string>
+    <string name="settings_appearance_mode_system">システム</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">プッシュ通知の状態とワークスペースのミュート</string>
     <string name="settings_language_title">言語</string>

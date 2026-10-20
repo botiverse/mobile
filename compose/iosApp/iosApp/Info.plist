@@ -94,7 +94,10 @@
             <string>UIInterfaceOrientationLandscapeRight</string>
         </array>
         <key>UILaunchScreen</key>
-        <dict />
+        <dict>
+            <key>UIColorName</key>
+            <string>RaftLaunchBackground</string>
+        </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false/>
     </dict>
