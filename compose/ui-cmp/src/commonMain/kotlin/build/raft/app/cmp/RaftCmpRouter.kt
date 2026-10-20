@@ -66,6 +66,13 @@ object RaftCmpRouter {
         debugPagesEnabled = debugBuild
     }
 
+    /**
+     * The host's debug flag as passed to [configure] (Android `BuildConfig.DEBUG`, iOS `#if DEBUG`);
+     * false until a host configures it, e.g. in unit tests.
+     */
+    val isDebugBuild: Boolean
+        get() = debugPagesEnabled
+
     /** True when [pageName] is a registered page (a host can render it). */
     fun rendersOnCmp(pageName: String): Boolean = content(pageName) != null
 

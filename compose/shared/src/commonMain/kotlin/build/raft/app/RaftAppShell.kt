@@ -9,6 +9,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
@@ -137,7 +144,8 @@ internal fun RaftAppShellSurface(
     val ownedModalHostState = rememberRaftUnifiedDialogHostState()
     // Jasper 2026-10-20: the bottom bar steps aside while the keyboard is open (it would ride
     // on top of the keyboard or cover the focused field otherwise).
-    val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, raftImeVisible())
+    val imeVisible = raftImeVisible()
+    val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, imeVisible)
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
     val bodyTopBanner: (@Composable () -> Unit)? =
         if (networkStatus == RaftAppShellNetworkStatus.Offline) {
@@ -192,17 +200,27 @@ internal fun RaftAppShellSurface(
                         }
                     }
                 }
-                if (bottomTabsShown) {
-                    RaftAppBottomTabBarHost(
-                        items = bottomTabs,
-                        onSelect = onBottomTabSelected,
+                if (showBottomTabs) {
+                    // raft-design #620: gone at once when the keyboard opens, back with a short
+                    // slide/fade up when it closes. A page that starts showing the bar (keyboard
+                    // closed) gets it at once: AnimatedVisibility starts at its first value.
+                    AnimatedVisibility(
+                        visible = !imeVisible,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomCenter),
-                        bottomSafeArea = shellScope.bottomSafeArea,
-                        accessory = bottomTabAccessory
-                    )
+                        enter = RaftAppShellBottomBarReturn,
+                        exit = RaftAppShellBottomBarLeave
+                    ) {
+                        RaftAppBottomTabBarHost(
+                            items = bottomTabs,
+                            onSelect = onBottomTabSelected,
+                            modifier = Modifier.fillMaxWidth(),
+                            bottomSafeArea = shellScope.bottomSafeArea,
+                            accessory = bottomTabAccessory
+                        )
+                    }
                 }
                 if (interactionLocked) {
                     Box(
@@ -228,6 +246,23 @@ internal fun RaftAppShellSurface(
 /** The shell's bottom bar is drawn only when the page wants it and no keyboard is open. */
 internal fun raftAppShellBottomTabsShown(showBottomTabs: Boolean, imeVisible: Boolean): Boolean =
     showBottomTabs && !imeVisible
+
+/** How long the bottom bar takes to come back when the keyboard closes (raft-design #620). */
+internal const val RaftAppShellBottomBarReturnMillis = 200
+
+/**
+ * The bottom bar coming back after the keyboard closes: the platform's short fade and slide up
+ * (a quarter of its height), [RaftAppShellBottomBarReturnMillis]. Compose scales it by the
+ * system animation scale, so Android's "Remove animations" makes it instant.
+ */
+internal val RaftAppShellBottomBarReturn: EnterTransition =
+    fadeIn(tween(RaftAppShellBottomBarReturnMillis, easing = LinearOutSlowInEasing)) +
+        slideInVertically(tween(RaftAppShellBottomBarReturnMillis, easing = LinearOutSlowInEasing)) { height ->
+            height / 4
+        }
+
+/** The bar leaves at once when the keyboard opens: the keyboard is already covering it. */
+internal val RaftAppShellBottomBarLeave: ExitTransition = ExitTransition.None
 
 /** True while a software keyboard covers part of the window (`WindowInsets.ime`). */
 @Composable
