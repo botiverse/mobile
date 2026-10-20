@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextMotion
 import build.raft.designsystem.theme.RaftTypography
 
 /**
@@ -20,14 +21,31 @@ import build.raft.designsystem.theme.RaftTypography
 internal val RaftCssLineHeightStyle: LineHeightStyle get() = RaftTypography.CssLineHeightStyle
 
 /**
+ * Glyph positioning. Android's default [TextMotion.Static] hints glyphs and snaps every advance
+ * to a whole pixel, so Space Grotesk's spacing drifts from the browser's (which positions glyphs
+ * at subpixel offsets with no hinting). Android returns [TextMotion.Animated] (linear text,
+ * subpixel positioning); other platforms return null and keep their default.
+ */
+internal expect fun raftPlatformTextMotion(): TextMotion?
+
+/**
  * Fills in the rendering attributes a style left unspecified. Attributes a call site set
  * explicitly (a different [LineHeightStyle], say) win.
  */
-internal fun TextStyle.withRaftTextRendering(): TextStyle =
-    if (lineHeightStyle != null) this else copy(lineHeightStyle = RaftCssLineHeightStyle)
+internal fun TextStyle.withRaftTextRendering(): TextStyle {
+    val motion = raftPlatformTextMotion()
+    val needsLineBox = lineHeightStyle == null
+    val needsMotion = textMotion == null && motion != null
+    if (!needsLineBox && !needsMotion) return this
+    return copy(
+        lineHeightStyle = if (needsLineBox) RaftCssLineHeightStyle else lineHeightStyle,
+        textMotion = if (needsMotion) motion else textMotion,
+    )
+}
 
 /** The rendering defaults as a style, for [LocalTextStyle] and merges. */
-internal fun raftTextRenderingStyle(): TextStyle = TextStyle(lineHeightStyle = RaftCssLineHeightStyle)
+internal fun raftTextRenderingStyle(): TextStyle =
+    TextStyle(lineHeightStyle = RaftCssLineHeightStyle, textMotion = raftPlatformTextMotion())
 
 /**
  * Provides the rendering defaults through [LocalTextStyle], so `Text` calls whose style was not

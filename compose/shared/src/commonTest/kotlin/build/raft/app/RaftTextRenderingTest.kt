@@ -46,4 +46,12 @@ class RaftTextRenderingTest {
         assertEquals(custom, style.withRaftFontWeight(FontWeight.Bold).lineHeightStyle)
         assertEquals(custom, style.withResolvedRaftFontFamily().lineHeightStyle)
     }
+
+    @Test
+    fun tokensCarryThePlatformTextMotion() {
+        // Android: TextMotion.Animated (subpixel glyph positioning); iOS: platform default (null).
+        tokens.forEach { style -> assertEquals(raftPlatformTextMotion(), style.textMotion) }
+        assertEquals(raftPlatformTextMotion(), TextStyle().withResolvedRaftFontFamily().textMotion)
+        assertEquals(raftPlatformTextMotion(), raftTextRenderingStyle().textMotion)
+    }
 }
