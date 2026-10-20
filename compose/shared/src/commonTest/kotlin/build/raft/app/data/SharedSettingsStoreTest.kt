@@ -1095,11 +1095,11 @@ class SharedSettingsStoreTest {
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
         repository.calls.clear()
-        store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Private.wireName))
+        store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Hidden.wireName))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertFalse(mobile.pushMessagePreviews.enabled)
-        assertEquals(listOf("setPushPreviewMode:private"), repository.calls)
+        assertEquals(PushPreviewMode.Hidden.wireName, mobile.pushPreviewMode.selectedKey)
+        assertEquals(listOf("setPushPreviewMode:hidden"), repository.calls)
         assertEquals(MOBILE_ACTION_PUSH_PREVIEW_MODE, store.state.value.actionState?.action)
         assertFalse(store.state.value.actionState?.inProgress == true)
         scope.cancel()
@@ -3559,12 +3559,7 @@ class SharedSettingsStoreTest {
             mobileResult =
                 DataResult.Content(
                     current.copy(
-                        pushMessagePreviews =
-                            current.pushMessagePreviews.copy(
-                                enabled = mode == PushPreviewMode.Full,
-                                available = true,
-                                statusLabel = if (mode == PushPreviewMode.Full) "Shown" else "Hidden"
-                            )
+                        pushPreviewMode = mode.toSettingsMobileSelectionSnapshot(available = true)
                     )
                 )
             return mobileResult

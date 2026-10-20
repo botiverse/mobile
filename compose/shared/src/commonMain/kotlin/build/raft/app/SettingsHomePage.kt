@@ -10912,7 +10912,7 @@ private fun SettingsNotificationsContent(
                         onServerNotificationModeChange = onServerNotificationModeChange
                     )
                 }
-                if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushMessagePreviews.available) {
+                if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
                     item {
                         SettingsPushPreviewModeCard(
                             snapshot = snapshot,
@@ -11347,16 +11347,22 @@ private fun SettingsPushPreviewModeCard(
     onPushPreviewModeChange: (String) -> Unit
 ) {
     val busy = actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress
-    val preference = snapshot.pushMessagePreviews
+    val preference = snapshot.pushPreviewMode
     SettingsNotificationPreferenceGroup {
-        SettingsNotificationToggleRow(
-            title = stringResource(MR.strings.settings_notifications_show_previews_title),
-            detail = stringResource(MR.strings.settings_notifications_show_previews_detail),
-            checked = preference.enabled,
+        SettingsSegmentedControlField(
+            label = stringResource(MR.strings.settings_notifications_preview_mode_title),
+            detail = stringResource(MR.strings.settings_notifications_preview_mode_detail),
+            selectedValue = preference.selectedKey,
+            options =
+                PushPreviewMode.entries.map { mode ->
+                    SegmentedControlOption(
+                        mode.wireName,
+                        stringResource(mode.settingsPreviewModeLabel()),
+                        mode.settingsPreviewModeIcon(),
+                    )
+                },
             enabled = preference.available && !busy,
-            onCheckedChange = { enabled ->
-                onPushPreviewModeChange(pushPreviewModeForEnabled(enabled).wireName)
-            }
+            onValueSelected = { onPushPreviewModeChange(it) },
         )
         if (actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -11366,8 +11372,19 @@ private fun SettingsPushPreviewModeCard(
     }
 }
 
-internal fun pushPreviewModeForEnabled(enabled: Boolean): PushPreviewMode =
-    if (enabled) PushPreviewMode.Full else PushPreviewMode.Private
+internal fun PushPreviewMode.settingsPreviewModeIcon(): RaftLucideIconName =
+    when (this) {
+        PushPreviewMode.Full -> RaftLucideIconName.Eye
+        PushPreviewMode.SenderOnly -> RaftLucideIconName.MessageSquare
+        PushPreviewMode.Hidden -> RaftLucideIconName.EyeOff
+    }
+
+internal fun PushPreviewMode.settingsPreviewModeLabel(): StringResource =
+    when (this) {
+        PushPreviewMode.Full -> MR.strings.settings_notifications_preview_mode_full
+        PushPreviewMode.SenderOnly -> MR.strings.settings_notifications_preview_mode_sender_only
+        PushPreviewMode.Hidden -> MR.strings.settings_notifications_preview_mode_hidden
+    }
 
 @Composable
 private fun ServerPushMode.settingsNotificationModeTitle(): String =
@@ -25989,13 +26006,9 @@ private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
                 statusLabel = "Unmuted",
                 detail = "This server can send push notifications."
             ),
-        pushMessagePreviews =
-            build.raft.app.data.SettingsMobileToggleSnapshot(
-                enabled = true,
-                available = true,
-                statusLabel = "Shown",
-                detail = "Message details are included in iOS push notifications."
-            ),
+        pushPreviewMode =
+            build.raft.app.data.PushPreviewMode.Full
+                .toSettingsMobileSelectionSnapshot(available = true),
         sendTestEnabled = true,
         notificationPermission =
             build.raft.app.data.SettingsMobileActionSnapshot(

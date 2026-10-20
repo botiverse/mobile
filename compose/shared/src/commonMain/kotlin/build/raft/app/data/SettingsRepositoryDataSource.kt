@@ -1324,15 +1324,12 @@ class RealSettingsRepository(
                                 ?.canonicalModeSupported == true,
                         detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
                     ),
-                pushMessagePreviews =
-                    SettingsMobileToggleSnapshot(
-                        enabled = pushPreviewMode == PushPreviewMode.Full,
+                pushPreviewMode =
+                    (pushPreviewMode ?: PushPreviewMode.Full).toSettingsMobileSelectionSnapshot(
                         available =
                             (serverNotificationPreferences as? DataResult.Content)
                                 ?.data
                                 ?.pushPreviewModeSupported == true,
-                        statusLabel = if (pushPreviewMode == PushPreviewMode.Full) "Shown" else "Hidden",
-                        detail = "Controls whether iOS push alerts include message details."
                     ),
                 sendTestEnabled = true
             )
