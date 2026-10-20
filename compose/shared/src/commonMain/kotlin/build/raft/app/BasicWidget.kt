@@ -86,6 +86,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
@@ -2013,36 +2014,57 @@ internal fun TextField(
             }
         }
     }
+    // Touch double-tap word / triple-tap paragraph selection; see raftTextFieldMultiTapSelection.
+    val (multiTapSelectionModifier, multiTapSelection) =
+        rememberRaftTextFieldMultiTapSelection(
+            enabled =
+                enabled &&
+                    !readOnly &&
+                    visualTransformation == VisualTransformation.None &&
+                    raftPlatformTextFieldNeedsMultiTapBackport(),
+            composedValue = value,
+            currentValue = { liveValueForReader.value },
+            onValueChange = onValueChangeRecordingLive,
+        )
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
-    BasicTextField(
-        modifier = updatedModifier,
-        value = value,
-        onValueChange = onValueChangeRecordingLive,
-        textStyle = resolvedTextStyle,
-        singleLine = raftTextFieldSingleLine(maxLines),
-        maxLines = maxLines,
-        onTextLayout = currentOnTextLayout,
-        keyboardOptions = resolvedKeyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
-        enabled = enabled,
-        readOnly = readOnly,
-        visualTransformation = visualTransformation,
-        decorationBox = { innerTextField ->
-            Box(contentAlignment = contentAlignment) {
-                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+    // The field gets the backport's toolbar so its own hide() calls do not close a multi-tap menu.
+    val fieldToolbar = if (raftPlatformTextFieldNeedsMultiTapBackport()) multiTapSelection.fieldToolbar else LocalTextToolbar.current
+    CompositionLocalProvider(LocalTextToolbar provides fieldToolbar) {
+        BasicTextField(
+            // Outside the field's own pointer modifiers, so its Main pass runs after the field's tap
+            // handler has placed the cursor.
+            modifier = multiTapSelectionModifier.then(updatedModifier),
+            value = value,
+            onValueChange = onValueChangeRecordingLive,
+            textStyle = resolvedTextStyle,
+            singleLine = raftTextFieldSingleLine(maxLines),
+            maxLines = maxLines,
+            onTextLayout = { layout ->
+                multiTapSelection.textLayout = layout
+                currentOnTextLayout(layout)
+            },
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            cursorBrush = cursorBrush,
+            enabled = enabled,
+            readOnly = readOnly,
+            visualTransformation = visualTransformation,
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = contentAlignment) {
+                    if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                            color = placeholderColor ?: resolvedTextStyle.color,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
             }
-        }
-    )
+        )
+    }
 
     LaunchedEffect(autoFocus) {
         if (autoFocus) {

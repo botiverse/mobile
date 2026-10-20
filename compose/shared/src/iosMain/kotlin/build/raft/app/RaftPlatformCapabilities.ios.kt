@@ -110,3 +110,6 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 /** Cupertino rubber band can stick at an offset when its spring is cancelled; see expect. */
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
+
+// CMP iOS (CupertinoTextFieldPointerModifier) already selects word / paragraph on double / triple tap.
+internal actual fun raftPlatformTextFieldNeedsMultiTapBackport(): Boolean = false
