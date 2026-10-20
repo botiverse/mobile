@@ -25380,7 +25380,7 @@ internal fun BottomTabBarSmokeContent() {
 
 @Composable
 internal fun BottomTabBarVisualContent() {
-    // React measures the live tab bar element at full page width (390x53dp), so
+    // The bar is measured at full page width (390x58dp, approved mockup A), so
     // render the bar flush at the window origin at exactly 390dp — explicit width
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).

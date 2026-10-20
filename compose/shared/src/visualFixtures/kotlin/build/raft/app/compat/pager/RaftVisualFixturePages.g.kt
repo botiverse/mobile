@@ -17,6 +17,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_auth_login_inputs" to { build.raft.app.ComposeAuthLoginInputsVisualPage() },
         "compose_auth_profile_setup_visual" to { build.raft.app.ComposeAuthProfileSetupVisualPage() },
         "compose_auth_register_inputs" to { build.raft.app.ComposeAuthRegisterInputsVisualPage() },
+        "compose_bottom_tabbar_mockup_visual" to { build.raft.app.ComposeBottomTabBarMockupVisualPage() },
         "compose_bottom_tabbar_visual" to { build.raft.app.ComposeBottomTabBarVisualPage() },
         "compose_channel_add_member_panel_visual" to { build.raft.app.ComposeChannelAddMemberPanelVisualPage() },
         "compose_channel_members_parity_visual" to { build.raft.app.ChannelMembersParityVisualPage() },

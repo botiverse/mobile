@@ -194,6 +194,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureNavigationTabbarMockup() {
+        // Approved activity-tab mockup A: 动态 selected with its count, then 任务 selected with
+        // the count on the unselected 动态 tab (bars at y=16 and y=16+58+24).
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.mockup",
+            pageName = "compose_bottom_tabbar_mockup_visual",
+            crop = NAVIGATION_TABBAR_MOCKUP_CROP
+        )
+    }
+
+    @Test
     fun captureActivityTabSegments() {
         // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the three segments
         // (All / Unread / Mentions) and the 5-tab bar with the Activity badge.
@@ -6505,7 +6516,14 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 53
+                heightDp = 58
+            )
+        private val NAVIGATION_TABBAR_MOCKUP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 172
             )
         private val ANDROID_FLOATING_TABBAR_CROP =
             VisualCrop(
