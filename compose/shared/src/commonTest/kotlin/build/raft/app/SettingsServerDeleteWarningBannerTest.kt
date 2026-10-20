@@ -19,8 +19,10 @@ class SettingsServerDeleteWarningBannerTest {
 
         assertEquals(serverNameStart, serverNameSpan.start)
         assertEquals(serverNameEnd, serverNameSpan.end)
-        assertEquals(RaftType.ButtonBold.fontFamily, serverNameSpan.item.fontFamily)
-        assertEquals(RaftType.ButtonBold.fontWeight, serverNameSpan.item.fontWeight)
+        // Web: `<span className="font-semibold">`.
+        val semibold = raftSpanStyleForWeight(androidx.compose.ui.text.font.FontWeight.SemiBold)
+        assertEquals(semibold.fontFamily, serverNameSpan.item.fontFamily)
+        assertEquals(semibold.fontWeight, serverNameSpan.item.fontWeight)
     }
 
     @Test

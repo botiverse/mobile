@@ -159,6 +159,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 15.0 2.0 H 21.0 A 1.0 1.0 0 0 1 22.0 3.0 V 9.0 A 1.0 1.0 0 0 1 21.0 10.0 H 15.0 A 1.0 1.0 0 0 1 14.0 9.0 V 3.0 A 1.0 1.0 0 0 1 15.0 2.0 Z"),
                     ),
                 )
+            RaftLucideIconName.BookOpenText ->
+                RaftLucideIconSpec(
+                    "book-open-text",
+                    listOf(
+                        RaftLucidePathSpec("M12 5v16"),
+                        RaftLucidePathSpec("M16 13h2"),
+                        RaftLucidePathSpec("M16 9h2"),
+                        RaftLucidePathSpec("M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"),
+                        RaftLucidePathSpec("M6 13h2"),
+                        RaftLucidePathSpec("M6 9h2"),
+                    ),
+                )
             RaftLucideIconName.Bookmark ->
                 RaftLucideIconSpec(
                     "bookmark",
@@ -1762,6 +1774,15 @@ internal object RaftLucideIconPaths {
                     listOf(
                         RaftLucidePathSpec("M12 19h8"),
                         RaftLucidePathSpec("m4 17 6-6-6-6"),
+                    ),
+                )
+            RaftLucideIconName.OctagonAlert ->
+                RaftLucideIconSpec(
+                    "octagon-alert",
+                    listOf(
+                        RaftLucidePathSpec("M12 16h.01"),
+                        RaftLucidePathSpec("M12 8v4"),
+                        RaftLucidePathSpec("M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"),
                     ),
                 )
             RaftLucideIconName.TriangleAlert ->

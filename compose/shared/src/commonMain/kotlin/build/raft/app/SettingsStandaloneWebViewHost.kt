@@ -183,6 +183,13 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.Shield,
                 spec = settingsAdministrationWebViewSpec,
             )
+        SettingsWebViewSurface.McpServers ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(MR.strings.settings_root_mcp_servers),
+                iconName = RaftLucideIconName.Blocks,
+                spec = settingsMcpServersWebViewSpec,
+            )
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()

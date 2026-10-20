@@ -22,6 +22,7 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Billing("billing"),
     Marketplace("marketplace"),
     Administration("administration"),
+    McpServers("mcp-servers"),
     ReleaseNotes("release-notes"),
     Feedback("feedback"),
 }

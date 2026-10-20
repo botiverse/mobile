@@ -92,6 +92,13 @@
     <string name="common_no_actions_available">No actions available</string>
     <string name="app_shell_offline_banner">No internet connection</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_root_group_resources">Resources</string>
+    <string name="settings_root_group_device">This device</string>
+    <string name="settings_root_plan_billing">Plan &amp; Billing</string>
+    <string name="settings_root_applications">Applications</string>
+    <string name="settings_root_mcp_servers">MCP Servers</string>
+    <string name="settings_root_documentation">Documentation</string>
+    <string name="settings_root_feedback">Feedback</string>
     <string name="settings_navigation_section_personal">Personal</string>
     <string name="settings_navigation_section_workspace">Workspace</string>
     <string name="settings_navigation_section_about">About</string>
@@ -2028,6 +2035,7 @@
     <string name="settings_server_leave_detail">You will lose access to %1$s and all of its channels. You can be re-invited later.</string>
     <string name="settings_server_leave_confirm">Tap Leave Server again to confirm.</string>
     <string name="settings_server_action_delete">Delete Server</string>
+    <string name="settings_server_delete_description">Permanently remove this server and all its data. This cannot be undone.</string>
     <string name="settings_server_delete_detail">Permanently remove %1$s and all of its data. This cannot be undone.</string>
     <string name="settings_server_this_server">this server</string>
     <string name="settings_server_delete_type_prefix">Type</string>

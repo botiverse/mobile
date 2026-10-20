@@ -92,6 +92,13 @@
     <string name="common_no_actions_available">暂无可用操作</string>
     <string name="app_shell_offline_banner">无网络连接</string>
     <string name="settings_title">设置</string>
+    <string name="settings_root_group_resources">资源</string>
+    <string name="settings_root_group_device">本设备</string>
+    <string name="settings_root_plan_billing">套餐与账单</string>
+    <string name="settings_root_applications">应用</string>
+    <string name="settings_root_mcp_servers">MCP 服务器</string>
+    <string name="settings_root_documentation">文档</string>
+    <string name="settings_root_feedback">反馈</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作空间</string>
     <string name="settings_navigation_section_about">关于</string>
@@ -2028,6 +2035,7 @@
     <string name="settings_server_leave_detail">你将失去对 %1$s 及其所有频道的访问权限，之后仍可再次受邀加入。</string>
     <string name="settings_server_leave_confirm">再次点击“离开服务器”以确认。</string>
     <string name="settings_server_action_delete">删除服务器</string>
+    <string name="settings_server_delete_description">永久删除此服务器及其所有数据。此操作无法撤销。</string>
     <string name="settings_server_delete_detail">永久删除 %1$s 及其全部数据。此操作无法撤销。</string>
     <string name="settings_server_this_server">此服务器</string>
     <string name="settings_server_delete_type_prefix">输入</string>

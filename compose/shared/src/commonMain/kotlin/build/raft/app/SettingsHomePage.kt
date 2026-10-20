@@ -534,6 +534,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -578,6 +580,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -685,6 +689,9 @@ private const val SettingsDestinationBilling = "billing"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationReleaseNotes = "releaseNotes"
 private const val SettingsDestinationHandsFeedback = "hands-feedback"
+private const val SettingsDestinationMcpServers = "mcp-servers"
+private const val SettingsDestinationDocumentation = "documentation"
+private const val SettingsDocumentationUrl = "https://docs.raft.build"
 
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
@@ -7162,6 +7169,8 @@ private fun RaftAppShellReadyContent(
                                     SettingsDestinationComputers -> pager.openSettingsComputersPage(storeScope)
                                     SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
                                     SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
+                                    SettingsDestinationMcpServers -> pager.openSettingsMcpServersPage(storeScope)
+                                    SettingsDestinationDocumentation -> bridge.openUrl(SettingsDocumentationUrl)
                                     SettingsDestinationHandsFeedback ->
                                         if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
                                             pager.openSettingsFeedbackWebViewPage(storeScope)
@@ -8547,7 +8556,8 @@ private fun SharedSettingsServerContent(
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Web settings sections stack with `mb-6`.
+        verticalArrangement = Arrangement.spacedBy(SettingsPanelKit.SectionGap)
     ) {
         if (showProfileCard) {
             item {
@@ -12192,41 +12202,56 @@ private fun SettingsServerProfileFormCard(
     val trimmedName = draftName.trim()
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
-    val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(MR.strings.settings_server_action_save_profile) else stringResource(MR.strings.settings_server_state_read_only))
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
-        RaftBrutalTextField(
-            label = stringResource(MR.strings.settings_server_label_name),
-            labelSize = RaftFormFieldSize.Compact,
-            value = if (canSave) draftName else currentName,
-            placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) },
-            onValueChange = onNameChange,
-            required = true,
-            enabled = canSave && !busy
-        )
-        RaftBrutalReadOnlyField(
-            label = stringResource(MR.strings.settings_server_label_slug),
-            value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
-        )
-        if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-        if (canSave) {
-            RaftBrutalActionButton(
-                label = status,
-                onClick = onSubmit,
-                enabled = enabled,
-                leadingIcon = RaftLucideIconName.Save,
-                backgroundColor = RaftColor.AccentPink,
-                disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentPink),
-                disabledBorderColor = RaftDisabledActionBorder,
-                disabledShadowColor = RaftDisabledActionShadow,
-                disabledContentColor = RaftDisabledActionContent,
-                disabledIconColor = RaftDisabledActionContentArgb,
-                minWidth = 0.dp,
-                minHeight = 34.dp,
-                shadowOffset = 3.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
+    val saveLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, stringResource(MR.strings.settings_server_action_save_profile))
+    // Web ProfileSection: the Building2 section head, then SettingsProfileCard (server
+    // tile + name + /slug, a hairline, the Name and Slug fields and Save Profile).
+    Column {
+        SettingsPanelSectionHeader(RaftLucideIconName.Building2, stringResource(MR.strings.settings_profile_title))
+        Spacer(Modifier.height(SettingsPanelKit.SectionHeadGap))
+        SettingsPanelCard(verticalSpacing = 16.dp) {
+            SettingsPanelProfileHead(
+                title = currentName,
+                subtitle = "/" + currentSlug,
+                avatar = {
+                    SettingsPanelInitialTile(
+                        initial = currentName.trim().take(1).uppercase().ifEmpty { "S" },
+                        fill = RaftColor.StickerInk,
+                        ink = RaftColor.Brand
+                    )
+                }
             )
+            Column(verticalArrangement = Arrangement.spacedBy(SettingsPanelKit.FieldGap)) {
+                SettingsPanelSeparator(Modifier.padding(bottom = 4.dp))
+                SettingsPanelField(stringResource(MR.strings.settings_server_label_name)) {
+                    if (canSave) {
+                        SettingsPanelInput(
+                            value = draftName,
+                            onValueChange = onNameChange,
+                            enabled = !busy,
+                            placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) }
+                        )
+                    } else {
+                        SettingsPanelInput(value = currentName, onValueChange = {}, enabled = false)
+                    }
+                }
+                SettingsPanelField(stringResource(MR.strings.settings_server_label_slug)) {
+                    SettingsPanelPrefixedInput(
+                        prefix = "/",
+                        value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
+                    )
+                }
+                if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
+                    SettingsFormErrorText(actionState)
+                }
+                if (canSave) {
+                    SettingsPanelButton(
+                        label = saveLabel,
+                        onClick = onSubmit,
+                        enabled = enabled,
+                        variant = SettingsPanelButtonVariant.Accent
+                    )
+                }
+            }
         }
     }
 }
@@ -12276,35 +12301,66 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedModalSlug = modalConfirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_section_danger_zone_title)) {
+    // Web DangerZoneSection: the TriangleAlert section head, a Leave card for admins and
+    // members, and the owner's DangerActionCard (title, description, then the danger button).
+    Column {
+        SettingsPanelSectionHeader(RaftLucideIconName.TriangleAlert, stringResource(MR.strings.settings_section_danger_zone_title))
+        Spacer(Modifier.height(SettingsPanelKit.SectionHeadGap))
         if (canLeave) {
-            SettingsServerActionRow(
-                title = stringResource(MR.strings.settings_server_action_leave),
-                detail = MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
-                buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
-                buttonIcon = RaftLucideIconName.LogOut,
-                buttonColor = RaftColor.AccentOrange,
-                enabled = !leaveBusy,
-                onClick = onLeave
-            )
-            if (leaveConfirmed) {
-                Text(
-                    stringResource(MR.strings.settings_server_leave_confirm),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
+            SettingsPanelCard(modifier = Modifier.padding(bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            stringResource(MR.strings.settings_server_action_leave),
+                            style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                            color = RaftColor.TextBlack
+                        )
+                        Text(
+                            MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
+                            style = settingsPanelText(13.sp, 18.sp),
+                            color = RaftColor.TextMuted
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    SettingsPanelButton(
+                        label = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
+                        onClick = onLeave,
+                        enabled = !leaveBusy,
+                        variant = SettingsPanelButtonVariant.Warning
+                    )
+                }
+                if (leaveConfirmed) {
+                    Text(
+                        stringResource(MR.strings.settings_server_leave_confirm),
+                        style = settingsPanelText(13.sp, 18.sp),
+                        color = RaftColor.TextMuted,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
         }
         if (canDelete) {
-            SettingsServerActionRow(
-                title = stringResource(MR.strings.settings_server_action_delete),
-                detail = MR.strings.settings_server_delete_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
-                buttonLabel = stringResource(MR.strings.settings_server_action_delete),
-                buttonIcon = RaftLucideIconName.Trash2,
-                buttonColor = RaftColor.AccentRed,
-                enabled = !deleteBusy,
-                onClick = { showDeleteModal = true }
-            )
+            SettingsPanelCard {
+                Text(
+                    stringResource(MR.strings.settings_server_action_delete),
+                    style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                    color = RaftColor.TextBlack
+                )
+                Text(
+                    stringResource(MR.strings.settings_server_delete_description),
+                    style = settingsPanelText(13.sp, 18.sp),
+                    color = RaftColor.TextMuted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                SettingsPanelButton(
+                    label = stringResource(MR.strings.settings_server_action_delete),
+                    onClick = { showDeleteModal = true },
+                    enabled = !deleteBusy,
+                    variant = SettingsPanelButtonVariant.Danger,
+                    leadingIcon = RaftLucideIconName.Trash2
+                )
+            }
         }
     }
     if (showDeleteModal) {
@@ -12368,157 +12424,116 @@ private fun SettingsServerDeleteConfirmationDialog(
                 onDismiss = onDismiss,
                 dismissEnabled = !deleteBusy
             )
-            Box(
+            // Web DeleteServerConfirmDialog (raft-ui ConfirmDialog, `max-w-sm`): 16dp from
+            // the screen edges, p-5, the title row with the ghost close, the danger banner
+            // holding the warning and the type-the-slug field, then the lg footer.
+            Column(
                 modifier =
                     Modifier
-                        .padding(horizontal = 18.dp)
+                        .padding(horizontal = 16.dp)
                         .widthIn(max = 384.dp)
+                        .fillMaxWidth()
                         .raftFloatingContentClickTarget()
+                        .settingsPanelDialogSurface()
+                        .padding(20.dp)
             ) {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .raftLookOverlaySurface(RaftAppRadius.Dialog)
-                            // raft-ui Dialog: p-5 insets.
-                            .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(22.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Text(
+                        stringResource(MR.strings.settings_server_action_delete),
+                        style = settingsPanelText(17.sp, 22.sp, FontWeight.Bold),
+                        color = RaftColor.TextBlack,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .requiredSize(32.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    enabled = !deleteBusy,
+                                    onClick = onDismiss
+                                ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        // raft-ui Dialog title: 17/22 bold in source case (web
-                        // "Delete Server"), with the ghost 32dp close.
-                        Text(
-                            stringResource(MR.strings.settings_server_action_delete),
-                            style =
-                                RaftType.PageTitle
-                                    .copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack)
-                                    .withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.TextBlack,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        RaftBrutalIconButton(
-                            enabled = !deleteBusy,
-                            iconName = RaftLucideIconName.X,
-                            onClick = onDismiss,
-                            backgroundColor = Color.Transparent,
-                            size = 32.dp,
-                            iconSize = 18.dp,
-                            shadowOffset = 3.dp
-                        )
+                        RaftLucideIcon(RaftLucideIconName.X, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftColor.TextBlack))
                     }
-                    SettingsServerDeleteWarningBanner(serverName = resolvedName)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
-                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
-                            color = RaftColor.TextMutedGray
-                        )
-                        Text(
-                            resolvedSlug,
-                            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            stringResource(MR.strings.settings_server_delete_confirm_suffix),
-                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
-                            color = RaftColor.TextMutedGray
-                        )
-                    }
-                    SettingsServerSlugInput(
+                }
+                Spacer(Modifier.height(6.dp))
+                SettingsPanelDangerBanner {
+                    Text(
+                        settingsServerDeleteWarningBannerText(
+                            serverName = resolvedName,
+                            prefix = stringResource(MR.strings.settings_server_delete_warning_prefix).replace('\u00A0', ' '),
+                            suffix = stringResource(MR.strings.settings_server_delete_warning_suffix).replace('\u00A0', ' ')
+                        ),
+                        style = settingsPanelText(14.sp, 20.sp),
+                        color = RaftColor.TextBlack
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        settingsServerDeleteTypeToConfirmAnnotated(
+                            slug = resolvedSlug,
+                            prefix = stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
+                            suffix = stringResource(MR.strings.settings_server_delete_confirm_suffix)
+                        ),
+                        style = settingsPanelText(13.sp, 20.sp, FontWeight.SemiBold),
+                        color = RaftColor.TextBlack,
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SettingsPanelPrefixedInput(
+                        prefix = "/",
                         value = confirmationSlug,
-                        placeholder = resolvedSlug,
+                        readOnly = false,
                         enabled = !deleteBusy,
-                        onValueChange = onConfirmationSlugChange
+                        onValueChange = onConfirmationSlugChange,
+                        placeholder = resolvedSlug,
+                        monoValue = true
                     )
                     errorMessage?.takeIf { it.isNotBlank() }?.let {
-                        SettingsServerDeleteWarningBanner(serverName = null, text = it)
+                        Spacer(Modifier.height(12.dp))
+                        Text(it, style = settingsPanelText(13.sp, 18.sp, FontWeight.SemiBold), color = RaftColor.DangerStrong)
                     }
-                    RaftDialogFooter {
-                        RaftBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
-                            onClick = onCancel,
-                            enabled = !deleteBusy,
-                            modifier = Modifier.widthIn(min = 72.dp),
-                            backgroundColor = RaftColor.SurfaceWhite,
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            shadowOffset = 3.dp,
-                            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
-                        )
-                        RaftBrutalActionButton(
-                            label = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
-                            onClick = onDelete,
-                            enabled = deleteEnabled,
-                            modifier = Modifier.widthIn(min = 112.dp),
-                            backgroundColor = RaftColor.AccentRed,
-                            disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentRed),
-                            disabledBorderColor = RaftDisabledActionBorder,
-                            disabledShadowColor = RaftDisabledActionShadow,
-                            disabledContentColor = RaftDisabledActionContent,
-                            disabledIconColor = RaftDisabledActionContentArgb,
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            shadowOffset = 3.dp,
-                            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
-                        )
-                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsPanelButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        onClick = onCancel,
+                        enabled = !deleteBusy,
+                        variant = SettingsPanelButtonVariant.Ghost,
+                        size = SettingsPanelButtonSize.Lg
+                    )
+                    SettingsPanelButton(
+                        label = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
+                        onClick = onDelete,
+                        enabled = deleteEnabled,
+                        variant = SettingsPanelButtonVariant.Danger,
+                        size = SettingsPanelButtonSize.Lg
+                    )
                 }
             }
         }
     }
 }
 
-@Composable
-private fun SettingsServerDeleteWarningBanner(
-    serverName: String?,
-    text: String? = null
-) {
-    val fallbackName = stringResource(MR.strings.settings_server_this_server)
-    val prefix = stringResource(MR.strings.settings_server_delete_warning_prefix)
-    val suffix = stringResource(MR.strings.settings_server_delete_warning_suffix)
-    val message = remember(serverName, text, fallbackName, prefix, suffix) {
-        settingsServerDeleteWarningBannerText(
-            serverName = serverName,
-            text = text,
-            fallbackName = fallbackName,
-            prefix = prefix,
-            suffix = suffix
-        )
+private fun settingsServerDeleteTypeToConfirmAnnotated(slug: String, prefix: String, suffix: String): AnnotatedString =
+    buildAnnotatedString {
+        append(prefix.replace('\u00A0', ' '))
+        // Web `<code>`: Space Mono 13/20 on `fill-muted`, 4dp each side.
+        withStyle(SpanStyle(fontFamily = RaftMonoFamily, background = RaftColor.FillMuted)) { append("\u2009" + slug + "\u2009") }
+        append(suffix.replace('\u00A0', ' '))
     }
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                .raftCardSurface(fill = RaftColor.AccentRed.copy(alpha = 0.14f))
-                .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.padding(top = 1.dp).size(16.dp),
-            color = "#FF000000"
-        )
-        Text(
-            message,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
 
 internal fun settingsServerDeleteWarningBannerText(
     serverName: String?,
@@ -12535,37 +12550,12 @@ internal fun settingsServerDeleteWarningBannerText(
         append(suffix)
         if (serverName != null) {
             addStyle(
-                raftSpanStyleForWeight(FontWeight.Bold),
+                raftSpanStyleForWeight(FontWeight.SemiBold),
                 start = prefix.length,
                 end = prefix.length + resolvedName.length
             )
         }
     }
-}
-
-@Composable
-private fun SettingsServerSlugInput(
-    value: String,
-    placeholder: String,
-    enabled: Boolean,
-    onValueChange: (String) -> Unit
-) {
-    // Caller-local TextFieldValue owns the confirmation-slug editor for this
-    // modal's mount; the durable store keeps the String projection (task #130
-    // Phase D). The slug path applies no per-keystroke filtering or truncation
-    // (both RaftSlugInput overloads pass the value straight through; the only
-    // normalisation is a .trim() at submit), so there is nothing to coerce the
-    // selection against here — the editor value is forwarded verbatim.
-    var slugValue by remember { mutableStateOf(textFieldValueAtEnd(value)) }
-    RaftSlugInput(
-        value = slugValue,
-        onValueChange = {
-            slugValue = it
-            onValueChange(it.text)
-        },
-        placeholder = placeholder,
-        enabled = enabled
-    )
 }
 
 @Composable
@@ -15435,11 +15425,18 @@ internal fun SettingsDetailShell(
         RaftTopPageHeader(
             title = title,
             subtitle = subtitle,
-            iconName = iconName,
+            // The web mobile settings header shows only Back + title; the
+            // section icon tile is a desktop-only affordance there.
+            iconName = null,
             backgroundColor = RaftColor.SurfaceWhite,
             applyTopSafeArea = applyTopSafeArea,
             headerHeight = headerHeight,
-            leadingContent = {
+            // raft-ui PanelHeader on a phone: the 44dp ghost Back sits 3dp from the
+            // edge (16dp padding, -13dp pull), the 17/22 bold title 8dp after it.
+            contentStartPadding = 3.dp,
+            contentSpacing = 8.dp,
+            titleStyle = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp),
+            titleLeadingContent = {
                 SettingsDetailBackButton(onBack)
             },
             trailingContent = if (trailingContent != null) {
@@ -15456,14 +15453,13 @@ internal fun SettingsDetailShell(
 
 @Composable
 private fun SettingsDetailBackButton(onBack: () -> Unit) {
-    Box(modifier = Modifier.size(30.dp)) {
-        // raft-ui `PanelAction`: a ghost Back, no edge and no offset shadow.
-        RaftPanelAction(
-            onClick = onBack,
-            modifier = Modifier.size(28.dp)
-        ) {
-            RaftLucideIcon(RaftLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextMuted))
-        }
+    // raft-ui `PanelAction`: a 44dp ghost Back (no edge, no offset shadow) with
+    // the 22dp ink ArrowLeft the web mobile settings header draws.
+    RaftPanelAction(
+        onClick = onBack,
+        modifier = Modifier.size(44.dp)
+    ) {
+        RaftLucideIcon(RaftLucideIconName.ArrowLeft, modifier = Modifier.size(22.dp), color = raftArgbHex(RaftColor.TextBlack))
     }
 }
 
@@ -15495,113 +15491,34 @@ private fun appShellSettingsHomePayload(
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
     val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
-    val aboutSection = stringResource(MR.strings.settings_navigation_section_about)
+    val resourcesSection = stringResource(MR.strings.settings_root_group_resources)
+    val deviceSection = stringResource(MR.strings.settings_root_group_device)
+    // Web Settings tab root (Sidebar `mobileInline`): Personal, Workspace, Resources in
+    // the web order and wording. The app-only device settings (Mobile, Storage) follow
+    // in their own group, so the shared rows sit where the web puts them.
+    fun link(key: String, title: String, subtitle: String, icon: RaftLucideIconName, section: String) =
+        SettingsHomePageLinkPayload(key = key, title = title, subtitle = subtitle, iconName = icon, section = section)
     return RaftSettingsHomePayload(
         title = stringResource(MR.strings.settings_title),
         subtitle = "",
         items =
             listOf(
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationAccount,
-                    title = stringResource(MR.strings.settings_account_title),
-                    subtitle = stringResource(MR.strings.settings_account_subtitle),
-                    iconName = RaftLucideIconName.User,
-                    value = session?.user?.bestDisplayName,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.LanguageRegion.key,
-                    title = stringResource(MR.strings.settings_language_region_title),
-                    subtitle = stringResource(MR.strings.settings_language_region_subtitle),
-                    iconName = RaftLucideIconName.Languages,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.Appearance.key,
-                    title = stringResource(MR.strings.settings_appearance_title),
-                    subtitle = stringResource(MR.strings.settings_appearance_subtitle),
-                    iconName = RaftLucideIconName.Type,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.Notifications.key,
-                    title = stringResource(MR.strings.settings_notifications_title),
-                    subtitle = stringResource(MR.strings.settings_notifications_subtitle),
-                    iconName = RaftLucideIconName.Bell,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.Mobile.key,
-                    title = stringResource(MR.strings.settings_mobile_title),
-                    subtitle = stringResource(MR.strings.settings_mobile_subtitle),
-                    iconName = RaftLucideIconName.Smartphone,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationStorage,
-                    title = stringResource(MR.strings.settings_storage_title),
-                    subtitle = stringResource(MR.strings.settings_storage_subtitle),
-                    iconName = RaftLucideIconName.Archive,
-                    section = personalSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.Server.key,
-                    title = stringResource(MR.strings.settings_server_profile_title),
-                    subtitle = stringResource(MR.strings.settings_server_profile_subtitle),
-                    iconName = RaftLucideIconName.Building2,
-                    value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
-                    section = workspaceSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationBilling,
-                    title = stringResource(MR.strings.settings_billing_title),
-                    subtitle = stringResource(MR.strings.settings_billing_subtitle),
-                    iconName = RaftLucideIconName.CreditCard,
-                    value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                    section = workspaceSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationAdministration,
-                    title = stringResource(MR.strings.settings_server_administration_title),
-                    subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
-                    iconName = RaftLucideIconName.Shield,
-                    section = workspaceSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationConnectedApps,
-                    title = stringResource(MR.strings.settings_connected_apps_title),
-                    subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
-                    iconName = RaftLucideIconName.Link2,
-                    section = workspaceSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationComputers,
-                    title = stringResource(MR.strings.settings_computers_title),
-                    subtitle = stringResource(MR.strings.settings_computers_subtitle),
-                    iconName = RaftLucideIconName.Monitor,
-                    section = workspaceSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsNativeDetailPage.About.key,
-                    title = stringResource(MR.strings.settings_about_title),
-                    subtitle = stringResource(MR.strings.settings_about_subtitle),
-                    iconName = RaftLucideIconName.BadgeInfo,
-                    section = aboutSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationHandsFeedback,
-                    title = stringResource(MR.strings.settings_feedback_title),
-                    subtitle = stringResource(MR.strings.settings_feedback_subtitle),
-                    iconName = RaftLucideIconName.MessageSquarePlus,
-                    section = aboutSection
-                ),
-                SettingsHomePageLinkPayload(
-                    key = SettingsDestinationReleaseNotes,
-                    title = stringResource(MR.strings.settings_release_notes_title),
-                    subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
-                    iconName = RaftLucideIconName.FileText,
-                    section = aboutSection
-                )
+                link(SettingsDestinationAccount, stringResource(MR.strings.settings_account_title), stringResource(MR.strings.settings_account_subtitle), RaftLucideIconName.User, personalSection),
+                link(SettingsNativeDetailPage.LanguageRegion.key, stringResource(MR.strings.settings_language_region_title), stringResource(MR.strings.settings_language_region_subtitle), RaftLucideIconName.Languages, personalSection),
+                link(SettingsNativeDetailPage.Appearance.key, stringResource(MR.strings.settings_appearance_title), stringResource(MR.strings.settings_appearance_subtitle), RaftLucideIconName.Type, personalSection),
+                link(SettingsNativeDetailPage.Notifications.key, stringResource(MR.strings.settings_notifications_title), stringResource(MR.strings.settings_notifications_subtitle), RaftLucideIconName.Bell, personalSection),
+                link(SettingsNativeDetailPage.Server.key, stringResource(MR.strings.settings_server_profile_title), stringResource(MR.strings.settings_server_profile_subtitle), RaftLucideIconName.Building2, workspaceSection),
+                link(SettingsDestinationBilling, stringResource(MR.strings.settings_root_plan_billing), stringResource(MR.strings.settings_billing_subtitle), RaftLucideIconName.CreditCard, workspaceSection),
+                link(SettingsDestinationAdministration, stringResource(MR.strings.settings_server_administration_title), stringResource(MR.strings.settings_server_administration_subtitle), RaftLucideIconName.Shield, workspaceSection),
+                link(SettingsDestinationConnectedApps, stringResource(MR.strings.settings_root_applications), stringResource(MR.strings.settings_connected_apps_subtitle), RaftLucideIconName.Link2, workspaceSection),
+                link(SettingsDestinationMcpServers, stringResource(MR.strings.settings_root_mcp_servers), "", RaftLucideIconName.Blocks, workspaceSection),
+                link(SettingsDestinationComputers, stringResource(MR.strings.settings_computers_title), stringResource(MR.strings.settings_computers_subtitle), RaftLucideIconName.Monitor, workspaceSection),
+                link(SettingsNativeDetailPage.About.key, stringResource(MR.strings.settings_about_title), stringResource(MR.strings.settings_about_subtitle), RaftLucideIconName.BadgeInfo, resourcesSection),
+                link(SettingsDestinationDocumentation, stringResource(MR.strings.settings_root_documentation), "", RaftLucideIconName.BookOpenText, resourcesSection),
+                link(SettingsDestinationHandsFeedback, stringResource(MR.strings.settings_root_feedback), stringResource(MR.strings.settings_feedback_subtitle), RaftLucideIconName.MessageSquare, resourcesSection),
+                link(SettingsDestinationReleaseNotes, stringResource(MR.strings.settings_release_notes_title), stringResource(MR.strings.settings_release_notes_subtitle), RaftLucideIconName.FileText, resourcesSection),
+                link(SettingsNativeDetailPage.Mobile.key, stringResource(MR.strings.settings_mobile_title), stringResource(MR.strings.settings_mobile_subtitle), RaftLucideIconName.Smartphone, deviceSection),
+                link(SettingsDestinationStorage, stringResource(MR.strings.settings_storage_title), stringResource(MR.strings.settings_storage_subtitle), RaftLucideIconName.Archive, deviceSection)
             )
     )
 }
@@ -25348,7 +25265,7 @@ internal fun SettingsPageVisualContent() {
     Box(
         modifier =
             Modifier
-                .width(342.dp)
+                .fillMaxSize()
                 .background(RaftColor.SurfaceWhite)
     ) {
         SettingsDetailShell(
@@ -25521,37 +25438,22 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
 
 @Composable
 private fun SettingsServerDangerModalVisualContent() {
+    // The real Server Profile page under the open Delete Server confirmation, as the web
+    // case clicks the danger button on the live SettingsPanel.
     val snapshot = remember { settingsVisualServerSnapshot() }
     var modalSlug by remember { mutableStateOf("") }
-    val serverSlug = snapshot.profile.slug
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(61.dp)
-                        .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SettingsDetailBackButton(onBack = {})
-                Text(
-                    "Server Profile",
-                    style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(RaftColor.BorderBlack))
-            Box(modifier = Modifier.fillMaxSize().padding(start = 20.dp, top = 43.dp, end = 20.dp, bottom = 20.dp)) {
-                SettingsServerProfileBackdropCard(snapshot)
-            }
+        SettingsDetailShell(
+            title = "Server Profile",
+            subtitle = "",
+            applyTopSafeArea = false,
+            onBack = {}
+        ) {
+            SettingsVisualServerFocusedContent("server-profile")
         }
         SettingsServerDeleteConfirmationDialog(
             serverName = snapshot.profile.name,
-            expectedServerSlug = serverSlug,
+            expectedServerSlug = snapshot.profile.slug,
             confirmationSlug = modalSlug,
             deleteBusy = false,
             deleteEnabled = false,
@@ -25563,65 +25465,6 @@ private fun SettingsServerDangerModalVisualContent() {
         )
     }
 }
-
-@Composable
-private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) {
-    Column(
-        modifier =
-            Modifier
-                .width(350.dp)
-                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
-                .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(RaftLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
-            Text(
-                "PROFILE",
-                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 1.3.sp, color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
-        SettingsServerBackdropField(label = "Name", value = snapshot.profile.name)
-        SettingsServerBackdropField(label = "Slug", value = snapshot.profile.slug)
-    }
-}
-
-@Composable
-private fun SettingsServerBackdropField(
-    label: String,
-    value: String
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            label,
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-        Box(modifier = Modifier.fillMaxWidth().height(39.dp)) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .raftCardSurface()
-                        .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    value,
-                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
 
 @Composable
 private fun SettingsVisualBillingContent() {
@@ -27142,38 +26985,94 @@ internal fun SettingsHomeContent(
         } else {
             Modifier
         }
+    val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        RaftMainTabPageHeader(
-            surface = RaftMainTabHeaderSurface.Settings,
-            title = payload.title,
-            subtitle = null,
-            modifier = headerModifier,
-            applyTopSafeArea = applyTopSafeArea
-        )
+        // Web phone tab root (Sidebar `mobileInline`, `showLargeTitle`): the 56dp frame
+        // bar, then the 34/40 large title on the frame (4dp above, 8dp below) and the
+        // 1dp seam under the frame.
+        Column(
+            modifier =
+                headerModifier
+                    .fillMaxWidth()
+                    .background(RaftColor.Frame)
+                    .padding(top = topSafeArea + 56.dp)
+        ) {
+            Text(
+                payload.title,
+                style = settingsPanelText(34.sp, 40.sp, FontWeight.Bold).copy(letterSpacing = (-0.68).sp),
+                color = RaftColor.TextBlack,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 14.dp, top = 4.dp, bottom = 8.dp)
+            )
+            Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderSeam))
+        }
+        val groups = payload.items.groupBy { it.section.orEmpty() }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+            contentPadding = PaddingValues(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 8.dp + bottomContentPadding),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
-            }
-            item {
-                RaftVerticalTabBar(
-                    items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
-                    showSelection = false,
-                    onSelect = onSelect,
-                    modifier = Modifier.padding(start = RaftAppSpacing.Md),
-                    sectionStartPadding = 0.dp,
-                    itemStartPadding = 0.dp
-                )
-            }
-            item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
-            }
-            item {
-                Spacer(Modifier.height(bottomContentPadding))
+            groups.forEach { (section, items) ->
+                if (section.isNotEmpty()) {
+                    item(key = "section:$section") { SettingsHomeGroupLabel(section) }
+                }
+                items(items, key = { it.key }) { link ->
+                    SettingsHomeRow(link, onClick = { onSelect(link.key) })
+                }
             }
         }
+    }
+}
+
+/** Web sidebar group label: 40dp, the 13/18 bold `foreground-hint` label 16dp down, 8dp in. */
+@Composable
+private fun SettingsHomeGroupLabel(label: String) {
+    Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 8.dp, top = 16.dp, end = 8.dp)) {
+        Text(label, style = settingsPanelText(13.sp, 18.sp, FontWeight.Bold), color = RaftColor.ForegroundHint, maxLines = 1)
+    }
+}
+
+/**
+ * Web sidebar row on a phone root: 44dp, control radius, the 16dp `foreground-hint` icon,
+ * the 16/24 semibold label at 36dp, a `fill-pressed` wash while pressed.
+ */
+@Composable
+private fun SettingsHomeRow(link: SettingsHomePageLinkPayload, onClick: () -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(shape)
+                .background(if (pressed) RaftColor.FillPressed else Color.Transparent, shape)
+                .pointerInput(onClick) {
+                    detectTapGestures(
+                        onPress = {
+                            pressed = true
+                            tryAwaitRelease()
+                            pressed = false
+                        },
+                        onTap = { onClick() }
+                    )
+                }
+                .semantics(mergeDescendants = true) { role = Role.Button },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        RaftLucideIcon(
+            link.iconName,
+            modifier = Modifier.padding(start = 10.5.dp).size(16.dp),
+            color = raftArgbHex(RaftColor.ForegroundHint)
+        )
+        Text(
+            link.title,
+            style = settingsPanelText(16.sp, 24.sp, FontWeight.SemiBold),
+            color = RaftColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 36.dp, end = 10.dp)
+        )
     }
 }
 

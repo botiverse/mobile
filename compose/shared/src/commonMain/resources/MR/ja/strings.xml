@@ -92,6 +92,13 @@
     <string name="common_no_actions_available">利用できるアクションはありません</string>
     <string name="app_shell_offline_banner">インターネットに接続されていません</string>
     <string name="settings_title">設定</string>
+    <string name="settings_root_group_resources">リソース</string>
+    <string name="settings_root_group_device">このデバイス</string>
+    <string name="settings_root_plan_billing">プランと請求</string>
+    <string name="settings_root_applications">アプリ</string>
+    <string name="settings_root_mcp_servers">MCP サーバー</string>
+    <string name="settings_root_documentation">ドキュメント</string>
+    <string name="settings_root_feedback">フィードバック</string>
     <string name="settings_navigation_section_personal">個人</string>
     <string name="settings_navigation_section_workspace">ワークスペース</string>
     <string name="settings_navigation_section_about">情報</string>
@@ -2028,6 +2035,7 @@
     <string name="settings_server_leave_detail">%1$s とそのすべてのチャンネルへのアクセスを失います。後で再招待を受けることは可能です。</string>
     <string name="settings_server_leave_confirm">確認のため、もう一度「サーバーから退出」をタップしてください。</string>
     <string name="settings_server_action_delete">サーバーを削除</string>
+    <string name="settings_server_delete_description">このサーバーとそのすべてのデータを完全に削除します。この操作は元に戻せません。</string>
     <string name="settings_server_delete_detail">%1$s とそのすべてのデータを完全に削除します。元に戻すことはできません。</string>
     <string name="settings_server_this_server">このサーバー</string>
     <string name="settings_server_delete_type_prefix">確認のため</string>
