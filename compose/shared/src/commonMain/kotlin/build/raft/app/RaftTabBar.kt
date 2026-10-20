@@ -164,10 +164,11 @@ internal fun raftSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
 internal fun raftFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     RaftFloatingDockBottomTabBarHostHeight + bottomSafeArea
 
+// raft-ui SidebarGroupLabel (the Web settings sidebar's group headings): `text-footnote
+// font-bold normal-case tracking-normal`, i.e. RaftType.SectionLabel in source case.
 internal val RaftVerticalTabSectionTextStyle: TextStyle
     get() =
-        RaftType.TabLabel.copy(
-            letterSpacing = 1.sp,
+        RaftType.SectionLabel.copy(
             color = RaftColor.TextBlack.copy(alpha = 0.4f)
         )
 internal val RaftVerticalTabSectionBottomPadding = 4.dp
@@ -196,7 +197,7 @@ internal fun RaftVerticalTabBar(
                         )
                 ) {
                     Text(
-                        item.section.uppercase(),
+                        item.section,
                         style = RaftVerticalTabSectionTextStyle,
                         color = RaftVerticalTabSectionTextStyle.color
                     )

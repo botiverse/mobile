@@ -504,7 +504,8 @@ class RaftMarkdownTest {
     @Test
     fun markdownTaskListCheckboxPinsToFirstBodyLine() {
         assertEquals(14.dp, RaftMarkdownTaskCheckboxSize)
-        assertEquals(4.dp, RaftMarkdownTaskCheckboxFirstLineOffset)
+        // Centred on the text-body 24sp line box: (24 - 14) / 2.
+        assertEquals(5.dp, RaftMarkdownTaskCheckboxFirstLineOffset)
     }
 
     @Test

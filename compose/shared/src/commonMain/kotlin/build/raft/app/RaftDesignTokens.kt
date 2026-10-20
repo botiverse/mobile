@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.app.compat.ui.KuiklyFont
 import androidx.compose.ui.unit.TextUnit
+import build.raft.designsystem.theme.RaftFonts
+import build.raft.designsystem.theme.RaftTypography
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -432,45 +434,69 @@ private fun TextStyle.resolveRaftFontFamily(): TextStyle {
 }
 
 /**
- * The one content text size (artin 2026-10-18, 1.14.1): message text, the composer, body copy and
- * sidebar conversation names all read from here so they stay the same size. 16sp was tried on
- * device and reverted to the shipped 14sp.
+ * The raft-design Typography scale (designsystem [RaftTypography], 1:1 with raft-ui styles.css
+ * `--text-*`), read here for its numbers only: size, line height, tracking and default weight.
+ * The family always comes from the active face ([RaftFontFaceState]), so the families passed in
+ * are placeholders.
+ */
+private val RaftScale: RaftTypography =
+    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
+
+private fun raftTextStyle(token: TextStyle, fontWeight: FontWeight = token.fontWeight ?: FontWeight.Normal): TextStyle =
+    raftTextStyle(fontWeight, token.fontSize, token.lineHeight, token.letterSpacing)
+
+/**
+ * The one content text size: message text, the composer, body copy and sidebar conversation
+ * names all read from here so they stay the same size. Lead decision 2026-10-19: the type scale
+ * follows raft-design Typography, so content is `text-body` 16/24 (the 14sp body is retired).
  */
 internal object RaftTextSize {
-    val Content = 14.sp
-    val ContentLineHeight = 20.sp
-    /** Single-line list rows (sidebar names) keep the tighter line height buttons always had. */
-    val ListItemLineHeight = 18.sp
+    val Content: TextUnit get() = RaftScale.body.fontSize
+    val ContentLineHeight: TextUnit get() = RaftScale.body.lineHeight
 }
 
+/**
+ * The legacy role names, each pointing at a raft-design Typography token (weights per the
+ * Typography page's "Weights by use"). New code should prefer the designsystem's
+ * `RaftTheme.typography` directly.
+ */
 internal object RaftType {
     // Task #179: these are GETTERS, not vals. A `val` is evaluated once at object initialisation
     // and then keeps whatever face was active at first touch -- pressing a font option would write
     // the preference and repaint nothing, because ~970 call sites read this object. A getter
     // re-resolves against RaftFontFaceState.preference on every read, so a change reaches them all.
+
+    /** `text-title` 22/28 700, -0.01em. */
     val PageTitle: TextStyle
-        get() = raftTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
-    // raft-ui group/section labels are source case at `tracking-normal`; the 1.2sp
-    // tracking only ever served the retired ALL-CAPS brutal labels.
+        get() = raftTextStyle(RaftScale.title)
+    /**
+     * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
+     * tracking-normal` (13/18 700), source case, no tracking.
+     */
     val SectionLabel: TextStyle
-        get() = raftTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.footnote, FontWeight.Bold)
+    /** `text-body` 16/24 400. */
     val Body: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, RaftTextSize.Content, RaftTextSize.ContentLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body)
+    /** `text-caption` 12/16 500. */
     val Caption: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.caption)
+    /** `text-callout` 14/20 at 500, the menu-item weight: row titles, menu items, quiet actions. */
     val Button: TextStyle
-        get() = raftTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.callout, FontWeight.Medium)
+    /** `text-subhead` 15/20 700: buttons. */
     val ButtonBold: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.subhead, FontWeight.Bold)
+    /** `text-label` 11/13 600: tab bar labels. */
     val TabLabel: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
-    /** Typed text is user content: Simplified Chinese Han forms, like the Web. */
+        get() = raftTextStyle(RaftScale.label)
+    /** `--field-*` 16/24 400. Typed text is user content: Simplified Chinese Han forms, like the Web. */
     val Input: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, RaftTextSize.Content, RaftTextSize.ContentLineHeight, 0.sp)
-            .withRaftUserContentLocale()
-    /** Sidebar conversation names: content size, button weights. */
+        get() = raftTextStyle(RaftScale.field).withRaftUserContentLocale()
+    /** Sidebar conversation names: `text-body` at 600 (raft-ui phone sidebar rows). */
     val ListItem: TextStyle
-        get() = raftTextStyle(FontWeight.Medium, RaftTextSize.Content, RaftTextSize.ListItemLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body, FontWeight.SemiBold)
+    /** Selected / loud-unread sidebar names: `text-body` at 700. */
     val ListItemBold: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, RaftTextSize.Content, RaftTextSize.ListItemLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body, FontWeight.Bold)
 }

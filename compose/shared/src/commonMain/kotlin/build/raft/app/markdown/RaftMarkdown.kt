@@ -1888,11 +1888,11 @@ internal fun String.preparedRaftMarkdownFullRendererContentOrNull(): MarkdownPar
 private const val RaftMarkdownDefaultPreparseLimit = 20
 
 private val RaftMarkdownBodyFontSize get() = RaftTextSize.Content
-// Markdown body keeps its taller 22sp line box (unchanged from before the shared size token).
-private val RaftMarkdownBodyLineHeight = 22.sp
+// `text-body` 16/24, the Web's message text.
+private val RaftMarkdownBodyLineHeight get() = RaftTextSize.ContentLineHeight
 internal val RaftMarkdownTaskCheckboxSize = 14.dp
 internal val RaftMarkdownTaskCheckboxFirstLineOffset =
-    ((22.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
+    ((RaftTextSize.ContentLineHeight.value.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val RaftMarkdownPendingActionIndicator = " …"
 private const val RaftMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalRaftMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }

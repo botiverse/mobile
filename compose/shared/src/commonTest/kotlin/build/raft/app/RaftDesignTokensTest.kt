@@ -9,6 +9,7 @@ import build.raft.app.components.raftSpinnerStepAt
 import build.raft.app.data.FontPreference
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.font.FontListFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.app.compat.ui.raftFontResourceName
@@ -85,7 +86,7 @@ class RaftDesignTokensTest {
             mapOf(
                 RaftType.Body to "$psPrefix-Regular",
                 RaftType.Button to "$psPrefix-Medium",
-                RaftType.PageTitle to "$psPrefix-SemiBold",
+                RaftType.Body.withRaftFontWeight(FontWeight.SemiBold) to "$psPrefix-SemiBold",
                 RaftType.ButtonBold to "$psPrefix-Bold",
             )
         expected.forEach { (style, name) ->
@@ -115,18 +116,35 @@ class RaftDesignTokensTest {
 
     @Test
     fun contentTextSharesOneSize() {
-        // artin 2026-10-18 (1.14.1): body copy, the composer, message text and sidebar names share
-        // RaftTextSize.Content instead of each hardcoding its own size (14sp after the 16sp trial).
-        assertEquals(14.sp, RaftTextSize.Content)
-        assertEquals(20.sp, RaftTextSize.ContentLineHeight)
-        for (style in listOf(RaftType.Body, RaftType.Input, raftMessageBodyTextStyle(null))) {
+        // Body copy, the composer, message text and sidebar names share RaftTextSize.Content.
+        // Lead decision 2026-10-19: the scale follows raft-design Typography, `text-body` 16/24.
+        assertEquals(16.sp, RaftTextSize.Content)
+        assertEquals(24.sp, RaftTextSize.ContentLineHeight)
+        for (style in listOf(RaftType.Body, RaftType.Input, raftMessageBodyTextStyle(null), RaftType.ListItem, RaftType.ListItemBold)) {
             assertEquals(RaftTextSize.Content, style.fontSize)
             assertEquals(RaftTextSize.ContentLineHeight, style.lineHeight)
         }
-        for (style in listOf(RaftType.ListItem, RaftType.ListItemBold)) {
-            assertEquals(RaftTextSize.Content, style.fontSize)
-            assertEquals(RaftTextSize.ListItemLineHeight, style.lineHeight)
+    }
+
+    @Test
+    fun legacyRolesPointAtRaftDesignTypography() {
+        fun assertToken(style: androidx.compose.ui.text.TextStyle, size: Int, lineHeight: Int, weight: FontWeight) {
+            assertEquals(size.sp, style.fontSize)
+            assertEquals(lineHeight.sp, style.lineHeight)
+            assertEquals(raftFontFamilyForWeight(weight), style.fontFamily)
         }
+        assertToken(RaftType.PageTitle, 22, 28, FontWeight.Bold) // text-title
+        assertEquals((-0.01).em, RaftType.PageTitle.letterSpacing)
+        assertToken(RaftType.SectionLabel, 13, 18, FontWeight.Bold) // text-footnote, group heading
+        assertEquals(0.sp, RaftType.SectionLabel.letterSpacing)
+        assertToken(RaftType.Body, 16, 24, FontWeight.Normal) // text-body
+        assertToken(RaftType.Caption, 12, 16, FontWeight.Medium) // text-caption
+        assertToken(RaftType.Button, 14, 20, FontWeight.Medium) // text-callout, menu-item weight
+        assertToken(RaftType.ButtonBold, 15, 20, FontWeight.Bold) // text-subhead, buttons
+        assertToken(RaftType.TabLabel, 11, 13, FontWeight.SemiBold) // text-label
+        assertToken(RaftType.Input, 16, 24, FontWeight.Normal) // --field-*
+        assertToken(RaftType.ListItem, 16, 24, FontWeight.SemiBold) // names in list rows
+        assertToken(RaftType.ListItemBold, 16, 24, FontWeight.Bold)
     }
 
     @Test

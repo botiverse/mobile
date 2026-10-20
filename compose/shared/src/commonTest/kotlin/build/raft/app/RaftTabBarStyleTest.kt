@@ -10,10 +10,11 @@ import kotlin.test.assertTrue
 class RaftTabBarStyleTest {
     @Test
     fun settingsSectionTitleMatchesReactSidebarToken() {
-        assertEquals(10.sp, RaftVerticalTabSectionTextStyle.fontSize)
-        assertEquals(12.sp, RaftVerticalTabSectionTextStyle.lineHeight)
-        assertEquals(1.sp, RaftVerticalTabSectionTextStyle.letterSpacing)
-        assertEquals(RaftType.TabLabel.fontFamily, RaftVerticalTabSectionTextStyle.fontFamily)
+        // raft-ui SidebarGroupLabel: text-footnote (13/18) bold, source case, no tracking.
+        assertEquals(13.sp, RaftVerticalTabSectionTextStyle.fontSize)
+        assertEquals(18.sp, RaftVerticalTabSectionTextStyle.lineHeight)
+        assertEquals(0.sp, RaftVerticalTabSectionTextStyle.letterSpacing)
+        assertEquals(RaftType.SectionLabel.fontFamily, RaftVerticalTabSectionTextStyle.fontFamily)
         assertEquals(RaftColor.TextBlack.copy(alpha = 0.4f), RaftVerticalTabSectionTextStyle.color)
         assertEquals(4.dp, RaftVerticalTabSectionBottomPadding)
     }
