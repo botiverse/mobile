@@ -1710,6 +1710,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M12 18h.01"),
                     ),
                 )
+            RaftLucideIconName.SmilePlus ->
+                RaftLucideIconSpec(
+                    "smile-plus",
+                    listOf(
+                        RaftLucidePathSpec("M22 11v1a10 10 0 1 1-9-10"),
+                        RaftLucidePathSpec("M8 14s1.5 2 4 2 4-2 4-2"),
+                        RaftLucidePathSpec("M 9.0 9.0 L 9.01 9.0"),
+                        RaftLucidePathSpec("M 15.0 9.0 L 15.01 9.0"),
+                        RaftLucidePathSpec("M16 5h6"),
+                        RaftLucidePathSpec("M19 2v6"),
+                    ),
+                )
             RaftLucideIconName.Sparkles ->
                 RaftLucideIconSpec(
                     "sparkles",
