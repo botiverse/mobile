@@ -3,8 +3,8 @@
 every native host.
 
 Incident-born gate (task #356 / PR #2467 review): the shared download
-coordinator reports right-cause errorKind values (storage_write /
-storage_prepare / storage_publish for local storage failures, anything else for
+coordinator reports right-cause errorKind values (storage_failed /
+storage_write / storage_prepare / storage_publish for local storage failures, anything else for
 download/network failures, cancelled for stops). Each native bridge must fold
 those into exactly "storage_failed", "download_failed", or pass "cancelled"
 through unchanged. If a host drops the cancelled pass-through or maps a
@@ -42,7 +42,7 @@ FILES = {
 # helper, so it is asserted separately from the storage/download ternary.
 MARKERS = {
     "android": [
-        'failure.errorKind in setOf("storage_write", "storage_prepare", "storage_publish")',
+        'failure.errorKind in setOf("storage_failed", "storage_write", "storage_prepare", "storage_publish")',
         'if (storageFailure) "storage_failed" else "download_failed"',
         '"status" to "cancelled"',
         '"message" to "Download stopped"',
@@ -51,6 +51,7 @@ MARKERS = {
     ],
     "ios": [
         'BOOL storageFailure =',
+        '[errorKind isEqualToString:@"storage_failed"] ||',
         '[errorKind isEqualToString:@"storage_write"] ||',
         '[errorKind isEqualToString:@"storage_prepare"] ||',
         '[errorKind isEqualToString:@"storage_publish"];',
