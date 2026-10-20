@@ -76,6 +76,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -101,6 +102,7 @@ import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1606,6 +1608,8 @@ private fun SharedActivitySelectedRowSurface(
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit
 ) {
+    // raft-ui cards take the container radius; the selected sticker shadow follows it.
+    val shape = RoundedCornerShape(RaftAppRadius.Container)
     Box(
         modifier =
             modifier
@@ -1617,16 +1621,18 @@ private fun SharedActivitySelectedRowSurface(
                 Modifier
                     .matchParentSize()
                     .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
-                    .background(RaftColor.ShadowBlack)
+                    .background(RaftColor.ShadowBlack, shape)
             )
         }
         content(
             Modifier
                 .fillMaxWidth()
+                .clip(shape)
                 .background(RaftColor.SurfaceWhite)
                 .border(
                     RaftAppStroke.Default,
-                    if (selected) RaftColor.BorderBlack else RaftColor.TextBlack.copy(alpha = 0.3f)
+                    if (selected) RaftColor.BorderBlack else RaftColor.TextBlack.copy(alpha = 0.3f),
+                    shape
                 )
         )
     }

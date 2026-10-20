@@ -7080,7 +7080,8 @@ private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: Raf
     RaftAvatarWithStatus(
         statusColor = if (showPresence) presence?.homeRowColor else null,
         avatarSize = ChannelAvatarSize,
-        statusSize = 8.dp
+        // raft-ui 2xs avatar light: 7px.
+        statusSize = 7.dp
     ) {
         RaftAppAvatar(avatarWireValue, label)
     }

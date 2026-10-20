@@ -320,6 +320,7 @@ import build.raft.app.compat.ui.imageResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -27548,6 +27549,8 @@ private fun ThreadInlineRepliesSurface(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 6.dp)
+                // raft-ui MessageReplies: `rounded-container` face.
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
                 .hoverable(hoverInteractionSource)
                 .background(threadNeutralMessageSurfaceColor(emphasized = isHovered))
                 .clickable(onClick = onOpenThread)

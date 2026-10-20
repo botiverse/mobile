@@ -8,6 +8,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
@@ -47,6 +50,15 @@ internal object RaftStatusIndicatorTokens {
         get() = if (RaftAppThemeState.theme.isAmbient) RaftAppStroke.Control else RaftAppStroke.Thin
     val BorderColor: Color
         get() = if (RaftAppThemeState.theme.isAmbient) RaftColor.StickerInk else RaftColor.BorderBlack
+
+    // raft-ui 0.8.0 AvatarBadge: the 7px light on xs/2xs avatars takes a 1px ink edge and a
+    // 1px canvas cut-out; larger lights keep the default edge and a 2px cut-out.
+    private val SmallLightMax: Dp = 7.dp
+
+    fun cutoutWidth(statusSize: Dp): Dp = if (statusSize <= SmallLightMax) 1.dp else 2.dp
+
+    fun avatarBorderWidth(statusSize: Dp): Dp =
+        if (statusSize <= SmallLightMax) RaftAppStroke.Thin else BorderWidth
 }
 
 @Composable
@@ -145,10 +157,24 @@ internal fun RaftAvatarWithStatus(
                     .offset(x = statusOffset / 2, y = statusOffset / 2)
                     .size(statusSize + statusOffset)
             ) {
+                // raft-ui AvatarBadge cuts the light out of the avatar with a canvas-coloured
+                // outline (`outline-2 outline-layer-canvas`; 1px on the xs/2xs/3xs avatars).
+                val cutout = RaftStatusIndicatorTokens.cutoutWidth(statusSize)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = cutout, y = cutout)
+                        .size(statusSize + cutout * 2)
+                        .background(
+                            RaftColor.Canvas,
+                            if (shape == RaftStatusIndicatorShape.Circle) CircleShape else RoundedCornerShape(cutout)
+                        )
+                )
                 RaftStatusIndicator(
                     color = it,
                     size = statusSize,
                     shape = shape,
+                    borderWidth = RaftStatusIndicatorTokens.avatarBorderWidth(statusSize),
                     pulsing = statusPulsing,
                     modifier = Modifier.align(Alignment.BottomEnd)
                 )
