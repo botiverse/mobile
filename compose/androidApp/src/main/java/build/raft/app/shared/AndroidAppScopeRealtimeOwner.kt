@@ -242,6 +242,16 @@ internal object AndroidAppScopeRealtimeOwner {
         val multiSessionEnabled = multiServerRealtimeEnabled()
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
+        if (!backgroundKeepAliveEnabled && RaftBackgroundConnectionService.active) {
+            // The no-Play-services background connection service is up: it exists to keep this connection
+            // alive, so a keep-alive dropped by a transient disconnect (server switch, page release) while
+            // visible must not suspend reconnects now that the app is hidden.
+            backgroundKeepAliveEnabled = true
+            RaftAppLog.d(
+                LOG_TAG,
+                "background_keep_alive_enabled source=background_connection_service_on_hidden"
+            )
+        }
         syncRealtimeReconnectPolicy()
         if (multiSessionEnabled) {
             currentMultiSessionRuntimes("app_hidden").forEach { it.runtime.onAppHidden() }
@@ -309,6 +319,14 @@ internal object AndroidAppScopeRealtimeOwner {
             force = true
         )
     }
+
+    /** Whether this process holds a realtime session to keep alive (read-only; never prunes state). */
+    fun hasRealtimeOwnerSession(): Boolean =
+        if (multiServerRealtimeEnabled()) {
+            multiSessionRegistry != null && currentDesiredServerId != null
+        } else {
+            realtimeRuntime?.ownedSession() != null
+        }
 
     fun disableBackgroundKeepAlive(reason: String = "unknown") {
         if (!backgroundKeepAliveEnabled) return

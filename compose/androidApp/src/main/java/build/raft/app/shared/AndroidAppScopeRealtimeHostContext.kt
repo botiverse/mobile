@@ -36,6 +36,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
 import build.raft.app.network.RaftAndroidCurlSocketIo
 import build.raft.app.network.RaftCurlSocketIoPolicy
+import build.raft.app.push.RaftPlayServicesAvailability
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
@@ -403,6 +404,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             event: NotificationPushReceived
         ): Boolean =
             try {
+                // Without Play services FCM cannot deliver, whatever an earlier registration left stored.
+                !RaftPlayServicesAvailability.isFcmUnavailable(appContext) &&
                 RaftRealtimeAppScopePolicy.isRemotePushActive(
                     serverId = event.serverId,
                     environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),

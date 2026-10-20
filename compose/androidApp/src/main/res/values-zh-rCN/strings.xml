@@ -497,4 +497,8 @@
     <string name="attachment_save_as_cancel">取消</string>
     <string name="attachment_save_as_saved_toast">文件已保存</string>
     <string name="attachment_save_as_failed_toast">Raft 无法保存此文件，请重试。</string>
+    <string name="raft_background_connection_channel_name">后台连接</string>
+    <string name="raft_background_connection_channel_description">在没有 Google Play 服务的设备上，Raft 在后台保持连接以发送消息通知时显示。</string>
+    <string name="raft_background_connection_notification_title">Raft 正在接收消息</string>
+    <string name="raft_background_connection_notification_text">正在保持连接以接收消息通知。</string>
 </resources>

@@ -1801,6 +1801,12 @@
     <string name="settings_notifications_message_detail">Show a system notification for new unread messages while Raft is in the background.</string>
     <string name="settings_notifications_background_realtime_title">Background realtime</string>
     <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. %1$s may still pause long-running sessions.</string>
+    <string name="settings_notifications_keep_connection_title">Keep connection in background</string>
+    <string name="settings_notifications_keep_connection_detail">This device has no Google Play services, so Raft cannot receive push notifications. Keep Raft connected in the background to still get message notifications. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
+    <string name="settings_notifications_battery_optimization_title">Allow running in background</string>
+    <string name="settings_notifications_battery_optimization_detail">Turn off battery optimization for Raft so the system does not stop the background connection. Some phones also need Raft allowed under app launch or background activity settings.</string>
+    <string name="settings_notifications_battery_optimization_allowed">Allowed</string>
+    <string name="settings_notifications_battery_optimization_request">Allow</string>
     <string name="settings_notifications_offline_computers_title">Offline computer alerts</string>
     <string name="settings_notifications_offline_computers_detail">Show a Home alert when a registered computer is offline. Off by default.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>

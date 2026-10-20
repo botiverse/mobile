@@ -2,6 +2,7 @@ package build.raft.app.core.data.auth
 
 import android.content.Context
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_STORAGE_KEY
@@ -163,6 +164,17 @@ internal object AndroidAppScopeMMKV {
     }
 
     private fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
+        if (mmapID == RaftLocalPreferenceStore.KuiklyNamespace &&
+            (key == NOTIFICATION_ENABLED_PREFERENCE_KEY ||
+                key == AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY))
+        ) {
+            // The no-Play-services background connection only runs while message notifications are on.
+            AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
+                context.applicationContext,
+                source = "message_notifications_preference"
+            )
+            return
+        }
         if (mmapID != RaftLocalPreferenceStore.KuiklyNamespace ||
             key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY &&
             key != AndroidRealtimeKeepAliveController.localPreferenceKey(
