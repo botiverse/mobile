@@ -316,8 +316,8 @@ jobs:
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
-    # Stays GitHub-hosted until /dev/kvm is verified on Blacksmith (the emulator needs it).
-    runs-on: ubuntu-latest
+    # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
