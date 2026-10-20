@@ -108,6 +108,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1832,6 +1836,7 @@ private fun SharedActivityRow(
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
+    val openLabel = stringResource(MR.strings.common_open)
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
         Column(modifier = surfaceModifier) {
             Row(
@@ -1872,6 +1877,16 @@ private fun SharedActivityRow(
                                 onOpen,
                                 onOpenMenu
                             )
+                            // The card's content reads as one button; the accessibility click opens it
+                            // like a tap. The avatar and bottom strip stay pointer-only so a screen reader
+                            // meets each card once.
+                            .semantics(mergeDescendants = true) {
+                                role = Role.Button
+                                onClick(label = openLabel) {
+                                    onOpen()
+                                    true
+                                }
+                            }
                             .padding(start = avatarPresentation.contentStartPadding, top = 12.dp)
                 ) {
                 // Tag + timestamp share the top row — artin's ruling on #1039

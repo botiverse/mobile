@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
@@ -23,6 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -431,6 +437,7 @@ internal fun ActivityConversationListRow(
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val systemLabel = stringResource(MR.strings.activity_list_system_sender)
+    val openLabel = stringResource(MR.strings.common_open)
     val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
     val fallback =
         when (item.kind) {
@@ -460,7 +467,17 @@ internal fun ActivityConversationListRow(
                 Modifier
                     .weight(1f)
                     .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
-                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 8.dp else 16.dp),
+                    // One focusable button per row for screen readers: title, preview and marks read
+                    // together, and the accessibility click opens the row like a tap.
+                    .semantics(mergeDescendants = true) {
+                        role = Role.Button
+                        onClick(label = openLabel) {
+                            onOpen()
+                            true
+                        }
+                    }
+                    // With Done, its 48dp touch slot supplies the 8dp gap that used to be padding here.
+                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 0.dp else 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -540,7 +557,9 @@ internal fun ActivityConversationListRow(
             RaftIconButton(
                 onClick = onDone,
                 contentDescription = stringResource(MR.strings.thread_action_mark_done),
-                modifier = Modifier.padding(end = 16.dp),
+                // The 32dp button keeps its look inside a 48dp touch target; the 8dp of the slot on each
+                // side replaces 8dp of the old row padding, so nothing moves.
+                modifier = Modifier.padding(end = 8.dp).minimumInteractiveComponentSize(),
             ) {
                 RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
             }
@@ -668,7 +687,16 @@ private fun ActivityConversationTrailing(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (model.hasDraft) {
-                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
+                val draftDescription = stringResource(MR.strings.activity_list_draft_description)
+                Box(
+                    modifier =
+                        Modifier.semantics {
+                            contentDescription = draftDescription
+                            role = Role.Image
+                        }
+                ) {
+                    RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
+                }
             }
             if (model.showMentionMarker) {
                 RaftMentionMarker(contentDescription = stringResource(MR.strings.activity_list_mentioned_you))
@@ -676,7 +704,12 @@ private fun ActivityConversationTrailing(
             when {
                 model.muted ->
                     RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
-                model.showUnreadCount -> RaftUnreadCount(model.unreadCount)
+                model.showUnreadCount ->
+                    RaftUnreadCount(
+                        model.unreadCount,
+                        contentDescription =
+                            stringResource(MR.strings.activity_list_unread_count_description, model.unreadCount),
+                    )
             }
         }
     }
