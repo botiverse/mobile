@@ -343,7 +343,7 @@ internal fun RaftMenuItemRow(
             }
             Text(
                 text = label,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium),
+                style = RaftType.Button,
                 color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

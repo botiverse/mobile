@@ -6313,7 +6313,8 @@ private fun MembersDetailContent(
                             managementMenuAnchor = anchor
                             managementMenuOpen = true
                         }
-                    }
+                    },
+                    managementMenuOpen = managementMenuOpen
                 )
             }
             val runtimeErrorBanner =
@@ -6971,7 +6972,8 @@ private fun MembersDetailHeader(
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onManagementMenuAnchorResolverReady: (RaftPopoverAnchorResolver) -> Unit,
-    onRequestManagementMenu: (RaftPopoverAnchor?) -> Unit
+    onRequestManagementMenu: (RaftPopoverAnchor?) -> Unit,
+    managementMenuOpen: Boolean = false
 ) {
     val summary = detail?.summary
     val directMessageEligibility =
@@ -7101,9 +7103,15 @@ private fun MembersDetailHeader(
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Lg,
                         modifier =
-                            Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
-                                currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
-                            }
+                            Modifier
+                                .raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                                    currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                                }
+                                // web PanelAction while its menu is open: the pressed fill.
+                                .background(
+                                    if (managementMenuOpen) colors.fillPressed else Color.Transparent,
+                                    RoundedCornerShape(RaftRadius.Control)
+                                )
                     ) {
                         RaftGlyphIcon(RaftGlyph.EllipsisVertical, size = 22.dp)
                     }
@@ -7141,8 +7149,15 @@ private fun MembersRaftAvatar(
                 avatarWireValue = avatarWireValue,
                 // web GravatarAvatar: a person without a photo is the User placeholder, not initials.
                 label = if (member.kind == MemberKind.Human) "" else member.avatarLabel,
-                // The face fills the inside of the 1.5dp sticker edge.
-                avatarSize = size.edge - RaftStroke.Control * 2,
+                // The face fills the inside of the 1.5dp sticker edge. A person's `xs` face
+                // (16dp) would read as the 14dp step and draw the 8dp placeholder; web draws
+                // `xs` with its 12dp icon, so it is sized one dp into the xs step.
+                avatarSize =
+                    if (member.kind == MemberKind.Human && size == RaftAvatarSize.Xs) {
+                        size.edge - 2.dp
+                    } else {
+                        size.edge - RaftStroke.Control * 2
+                    },
                 borderWidth = 0.dp,
                 cacheSubject = member.raftAvatarCacheSubject(),
                 cacheServerId = member.serverId?.value
@@ -10427,9 +10442,10 @@ private fun MembersAgentInfoSection(
             }
             if (statusRow is MembersMachineStatusRow.Machine) {
                 Item(term = stringResource(MR.strings.member_label_computer_status)) {
+                    // web StatusDot default: the 9dp pixel.
                     RaftStatusDot(
                         presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
-                        size = RaftStatusSize.Sm
+                        size = RaftStatusSize.Md
                     )
                     RaftText(
                         text = stringResource(

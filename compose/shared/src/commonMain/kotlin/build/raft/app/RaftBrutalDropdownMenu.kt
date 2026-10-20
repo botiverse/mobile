@@ -359,7 +359,7 @@ private fun RaftDropdownMenuRow(
         Text(
             text = item.label,
             // callout 14/20 medium = the shared content size.
-            style = RaftType.Body.withRaftFontWeight(if (emphasized) FontWeight.Bold else FontWeight.Medium),
+            style = RaftType.Button.withRaftFontWeight(if (emphasized) FontWeight.Bold else FontWeight.Medium),
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
