@@ -392,6 +392,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -7127,6 +7128,20 @@ private fun SharedThreadRouteContentContent(
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
+    val inlineVideoPreviewJobs = remember(threadInstanceKey) { mutableMapOf<String, Job>() }
+    // attachmentId to wake one waiting retry, null to wake all of them (a realtime timeline update).
+    val inlineVideoPreviewRetryNudges =
+        remember(threadInstanceKey) { MutableSharedFlow<String?>(extraBufferCapacity = 16) }
+    val inlineVideoPreviewLastTimelineMessages = remember(threadInstanceKey) { arrayOfNulls<Any>(1) }
+    SideEffect {
+        val messages = timelineSlice.messages
+        if (messages !== inlineVideoPreviewLastTimelineMessages[0]) {
+            inlineVideoPreviewLastTimelineMessages[0] = messages
+            if (inlineVideoPreviewStates.values.any { it.status == ThreadInlineVideoPreviewStatus.Processing }) {
+                inlineVideoPreviewRetryNudges.tryEmit(null)
+            }
+        }
+    }
     var inlineAudioPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
     }
@@ -8764,38 +8779,34 @@ private fun SharedThreadRouteContentContent(
     }
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
         if (attachmentId.isBlank()) return
-        if (inlineVideoPreviewStates[attachmentId]?.status == ThreadInlineVideoPreviewStatus.Loading) return
+        val running = inlineVideoPreviewJobs[attachmentId]?.isActive == true
+        if (running) {
+            // A retry is waiting out its backoff: a forced request (tap, realtime update) runs it now.
+            if (force) inlineVideoPreviewRetryNudges.tryEmit(attachmentId)
+            return
+        }
         if (!force && !inlineVideoPreviewStates.canRequestInlineVideoPreview(attachmentId)) return
-        inlineVideoPreviewStates =
-            inlineVideoPreviewStates +
-                (attachmentId to ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Loading))
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    val url = response.data.url.trim()
-                    inlineVideoPreviewStates =
-                        inlineVideoPreviewStates +
-                            (attachmentId to
-                                if (url.isNotBlank()) {
-                                    ThreadInlineVideoPreviewUiState(
-                                        status = ThreadInlineVideoPreviewStatus.Ready,
-                                        url = url,
-                                        expiresAt = response.data.expiresAt
-                                    )
-                                } else {
-                                    ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Error)
-                                })
-                }
-                is ThreadApiResult.Failure -> {
-                    inlineVideoPreviewStates =
-                        inlineVideoPreviewStates +
-                            (attachmentId to ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Error))
-                    if (response.code == 401) {
-                        routeAuthRequired("auth_required")
-                    }
+        inlineVideoPreviewJobs[attachmentId] =
+            coroutineScope.launch {
+                val outcome =
+                    runThreadInlineVideoPreviewFetch(
+                        policy = ThreadInlineVideoRetryPolicy.Default,
+                        fetch = {
+                            dataSource.attachmentUrl(attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
+                        },
+                        awaitRetry = { delayMs ->
+                            withTimeoutOrNull(delayMs) {
+                                inlineVideoPreviewRetryNudges.first { it == attachmentId || it == null }
+                            }
+                        },
+                        onState = { state ->
+                            inlineVideoPreviewStates = inlineVideoPreviewStates + (attachmentId to state)
+                        }
+                    )
+                if (outcome is ThreadInlineVideoFetchOutcome.Failed && outcome.code == 401) {
+                    routeAuthRequired("auth_required")
                 }
             }
-        }
     }
 
     fun openComposerAttachmentPreview(attachmentId: String) {

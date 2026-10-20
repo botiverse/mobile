@@ -647,6 +647,7 @@
     <string name="thread_image_preview_loading">画像を読み込み中…</string>
     <string name="thread_video_preview_unavailable">動画プレビューを利用できません</string>
     <string name="thread_video_preview_loading">動画プレビューを読み込み中</string>
+    <string name="thread_video_preview_processing">動画を処理中…</string>
     <string name="thread_video_playback_failed">動画を再生できませんでした</string>
     <string name="thread_video_attachment_fallback_name">動画の添付ファイル</string>
     <string name="thread_audio_preview_unavailable">音声プレビューを利用できません</string>
