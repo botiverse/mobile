@@ -23,6 +23,8 @@ private const val INSTALLATION_ID_KEY = "installationId"
 private const val PENDING_REGISTRATION_KEY = "pendingRegistration"
 private const val LAST_REGISTERED_PAYLOAD_KEY = "lastRegisteredPayload"
 private const val LAST_BOUND_USER_ID_KEY = "lastBoundUserId"
+private const val LAST_BOUND_ENVIRONMENT_KEY = "lastBoundEnvironmentId"
+private const val LAST_REGISTERED_AT_KEY = "lastRegisteredAtMillis"
 private const val DELIVERY_STATUS_KEY = "deliveryStatus.v1"
 internal const val PUSH_LOG_TAG = "SlockPushRegistration"
 
@@ -87,6 +89,15 @@ internal enum class RaftPushProviderSpec(val provider: String, val platform: Str
 
 private const val FCM_MAX_TOKEN_LENGTH = 4096
 
+/**
+ * A confirmed upsert is trusted for this long; after it the same payload is upserted again (idempotent
+ * on the server). This heals a registration the server dropped without telling the app (revoked after a
+ * provider rejection, unbound, rebound to an expired session family) on servers that do not report
+ * `fcmRegistered` in the delivery status, and it re-confirms installs upgraded from builds that never
+ * stored a confirmation time.
+ */
+const val PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS: Long = 24L * 60L * 60L * 1000L
+
 /** A delivery-status answer older than this is unknown: the background path posts locally again. */
 const val PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS: Long = 30L * 60L * 1000L
 
@@ -119,6 +130,22 @@ private data class PushDeliveryStatusServerBody(
 @Serializable
 private data class PushDeliveryStatusResponseBody(
     val servers: Map<String, PushDeliveryStatusServerBody>? = null,
+    /**
+     * Whether the server holds a live registration of this installation for the asking user, independent
+     * of the rollout switches that gate `fcmActive`. Absent on servers that predate the field.
+     */
+    val fcmRegistered: Boolean? = null,
+)
+
+@Serializable
+private data class PushRegistrationUpsertRegistrationBody(
+    val installationId: String? = null,
+    val provider: String? = null,
+)
+
+@Serializable
+private data class PushRegistrationUpsertResponseBody(
+    val registration: PushRegistrationUpsertRegistrationBody? = null,
 )
 
 /**
@@ -163,6 +190,13 @@ internal class RaftPushRegistrationNetworkApi(
 
 internal interface RaftPushRegistrationLifecycleSink {
     fun onSessionSaved()
+
+    /**
+     * A login, registration or full session replace: the server may have started a new session family,
+     * so the registration must be re-bound even when token and user are unchanged.
+     */
+    fun onSessionAuthenticated() = onSessionSaved()
+
     fun onSessionInvalidated(reason: AuthSessionClearReason)
     suspend fun unbindBeforeLogout()
 }
@@ -229,7 +263,7 @@ internal object RaftPushRegistrationLifecycle {
                             lastObservedGeneration = event.generation
                             when (event) {
                                 is AuthSessionEvent.Cleared -> sink?.onSessionInvalidated(event.reason)
-                                is AuthSessionEvent.Authenticated,
+                                is AuthSessionEvent.Authenticated -> sink?.onSessionAuthenticated()
                                 is AuthSessionEvent.TokensRotated,
                                 is AuthSessionEvent.BindingMetadataChanged -> sink?.onSessionSaved()
                             }
@@ -285,6 +319,20 @@ internal class RaftPushRegistrationCoordinator(
     @Volatile
     private var deliveryStatusRequestInFlight = false
 
+    /** Non-null once the host reported that this device cannot receive this provider's pushes at all. */
+    @Volatile
+    private var providerUnavailableReason: String? = null
+
+    /** The next upsert ignores the dedupe once (new session family). Guarded by [mutex]. */
+    private var forceNextUpsert = false
+
+    /**
+     * Payloads already re-upserted in this process because the server said it holds no registration.
+     * In memory and once per payload, so a server that keeps dropping the registration (for example a
+     * provider that rejects the token) cannot drive a re-registration loop. Guarded by [mutex].
+     */
+    private val serverMissingRepairedPayloads = mutableSetOf<String>()
+
     fun installationId(candidateInstallationId: String): String {
         val existing = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
         if (existing != null) return existing
@@ -302,6 +350,10 @@ internal class RaftPushRegistrationCoordinator(
         env: String,
         appVersion: String
     ): Boolean {
+        providerUnavailableReason?.let { unavailable ->
+            infoLogger("registration_rejected reason=provider_unavailable detail=$unavailable")
+            return false
+        }
         val installationId = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
         if (installationId == null) {
             warningLogger("registration_deferred reason=missing_installation_id")
@@ -333,10 +385,42 @@ internal class RaftPushRegistrationCoordinator(
     suspend fun retryPendingRegistration(reason: String): Boolean =
         flushPending(reason)
 
+    /**
+     * The host found that this device cannot receive this provider's pushes (Android without Google
+     * Play services, so no FCM transport). Nothing is registered or claimed: the pending payload, the
+     * local binding and any delivery-status answer are dropped, so every server reads as not delivering
+     * and the background realtime path keeps posting its own notifications. Sticky for the process.
+     */
+    suspend fun markProviderUnavailable(reason: String) {
+        reportProviderUnavailable(reason)
+        mutex.withLock {
+            store.putString(PENDING_REGISTRATION_KEY, null)
+            clearBoundRegistrationLocked()
+        }
+    }
+
+    /**
+     * Non-suspending half of [markProviderUnavailable]: from this call on no trigger upserts or asks for
+     * the delivery status, even one already launched (a payload persisted by an earlier process included).
+     */
+    fun reportProviderUnavailable(reason: String) {
+        val firstReport = providerUnavailableReason == null
+        providerUnavailableReason = reason
+        if (firstReport) infoLogger("provider_unavailable reason=$reason")
+    }
+
+    fun isProviderUnavailable(): Boolean = providerUnavailableReason != null
+
     override fun onSessionSaved() {
         if (unbindInProgress) return
         scope.launch {
             handleSessionSaved()
+        }
+    }
+
+    override fun onSessionAuthenticated() {
+        scope.launch {
+            handleSessionSaved(forceUpsert = true)
         }
     }
 
@@ -346,8 +430,14 @@ internal class RaftPushRegistrationCoordinator(
         }
     }
 
-    internal suspend fun handleSessionSaved(): Boolean {
+    internal suspend fun handleSessionSaved(forceUpsert: Boolean = false): Boolean {
+        if (forceUpsert) {
+            // Recorded before any early return (logout in progress, auth runtime not ready, no session yet),
+            // so the new session family is re-upserted by the next flush instead of after the 24h expiry.
+            mutex.withLock { forceNextUpsert = true }
+        }
         if (unbindInProgress) return false
+        if (providerUnavailableReason != null) return false
         if (!authRuntimeReady()) {
             infoLogger("registration_deferred reason=auth_runtime_unavailable trigger=session_saved")
             return false
@@ -420,6 +510,7 @@ internal class RaftPushRegistrationCoordinator(
      */
     suspend fun refreshDeliveryStatus(reason: String, force: Boolean = false): Boolean {
         val environmentProvider = currentEnvironmentId ?: return false
+        if (providerUnavailableReason != null) return false
         if (registrationSuspended || unbindInProgress) {
             infoLogger("delivery_status_deferred reason=logout_suspended trigger=$reason")
             return false
@@ -482,14 +573,15 @@ internal class RaftPushRegistrationCoordinator(
             warningLogger("delivery_status_result result=failure code=${response.code} trigger=$reason")
             return false
         }
-        val servers =
+        val decoded =
             try {
-                pushDeliveryStatusJson.decodeFromString<PushDeliveryStatusResponseBody>(body).servers
+                pushDeliveryStatusJson.decodeFromString<PushDeliveryStatusResponseBody>(body)
             } catch (_: SerializationException) {
                 null
             } catch (_: IllegalArgumentException) {
                 null
             }
+        val servers = decoded?.servers
         if (servers == null) {
             warningLogger("delivery_status_result result=malformed trigger=$reason")
             return false
@@ -522,6 +614,10 @@ internal class RaftPushRegistrationCoordinator(
                 infoLogger("delivery_status_result result=stale_ignored trigger=$reason")
                 return@withLock false
             }
+            if (decoded?.fcmRegistered == false) {
+                repairServerMissingRegistrationLocked(reason)
+                return@withLock false
+            }
             store.putString(DELIVERY_STATUS_KEY, pushRegistrationJson.encodeToString(status))
             infoLogger(
                 "delivery_status_result result=success trigger=$reason " +
@@ -530,6 +626,25 @@ internal class RaftPushRegistrationCoordinator(
             )
             true
         }
+    }
+
+    /**
+     * The server says it holds no live registration although the app has one settled. Drop the local
+     * binding so the next flush upserts again, once per payload per process; afterwards the answer is
+     * only logged (the background path reads no stored answer and keeps posting locally).
+     */
+    private fun repairServerMissingRegistrationLocked(reason: String) {
+        val registered = store.getString(LAST_REGISTERED_PAYLOAD_KEY)?.takeIf { it.isNotBlank() }
+        store.putString(DELIVERY_STATUS_KEY, null)
+        if (registered == null) return
+        if (!serverMissingRepairedPayloads.add(registered)) {
+            warningLogger("registration_server_missing action=none reason=already_repaired trigger=$reason")
+            return
+        }
+        warningLogger("registration_server_missing action=reupsert trigger=$reason")
+        store.putString(PENDING_REGISTRATION_KEY, store.getString(PENDING_REGISTRATION_KEY) ?: registered)
+        clearBoundRegistrationLocked()
+        scope.launch { flushPending(reason = "server_missing_registration") }
     }
 
     override suspend fun unbindBeforeLogout() {
@@ -570,6 +685,7 @@ internal class RaftPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=logout_suspended trigger=$reason")
                 return@withLock false
             }
+            if (providerUnavailableReason != null) return@withLock false
             val payloadJson = store.getString(PENDING_REGISTRATION_KEY)?.takeIf { it.isNotBlank() }
                 ?: return@withLock false
             val session = currentSession()
@@ -590,33 +706,57 @@ internal class RaftPushRegistrationCoordinator(
             infoLogger("registration_deferred reason=logout_suspended trigger=$reason")
             return false
         }
+        if (providerUnavailableReason != null) return false
         val pendingPayload = payloadJson ?: return false
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }
         if (serverId == null) {
             infoLogger("registration_deferred reason=no_selected_server trigger=$reason")
             return false
         }
-        val alreadyRegistered =
+        val environmentId = currentEnvironmentId?.let { provider -> normalizedPushEnvironmentId(provider()) }
+        val sameBinding =
             store.getString(LAST_REGISTERED_PAYLOAD_KEY) == pendingPayload &&
-                store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id
-        return if (alreadyRegistered) {
+                store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id &&
+                store.getString(LAST_BOUND_ENVIRONMENT_KEY) == environmentId
+        val confirmedAt = store.getString(LAST_REGISTERED_AT_KEY)?.toLongOrNull()
+        val confirmationFresh =
+            confirmedAt != null && clockMillis() - confirmedAt in 0 until PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
+        return if (sameBinding && confirmationFresh && !forceNextUpsert) {
             infoLogger("registration_skip reason=unchanged trigger=$reason")
             true
         } else {
+            if (sameBinding) {
+                val refreshReason = if (forceNextUpsert) "new_session" else "confirmation_expired"
+                infoLogger("registration_refresh reason=$refreshReason trigger=$reason")
+            }
             val api = apiProvider()
             if (api == null) {
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
                 return false
             }
-            // New token, topic or user: the stored answer described the previous registration.
-            clearDeliveryStatus(reason = "registration_changed")
+            if (!sameBinding) {
+                // New token, topic, user or environment: the stored answer described the previous
+                // registration. A same-binding refresh (confirmation expiry, new session family) keeps it:
+                // FCM keeps delivering meanwhile, and dropping the answer would make the realtime path
+                // post the same notification locally as well.
+                clearDeliveryStatus(reason = "registration_changed")
+            }
             val response = api.upsert(pendingPayload)
             if (!response.isSuccessful) {
                 warningLogger("registration_result result=failure code=${response.code} trigger=$reason")
                 return false
             }
+            if (!upsertConfirmed(response, pendingPayload)) {
+                // A 2xx without the server's registration echo (proxy, captive portal, wrong host) is not
+                // a registration: keep it pending so the next trigger tries again.
+                warningLogger("registration_result result=unconfirmed code=${response.code} trigger=$reason")
+                return false
+            }
             store.putString(LAST_REGISTERED_PAYLOAD_KEY, pendingPayload)
             store.putString(LAST_BOUND_USER_ID_KEY, session.user.id)
+            store.putString(LAST_BOUND_ENVIRONMENT_KEY, environmentId)
+            store.putString(LAST_REGISTERED_AT_KEY, clockMillis().toString())
+            forceNextUpsert = false
             infoLogger("registration_result result=success trigger=$reason")
             if (currentEnvironmentId != null) {
                 scope.launch { refreshDeliveryStatus(reason = "registration_upsert", force = true) }
@@ -642,8 +782,32 @@ internal class RaftPushRegistrationCoordinator(
 
     private fun clearBoundRegistrationLocked() {
         store.putString(LAST_BOUND_USER_ID_KEY, null)
+        store.putString(LAST_BOUND_ENVIRONMENT_KEY, null)
+        store.putString(LAST_REGISTERED_AT_KEY, null)
         store.putString(LAST_REGISTERED_PAYLOAD_KEY, null)
         store.putString(DELIVERY_STATUS_KEY, null)
+    }
+
+    /** The server echoed the registration it stored for this installation and provider. */
+    private fun upsertConfirmed(response: HomeNetworkResponse, payloadJson: String): Boolean {
+        val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return false
+        val echoed =
+            try {
+                pushDeliveryStatusJson.decodeFromString<PushRegistrationUpsertResponseBody>(body).registration
+            } catch (_: SerializationException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            } ?: return false
+        val sent =
+            try {
+                pushRegistrationJson.decodeFromString<RaftPushRegistrationPayload>(payloadJson)
+            } catch (_: SerializationException) {
+                return false
+            } catch (_: IllegalArgumentException) {
+                return false
+            }
+        return echoed.installationId == sent.installationId && echoed.provider == sent.provider
     }
 }
 
