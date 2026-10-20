@@ -35,7 +35,7 @@ class SharedRealtimeDomainEventOwnerTest {
     fun oneWireEventMutatesProcessOnceAndProjectsToTwoShells() = runBlocking {
         val authority =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "two-shell-process",
             )
         authority.initialize()
@@ -267,7 +267,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     private class PresenceHarness {
         val authority = RealtimeAuthorityRegistry(
-            authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+            authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
             processInstanceId = "presence-harness",
         )
         val presenceRegistry = ProcessMemberPresenceRegistry()
@@ -710,7 +710,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun acceptedMessageEventsAdvancePersistedCursorAfterSharedDedupe() {
-        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val logs = mutableListOf<String>()
@@ -740,7 +740,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun messageSeqGapRequestsRepairWithoutGatingMainFanout() {
-        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
         val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
         val delivered = mutableListOf<RealtimeEventRecord>()
@@ -782,7 +782,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun sparseRepairBatchAdvancesCursorAndDoesNotLeaveFanoutStuck() {
-        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
         val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()
@@ -823,7 +823,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun emptySyncResumeAdvancesPersistedCursorAndReachesDomainSinks() {
-        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 3)
         val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()

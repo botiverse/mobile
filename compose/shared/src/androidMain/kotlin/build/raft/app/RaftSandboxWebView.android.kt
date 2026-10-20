@@ -52,7 +52,7 @@ class RaftWebViewDocument(val bytes: ByteArray, val mimeType: String, val source
 object RaftAndroidWebViewHooks {
     /**
      * Serves main-frame GET documents from a host cache (release notes: androidApp
-     * `SlockReleaseNotesDocumentCache.loadForWebView`, called off the main thread).
+     * `RaftReleaseNotesDocumentCache.loadForWebView`, called off the main thread).
      * TODO(cmp-switch): installed by the Android host (group 6); null = always network.
      */
     @Volatile
@@ -63,7 +63,7 @@ object RaftAndroidWebViewHooks {
 internal actual fun RaftSandboxWebViewHost(
     config: RaftWebViewConfig,
     events: RaftWebViewEvents,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     modifier: Modifier,
 ) {
     AndroidView(
@@ -127,7 +127,7 @@ internal class RaftAndroidSandboxWebView(
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     private var documentStartScriptHandler: ScriptHandler? = null
     private val bootstrapNavigationFence = RaftWebViewBootstrapNavigationFence()
-    private var boundController: SlockWebViewController? = null
+    private var boundController: RaftWebViewController? = null
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -149,7 +149,7 @@ internal class RaftAndroidSandboxWebView(
         updateSrc(config.url)
     }
 
-    fun bindController(controller: SlockWebViewController) {
+    fun bindController(controller: RaftWebViewController) {
         if (boundController === controller) return
         boundController?.unbindCommandDispatcher(this)
         boundController = controller
@@ -482,7 +482,7 @@ internal class RaftAndroidSandboxWebView(
 
     /**
      * task #188: `setInitialScale` fits a page that declares `width=1280`; the ratio comes from the
-     * shared `slockFilePreviewDesktopScalePercent` (task #514) and the measured view width.
+     * shared `raftFilePreviewDesktopScalePercent` (task #514) and the measured view width.
      */
     private fun applyDesktopModeScale(view: WebView?) {
         if (destroyed || view == null) return
@@ -506,7 +506,7 @@ internal class RaftAndroidSandboxWebView(
             return
         }
         val dpr = resources.displayMetrics.density
-        val percent = slockFilePreviewDesktopScalePercent(viewWidthPx, dpr) ?: return
+        val percent = raftFilePreviewDesktopScalePercent(viewWidthPx, dpr) ?: return
         view.setInitialScale(percent)
         desktopModeScaleApplied = true
         Log.i(LOG_TAG, "desktop_mode_scale viewWidthPx=$viewWidthPx dpr=$dpr percent=$percent")
@@ -556,21 +556,21 @@ internal class RaftAndroidSandboxWebView(
 
     private fun executeNavigationCommand(next: String) {
         if (destroyed) return
-        if (next.startsWith(SlockWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)) {
-            evaluateRuntimeJavaScript(next.removePrefix(SlockWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX))
+        if (next.startsWith(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)) {
+            evaluateRuntimeJavaScript(next.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX))
             return
         }
         when (next.trim()) {
-            SlockWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
-            SlockWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
-            SlockWebViewController.COMMAND_RELOAD -> {
+            RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
+            RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
+            RaftWebViewController.COMMAND_RELOAD -> {
                 lastSuccessfulUrl = ""
                 lastLoadFailureReason = ""
                 currentProgress = 0
                 currentIsLoading = true
                 webView.reload()
             }
-            SlockWebViewController.COMMAND_STOP -> {
+            RaftWebViewController.COMMAND_STOP -> {
                 webView.stopLoading()
                 currentIsLoading = false
             }
@@ -743,7 +743,7 @@ internal class RaftAndroidSandboxWebView(
     private fun notifyNavigationState(force: Boolean = false) {
         if (destroyed) return
         val state =
-            SlockWebViewNavigationState(
+            RaftWebViewNavigationState(
                 url = currentUrl,
                 title = currentTitle,
                 canGoBack = webView.canGoBack(),

@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.StoredAuthSession
 
-internal fun Pager.openSettingsFeedbackWebViewPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsFeedbackWebViewPage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Feedback, storeScope)
 }
 

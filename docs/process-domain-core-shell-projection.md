@@ -180,7 +180,7 @@ The current example is implemented by:
 
 - `compose/shared/src/commonMain/kotlin/build/raft/app/data/ProcessServerMembersCore.kt`
 - `compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedServerMembersStore.kt`
-- `compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftSharedStoreProvider.kt`
 - `compose/shared/src/commonTest/kotlin/build/raft/app/data/ProcessServerMembersCoreTest.kt`
 
 `ProcessServerMembersCore` owns immutable roster snapshots, versions, bounded
@@ -189,7 +189,7 @@ is `(environmentId, accountId, serverId)`. Multiple shell consumers join the
 same flight, and cancelling the first waiter does not cancel the producer.
 Invalidation makes old completions non-publishable.
 
-`SlockSharedStoreProvider` creates one process members core while retaining
+`RaftSharedStoreProvider` creates one process members core while retaining
 shell-scoped `SharedServerMembersStore`, auth, network, Home, Activity,
 navigation, and foreground-banner owners. `releaseShellStoreScope()` disposes
 the shell-owned objects without turning the process roster core into a UI store.

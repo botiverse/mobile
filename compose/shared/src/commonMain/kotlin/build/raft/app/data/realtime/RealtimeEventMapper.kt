@@ -1,7 +1,7 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.MemberKindWireContract
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
@@ -40,7 +40,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.PerReceiverPinnedChanged
@@ -739,7 +739,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         // the immutable creation time; otherwise an in-place update makes an
         // older row appear newer than the rows rendered after it.
         timestampLabel = createdAt ?: "",
-        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
+        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
         systemEventType = null,
@@ -944,7 +944,7 @@ private fun TaskInfoWireDto.toDomain(
         parentMessageId = resolvedMessageId,
         channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         threadId = null,
-        isThreadTask = channelType?.lowercase() == KuiklyThreadSurfaceKind.ReplyThread,
+        isThreadTask = channelType?.lowercase() == RaftThreadSurfaceKind.ReplyThread,
         assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName, diagnostics = diagnostics),
         creator = memberFrom(type = createdByType, id = createdById, name = createdByName, diagnostics = diagnostics),
         channelName = channelName,

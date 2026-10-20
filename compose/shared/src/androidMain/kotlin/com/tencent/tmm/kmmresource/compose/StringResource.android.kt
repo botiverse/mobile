@@ -3,7 +3,7 @@
  */
 package com.tencent.tmm.kmmresource.compose
 
-import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import androidx.compose.runtime.Composable
 import com.tencent.tmm.kmmresource.resource.PluralsResource
 import com.tencent.tmm.kmmresource.resource.StringResource
@@ -14,12 +14,12 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Composable
 actual fun stringResource(resource: StringResource): String =
-    StringDesc.Resource(resource).toString(SlockAndroidSqlDatabaseContext.require())
+    StringDesc.Resource(resource).toString(RaftAndroidSqlDatabaseContext.require())
 
 @Composable
 actual fun stringResource(resource: StringResource, vararg args: Any): String =
-    StringDesc.ResourceFormatted(resource, args.toList()).toString(SlockAndroidSqlDatabaseContext.require())
+    StringDesc.ResourceFormatted(resource, args.toList()).toString(RaftAndroidSqlDatabaseContext.require())
 
 @Composable
 actual fun stringResource(resource: PluralsResource, quantity: Int): String =
-    StringDesc.Plural(resource, quantity).toString(SlockAndroidSqlDatabaseContext.require())
+    StringDesc.Plural(resource, quantity).toString(RaftAndroidSqlDatabaseContext.require())

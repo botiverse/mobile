@@ -179,13 +179,13 @@ class StrictProjectionParsersTest {
     @Test
     fun projectedThreadConsumersDoNotInventHumanProfilesOrAvatarKinds() {
         val unknownAuthor =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "member-1",
                 authorName = "Unknown",
                 authorKind = "member",
             )
-        val timeline = KuiklyThreadScreenPayload(messages = listOf(unknownAuthor)).toThreadTimelineSlice()
+        val timeline = RaftThreadScreenPayload(messages = listOf(unknownAuthor)).toThreadTimelineSlice()
 
         assertNull(timeline.findThreadAuthorProfile("member-1"))
         assertNull(unknownAuthor.resolvedThreadAvatarWireValue())
@@ -193,7 +193,7 @@ class StrictProjectionParsersTest {
         val humanAuthor = unknownAuthor.copy(authorKind = "human")
         val humanProfile =
             assertNotNull(
-                KuiklyThreadScreenPayload(messages = listOf(humanAuthor))
+                RaftThreadScreenPayload(messages = listOf(humanAuthor))
                     .toThreadTimelineSlice()
                     .findThreadAuthorProfile("member-1"),
             )

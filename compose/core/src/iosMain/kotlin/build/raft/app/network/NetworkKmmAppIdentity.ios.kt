@@ -1,13 +1,13 @@
 package build.raft.app.network
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import com.tencent.kmm.network.export.NetworkAppIdentity
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.Platform
 import platform.Foundation.NSBundle
 
 @OptIn(ExperimentalNativeApi::class)
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 actual fun platformNetworkKmmAppIdentity(): NetworkAppIdentity? {
     val info = NSBundle.mainBundle.infoDictionary ?: return null
     val name = (info["CFBundleDisplayName"] as? String)

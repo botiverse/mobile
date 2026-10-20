@@ -10,12 +10,12 @@ import kotlinx.coroutines.runBlocking
 class AuthSessionTerminalCleanupBarrierTest {
     @Test
     fun successorAuthorityStateSurvivesOldClearReadToCleanupBarrier() = runBlocking {
-        val authStore = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val authStore = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val attachmentScopes = AttachmentAuthScopeRegistry()
         val savedStateCache = SharedHomeSavedStateCache()
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("successor-shell", "server-1"))
-        val scope = SlockShellStoreScope.create("successor-shell", "server-1")
+            SelectedServerStore(RaftShellStoreScope.create("successor-shell", "server-1"))
+        val scope = RaftShellStoreScope.create("successor-shell", "server-1")
         val successorSavedState = SharedHomeSavedPanelState(loaded = true, totalCount = 1)
         val oldSession = authSessionFixture(userId = "same-account")
         authStore.replaceAuthenticatedSession(oldSession)

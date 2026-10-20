@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockHostStrings
+import build.raft.app.RaftHostStrings
 
 /**
  * Typed-code copy for the two OAuth conflict outcomes, shared by every platform.
@@ -28,8 +28,8 @@ import build.raft.app.SlockHostStrings
 fun mobileOAuthConflictMessageOrNull(
     providerName: String,
     error: String?,
-    accountConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthAccountConflict,
-    providerConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthProviderConflict,
+    accountConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthAccountConflict,
+    providerConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthProviderConflict,
 ): String? =
     when (error?.trim()?.lowercase()) {
         "account_conflict" -> accountConflictMessage(providerName)

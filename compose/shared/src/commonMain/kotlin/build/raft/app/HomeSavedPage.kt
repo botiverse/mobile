@@ -6,7 +6,7 @@ import build.raft.app.compat.pager.Page
 internal class ComposeHomeSavedPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeSaved) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { HomeSecondaryRouterContent(HomeDestinationSaved, slockPageVisibleResumeTick) }
+        setAuthenticatedContent { HomeSecondaryRouterContent(HomeDestinationSaved, raftPageVisibleResumeTick) }
     }
 }
 

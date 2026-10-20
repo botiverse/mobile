@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -20,7 +20,7 @@ import kotlin.test.assertSame
 class SharedThreadTestIdentityAuthorityTest {
     @Test
     fun twoDataSourcesOnOneStoreCountGenerationsTogetherEvenWhenBuiltAfterASwitch() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(session("account-a"))
+        val store = InMemoryRaftAuthSessionStore(session("account-a"))
         val first = testSharedThreadDataSource(
             networkApi = SharedThreadStoreTest.FakeThreadApi(),
             sessionStore = store,
@@ -47,7 +47,7 @@ class SharedThreadTestIdentityAuthorityTest {
 
     @Test
     fun sameIdentityAcrossCapturesIsStableAndIdentityChangeIncrements() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(session("account-a"))
+        val store = InMemoryRaftAuthSessionStore(session("account-a"))
         val authority = testThreadReplyCacheIdentityAuthority(store)
         // Pin a: repeated captures under one identity do not advance.
         assertEquals(1L, assertNotNull(authority.capture()).authGeneration)
@@ -61,7 +61,7 @@ class SharedThreadTestIdentityAuthorityTest {
 
     @Test
     fun identityIsTheRegistrysNormalisedSessionNotTheSelectedServer() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(session("account-a"))
+        val store = InMemoryRaftAuthSessionStore(session("account-a"))
         val authority = testThreadReplyCacheIdentityAuthority(store)
         assertEquals(1L, assertNotNull(authority.capture()).authGeneration)
         // Pin c: a token refresh and a selected-server change are not identity changes for the registry.
@@ -83,7 +83,7 @@ class SharedThreadTestIdentityAuthorityTest {
 
     @Test
     fun factoryRefusesAConflictingConfigurationForTheSameStore() {
-        val store = InMemorySlockAuthSessionStore(session("account-a"))
+        val store = InMemoryRaftAuthSessionStore(session("account-a"))
         val first = testThreadReplyCacheIdentityAuthority(store, environmentId = "https://custom.example.test")
         // Specifying a different environment for the same store is a conflict.
         assertFailsWith<IllegalStateException> {
@@ -96,7 +96,7 @@ class SharedThreadTestIdentityAuthorityTest {
         // The common real-world order: a holder built by OMITTING the environment (so it records the
         // concrete fallback, TestThreadEnvironmentId — not null), then someone specifies a custom one.
         // "I specified A and would get an object configured for B" is exactly what the check is for.
-        val omitted = InMemorySlockAuthSessionStore(session("account-a"))
+        val omitted = InMemoryRaftAuthSessionStore(session("account-a"))
         val byDefault = testThreadReplyCacheIdentityAuthority(omitted)
         assertEquals(TestThreadEnvironmentId, byDefault.environmentId)
         assertFailsWith<IllegalStateException> {
@@ -107,8 +107,8 @@ class SharedThreadTestIdentityAuthorityTest {
 
     @Test
     fun factoryIsMemoisedPerStoreInstanceNotPerIdentity() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(session("account-a"))
-        val other = InMemorySlockAuthSessionStore(session("account-a"))
+        val store = InMemoryRaftAuthSessionStore(session("account-a"))
+        val other = InMemoryRaftAuthSessionStore(session("account-a"))
         // Same store => same holder, even after the identity on it changed.
         val before = testThreadReplyCacheIdentityAuthority(store)
         store.saveSession(session("account-b"))

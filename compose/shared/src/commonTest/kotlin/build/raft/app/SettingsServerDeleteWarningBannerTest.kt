@@ -19,8 +19,8 @@ class SettingsServerDeleteWarningBannerTest {
 
         assertEquals(serverNameStart, serverNameSpan.start)
         assertEquals(serverNameEnd, serverNameSpan.end)
-        assertEquals(SlockType.ButtonBold.fontFamily, serverNameSpan.item.fontFamily)
-        assertEquals(SlockType.ButtonBold.fontWeight, serverNameSpan.item.fontWeight)
+        assertEquals(RaftType.ButtonBold.fontFamily, serverNameSpan.item.fontFamily)
+        assertEquals(RaftType.ButtonBold.fontWeight, serverNameSpan.item.fontWeight)
     }
 
     @Test

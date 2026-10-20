@@ -15,13 +15,13 @@ private val serverSetupProjectionJson = Json {
  * Source: `GET /api/servers/:serverId/setup-projection`. The client must not
  * reconstruct setup readiness from Computers, runtimes, or local Web state.
  */
-interface SlockServerSetupProjectionApi {
+interface RaftServerSetupProjectionApi {
     suspend fun projection(serverId: ServerId): HomeNetworkResponse
 }
 
-class NetworkSlockServerSetupProjectionApi(
-    private val networkClient: SlockNetworkClient,
-) : SlockServerSetupProjectionApi {
+class NetworkRaftServerSetupProjectionApi(
+    private val networkClient: RaftNetworkClient,
+) : RaftServerSetupProjectionApi {
     override suspend fun projection(serverId: ServerId): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
@@ -30,8 +30,8 @@ class NetworkSlockServerSetupProjectionApi(
         )
 }
 
-class SlockServerSetupProjectionRepository(
-    private val api: SlockServerSetupProjectionApi,
+class RaftServerSetupProjectionRepository(
+    private val api: RaftServerSetupProjectionApi,
 ) {
     suspend fun load(serverId: ServerId): DataResult<ServerSetupProjection> {
         val response = api.projection(serverId)

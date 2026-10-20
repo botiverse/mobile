@@ -22,7 +22,7 @@ python3 scripts/slock_android_adb.py devices
 If more than one device is attached, pass `--device <serial>` to every command.
 The default package is `ai.slock.android`, the default launcher component is
 `ai.slock.android/.MainActivity`, and the Kuikly host component is
-`ai.slock.android/.shared.SlockKuiklyActivity`.
+`ai.slock.android/.shared.RaftLegacyHostActivity`.
 
 ## Core Commands
 
@@ -65,7 +65,7 @@ python3 scripts/slock_android_adb.py --device emulator-5560 scroll \
 Before tapping through visible UI, search for app-owned entry points:
 
 ```bash
-rg -n 'diagnostics\.OPEN|activity-alias|pageName|openPage|RouterModule|SlockKuiklyActivity|DeepLink' \
+rg -n 'diagnostics\.OPEN|activity-alias|pageName|openPage|RouterModule|RaftLegacyHostActivity|DeepLink' \
   compose/androidApp compose/shared
 ```
 

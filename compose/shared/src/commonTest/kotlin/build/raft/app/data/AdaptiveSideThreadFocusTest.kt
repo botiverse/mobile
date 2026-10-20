@@ -1,11 +1,11 @@
 package build.raft.app.data
 
-import build.raft.app.SlockAdaptiveDetailIdentity
-import build.raft.app.SlockAdaptiveDetailSelection
-import build.raft.app.SlockAdaptivePaneLayout
-import build.raft.app.SlockAdaptivePanePosture
-import build.raft.app.SlockAdaptivePaneState
-import build.raft.app.SlockAdaptiveWorkspaceState
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptiveDetailSelection
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePanePosture
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,9 +22,9 @@ import kotlin.test.assertTrue
  */
 class AdaptiveSideThreadFocusTest {
     private val owner =
-        SlockAdaptiveDetailSelection(
+        RaftAdaptiveDetailSelection(
             identity =
-                SlockAdaptiveDetailIdentity(
+                RaftAdaptiveDetailIdentity(
                     serverId = "srv-1",
                     threadId = "ch-1",
                     surfaceKind = "channel",
@@ -34,30 +34,30 @@ class AdaptiveSideThreadFocusTest {
         )
 
     private fun widePane() =
-        SlockAdaptivePaneState(
+        RaftAdaptivePaneState(
             widthPx = 2400,
             heightPx = 1600,
             density = 1f,
-            posture = SlockAdaptivePanePosture.Flat,
-            layout = SlockAdaptivePaneLayout.DualPane,
+            posture = RaftAdaptivePanePosture.Flat,
+            layout = RaftAdaptivePaneLayout.DualPane,
         )
 
     private fun narrowPane() =
-        SlockAdaptivePaneState(
+        RaftAdaptivePaneState(
             widthPx = 900,
             heightPx = 1600,
             density = 1f,
-            posture = SlockAdaptivePanePosture.Flat,
-            layout = SlockAdaptivePaneLayout.DualPane,
+            posture = RaftAdaptivePanePosture.Flat,
+            layout = RaftAdaptivePaneLayout.DualPane,
         )
 
     /** A session whose side thread is actually the visible one for the current selection. */
     private fun sessionWithSideThread(
-        pane: SlockAdaptivePaneState,
+        pane: RaftAdaptivePaneState,
         detailPaneWidthDp: Float?,
     ): SharedAdaptiveWorkspaceSession {
         val workspace =
-            SlockAdaptiveWorkspaceState(
+            RaftAdaptiveWorkspaceState(
                 shellInstanceId = "shell-1",
                 serverId = "srv-1",
                 selection = owner,
@@ -70,7 +70,7 @@ class AdaptiveSideThreadFocusTest {
                 AdaptiveSideThread(
                     owner = owner,
                     identity =
-                        SlockAdaptiveDetailIdentity(
+                        RaftAdaptiveDetailIdentity(
                             serverId = "srv-1",
                             threadId = "th-1",
                             surfaceKind = "replyThread",
@@ -253,7 +253,7 @@ class AdaptiveSideThreadFocusTest {
         // weight with IllegalArgumentException("invalid weight 0.0"), which crashed the app the
         // moment Focus was entered. The production call site routes through this function, so this
         // assertion covers the shipping path.
-        val focused = build.raft.app.slockParentPaneLayout(focused = true)
+        val focused = build.raft.app.raftParentPaneLayout(focused = true)
         assertEquals(0f, focused.widthDp, "a focused pane collapses to zero width")
         assertNull(focused.weight, "a focused pane must not take a weight at all")
     }
@@ -261,11 +261,11 @@ class AdaptiveSideThreadFocusTest {
     @Test
     fun theWeightUsedForTheParentPaneIsNeverZero() {
         // The invariant Compose demands: any weight that IS passed must be > 0.
-        val normal = build.raft.app.slockParentPaneLayout(focused = false)
+        val normal = build.raft.app.raftParentPaneLayout(focused = false)
         assertNotNull(normal.weight)
         assertTrue(normal.weight!! > 0f, "Compose throws for weight 0; the pane must never take one")
         assertNull(normal.widthDp, "the unfocused pane is sized by weight, not width")
-        assertTrue(build.raft.app.SLOCK_PARENT_PANE_WEIGHT > 0f)
+        assertTrue(build.raft.app.RAFT_PARENT_PANE_WEIGHT > 0f)
     }
 
     @Test

@@ -2,7 +2,7 @@
 
 ## Decision
 
-Task #29 should not keep solving long inline code in `SlockMarkdown` with
+Task #29 should not keep solving long inline code in `RaftMarkdown` with
 placeholder segmentation, soft-break chip groups, or Markdown-side layout
 workarounds. The current single-line short-code chip is only the safe reverted
 state while the real fix moves into Kuikly RichText internals.
@@ -35,7 +35,7 @@ Relevant code paths:
 - `third_party/kuikly-compose-markdown/.../AnnotatedStringKtx.kt`
   handles `MarkdownElementTypes.CODE_SPAN` by pushing `codeSpanStyle`, appending
   text, and popping the style.
-- `compose/shared/.../markdown/SlockMarkdown.kt` currently intercepts short
+- `compose/shared/.../markdown/RaftMarkdown.kt` currently intercepts short
   code spans as inline placeholder chips.
 - `third_party/kuikly-ui/compose/.../KuiklyTextExtension.kt`
   converts `AnnotatedString` into RichText `TextSpan` / `PlaceholderSpan`
@@ -63,7 +63,7 @@ This means the right insertion point is:
 Add a Slock-only annotation tag, for example
 `build.raft.app.markdown.inlineCode`, around every Markdown `CODE_SPAN` range.
 
-Use the existing `slockMarkdownAnnotator` interception path so Slock controls
+Use the existing `raftMarkdownAnnotator` interception path so Slock controls
 code-span output instead of relying on the vendored markdown default that
 injects surrounding ASCII spaces. For long code, append the real code text and
 the internal marker. For short code, after the RichText renderer is ready, stop
@@ -153,7 +153,7 @@ decoration API.
   - Kuikly renderer unit tests;
   - publish pinned `core-render-android` to MavenLocal if needed;
   - Slock `:shared:generateSqlDelightInterface`;
-  - focused `SlockMarkdownTest`;
+  - focused `RaftMarkdownTest`;
   - `:shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin`.
 
 ## Kuikly Fork Versioning

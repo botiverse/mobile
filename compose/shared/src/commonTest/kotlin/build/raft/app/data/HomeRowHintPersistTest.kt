@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 class HomeRowHintPersistTest {
     @Test
     fun clearAllRemovesEveryHintWrittenOnThisDevice() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val storage = HomeRowHintPersistStorage(store)
         storage.write("mvi:persist:home:hints:v1:user:a:server:1", "one")
         storage.write("mvi:persist:home:hints:v1:user:a:server:2", "two")
@@ -31,7 +31,7 @@ class HomeRowHintPersistTest {
 
     @Test
     fun aRemovedHintIsNotResurrectedByALaterClear() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val storage = HomeRowHintPersistStorage(store)
         storage.write("k1", "one")
         storage.remove("k1")

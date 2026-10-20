@@ -68,11 +68,11 @@ internal class PendingMentionActionBatchRequestGate {
 }
 
 internal fun eligiblePendingMentionActionBatch(
-    actions: List<KuiklyPendingMentionActionItem>,
+    actions: List<RaftPendingMentionActionItem>,
     actionStates: Map<String, String>,
     removingIds: Set<String>,
     executingIds: Set<String>
-): List<KuiklyPendingMentionActionItem> {
+): List<RaftPendingMentionActionItem> {
     val seen = mutableSetOf<String>()
     return actions.filter { action ->
         val resolutionId = action.resolutionId.trim()

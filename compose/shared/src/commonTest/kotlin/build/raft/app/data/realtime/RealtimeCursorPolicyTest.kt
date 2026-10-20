@@ -1,6 +1,6 @@
 package build.raft.app.data.realtime
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
@@ -103,7 +103,7 @@ class RealtimeCursorPolicyTest {
 
     @Test
     fun appliedSeqCursorPersistsPerServerAndNeverRegresses() {
-        val store = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val store = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         val serverOne = ServerId("server-1")
         val serverTwo = ServerId("server-2")
 
@@ -117,7 +117,7 @@ class RealtimeCursorPolicyTest {
 
     @Test
     fun appliedSeqCursorResetsIntoNewEpochPerServer() {
-        val store = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val store = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         val serverOne = ServerId("server-1")
         val serverTwo = ServerId("server-2")
 
@@ -135,7 +135,7 @@ class RealtimeCursorPolicyTest {
 
     @Test
     fun appliedSeqCursorCanReadLegacyDefaultEpochKey() {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val store = RealtimeAppliedSeqCursorStore(keyValueStore)
         val serverId = ServerId("server-1")
         keyValueStore.putString("realtime.cursor.appliedLastSeq.server-1", "42")

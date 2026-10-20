@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-interface SlockRelationalStore {
+interface RaftRelationalStore {
     suspend fun execute(sql: String, bindArgs: List<RelationalValue> = emptyList())
     suspend fun query(sql: String, bindArgs: List<RelationalValue> = emptyList()): RelationalRows
-    suspend fun transaction(block: suspend SlockRelationalStore.() -> Unit)
+    suspend fun transaction(block: suspend RaftRelationalStore.() -> Unit)
 }
 
 sealed interface RelationalValue {
@@ -19,7 +19,7 @@ data class RelationalRows(
     val rows: List<List<RelationalValue>>
 )
 
-class InMemoryRelationalStore : SlockRelationalStore {
+class InMemoryRelationalStore : RaftRelationalStore {
     val executedStatements = mutableListOf<Pair<String, List<RelationalValue>>>()
 
     override suspend fun execute(sql: String, bindArgs: List<RelationalValue>) {
@@ -31,7 +31,7 @@ class InMemoryRelationalStore : SlockRelationalStore {
         return RelationalRows(emptyList(), emptyList())
     }
 
-    override suspend fun transaction(block: suspend SlockRelationalStore.() -> Unit) {
+    override suspend fun transaction(block: suspend RaftRelationalStore.() -> Unit) {
         execute("BEGIN IMMEDIATE")
         try {
             block()

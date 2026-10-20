@@ -2,7 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
@@ -11,7 +11,7 @@ import build.raft.app.data.StoredAuthUser
 @Composable
 internal fun AuthChooseServerVisualContent() {
     val session = remember { authChooseServerVisualSession() }
-    val store = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val store = remember(session) { InMemoryRaftAuthSessionStore(session) }
     val authDataSource = remember(store, session) {
         SharedAuthDataSource(
             api = AuthChooseServerVisualApi(session.user, session.servers),
@@ -34,7 +34,7 @@ internal fun AuthEmailVerificationVisualContent() {
                 base.copy(user = base.user.copy(emailVerified = false))
             }
         }
-    val store = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val store = remember(session) { InMemoryRaftAuthSessionStore(session) }
     val authDataSource =
         remember(store, session) {
             SharedAuthDataSource(

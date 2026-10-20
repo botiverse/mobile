@@ -10,11 +10,11 @@ class AppLoginEnvironmentTest {
     )
 
     @Test fun sameCustomKeyWithDifferentEndpointsCannotExchange() = runBlocking {
-        val environments = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environments = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         environments.custom("a.example")
         var exchanges = 0
-        val runtime = createAppLoginRuntime(environments, InMemorySlockAuthSessionStore(), transportFactory = {
-            object : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
+        val runtime = createAppLoginRuntime(environments, InMemoryRaftAuthSessionStore(), transportFactory = {
+            object : RaftAuthTransport by AuthDataSourceTest.FakeAuthApi() {
                 override suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse {
                     exchanges++
                     return AuthNetworkResponse(500, null)
@@ -28,13 +28,13 @@ class AppLoginEnvironmentTest {
     }
 
     @Test fun switchDuringHydrationNeverSendsCredentialsToNewOriginOrCommitsSession() = runBlocking {
-        val environments = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environments = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         environments.custom("a.example")
-        val sessions = InMemorySlockAuthSessionStore()
+        val sessions = InMemoryRaftAuthSessionStore()
         val urls = mutableListOf<String>()
-        val executor = object : SlockHttpExecutor {
-            override suspend fun execute(priority: SlockRequestPriority, url: String, method: String,
-                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): SlockHttpExecutorResponse {
+        val executor = object : RaftHttpExecutor {
+            override suspend fun execute(priority: RaftRequestPriority, url: String, method: String,
+                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): RaftHttpExecutorResponse {
                 urls += url
                 val body = when {
                     url.endsWith("auth/app-login/complete") ->
@@ -45,14 +45,14 @@ class AppLoginEnvironmentTest {
                     }
                     else -> "[]"
                 }
-                return SlockHttpExecutorResponse(200, body, null)
+                return RaftHttpExecutorResponse(200, body, null)
             }
-            override suspend fun executeMultipart(priority: SlockRequestPriority, url: String,
+            override suspend fun executeMultipart(priority: RaftRequestPriority, url: String,
                 fields: Map<String, String>, files: List<MultipartFile>, headers: Map<String, String>,
-                onUploadProgress: ((SlockTransferProgress) -> Unit)?): SlockHttpExecutorResponse = error("Unexpected multipart")
+                onUploadProgress: ((RaftTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
         }
         val runtime = createAppLoginRuntime(environments, sessions, transportFactory = { base ->
-            SharedSlockAuthTransport(baseUrl = base, executor = executor)
+            SharedRaftAuthTransport(baseUrl = base, executor = executor)
         })
         assertFalse(runtime.complete("code", "verifier"))
         assertTrue(urls.size >= 2, "Completion must reach server hydration")

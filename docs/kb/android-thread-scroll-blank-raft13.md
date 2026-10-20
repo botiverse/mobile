@@ -32,19 +32,19 @@ Hands `39100538`, alpha `10020002`, Huawei CMU-AL10, 1320x2848; 537 `thread_flin
 
 ### What this rules out
 
-**Markdown parsing on the Compose thread is ruled out.** `prepareMarkdownContent` already dispatches through `SlockMarkdownParseDispatcher`, which on Android is `Dispatchers.Default.limitedParallelism(...)` (see `SlockMarkdownParseDispatcher.android.kt`). So `thread_markdown_preparse durationMs=377` is wall-clock time spent *awaiting* background parsing, not time occupying the Compose thread. "Move the parse off the main thread" is therefore not a fix for this — it is already off it.
+**Markdown parsing on the Compose thread is ruled out.** `prepareMarkdownContent` already dispatches through `RaftMarkdownParseDispatcher`, which on Android is `Dispatchers.Default.limitedParallelism(...)` (see `RaftMarkdownParseDispatcher.android.kt`). So `thread_markdown_preparse durationMs=377` is wall-clock time spent *awaiting* background parsing, not time occupying the Compose thread. "Move the parse off the main thread" is therefore not a fix for this — it is already off it.
 
 ### What remains open
 
 The 478 ms `jank_frame` is **one frame on the Android UI thread**, and the same window contains a `thread_markdown_body_recompose` for a 1536-character message.
 
-**What the 478 ms is:** `jank_frame` comes from JankStats, not from the FrameMetrics listener (that is a separate log). `SlockPerformanceDiagnostics.kt` reads `frameData.frameDurationUiNanos` and prints `jank_frame`; by API definition `frameDurationUiNanos` is the time this frame spent on the UI thread that owns the window. So the number is a main-thread frame, full stop.
+**What the 478 ms is:** `jank_frame` comes from JankStats, not from the FrameMetrics listener (that is a separate log). `RaftPerformanceDiagnostics.kt` reads `frameData.frameDurationUiNanos` and prints `jank_frame`; by API definition `frameDurationUiNanos` is the time this frame spent on the UI thread that owns the window. So the number is a main-thread frame, full stop.
 
 **What `operation=thread_first_frame` is not:** `operation` is an `AtomicReference("idle")` set by `updateOperation(...)`; `jank_frame` prints whatever value it held at the moment of the jank. It records "the most recently set label", **not** what this frame was doing, and not which thread was doing it. **`operation` also has no expiry** — if nothing calls `updateOperation` again, a frame ten seconds later still prints the stale label. A reader cannot tell `operationAgeMs=3` from `operationAgeMs=9400` in the current output.
 
 **So do not read a causal link into the co-occurrence.** "A 478 ms main-thread frame happened while the operation label read `thread_first_frame`" is supported. "`thread_first_frame` occupied the main thread for 478 ms" is not.
 
-**What is separate and still true:** Kuikly's Compose runs on `HRContextQueueHandlerThread` (`SlockKuiklyThreading.kt`), which is **not** the Android main thread. That is a fact about where Compose runs. It does **not** mean the 478 ms was spent there — the 478 ms is a main-thread measurement, and **whether the main thread was doing the work itself or synchronously waiting on the Kuikly thread is not established.**
+**What is separate and still true:** Kuikly's Compose runs on `HRContextQueueHandlerThread` (`RaftThreading.kt`), which is **not** the Android main thread. That is a fact about where Compose runs. It does **not** mean the 478 ms was spent there — the 478 ms is a main-thread measurement, and **whether the main thread was doing the work itself or synchronously waiting on the Kuikly thread is not established.**
 
 **Making that last question decidable** is what the next probe addresses: when the main thread stalls ≥150 ms, capture the main-thread stack and the Kuikly-thread stack from a **single `getAllStackTraces()`** call, and mark which one is merely waiting in its looper. Note that a stack sample must be read as busy-or-idle — a stack parked in `MessageQueue.nativePollOnce` means "nothing was dispatched", not "the thread was held".
 
@@ -61,7 +61,7 @@ Shorter messages in the same trace show **no frame above 110 ms**, so the pairin
 
 Two separate facts, and only one of them needs the arithmetic:
 
-**Structural (no timing needed):** Compose composition runs on Kuikly's context thread, not on the Android main thread (see `SlockKuiklyThreading.kt`). So a main-thread frame cannot be composition itself. That conclusion holds regardless of any timestamps.
+**Structural (no timing needed):** Compose composition runs on Kuikly's context thread, not on the Android main thread (see `RaftThreading.kt`). So a main-thread frame cannot be composition itself. That conclusion holds regardless of any timestamps.
 
 **Temporal (this is what the arithmetic buys):** the stall *begins* 1 ms and 41 ms **after** that row's composition completed. `thread_markdown_body_recompose` is emitted from a `SideEffect`, which runs after composition commits, and the implied frame start follows it. So the cost is in what happens **to the composed output next** — first measure / layout / draw — not in building it, and the ordering is what rules out "the stall overlaps composition."
 
@@ -69,7 +69,7 @@ Keep the two apart: the structural fact is a property of the runtime; the 1 ms /
 
 **Metadata a reader needs to re-derive this:**
 
-- Both lines go through the same writer (`SlockAndroidLocalDiagnostics.recordLog`) into the same JSONL with one wall-clock `ts`, recording **write time**. The two channels are structurally one clock; that is not an assumption.
+- Both lines go through the same writer (`RaftAndroidLocalDiagnostics.recordLog`) into the same JSONL with one wall-clock `ts`, recording **write time**. The two channels are structurally one clock; that is not an assumption.
 - `jank_frame` is written from the JankStats callback **at frame end**, so its `ts` is the frame's end. The frame start above is `ts − frameDurationUiNanos`.
 - **The derivation is an inference at ±1–2 frames, not a measurement.** There is log-write latency between the two events, and the gap itself varies (1 ms vs 41 ms), so it is not a constant.
 

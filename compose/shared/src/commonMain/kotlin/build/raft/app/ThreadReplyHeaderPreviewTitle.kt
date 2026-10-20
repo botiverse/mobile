@@ -5,11 +5,11 @@ package build.raft.app
  * generic 「消息列」 once the root message is loaded. Returns null when the root is not loaded
  * (or carries neither text nor attachments) so the caller keeps the generic title.
  *
- * Only a loaded [KuiklyThreadMessageItem] qualifies: the launch fallback preview has no author
+ * Only a loaded [RaftThreadMessageItem] qualifies: the launch fallback preview has no author
  * display name, and an id-shaped author would render as `@<uuid>`.
  */
 internal fun replyThreadHeaderPreviewTitle(
-    origin: KuiklyThreadMessageItem?,
+    origin: RaftThreadMessageItem?,
     imageLabel: String,
     fileLabel: String
 ): String? {

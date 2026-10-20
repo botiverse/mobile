@@ -436,7 +436,7 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 onChanged = { bumpRevision(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY) },
             ),
             // Offline-cache line (task #1123/#1124/#1125): lets an internal build run before/ON on ONE binary.
-            // Consumed through SharedServerFeatureFlags' diagnostic override seam (see SlockSharedStoreProvider),
+            // Consumed through SharedServerFeatureFlags' diagnostic override seam (see RaftSharedStoreProvider),
             // so every reader of this key — durable last-known reader, entered-scope REST writer, fold lane,
             // shadow observers — follows the same decision. Release builds are never entitled.
             ServerExactDiagnosticFeatureFlagConsumer(

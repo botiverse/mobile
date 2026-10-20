@@ -160,7 +160,7 @@ class PendingMentionActionBatchTest {
     private fun action(
         resolutionId: String,
         availableActions: List<String>
-    ) = KuiklyPendingMentionActionItem(
+    ) = RaftPendingMentionActionItem(
         resolutionId = resolutionId,
         targetType = "user",
         targetHandle = resolutionId.trim(),

@@ -28,7 +28,7 @@ private const val SearchDebounceMillis = 250L
 private const val SearchPersonalizationPrewarmTimeoutMillis = 250L
 
 internal class SharedHomeSearchSavedStore(
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private val savedRepository: SavedRepository,
     private val searchRepository: SearchRepository,
     private val memberRepository: MemberRepository? = null,
@@ -79,7 +79,7 @@ internal class SharedHomeSearchSavedStore(
             }
         }
         if (personalizationRepository != null) {
-            (authStore as? SlockAuthSessionEventSource)?.let { authEvents ->
+            (authStore as? RaftAuthSessionEventSource)?.let { authEvents ->
                 scope.launch {
                     authEvents.authSessionEvents.collect { event ->
                         if (event !is AuthSessionEvent.TokensRotated) {
@@ -1292,7 +1292,7 @@ private fun String.searchQueryDiagnostics(): String {
 }
 
 class SharedHomeSearchSavedViewModel(
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     savedRepository: SavedRepository,
     searchRepository: SearchRepository,
     memberRepository: MemberRepository? = null,
@@ -1318,7 +1318,7 @@ class SharedHomeSearchSavedViewModel(
                 readReceiptOwnerFactory = readReceiptOwnerFactory,
                 diagnosticsLogger = diagnosticsLogger,
                 personalizationRepository =
-                    PersistentSearchPersonalizationRepository(slockSharedPreferenceStore()),
+                    PersistentSearchPersonalizationRepository(raftSharedPreferenceStore()),
             )
         }
     private val store: SharedHomeSearchSavedStore by storeDelegate

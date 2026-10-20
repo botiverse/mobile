@@ -27,7 +27,7 @@ import build.raft.app.data.ConversationRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.ProgressiveConversationAttachmentUploader
 import build.raft.app.data.DirectAttachmentUploadOperation
-import build.raft.app.data.SlockExpectedAuthBinding
+import build.raft.app.data.RaftExpectedAuthBinding
 import build.raft.app.data.matchesExpectedAuthority
 import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.data.AddChannelMemberRequest
@@ -47,17 +47,17 @@ import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.PermissionBlocker
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
 import build.raft.app.data.SelectedServerStore
-import build.raft.app.data.SlockThreadApi
-import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.RaftThreadApi
+import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.ThreadActionCard
@@ -564,8 +564,8 @@ internal class SharedThreadFreshnessLedger(
         threadId: String,
         environmentId: String,
         principalId: String,
-        payload: KuiklyThreadScreenPayload
-    ): KuiklyThreadScreenPayload {
+        payload: RaftThreadScreenPayload
+    ): RaftThreadScreenPayload {
         if (environmentId.isBlank() || principalId.isBlank()) return payload
         return synchronized(lock) {
             applyReplyCountFactsLocked(
@@ -683,9 +683,9 @@ internal class SharedThreadFreshnessLedger(
         key: SharedThreadPayloadCacheKey,
         environmentId: String,
         principalId: String,
-        payload: KuiklyThreadScreenPayload
-    ): KuiklyThreadScreenPayload {
-        fun merge(message: KuiklyThreadMessageItem): KuiklyThreadMessageItem {
+        payload: RaftThreadScreenPayload
+    ): RaftThreadScreenPayload {
+        fun merge(message: RaftThreadMessageItem): RaftThreadMessageItem {
             val factKey = SharedThreadReplyCountKey(key, environmentId, principalId, message.id)
             val accepted = replyCountFacts[factKey] ?: return message
             val nextThreadChannelId = accepted.threadChannelId ?: message.threadChannelId
@@ -714,7 +714,7 @@ internal class SharedThreadFreshnessLedger(
 }
 
 private data class SharedThreadPayloadEntry(
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val generation: SharedThreadFreshnessGeneration
 )
 
@@ -737,7 +737,7 @@ internal sealed interface SharedThreadMessageResolution {
 }
 
 internal sealed interface SharedThreadOriginResolution {
-    data class Loaded(val message: KuiklyThreadMessageItem) : SharedThreadOriginResolution
+    data class Loaded(val message: RaftThreadMessageItem) : SharedThreadOriginResolution
     data object Missing : SharedThreadOriginResolution
     data class Error(val code: String) : SharedThreadOriginResolution
 }
@@ -918,7 +918,7 @@ internal class SharedThreadPayloadStore(
     private val prewarmMutex = Mutex()
     private val prewarmPool = Semaphore(maxConcurrentPrewarms.coerceAtLeast(1))
     private val prewarmStartMutex = Mutex()
-    private val prewarmInFlight = mutableMapOf<SharedThreadOwnedPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
+    private val prewarmInFlight = mutableMapOf<SharedThreadOwnedPayloadCacheKey, Deferred<DataResult<RaftThreadScreenPayload>>>()
     private val prewarmInFlightGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmFetchStartedGenerations =
@@ -927,13 +927,13 @@ internal class SharedThreadPayloadStore(
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmFailureGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
-    private val prewarmFailures = mutableMapOf<SharedThreadOwnedPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
+    private val prewarmFailures = mutableMapOf<SharedThreadOwnedPayloadCacheKey, DataResult<RaftThreadScreenPayload>>()
     private val failedPrewarmTakeovers =
-        mutableMapOf<SharedThreadOwnedPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
+        mutableMapOf<SharedThreadOwnedPayloadCacheKey, Deferred<DataResult<RaftThreadScreenPayload>>>()
     private val failedPrewarmTakeoverGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val failedPrewarmTakeoverResults =
-        mutableMapOf<SharedThreadOwnedPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
+        mutableMapOf<SharedThreadOwnedPayloadCacheKey, DataResult<RaftThreadScreenPayload>>()
     private val failedPrewarmTakeoverResultGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private var lastPrewarmStartedAt: TimeMark? = null
@@ -975,7 +975,7 @@ internal class SharedThreadPayloadStore(
         environmentId: String,
         principalId: String,
         ownerScopeId: String
-    ): KuiklyThreadScreenPayload? {
+    ): RaftThreadScreenPayload? {
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
         return payloads.value[sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)]
             ?.takeIf { entry -> entry.generation === generation }
@@ -988,7 +988,7 @@ internal class SharedThreadPayloadStore(
     fun put(
         serverId: String,
         threadId: String,
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         ownerScopeId: String
     ) {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
@@ -998,7 +998,7 @@ internal class SharedThreadPayloadStore(
 
     fun putIfCurrent(
         generation: SharedThreadFreshnessGeneration,
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         ownerScopeId: String
     ): Boolean {
         if (generation.ownerScopeId != ownerScopeId) return false
@@ -1030,8 +1030,8 @@ internal class SharedThreadPayloadStore(
         threadId: String,
         environmentId: String,
         principalId: String,
-        payload: KuiklyThreadScreenPayload
-    ): KuiklyThreadScreenPayload =
+        payload: RaftThreadScreenPayload
+    ): RaftThreadScreenPayload =
         freshnessLedger.applyReplyCountFacts(serverId, threadId, environmentId, principalId, payload)
 
     fun captureGeneration(
@@ -1080,7 +1080,7 @@ internal class SharedThreadPayloadStore(
     fun values(
         serverId: String,
         ownerScopeId: String
-    ): Collection<KuiklyThreadScreenPayload> {
+    ): Collection<RaftThreadScreenPayload> {
         requireSharedThreadOwnerScopeId(ownerScopeId)
         return payloads.value
             .filter { (key, entry) ->
@@ -1096,13 +1096,13 @@ internal class SharedThreadPayloadStore(
         serverId: String,
         threadId: String,
         ownerScopeId: String,
-        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
-    ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
+        fetch: suspend () -> DataResult<RaftThreadScreenPayload>
+    ): DataResult<RaftThreadScreenPayload> = coroutineScope {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
 
-        var cached: KuiklyThreadScreenPayload? = null
-        var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+        var cached: RaftThreadScreenPayload? = null
+        var created: Deferred<DataResult<RaftThreadScreenPayload>>? = null
         val deferred =
             prewarmMutex.withLock {
                 if (prewarmReadyGenerations[key] !== generation) {
@@ -1215,7 +1215,7 @@ internal class SharedThreadPayloadStore(
         ownerScopeId: String
     ): Boolean {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
-        var queued: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+        var queued: Deferred<DataResult<RaftThreadScreenPayload>>? = null
         prewarmMutex.withLock {
             val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
             val candidate =
@@ -1236,7 +1236,7 @@ internal class SharedThreadPayloadStore(
         serverId: String,
         threadId: String,
         ownerScopeId: String
-    ): DataResult<KuiklyThreadScreenPayload>? {
+    ): DataResult<RaftThreadScreenPayload>? {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val lookup =
             prewarmMutex.withLock {
@@ -1271,12 +1271,12 @@ internal class SharedThreadPayloadStore(
         serverId: String,
         threadId: String,
         ownerScopeId: String,
-        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
-    ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
+        fetch: suspend () -> DataResult<RaftThreadScreenPayload>
+    ): DataResult<RaftThreadScreenPayload> = coroutineScope {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         while (true) {
-            var immediate: DataResult<KuiklyThreadScreenPayload>? = null
-            var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+            var immediate: DataResult<RaftThreadScreenPayload>? = null
+            var created: Deferred<DataResult<RaftThreadScreenPayload>>? = null
             lateinit var generation: SharedThreadFreshnessGeneration
             val deferred =
                 prewarmMutex.withLock {
@@ -1358,8 +1358,8 @@ internal class SharedThreadPayloadStore(
     private fun prewarmMutexTakeover(
         key: SharedThreadOwnedPayloadCacheKey,
         generation: SharedThreadFreshnessGeneration,
-        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
-    ): Deferred<DataResult<KuiklyThreadScreenPayload>> =
+        fetch: suspend () -> DataResult<RaftThreadScreenPayload>
+    ): Deferred<DataResult<RaftThreadScreenPayload>> =
         failedPrewarmTakeovers[key]
             ?.takeIf { failedPrewarmTakeoverGenerations[key] === generation }
             ?: scope.async(start = CoroutineStart.LAZY) {
@@ -1435,9 +1435,9 @@ internal class SharedThreadPayloadStore(
 
 private data class SharedThreadPrewarmLookup(
     val generation: SharedThreadFreshnessGeneration,
-    val cached: KuiklyThreadScreenPayload?,
-    val inFlight: Deferred<DataResult<KuiklyThreadScreenPayload>>?,
-    val failure: DataResult<KuiklyThreadScreenPayload>?
+    val cached: RaftThreadScreenPayload?,
+    val inFlight: Deferred<DataResult<RaftThreadScreenPayload>>?,
+    val failure: DataResult<RaftThreadScreenPayload>?
 )
 
 private fun Message.needsSharedThreadMessageStoreHydration(): Boolean =
@@ -1459,7 +1459,7 @@ internal data class MarkdownThreadRefTarget(
 
 /** An older page served from the durable V2 window while the stand-in is shown (task #168 step 2b). */
 internal data class SharedThreadDurableOlderPage(
-    val messages: List<KuiklyThreadMessageItem>,
+    val messages: List<RaftThreadMessageItem>,
     val pageSize: Int,
     val canLoadMoreBefore: Boolean,
     /** The page reaches the conversation's first message: nothing older is stored and the window starts there. */
@@ -1467,7 +1467,7 @@ internal data class SharedThreadDurableOlderPage(
 )
 
 internal data class SharedThreadPageFetchResult(
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val requestedPageSize: Int,
     /**
      * Task #168: the raw server page plus the identity that fetched it, for the durable window
@@ -1483,8 +1483,8 @@ internal data class SharedThreadDurablePage(
 )
 
 internal class SharedThreadDataSource(
-    private val api: SlockThreadApi,
-    private val sessionStore: SlockAuthSessionStore,
+    private val api: RaftThreadApi,
+    private val sessionStore: RaftAuthSessionStore,
     private val pendingSendJournal: ThreadPendingSendJournal? = null,
     private val selectedServerStore: SelectedServerStore? = null,
     private val memberRepository: MemberRepository? = null,
@@ -1523,8 +1523,8 @@ internal class SharedThreadDataSource(
      * adjacent-page writer from the provider.
      */
     private val durablePageExtender: ThreadDurablePageExtender? = null,
-    private val agentsApiClient: SlockAgentsApiClient? = null,
-    private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
+    private val agentsApiClient: RaftAgentsApiClient? = null,
+    private val actionCardsApiClient: RaftIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
     private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
@@ -1556,7 +1556,7 @@ internal class SharedThreadDataSource(
 
     internal fun seedThreadAuthorProfiles(
         serverId: String?,
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         source: String
     ) {
         val scopedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
@@ -1580,7 +1580,7 @@ internal class SharedThreadDataSource(
                 is MessageUpdated -> listOf(event.message)
                 is SyncResumeResponse -> event.messages
                 else -> emptyList()
-            }.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+            }.map { message -> message.toRaftThreadMessageItem(currentUserId) }
         serverMembersStore?.seedThreadAuthorProfiles(
             serverId = scopedServerId,
             messages = messageItems,
@@ -1604,7 +1604,7 @@ internal class SharedThreadDataSource(
 
     constructor(
         networkApi: SharedThreadNetworkApi,
-        sessionStore: SlockAuthSessionStore,
+        sessionStore: RaftAuthSessionStore,
         pendingSendJournal: ThreadPendingSendJournal? = null,
         selectedServerStore: SelectedServerStore? = null,
         memberRepository: MemberRepository? = null,
@@ -1623,8 +1623,8 @@ internal class SharedThreadDataSource(
         durableLastKnownReader: ThreadDurableLastKnownReader? = null,
         enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
         durablePageExtender: ThreadDurablePageExtender? = null,
-        agentsApiClient: SlockAgentsApiClient? = null,
-        actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
+        agentsApiClient: RaftAgentsApiClient? = null,
+        actionCardsApiClient: RaftIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
         readReceiptCoordinator: ReadReceiptCoordinator? = null,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
@@ -1635,7 +1635,7 @@ internal class SharedThreadDataSource(
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
-        api = SlockThreadApiClient(networkApi, diagnosticsLogger),
+        api = RaftThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
         pendingSendJournal = pendingSendJournal,
         selectedServerStore = selectedServerStore,
@@ -1702,7 +1702,7 @@ internal class SharedThreadDataSource(
     internal fun persistPendingLocalSend(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
-        message: KuiklyThreadMessageItem,
+        message: RaftThreadMessageItem,
     ): Boolean = pendingSendJournal?.persistSending(provenance, route, message) ?: true
 
     internal fun clearPendingLocalSend(
@@ -1758,8 +1758,8 @@ internal class SharedThreadDataSource(
     internal fun restorePendingLocalSends(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
-        canonicalPayload: KuiklyThreadScreenPayload,
-    ): KuiklyThreadScreenPayload {
+        canonicalPayload: RaftThreadScreenPayload,
+    ): RaftThreadScreenPayload {
         val journal = pendingSendJournal ?: return canonicalPayload
         // A cached/launch payload is only a canonical candidate. Pending rows
         // are owned by the scoped journal, so discard any compatibility shadow
@@ -1976,8 +1976,8 @@ internal class SharedThreadDataSource(
     internal fun applyReplyCountFacts(
         threadId: String,
         expected: ReplyCacheProvenance,
-        payload: KuiklyThreadScreenPayload,
-    ): KuiklyThreadScreenPayload? =
+        payload: RaftThreadScreenPayload,
+    ): RaftThreadScreenPayload? =
         synchronized(replyCacheProvenanceLock) {
             if (replyCacheProvenance.value != expected) return@synchronized null
             payloadCache.applyReplyCountFacts(
@@ -2002,7 +2002,7 @@ internal class SharedThreadDataSource(
         }
 
     fun cachePayload(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         serverId: String = cacheServerId.value,
         expectedGeneration: SharedThreadFreshnessGeneration? = null,
         ownerScopeId: String = cachePayloadOwnerScopeId.value,
@@ -2095,7 +2095,7 @@ internal class SharedThreadDataSource(
         serverId: String = cacheServerId.value,
         principalId: String = cachePrincipalId.value,
         environmentId: String = cacheEnvironmentId.value
-    ): KuiklyThreadScreenPayload? =
+    ): RaftThreadScreenPayload? =
         ownerScopeId
             .takeIf { ownerScopeId -> ownerScopeId.isNotBlank() }
             ?.let { ownerScopeId ->
@@ -2111,7 +2111,7 @@ internal class SharedThreadDataSource(
     internal fun cachedPayloadIfCurrent(
         threadId: String,
         expectedProvenance: ReplyCacheProvenance
-    ): KuiklyThreadScreenPayload? =
+    ): RaftThreadScreenPayload? =
         synchronized(replyCacheProvenanceLock) {
             if (replyCacheProvenance.value != expectedProvenance) return@synchronized null
             val ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId ?: return@synchronized null
@@ -2173,8 +2173,8 @@ internal class SharedThreadDataSource(
         replyParent: ThreadDurableReplyParent?,
     ): DurableScopeAdmission? =
         when (routeIdentity.surfaceKind) {
-            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> DurableScopeAdmission.TopLevel
-            KuiklyThreadSurfaceKind.ReplyThread ->
+            RaftThreadSurfaceKind.Channel, RaftThreadSurfaceKind.DirectMessage -> DurableScopeAdmission.TopLevel
+            RaftThreadSurfaceKind.ReplyThread ->
                 replyParent
                     ?.takeIf { it.parentChannelId != routeIdentity.timelineChannelId }
                     ?.let(DurableScopeAdmission::ReplyThread)
@@ -2296,10 +2296,10 @@ internal class SharedThreadDataSource(
     }
 
     internal suspend fun durableLastKnownPayloadIfCurrent(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         routeIdentity: ThreadRouteIdentity,
         context: ReplyCacheProducerContext,
-    ): KuiklyThreadScreenPayload? {
+    ): RaftThreadScreenPayload? {
         val reader = durableLastKnownReader ?: return null
         if (!routeIdentity.canRenderTimelineCandidates) return null
         val admission = durableScopeAdmission(routeIdentity, routePayload.durableReplyParentOrNull()) ?: return null
@@ -2403,7 +2403,7 @@ internal class SharedThreadDataSource(
         val admission =
             durableScopeAdmission(routeIdentity, replyParent)
                 ?: return refuse(
-                    if (routeIdentity.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
+                    if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
                 )
         val allowedScopeKinds = routeIdentity.durableScopeKinds()
         if (channelId == null) return refuse("no_channel")
@@ -2447,14 +2447,14 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun rememberedReplyThreadAccessFailure(
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: RaftThreadScreenPayload
     ): ScreenError? {
         val context = captureReplyCacheProducerContext() ?: return null
         return rememberedReplyThreadAccessFailure(basePayload, context)
     }
 
     internal suspend fun rememberedReplyThreadAccessFailure(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         context: ReplyCacheProducerContext
     ): ScreenError? {
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
@@ -2469,7 +2469,7 @@ internal class SharedThreadDataSource(
     }
 
     internal suspend fun clearRememberedReplyThreadAccessFailure(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         context: ReplyCacheProducerContext,
     ): Boolean {
         if (!isCurrentReplyCacheProvenance(context.provenance)) return false
@@ -2486,9 +2486,9 @@ internal class SharedThreadDataSource(
 
     private fun replyThreadAccessFlightKey(
         resolutionScope: ReplyResolutionScope,
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: RaftThreadScreenPayload
     ): SharedReplyThreadAccessFlightKey? {
-        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+        if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return null
         val parentMessageId =
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -2515,7 +2515,7 @@ internal class SharedThreadDataSource(
     private suspend fun replyThreadAccessAuthorityStillCurrent(
         expectedKey: SharedReplyThreadAccessFlightKey,
         expectedProvenance: ReplyCacheProvenance,
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: RaftThreadScreenPayload
     ): Boolean {
         val currentScope = readReplyResolutionScope() ?: return false
         return currentScope.provenance == expectedProvenance &&
@@ -2528,14 +2528,14 @@ internal class SharedThreadDataSource(
     // store's merged snapshot instead (see applyRealtimeEvent). Narrow by
     // design: removes exactly one thread's candidate; never touches durable
     // stores, the message resolver, or the active screen's in-memory state.
-    fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
+    fun invalidateCachedPayload(payload: RaftThreadScreenPayload) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         val ownerScopeId = cachePayloadOwnerScopeId.value.takeIf { it.isNotBlank() } ?: return
         payloadCache.remove(cacheServerId.value, threadId, ownerScopeId)
     }
 
     internal fun invalidateCachedPayload(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         expectedProvenance: ReplyCacheProvenance,
     ): Boolean =
         synchronized(replyCacheProvenanceLock) {
@@ -2550,16 +2550,16 @@ internal class SharedThreadDataSource(
             true
         }
 
-    suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    suspend fun withCachedReplyParentCandidate(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload {
         val context = captureReplyCacheProducerContext() ?: return basePayload
         return withCachedReplyParentCandidate(basePayload, context)
     }
 
     internal fun withCachedReplyParentCandidate(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         context: ReplyCacheProducerContext
-    ): KuiklyThreadScreenPayload {
-        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return basePayload
+    ): RaftThreadScreenPayload {
+        if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return basePayload
         if (basePayload.originMessage != null || basePayload.originPreview?.isNotBlank() == true) return basePayload
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return basePayload
         val parentMessageId =
@@ -2576,7 +2576,7 @@ internal class SharedThreadDataSource(
                 parentMessageId = parentMessageId
             ) ?: return basePayload
         return basePayload.copy(
-            originMessage = parent.toKuiklyThreadMessageItem(session.user.id),
+            originMessage = parent.toRaftThreadMessageItem(session.user.id),
             originParentMessageId = parentMessageId,
             originStatus = "loaded",
             originErrorCode = null
@@ -2584,10 +2584,10 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun resolveReplyOrigin(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         expectedProvenance: ReplyCacheProvenance? = null
     ): SharedThreadOriginResolution {
-        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+        if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
             return SharedThreadOriginResolution.Missing
         }
         val parentChannelId =
@@ -2614,7 +2614,7 @@ internal class SharedThreadDataSource(
         ) {
             is SharedThreadMessageResolution.Loaded ->
                 SharedThreadOriginResolution.Loaded(
-                    resolution.message.toKuiklyThreadMessageItem(session.user.id)
+                    resolution.message.toRaftThreadMessageItem(session.user.id)
                 )
             SharedThreadMessageResolution.Missing -> SharedThreadOriginResolution.Missing
             is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code)
@@ -2630,7 +2630,7 @@ internal class SharedThreadDataSource(
         provenance: ReplyCacheProvenance,
         serverId: String?,
         parentChannelId: String?,
-        parentMessage: KuiklyThreadMessageItem,
+        parentMessage: RaftThreadMessageItem,
         threadChannelId: String?
     ): Boolean {
         val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return false
@@ -2675,18 +2675,18 @@ internal class SharedThreadDataSource(
         return true
     }
 
-    suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    suspend fun withConversationAccessFallback(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload {
         val session = readSession() ?: return basePayload
         return basePayload.withConversationAccessFallback(resolveConversationAccessFallback(basePayload, session))
     }
 
-    suspend fun withKnownMarkdownChannelNames(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    suspend fun withKnownMarkdownChannelNames(payload: RaftThreadScreenPayload): RaftThreadScreenPayload {
         val session = readSession() ?: return payload
         return payload.withKnownMarkdownChannelNames(session)
     }
 
     suspend fun homeConversationContextResolution(
-        payload: KuiklyThreadScreenPayload
+        payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution {
         val session = readSession() ?: return ThreadHomeContextResolution(payload = payload)
         val home = currentHomeSnapshot(session) ?: return ThreadHomeContextResolution(payload = payload)
@@ -2706,16 +2706,16 @@ internal class SharedThreadDataSource(
      * timeout after the canonical conversation list is already available.
      */
     suspend fun initialConversationAccessResolution(
-        payload: KuiklyThreadScreenPayload
+        payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution =
-        if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             replyParentConversationAccessResolution(payload)
         } else {
             homeConversationContextResolution(payload)
         }
 
     private suspend fun replyParentConversationAccessResolution(
-        payload: KuiklyThreadScreenPayload
+        payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution {
         val (parentId, parentKind) =
             payload.replyParentAccessIdentityOrNull()
@@ -2820,7 +2820,7 @@ internal class SharedThreadDataSource(
             isCurrentReplyCacheProvenanceForLocalSend(expected.provenance)
     }
 
-    private fun KuiklyThreadScreenPayload.exactReplyParentAccessCandidate(
+    private fun RaftThreadScreenPayload.exactReplyParentAccessCandidate(
         serverId: ServerId,
         parentId: String,
         parentKind: ConversationKind,
@@ -2838,7 +2838,7 @@ internal class SharedThreadDataSource(
             ?.toConversationAccessCandidate()
             ?.takeIf(::acceptsInitialConversationAccessCandidate)
 
-    suspend fun withHomeConversationContext(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+    suspend fun withHomeConversationContext(payload: RaftThreadScreenPayload): RaftThreadScreenPayload =
         homeConversationContextResolution(payload).payload
 
     private fun cachedReplyThreadStreamId(
@@ -2852,7 +2852,7 @@ internal class SharedThreadDataSource(
             ?: messageStore?.getReplyThreadStream(namespaceId, parentChannelId, parentMessageId)
     }
 
-    private fun KuiklyThreadScreenPayload.matchesCachedReplyThreadStreamResolution(
+    private fun RaftThreadScreenPayload.matchesCachedReplyThreadStreamResolution(
         namespaceId: String?
     ): Boolean {
         val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
@@ -2918,7 +2918,7 @@ internal class SharedThreadDataSource(
 
     private fun cacheReplyThreadResolution(
         provenance: ReplyCacheProvenance,
-        payload: KuiklyThreadScreenPayload
+        payload: RaftThreadScreenPayload
     ): Boolean {
         val parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
         val parentMessageId =
@@ -2972,10 +2972,10 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun cacheCanonicalPayload(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         expectedOwnerScopeId: String? = null,
         expectedProvenance: ReplyCacheProvenance? = null
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val context = captureReplyCacheProducerContext() ?: return payload
         val ownerScopeId = context.provenance.threadPayloadOwnerScopeId ?: return payload
         if (expectedOwnerScopeId != null && expectedOwnerScopeId != ownerScopeId) return payload
@@ -2990,13 +2990,13 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun cacheLocalSendFailure(
-        basePayload: KuiklyThreadScreenPayload,
-        localMessage: KuiklyThreadMessageItem,
+        basePayload: RaftThreadScreenPayload,
+        localMessage: RaftThreadMessageItem,
         errorCode: String?,
         errorMessage: String?,
         expectedOwnerScopeId: String? = null,
         expectedProvenance: ReplyCacheProvenance? = null
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val failedPayload =
             basePayload
                 .withLocalSendStarted(localMessage)
@@ -3006,12 +3006,12 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun cacheLocalSendSuccess(
-        basePayload: KuiklyThreadScreenPayload,
-        localMessage: KuiklyThreadMessageItem,
+        basePayload: RaftThreadScreenPayload,
+        localMessage: RaftThreadMessageItem,
         sentPage: ThreadMessagesPage,
         expectedOwnerScopeId: String? = null,
         expectedProvenance: ReplyCacheProvenance? = null
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         if (sentPage.messages.isEmpty()) return basePayload
         val context = captureReplyCacheProducerContext() ?: return basePayload
         val ownerScopeId = context.provenance.threadPayloadOwnerScopeId ?: return basePayload
@@ -3112,7 +3112,7 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun commitThreadActionCard(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         messageId: String,
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
@@ -3265,7 +3265,7 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun commitChannelAddMembersActionCard(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         messageId: String,
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
@@ -3347,7 +3347,7 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun markThreadActionCardExecuted(
-        actionsApi: SlockIntegrationsActionsPushApiClient,
+        actionsApi: RaftIntegrationsActionsPushApiClient,
         messageId: String,
         body: String,
         executedCard: ThreadActionCard
@@ -3361,11 +3361,11 @@ internal class SharedThreadDataSource(
         }
 
     suspend fun fetchThreadPayload(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         persistResult: Boolean = true,
         reusePrewarm: Boolean = false,
         replaceReplyAccessFailure: Boolean = false
-    ): DataResult<KuiklyThreadScreenPayload> =
+    ): DataResult<RaftThreadScreenPayload> =
         fetchThreadPayloadWithResolutionScope(
             basePayload = basePayload,
             persistResult = persistResult,
@@ -3380,12 +3380,12 @@ internal class SharedThreadDataSource(
      * the surrounding Store generation still belongs to A.
      */
     internal suspend fun fetchThreadPayloadForContext(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         expectedContext: ReplyCacheProducerContext,
         persistResult: Boolean = true,
         reusePrewarm: Boolean = false,
         replaceReplyAccessFailure: Boolean = false,
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
         }
@@ -3404,12 +3404,12 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun fetchThreadPayloadWithResolutionScope(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         persistResult: Boolean,
         reusePrewarm: Boolean,
         replyResolutionScope: ReplyResolutionScope?,
         replaceReplyAccessFailure: Boolean = false
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
         val replyResolutionNamespaceId = resolutionScope.namespaceId
@@ -3465,7 +3465,7 @@ internal class SharedThreadDataSource(
                 }
             }
         }
-        suspend fun fetchCanonicalPayload(): DataResult<KuiklyThreadScreenPayload> =
+        suspend fun fetchCanonicalPayload(): DataResult<RaftThreadScreenPayload> =
             if (conversationRepository != null) {
                 if (shouldFetchReplyByParent) {
                     fetchInitialReplyThreadPayloadFromRepository(
@@ -3518,7 +3518,7 @@ internal class SharedThreadDataSource(
                 )
             }
         var canonicalRequestGeneration: SharedThreadFreshnessGeneration? = null
-        suspend fun fetchCanonicalPayloadForCurrentGeneration(): DataResult<KuiklyThreadScreenPayload> {
+        suspend fun fetchCanonicalPayloadForCurrentGeneration(): DataResult<RaftThreadScreenPayload> {
             val resolvedThreadId = threadId ?: return fetchCanonicalPayload()
             while (true) {
                 if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
@@ -3561,7 +3561,7 @@ internal class SharedThreadDataSource(
             when (payloadResult) {
                 is DataResult.Content -> payloadResult.data
                 is DataResult.Empty ->
-                    if (resolvedBasePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                    if (resolvedBasePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                         payloadResult.reason == EmptyReason.NoMessages
                     ) {
                         resolvedBasePayload.toEmptyReplyThreadPayload()
@@ -3629,10 +3629,10 @@ internal class SharedThreadDataSource(
             return DataResult.Error(ScreenError(code = "thread_prewarm_server_changed", retryable = false))
         }
         val basePayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                channelKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = key.threadChannelId,
                 streamChannelId = key.threadChannelId,
                 parentChannelId = key.parentChannelId,
@@ -3682,9 +3682,9 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun resolveReplyThreadStream(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         replyResolutionScope: ReplyResolutionScope
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val repository = conversationRepository ?: return DataResult.Content(basePayload)
         if (!basePayload.needsReplyThreadStreamResolution()) {
             return DataResult.Content(basePayload)
@@ -3693,10 +3693,10 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun createOrOpenReplyThreadStream(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         repository: ConversationRepository? = conversationRepository,
         replyResolutionScope: ReplyResolutionScope
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val resolvedRepository =
             repository
                 ?: return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
@@ -3748,9 +3748,9 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun fetchWebLinkThreadPayload(
-        basePayload: KuiklyThreadScreenPayload,
-        target: SlockThreadWebLinkTarget
-    ): DataResult<KuiklyThreadScreenPayload> {
+        basePayload: RaftThreadScreenPayload,
+        target: RaftThreadWebLinkTarget
+    ): DataResult<RaftThreadScreenPayload> {
         val messageId = target.messageId?.takeIf { it.isNotBlank() }
         if (messageId == null || conversationRepository == null) {
             return fetchThreadPayload(basePayload)
@@ -3765,7 +3765,7 @@ internal class SharedThreadDataSource(
                 expectedProvenance = resolutionScope.provenance,
                 fallbackCode = "thread_weblink_context",
                 call = { repository -> repository.getMessageContext(MessageId(messageId)) },
-                transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+                transform = { snapshot -> snapshot.toRaftThreadPayload(basePayload, session.user.id) }
             )
         return when (contextResult) {
             is DataResult.Content -> contextResult
@@ -3775,7 +3775,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun enrichSavedStatus(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    suspend fun enrichSavedStatus(payload: RaftThreadScreenPayload): RaftThreadScreenPayload {
         val context = captureReplyCacheProducerContext() ?: return payload
         return when (val result = enrichSavedStatus(payload, context)) {
             is DataResult.Content -> result.data
@@ -3791,9 +3791,9 @@ internal class SharedThreadDataSource(
      * request and this lookup: doing so can turn an A result into a B projection.
      */
     internal suspend fun enrichSavedStatus(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         expectedContext: ReplyCacheProducerContext,
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenance(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
         }
@@ -3808,9 +3808,9 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun fetchFollowedThreadPayload(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         onSummaries: (ThreadReplySummariesSnapshot, TimeSource.Monotonic.ValueTimeMark) -> Unit = { _, _ -> },
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         return fetchFollowedThreadPayloadForContext(
             basePayload = basePayload,
             expectedContext = null,
@@ -3819,15 +3819,15 @@ internal class SharedThreadDataSource(
     }
 
     internal suspend fun fetchFollowedThreadPayloadForContext(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         expectedContext: ReplyCacheProducerContext?,
         onSummaries: (ThreadReplySummariesSnapshot, TimeSource.Monotonic.ValueTimeMark) -> Unit = { _, _ -> },
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         if (expectedContext != null && !isCurrentReplyCacheProvenance(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
         }
         if (conversationRepository == null) return DataResult.Content(basePayload)
-        if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             return DataResult.Content(basePayload)
         }
         val context = expectedContext ?: captureReplyCacheProducerContext()
@@ -3961,12 +3961,12 @@ internal class SharedThreadDataSource(
      * Error.
      */
     internal sealed class MembersEnrichOutcome {
-        data class Updated(val payload: KuiklyThreadScreenPayload) : MembersEnrichOutcome()
+        data class Updated(val payload: RaftThreadScreenPayload) : MembersEnrichOutcome()
         data object Unchanged : MembersEnrichOutcome()
         data class Failed(val reason: String) : MembersEnrichOutcome()
     }
 
-    suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): MembersEnrichOutcome {
+    suspend fun enrichThreadMembers(payload: RaftThreadScreenPayload): MembersEnrichOutcome {
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
             ?: return MembersEnrichOutcome.Unchanged
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
@@ -4002,13 +4002,13 @@ internal class SharedThreadDataSource(
         val members =
             channelMembers.data.members
                 .distinctBy { it.memberKey }
-                .map { it.toKuiklyThreadMemberItem(serverId) }
+                .map { it.toRaftThreadMemberItem(serverId) }
         val candidates =
             if (serverMembers == null) {
                 payload.memberCandidates
             } else {
                 threadAddMemberCandidatesExcludingJoined(
-                    candidates = serverMembers.map { it.toKuiklyThreadMemberItem(serverId) },
+                    candidates = serverMembers.map { it.toRaftThreadMemberItem(serverId) },
                     members = members,
                     localServerId = serverId?.value
                 )
@@ -4024,10 +4024,10 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun addChannelMember(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         memberId: String,
         kind: String?
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val repository =
             memberRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_member_repository_missing", retryable = false))
@@ -4075,10 +4075,10 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun markdownChannelLaunchPayload(
-        currentPayload: KuiklyThreadScreenPayload,
+        currentPayload: RaftThreadScreenPayload,
         channelLabel: String,
         requiredKind: ConversationKind? = null
-    ): KuiklyThreadScreenPayload? {
+    ): RaftThreadScreenPayload? {
         val session = readSession() ?: return null
         val home = currentHomeSnapshot(session) ?: return null
         return buildMarkdownChannelLaunchPayload(
@@ -4097,11 +4097,11 @@ internal class SharedThreadDataSource(
 
     suspend fun markdownThreadRefLaunchPayload(
         provenance: ReplyCacheProvenance,
-        currentPayload: KuiklyThreadScreenPayload,
+        currentPayload: RaftThreadScreenPayload,
         channelLabel: String,
         threadShortId: String?,
         requiredParentKind: ConversationKind? = null
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val shortId =
             threadShortId
                 ?.trim()
@@ -4194,10 +4194,10 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun removeChannelMember(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         memberId: String,
         kind: String?
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val repository =
             memberRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_member_repository_missing", retryable = false))
@@ -4248,7 +4248,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun leaveChannel(payload: KuiklyThreadScreenPayload): DataResult<Unit> {
+    suspend fun leaveChannel(payload: RaftThreadScreenPayload): DataResult<Unit> {
         val repository =
             channelRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_channel_repository_missing", retryable = false))
@@ -4263,7 +4263,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun archiveChannel(payload: KuiklyThreadScreenPayload): DataResult<Unit> {
+    suspend fun archiveChannel(payload: RaftThreadScreenPayload): DataResult<Unit> {
         val repository =
             channelRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_channel_repository_missing", retryable = false))
@@ -4278,7 +4278,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun deleteChannel(payload: KuiklyThreadScreenPayload): DataResult<Unit> {
+    suspend fun deleteChannel(payload: RaftThreadScreenPayload): DataResult<Unit> {
         val repository =
             channelRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_channel_repository_missing", retryable = false))
@@ -4293,7 +4293,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    private suspend fun refreshMembersAfterMutation(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    private suspend fun refreshMembersAfterMutation(payload: RaftThreadScreenPayload): RaftThreadScreenPayload {
         return when (val outcome = enrichThreadMembers(payload)) {
             is SharedThreadDataSource.MembersEnrichOutcome.Updated -> outcome.payload
             is SharedThreadDataSource.MembersEnrichOutcome.Unchanged,
@@ -4302,7 +4302,7 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun fetchOlderThreadPayload(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         beforeSeq: Long
     ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
@@ -4317,7 +4317,7 @@ internal class SharedThreadDataSource(
         )
 
     suspend fun fetchNewerThreadPayload(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         afterSeq: Long
     ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
@@ -4342,7 +4342,7 @@ internal class SharedThreadDataSource(
      * fact (does the page contain the anchor message), never by seq arithmetic.
      */
     suspend fun fetchGapCatchUpLatestPage(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         wide: Boolean,
     ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
@@ -4375,7 +4375,7 @@ internal class SharedThreadDataSource(
     suspend fun uploadAttachments(
         channelId: String,
         files: List<PlatformFile>,
-        onProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null
+        onProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null
     ): DataResult<AttachmentUploadResult> {
         val repository =
             conversationRepository
@@ -4416,7 +4416,7 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun attachmentUploadMaxBytes(
-        expectedAuthority: SlockExpectedAuthBinding? = null,
+        expectedAuthority: RaftExpectedAuthBinding? = null,
     ): DataResult<Long> {
         val repository =
             conversationRepository
@@ -4436,7 +4436,7 @@ internal class SharedThreadDataSource(
         return boundRepository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
     }
 
-    suspend fun captureExternalShareSendAuthority(): SlockExpectedAuthBinding? {
+    suspend fun captureExternalShareSendAuthority(): RaftExpectedAuthBinding? {
         val session = sessionStore.readSession() ?: return null
         val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId().takeIf { it.isNotBlank() } ?: return null
         val accountId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
@@ -4444,7 +4444,7 @@ internal class SharedThreadDataSource(
         val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
         val serverId = session.currentServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
         if (session.servers.none { server -> server.id.trim() == serverId }) return null
-        return SlockExpectedAuthBinding(
+        return RaftExpectedAuthBinding(
             accountId = accountId,
             accessToken = accessToken,
             refreshToken = refreshToken,
@@ -4453,7 +4453,7 @@ internal class SharedThreadDataSource(
         )
     }
 
-    suspend fun matchesExternalShareSendAuthority(expected: SlockExpectedAuthBinding): Boolean {
+    suspend fun matchesExternalShareSendAuthority(expected: RaftExpectedAuthBinding): Boolean {
         val session = sessionStore.readSession() ?: return false
         val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId()
         val expectedEnvironment = expected.environmentId.normalizedEnvironmentId()
@@ -4474,10 +4474,10 @@ internal class SharedThreadDataSource(
         api.attachmentHtmlPreviewUrl(attachmentId)
 
     suspend fun fetchFilesPayload(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         cursor: String? = null,
-        currentPayload: KuiklyThreadFilesPayload? = null
-    ): DataResult<KuiklyThreadFilesPayload> {
+        currentPayload: RaftThreadFilesPayload? = null
+    ): DataResult<RaftThreadFilesPayload> {
         val repository =
             conversationRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false))
@@ -4487,7 +4487,7 @@ internal class SharedThreadDataSource(
         return when (val result = repository.getChannelFiles(ChannelId(threadId), cursor = cursor)) {
             is DataResult.Content ->
                 DataResult.Content(
-                    result.data.toKuiklyThreadFilesPayload(
+                    result.data.toRaftThreadFilesPayload(
                         basePayload = basePayload,
                         currentPayload = currentPayload,
                         append = cursor != null
@@ -4498,7 +4498,7 @@ internal class SharedThreadDataSource(
                     currentPayload
                         ?.takeIf { cursor != null && it.items.isNotEmpty() }
                         ?.copy(status = "content", hasMore = false, loadingMore = false, nextCursor = null, errorCode = null)
-                        ?: KuiklyThreadFilesPayload(
+                        ?: RaftThreadFilesPayload(
                             instanceId = basePayload.instanceId,
                             status = "empty",
                             items = emptyList(),
@@ -4609,9 +4609,9 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun createOrOpenReplyThread(
-        basePayload: KuiklyThreadScreenPayload,
-        parentMessage: KuiklyThreadMessageItem
-    ): DataResult<KuiklyThreadScreenPayload> {
+        basePayload: RaftThreadScreenPayload,
+        parentMessage: RaftThreadMessageItem
+    ): DataResult<RaftThreadScreenPayload> {
         val replyResolutionScope = readReplyResolutionScope() ?: return authSessionRequiredResult()
         val replyResolutionNamespaceId = replyResolutionScope.namespaceId
         val parentChannelId =
@@ -4712,21 +4712,21 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun loadResolvedReplyThread(
-        basePayload: KuiklyThreadScreenPayload,
-        parentMessage: KuiklyThreadMessageItem,
+        basePayload: RaftThreadScreenPayload,
+        parentMessage: RaftThreadMessageItem,
         parentChannelId: String,
         parentMessageId: String,
         threadChannelId: String,
         replyCount: Int,
         replyResolutionScope: ReplyResolutionScope
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val parentSurfaceKind =
             basePayload.parentSurfaceKind?.takeIf { it.isNotBlank() }
                 ?: when {
-                    basePayload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-                    basePayload.channelKind.equals("dm", ignoreCase = true) -> KuiklyThreadSurfaceKind.DirectMessage
-                    basePayload.memberScopedMentions && basePayload.parentChannelId.isNullOrBlank() -> KuiklyThreadSurfaceKind.DirectMessage
-                    else -> KuiklyThreadSurfaceKind.Channel
+                    basePayload.surfaceKind == RaftThreadSurfaceKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+                    basePayload.channelKind.equals("dm", ignoreCase = true) -> RaftThreadSurfaceKind.DirectMessage
+                    basePayload.memberScopedMentions && basePayload.parentChannelId.isNullOrBlank() -> RaftThreadSurfaceKind.DirectMessage
+                    else -> RaftThreadSurfaceKind.Channel
                 }
         val resolvedOrigin =
             parentMessage.copy(
@@ -4739,7 +4739,7 @@ internal class SharedThreadDataSource(
                 title = ThreadReplyPageTitle,
                 subtitle = basePayload.replyThreadHeaderSubtitle(),
                 status = "loading",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = threadChannelId,
                 streamChannelId = threadChannelId,
                 parentChannelId = parentChannelId,
@@ -4762,7 +4762,7 @@ internal class SharedThreadDataSource(
                 emptyDetail = ThreadReplyEmptyDetail,
                 composer =
                     buildThreadSurfaceComposerPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         displayName = ThreadReplyPageTitle,
                         fallbackId = parentMessage.id,
                         enabled = basePayload.canSend,
@@ -4871,8 +4871,8 @@ internal class SharedThreadDataSource(
 
     suspend fun openMessageContext(
         messageId: String,
-        basePayload: KuiklyThreadScreenPayload
-    ): DataResult<KuiklyThreadScreenPayload> {
+        basePayload: RaftThreadScreenPayload
+    ): DataResult<RaftThreadScreenPayload> {
         val trimmedMessageId = messageId.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
         val resolutionScope =
@@ -4885,7 +4885,7 @@ internal class SharedThreadDataSource(
             fallbackCode = "thread_parent_context_network",
             call = { repository -> repository.getMessageContext(MessageId(trimmedMessageId)) },
             transform = { snapshot ->
-                snapshot.toKuiklyThreadPayload(basePayload, session.user.id)
+                snapshot.toRaftThreadPayload(basePayload, session.user.id)
                     .copy(showOpenInChannelAction = false)
             }
         )
@@ -4893,17 +4893,17 @@ internal class SharedThreadDataSource(
 
     suspend fun openCommentHost(
         hostMessageId: String,
-        basePayload: KuiklyThreadScreenPayload
-    ): DataResult<KuiklyThreadScreenPayload> {
+        basePayload: RaftThreadScreenPayload
+    ): DataResult<RaftThreadScreenPayload> {
         val streamThreadId = basePayload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
-        if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && streamThreadId != null) {
+        if (basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && streamThreadId != null) {
             return fetchThreadPayload(basePayload, persistResult = false)
         }
         return openMessageContext(hostMessageId, basePayload)
     }
 
     private suspend fun fetchThreadPage(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         source: String,
         pageSizeOverride: Int? = null,
         repositoryCall: suspend (ConversationRepository, ThreadId, Int) -> DataResult<ThreadSnapshot>,
@@ -4930,7 +4930,7 @@ internal class SharedThreadDataSource(
                     call = { repository -> repositoryCall(repository, ThreadId(threadId), pageSize) },
                     transform = { snapshot ->
                         rawPage = snapshot.rawMessagePage
-                        snapshot.toKuiklyThreadPayload(basePayload, session.user.id)
+                        snapshot.toRaftThreadPayload(basePayload, session.user.id)
                     }
                 )
             } else {
@@ -4985,8 +4985,8 @@ internal class SharedThreadDataSource(
         expectedProvenance: ReplyCacheProvenance,
         fallbackCode: String,
         call: suspend (ConversationRepository) -> DataResult<ThreadSnapshot>,
-        transform: (ThreadSnapshot) -> KuiklyThreadScreenPayload
-    ): DataResult<KuiklyThreadScreenPayload> {
+        transform: (ThreadSnapshot) -> RaftThreadScreenPayload
+    ): DataResult<RaftThreadScreenPayload> {
         val result =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = fallbackCode,
@@ -5001,11 +5001,11 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchInitialThreadPayloadFromRepository(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         threadId: ThreadId,
         replyResolutionScope: ReplyResolutionScope,
         includeFollowedSummaries: Boolean = false
-    ): DataResult<KuiklyThreadScreenPayload> {
+    ): DataResult<RaftThreadScreenPayload> {
         val focusedContext =
             if (includeFollowedSummaries) {
                 null
@@ -5055,26 +5055,26 @@ internal class SharedThreadDataSource(
                 ).map { (resolvedBase, snapshot) ->
                     snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase, replyResolutionScope = replyResolutionScope)
-                        ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
+                        ?.toRaftThreadPayload(resolvedBase, session.user.id)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
             initialData != null ->
                 DataResult.Content(
                     initialData.data
                         .withReplyParentMessageFromContext(basePayload, replyResolutionScope = replyResolutionScope)
-                        .toKuiklyThreadPayload(basePayload, session.user.id)
+                        .toRaftThreadPayload(basePayload, session.user.id)
                 )
-            else -> initialResult as DataResult<KuiklyThreadScreenPayload>
+            else -> initialResult as DataResult<RaftThreadScreenPayload>
         }
     }
 
     private suspend fun fetchFocusedInitialThreadPayloadFromRepository(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         routeThreadId: ThreadId,
         accessFallback: ConversationAccessCandidate?,
         replyResolutionScope: ReplyResolutionScope
-    ): DataResult<KuiklyThreadScreenPayload>? {
+    ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         val contextResult =
@@ -5095,16 +5095,16 @@ internal class SharedThreadDataSource(
                     messageStoreScopeId = replyResolutionScope.messageStoreScopeId
                 )
                 .withConversationAccessFallback(accessFallback)
-                .toKuiklyThreadPayload(basePayload, session.user.id)
+                .toRaftThreadPayload(basePayload, session.user.id)
         )
     }
 
     private fun ThreadSnapshot.withCachedReplyParentMessage(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         messageStoreScopeId: String?
     ): ThreadSnapshot {
         val isReplyThread =
-            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+            basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                 conversation.kind == ConversationKind.Thread
         if (!isReplyThread) return this
         val parentMessageId =
@@ -5127,12 +5127,12 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         allowNetworkHydration: Boolean = true,
         replyResolutionScope: ReplyResolutionScope
     ): ThreadSnapshot {
         val isReplyThread =
-            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+            basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                 conversation.kind == ConversationKind.Thread
         if (!isReplyThread) return this
         val parentMessageId =
@@ -5188,12 +5188,12 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         includeFollowedSummaries: Boolean = false,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
         replyResolutionScope: ReplyResolutionScope,
         replaceReplyAccessFailure: Boolean = false
-    ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
+    ): DataResult<RaftThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
         val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -5361,9 +5361,9 @@ internal class SharedThreadDataSource(
                             allowNetworkHydration = false,
                             replyResolutionScope = replyResolutionScope
                         )
-                        .toKuiklyThreadPayload(originResolvedBase, session.user.id)
+                        .toRaftThreadPayload(originResolvedBase, session.user.id)
                 DataResult.Content(
-                    if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
+                    if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
                         payload.toEmptyReplyThreadPayload()
                     } else {
                         payload
@@ -5522,7 +5522,7 @@ internal class SharedThreadDataSource(
     private fun Message.needsReplyOriginContextHydration(): Boolean =
         body.isBlank() && attachments.isEmpty()
 
-    private fun KuiklyThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
+    private fun RaftThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
         body.isBlank() && attachments.isEmpty()
 
     private fun Message.matchesReplyOriginParent(
@@ -5534,7 +5534,7 @@ internal class SharedThreadDataSource(
             (channelId == parentChannelId || threadId == ThreadId(parentChannelId.value))
 
     private fun ThreadSnapshot.hasRenderableReplyThreadMessages(
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: RaftThreadScreenPayload
     ): Boolean {
         val parentMessageId =
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -5542,7 +5542,7 @@ internal class SharedThreadDataSource(
                 ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
         val replyThreadContentChannelId =
             basePayload.copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId =
                     basePayload.sourceThreadId
                         ?: conversation.thread?.streamChannelId?.value
@@ -5562,9 +5562,9 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         replyResolutionScope: ReplyResolutionScope
-    ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot?>> {
+    ): DataResult<Pair<RaftThreadScreenPayload, ThreadSnapshot?>> {
         val resolvedBasePayload =
             when (
                 val resolved =
@@ -5612,7 +5612,7 @@ internal class SharedThreadDataSource(
         }
     }
 
-    private fun KuiklyThreadScreenPayload.toEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
+    private fun RaftThreadScreenPayload.toEmptyReplyThreadPayload(): RaftThreadScreenPayload =
         copy(
             status = "empty",
             messages = emptyList(),
@@ -5677,7 +5677,7 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun resolveConversationAccessFallback(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         session: StoredAuthSession
     ): ConversationAccessCandidate? {
         val home = currentHomeSnapshot(session) ?: return null
@@ -5685,7 +5685,7 @@ internal class SharedThreadDataSource(
     }
 
     private fun resolveConversationAccessFallback(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         home: HomeSnapshot
     ): ConversationAccessCandidate? {
         val lookupIds = basePayload.conversationAccessFallbackIds()
@@ -5696,16 +5696,16 @@ internal class SharedThreadDataSource(
             ?.takeIf { candidate -> basePayload.acceptsInitialConversationAccessCandidate(candidate) }
     }
 
-    private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
+    private suspend fun RaftThreadScreenPayload.withKnownMarkdownChannelNames(
         session: StoredAuthSession
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val home = currentHomeSnapshot(session) ?: return this
         return withKnownMarkdownChannelNames(home)
     }
 
-    private fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
+    private fun RaftThreadScreenPayload.withKnownMarkdownChannelNames(
         home: HomeSnapshot
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val channelNames =
             home.channels
                 .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
@@ -5740,9 +5740,9 @@ internal class SharedThreadDataSource(
         return (repository.getHome(serverId) as? DataResult.Content)?.data
     }
 
-    private suspend fun KuiklyThreadScreenPayload.withSavedStatus(
+    private suspend fun RaftThreadScreenPayload.withSavedStatus(
         serverId: ServerId
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val repository = savedStatusRepository ?: return this
         val messageIds =
             (messages.map { it.id } + listOfNotNull(originMessage?.id))
@@ -5854,7 +5854,7 @@ private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 
 internal data class SharedThreadState(
-    val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
+    val payload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = payload.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
@@ -5932,7 +5932,7 @@ internal enum class ChannelProfileUpdateStatus {
 }
 
 internal data class ThreadHomeContextResolution(
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val accessCandidate: ConversationAccessCandidate? = null,
     val ownerCurrent: Boolean = true,
     val requiresBackgroundHomeContextHydration: Boolean = false,
@@ -5945,7 +5945,7 @@ internal data class ThreadHomeContextResolution(
  * vice versa), which makes the footer and LazyColumn change on separate frames.
  */
 internal data class SharedThreadRenderSlice(
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val timelineSlice: ThreadTimelineSlice,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val highlightedMentions: Set<String>,
@@ -6009,8 +6009,8 @@ internal data class ThreadLocalSendComposerSeed(
 )
 
 internal sealed interface SharedThreadIntent {
-    data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
-    data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
+    data class Start(val payload: RaftThreadScreenPayload) : SharedThreadIntent
+    data class ApplyRouteIntent(val payload: RaftThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
 
     /**
@@ -6055,7 +6055,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyMessageReactions(
         val messageId: String,
-        val reactions: List<KuiklyThreadReactionItem>
+        val reactions: List<RaftThreadReactionItem>
     ) : SharedThreadIntent
     data class ApplyReplyThreadRead(
         val parentMessageId: String,
@@ -6083,8 +6083,8 @@ internal sealed interface SharedThreadIntent {
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
-        val members: List<KuiklyThreadMemberItem>,
-        val memberCandidates: List<KuiklyThreadMemberItem>,
+        val members: List<RaftThreadMemberItem>,
+        val memberCandidates: List<RaftThreadMemberItem>,
         val canAddMembers: Boolean,
         val addMemberStatus: String = "idle",
         val addMemberErrorCode: String? = null,
@@ -6117,9 +6117,9 @@ internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
-    initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    private val beforeFocusedOriginCommit: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
-    private val afterRefreshLoadingStateApplied: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null,
+    initialPayload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
+    private val beforeFocusedOriginCommit: (suspend (RaftThreadScreenPayload) -> Unit)? = null,
+    private val afterRefreshLoadingStateApplied: (suspend (RaftThreadScreenPayload) -> Unit)? = null,
     private val threadRepliesSyncHost: ThreadRepliesSyncHost = ThreadRepliesSyncHost(),
     // task #243: the initial-access lookup deadline as an injectable SIGNAL rather than a bare
     // duration. Production keeps the wall clock; a test can hand in a barrier it completes
@@ -6142,7 +6142,7 @@ internal class SharedThreadStore(
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
 
-    fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
+    fun payloadFlow(): Flow<RaftThreadScreenPayload> =
         state
             .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
             .distinctUntilChanged()
@@ -6225,7 +6225,7 @@ internal class SharedThreadStore(
     private var pendingReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
-    private var lastRoutePayload: KuiklyThreadScreenPayload? = null
+    private var lastRoutePayload: RaftThreadScreenPayload? = null
     private var visiblePayloadOwnerScopeId: String? = null
     private var firstContentReadyRouteKey: String? = null
     private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
@@ -6269,19 +6269,19 @@ internal class SharedThreadStore(
     )
 
     private data class PendingAuxiliaryHydration(
-        val routePayload: KuiklyThreadScreenPayload,
+        val routePayload: RaftThreadScreenPayload,
         val staleToken: MviStaleToken,
         val launchSecondaryTimelineRefresh: Boolean,
         val launchMembersHydration: Boolean
     )
 
     private data class PendingSecondaryTimelineApply(
-        val routePayload: KuiklyThreadScreenPayload,
+        val routePayload: RaftThreadScreenPayload,
         val staleToken: MviStaleToken,
         val apply: suspend () -> Unit,
     )
 
-    private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
+    private fun RaftThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
         resolveThreadRouteIdentity()
 
     private data class RealtimeEventDecision(
@@ -6289,7 +6289,7 @@ internal class SharedThreadStore(
         val emitted: Boolean = false,
         val messageCount: Int = 0,
         val recoveryId: Long? = null,
-        val recoveryInitial: KuiklyThreadScreenPayload? = null,
+        val recoveryInitial: RaftThreadScreenPayload? = null,
         val recoveryRequest: RealtimeVisibleStreamGapRequest? = null,
         val replyCountGap: ReplyCountRealtimeGap? = null,
         val dropped: Boolean = false,
@@ -6481,7 +6481,7 @@ internal class SharedThreadStore(
         lastCompletedReadAt = null
     }
 
-    private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
+    private suspend fun start(initialPayload: RaftThreadScreenPayload) {
         focusedOriginHydrationJob?.cancel()
         focusedOriginHydrationJob = null
         val producerContext = dataSource.captureReplyCacheProducerContext()
@@ -6702,7 +6702,7 @@ internal class SharedThreadStore(
         refresh(routeContextPayload, staleToken, reusePrewarm = true)
     }
 
-    private fun applyRouteIntent(routePayload: KuiklyThreadScreenPayload) {
+    private fun applyRouteIntent(routePayload: RaftThreadScreenPayload) {
         val routeCandidatePayload = routePayload.withoutRouteCandidateContent()
         val currentPayload = _state.value.payload
         val currentIdentity = currentPayload.resolveThreadRouteIdentity()
@@ -6728,24 +6728,24 @@ internal class SharedThreadStore(
     }
 
     private suspend fun captureThreadRepliesPageIdentity(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
     ): ThreadRepliesPageIdentity? {
         val context = dataSource.captureReplyCacheProducerContext() ?: return null
         return captureThreadRepliesPageIdentity(payload, context)
     }
 
     private fun captureThreadRepliesPageIdentity(
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         context: ReplyCacheProducerContext,
     ): ThreadRepliesPageIdentity? {
         val parentScopeId =
-            if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 payload.parentChannelId
             } else {
                 payload.sourceThreadId ?: payload.streamChannelId
             }?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val parentScopeKind =
-            if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 payload.parentChannelKind ?: payload.parentSurfaceKind
             } else {
                 payload.channelKind.ifBlank { payload.surfaceKind }
@@ -6758,12 +6758,12 @@ internal class SharedThreadStore(
         ).takeIf(ThreadRepliesPageIdentity::isValid)
     }
 
-    private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesRebaseline(
-        previous: KuiklyThreadScreenPayload,
+    private fun RaftThreadScreenPayload.withAcceptedThreadRepliesRebaseline(
+        previous: RaftThreadScreenPayload,
         page: ThreadRepliesPageIdentity?,
         generation: Long?,
         expectedProvenance: ReplyCacheProvenance? = null,
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val authorityAvailable =
             replySummariesAuthority == build.raft.app.data.ThreadReplySummariesAuthority.Embedded ||
                 replySummariesAuthority == build.raft.app.data.ThreadReplySummariesAuthority.Targeted
@@ -6831,7 +6831,7 @@ internal class SharedThreadStore(
     }
 
     private suspend fun refresh(
-        basePayload: KuiklyThreadScreenPayload,
+        basePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken = routeStaleToken,
         reusePrewarm: Boolean = false,
         explicitRetry: Boolean = false
@@ -6897,7 +6897,7 @@ internal class SharedThreadStore(
                 )
             }
         }
-        fun dropForOwnerChange(stage: String, result: DataResult<KuiklyThreadScreenPayload>? = null) {
+        fun dropForOwnerChange(stage: String, result: DataResult<RaftThreadScreenPayload>? = null) {
             abortRepliesRebaseline()
             diagnosticsLogger?.invoke(
                 "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -7031,7 +7031,7 @@ internal class SharedThreadStore(
                         else -> false
                     },
             )
-        var committedPayload: KuiklyThreadScreenPayload? = null
+        var committedPayload: RaftThreadScreenPayload? = null
         val committed =
             initialAccessStateMutex.withLock<Boolean?> {
                 val identityPayload = _state.value.payload
@@ -7085,7 +7085,7 @@ internal class SharedThreadStore(
                                         if (
                                             resolvingInitialAccess &&
                                             result is DataResult.Content &&
-                                            payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
+                                            payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread
                                         ) {
                                             payload.withCanonicalConversationAccessFrom(nextPayload)
                                         } else {
@@ -7112,7 +7112,7 @@ internal class SharedThreadStore(
                                     homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                     homeAccessCandidate = currentState.initialHomeAccessCandidate,
                                     requiresParentAccessCandidate =
-                                        projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
+                                        projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread,
                                     hasReadableCanonicalReplyContent =
                                         projectedPayload.hasReadableCanonicalReplyContent(),
                                 )
@@ -7203,12 +7203,12 @@ internal class SharedThreadStore(
      * stream at `start()` was requested there and is not requested again.
      */
     private fun launchReplyThreadEnteredScopeSnapshotAfterResolution(
-        basePayload: KuiklyThreadScreenPayload,
-        committedPayload: KuiklyThreadScreenPayload?,
+        basePayload: RaftThreadScreenPayload,
+        committedPayload: RaftThreadScreenPayload?,
         context: ReplyCacheProducerContext,
     ) {
         val baseIdentity = basePayload.resolveThreadRouteIdentity()
-        if (baseIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || baseIdentity.timelineChannelId != null) {
+        if (baseIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread || baseIdentity.timelineChannelId != null) {
             return
         }
         val resolved = committedPayload ?: return
@@ -7221,7 +7221,7 @@ internal class SharedThreadStore(
     }
 
     private fun queueAuxiliaryHydration(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken,
         launchSecondaryTimelineRefresh: Boolean,
         launchMembersHydration: Boolean
@@ -7326,12 +7326,12 @@ internal class SharedThreadStore(
     }
 
     private fun launchReplyOriginHydrationIfNeeded(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
         val currentPayload = _state.value.payload
         if (
-            currentPayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+            currentPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
             currentPayload.originStatus != "loading" ||
             currentPayload.parentChannelId.isNullOrBlank() ||
             (currentPayload.parentMessageId.isNullOrBlank() && currentPayload.originParentMessageId.isNullOrBlank())
@@ -7380,7 +7380,7 @@ internal class SharedThreadStore(
                 }
                 val payloadBeforeCommit = _state.value.payload
                 beforeFocusedOriginCommit?.invoke(payloadBeforeCommit)
-                var committedPayload: KuiklyThreadScreenPayload? = null
+                var committedPayload: RaftThreadScreenPayload? = null
                 var emitted = false
                 dataSource.withCurrentReplyCacheProvenance(originContext.provenance) {
                     _state.update { currentState ->
@@ -7496,7 +7496,7 @@ internal class SharedThreadStore(
         }
 
     private fun launchInitialAccessResolution(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
         initialAccessResolutionJob?.cancel()
@@ -7522,7 +7522,7 @@ internal class SharedThreadStore(
                 val candidate = homeResolution?.accessCandidate
                 val launchBackgroundHomeContext =
                     homeResolution?.requiresBackgroundHomeContextHydration
-                        ?: (routePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread)
+                        ?: (routePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread)
                 initialAccessStateMutex.withLock {
                     val currentState = _state.value
                     val currentPayload = currentState.payload
@@ -7562,11 +7562,11 @@ internal class SharedThreadStore(
                             currentState.accessResolution == ThreadAccessResolution.Resolved &&
                                 currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved &&
                                 (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
                                 ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                                 currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Error
                             currentState.canonicalAccessResolved ->
@@ -7645,10 +7645,10 @@ internal class SharedThreadStore(
      */
     private fun resolveReplyParentAuthorityStatus(
         accessResolution: ThreadAccessResolution,
-        payload: KuiklyThreadScreenPayload,
+        payload: RaftThreadScreenPayload,
         candidate: ConversationAccessCandidate?,
     ): ReplyParentAuthorityStatus {
-        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
             return ReplyParentAuthorityStatus.Writable
         }
         return when {
@@ -7687,7 +7687,7 @@ internal class SharedThreadStore(
     private suspend fun applyParentDirectoryHint(hint: SharedThreadIntent.ApplyParentDirectoryHint) {
         val state = _state.value
         val payload = state.payload
-        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return
+        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return
         if (state.accessResolution == ThreadAccessResolution.NoPermission ||
             state.accessResolution == ThreadAccessResolution.Error
         ) {
@@ -7828,7 +7828,7 @@ internal class SharedThreadStore(
         launchInitialAccessResolution(routePayload, routeStaleToken)
     }
 
-    private fun launchBackgroundHomeContextHydration(routePayload: KuiklyThreadScreenPayload) {
+    private fun launchBackgroundHomeContextHydration(routePayload: RaftThreadScreenPayload) {
         val staleToken = routeStaleToken
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob =
@@ -7875,7 +7875,7 @@ internal class SharedThreadStore(
     }
 
     private fun launchSecondaryTimelineRefresh(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
         secondaryTimelineRefreshJob?.cancel()
@@ -7885,7 +7885,7 @@ internal class SharedThreadStore(
             }
     }
 
-    private fun launchBackgroundMembersHydration(routePayload: KuiklyThreadScreenPayload) {
+    private fun launchBackgroundMembersHydration(routePayload: RaftThreadScreenPayload) {
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob =
             scope.launch {
@@ -7901,7 +7901,7 @@ internal class SharedThreadStore(
     }
 
     private suspend fun refreshSecondaryTimelineData(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
         val startedAt = TimeSource.Monotonic.markNow()
@@ -7915,7 +7915,7 @@ internal class SharedThreadStore(
         val producerContext = dataSource.captureReplyCacheProducerContext() ?: return
         val expectedProvenance = producerContext.provenance
         val repliesPageIdentity =
-            if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (beforeFetch.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 null
             } else {
                 captureThreadRepliesPageIdentity(routePayload, producerContext)
@@ -7948,7 +7948,7 @@ internal class SharedThreadStore(
         var replySummaries: ThreadReplySummariesSnapshot? = null
         var replySummariesObservedAt: TimeSource.Monotonic.ValueTimeMark? = null
         val followedPayload =
-            if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (beforeFetch.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 // ReplyThread loads are already scoped to a single canonical stream,
                 // and RealConversationRepository.getReplyThread does not attach
                 // followed-channel summaries. Re-running it here only duplicates the
@@ -8033,7 +8033,7 @@ internal class SharedThreadStore(
         }
         val patch = replyProjectedEnriched.preserveStableTimelineFrom(latest)
         var emitted = false
-        var committedPayload: KuiklyThreadScreenPayload? = null
+        var committedPayload: RaftThreadScreenPayload? = null
         fun commitState(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean {
             val currentPayload = _state.value.payload
             if (
@@ -8568,13 +8568,13 @@ internal class SharedThreadStore(
         val replyCount: Int
     )
 
-    private fun KuiklyThreadScreenPayload.realtimeReplyCountGap(
+    private fun RaftThreadScreenPayload.realtimeReplyCountGap(
         event: RealtimeEvent,
-        previous: KuiklyThreadScreenPayload,
+        previous: RaftThreadScreenPayload,
         activeReplyParentMessageId: MessageId? = null
     ): ReplyCountRealtimeGap? {
         if (event !is ThreadUpdated) return null
-        if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+        if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
         if (canLoadMoreAfter || newerMessagesStatus == "loading") return null
         val visibleMaxSeq = messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
         if (visibleMaxSeq <= 0L) return null
@@ -8599,15 +8599,15 @@ internal class SharedThreadStore(
         return ReplyCountRealtimeGap(replyCount = event.replyCount)
     }
 
-    private fun KuiklyThreadScreenPayload.loadedReplyTimelineCount(): Int =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+    private fun RaftThreadScreenPayload.loadedReplyTimelineCount(): Int =
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             val parentId = originParentMessageId?.takeIf { it.isNotBlank() }
             messages.count { message -> message.id != parentId }
         } else {
             messages.size
         }
 
-    private fun KuiklyThreadScreenPayload.knownReplyCountFor(
+    private fun RaftThreadScreenPayload.knownReplyCountFor(
         event: ThreadUpdated,
         activeReplyParentMessageId: MessageId?
     ): Int? {
@@ -8782,7 +8782,7 @@ internal class SharedThreadStore(
      * visible payload, and a failure is only logged.
      */
     private fun launchDurableWindowExtension(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         fetched: SharedThreadPageFetchResult,
         direction: ThreadDurablePageDirection,
         anchorSeq: Long,
@@ -8819,7 +8819,7 @@ internal class SharedThreadStore(
      * stand-in including these pages.
      */
     private suspend fun loadOlderFromDurableStandIn(
-        existing: KuiklyThreadScreenPayload,
+        existing: RaftThreadScreenPayload,
         beforeSeq: Long,
     ): Boolean {
         val context = dataSource.captureReplyCacheProducerContext() ?: return false
@@ -8902,7 +8902,7 @@ internal class SharedThreadStore(
                     id
                 }
             } ?: return ThreadNewerPageLoadOutcome.Ignored
-        var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
+        var successorRecovery: Pair<RaftThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
         try {
             val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
@@ -9200,7 +9200,7 @@ internal class SharedThreadStore(
     }
 
     private suspend fun recoverRealtimeGap(
-        initial: KuiklyThreadScreenPayload,
+        initial: RaftThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         tagAsGapRefill: Boolean,
@@ -9285,7 +9285,7 @@ internal class SharedThreadStore(
      * either step, a stale route or a cancellation leaves the timeline (and the durable window) as it was.
      */
     private suspend fun runRealtimeGapRecovery(
-        initial: KuiklyThreadScreenPayload,
+        initial: RaftThreadScreenPayload,
         @Suppress("UNUSED_PARAMETER") initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
@@ -9574,7 +9574,7 @@ internal class SharedThreadStore(
      * touches the visible payload, and a failure is only logged.
      */
     private fun launchDurableLatestPageWrite(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         fetched: SharedThreadPageFetchResult,
         baseline: CanonicalMessageV2EnterBaseline? = null,
     ) {
@@ -9645,7 +9645,7 @@ internal class SharedThreadStore(
     }
 
     internal fun admitLocalSend(
-        message: KuiklyThreadMessageItem,
+        message: RaftThreadMessageItem,
         expectedProvenance: ReplyCacheProvenance,
         expectedRoute: ThreadRouteIdentity,
         composerSeed: ThreadLocalSendComposerSeed? = null
@@ -9948,7 +9948,7 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun applyMessageReactions(messageId: String, reactions: List<KuiklyThreadReactionItem>) {
+    private fun applyMessageReactions(messageId: String, reactions: List<RaftThreadReactionItem>) {
         clearReactionRealtimeGuards(messageId)
         reducePayloadPatch { payload ->
             payload.withMessageReactions(messageId, reactions)
@@ -10125,7 +10125,7 @@ internal class SharedThreadStore(
         val routeIdentity = current.payload.resolveThreadRouteIdentity()
         val staleToken = routeStaleToken
         if (
-            routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.Channel ||
+            routeIdentity.surfaceKind != RaftThreadSurfaceKind.Channel ||
             routeIdentity.timelineChannelId != intent.channelId ||
             current.channelProfileUpdateStatus == ChannelProfileUpdateStatus.InFlight
         ) {
@@ -10258,7 +10258,7 @@ internal class SharedThreadStore(
 
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
-        patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
+        patch: (RaftThreadScreenPayload) -> RaftThreadScreenPayload
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
@@ -10281,8 +10281,8 @@ internal class SharedThreadStore(
         staleToken: MviStaleToken,
         source: String,
         stage: String,
-        routePayload: KuiklyThreadScreenPayload,
-        currentPayload: KuiklyThreadScreenPayload = _state.value.payload
+        routePayload: RaftThreadScreenPayload,
+        currentPayload: RaftThreadScreenPayload = _state.value.payload
     ): Boolean {
         if (staleToken.isCurrent(routeStaleToken)) {
             return true
@@ -10296,10 +10296,10 @@ internal class SharedThreadStore(
     }
 
     private fun routeStillCurrent(
-        routePayload: KuiklyThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
         source: String,
         stage: String,
-        currentPayload: KuiklyThreadScreenPayload = _state.value.payload
+        currentPayload: RaftThreadScreenPayload = _state.value.payload
     ): Boolean {
         if (currentPayload.isUsableCachedPayloadForRoute(routePayload)) {
             return true
@@ -10316,7 +10316,7 @@ internal class SharedThreadStore(
 
     private fun reducePayloadPatch(
         cachePayload: Boolean = false,
-        patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
+        patch: (RaftThreadScreenPayload) -> RaftThreadScreenPayload
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
@@ -10332,7 +10332,7 @@ internal class SharedThreadStore(
 
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
-    private val initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
+    private val initialPayload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     // Tests inject a plain scope: the default viewModelScope needs the Kuikly pager id, which is
     // only assigned after ViewModelStore.get() returns (the #3081 crash) and never in JUnit.
@@ -10369,7 +10369,7 @@ internal class SharedThreadViewModel(
 
     val state: StateFlow<SharedThreadState>
         get() = store.state
-    val currentPayload: KuiklyThreadScreenPayload
+    val currentPayload: RaftThreadScreenPayload
         get() = store.state.value.payload.withoutThreadTimelineContent()
     val currentTimelineSlice: ThreadTimelineSlice
         get() = store.state.value.timelineSlice
@@ -10380,7 +10380,7 @@ internal class SharedThreadViewModel(
     val currentRenderSlice: SharedThreadRenderSlice
         get() = store.state.value.toRenderSlice()
 
-    fun payloadFlow(): Flow<KuiklyThreadScreenPayload> = store.payloadFlow()
+    fun payloadFlow(): Flow<RaftThreadScreenPayload> = store.payloadFlow()
 
     fun renderSliceFlow(): Flow<SharedThreadRenderSlice> = store.renderSliceFlow()
 
@@ -10399,7 +10399,7 @@ internal class SharedThreadViewModel(
     }
 
     fun admitLocalSend(
-        message: KuiklyThreadMessageItem,
+        message: RaftThreadMessageItem,
         expectedProvenance: ReplyCacheProvenance,
         expectedRoute: ThreadRouteIdentity,
         composerSeed: ThreadLocalSendComposerSeed? = null
@@ -10429,7 +10429,7 @@ internal class SharedThreadViewModel(
     }
 }
 
-private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.asRefreshFailed(code: String): RaftThreadScreenPayload =
     if (hasRenderableThreadContent()) {
         copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     } else if (isDurableEmptyStandIn()) {
@@ -10439,11 +10439,11 @@ private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThrea
         copy(status = "error", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     }
 
-private fun KuiklyThreadScreenPayload.asRefreshNoPermission(
-    base: KuiklyThreadScreenPayload,
+private fun RaftThreadScreenPayload.asRefreshNoPermission(
+    base: RaftThreadScreenPayload,
     code: String,
     serverMessage: String? = null
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     withRouteContext(base)
         .withoutThreadTimelineContent()
         .copy(
@@ -10455,7 +10455,7 @@ private fun KuiklyThreadScreenPayload.asRefreshNoPermission(
             focusedMessageRequestNonce = base.focusedMessageRequestNonce
         )
 
-private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.asRefreshEmpty(base: RaftThreadScreenPayload): RaftThreadScreenPayload =
     withRouteContext(base).copy(
         status = "empty",
         backgroundRefreshing = false,
@@ -10470,7 +10470,7 @@ private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPay
         emptyDetail = ThreadEmptyConversationDetail
     )
 
-private fun KuiklyThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): RaftThreadScreenPayload =
     if (isLoadedEmptyReplyThread()) {
         copy(
             status = "empty",
@@ -10487,8 +10487,8 @@ private fun KuiklyThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): KuiklyT
         this
     }
 
-private fun KuiklyThreadScreenPayload.isLoadedEmptyReplyThread(): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+private fun RaftThreadScreenPayload.isLoadedEmptyReplyThread(): Boolean =
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         messages.isEmpty() &&
         originStatus != "none" &&
         originStatus != "loading"
@@ -10508,11 +10508,11 @@ private fun SharedThreadOriginResolution.focusedOriginDiagnosticsResult(): Strin
         is SharedThreadOriginResolution.Error -> "error:$code"
     }
 
-internal fun KuiklyThreadScreenPayload.acceptsFocusedOriginHydrationCompletion(
+internal fun RaftThreadScreenPayload.acceptsFocusedOriginHydrationCompletion(
     parentChannelId: String,
     parentMessageId: String,
     originStatusAtStart: String,
-    originMessageAtStart: KuiklyThreadMessageItem?
+    originMessageAtStart: RaftThreadMessageItem?
 ): Boolean =
     this.parentChannelId == parentChannelId &&
         (this.parentMessageId?.takeIf { it.isNotBlank() }
@@ -10520,7 +10520,7 @@ internal fun KuiklyThreadScreenPayload.acceptsFocusedOriginHydrationCompletion(
         originStatus == originStatusAtStart &&
         originMessage == originMessageAtStart
 
-private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
+private fun RaftThreadScreenPayload.originDiagnostics(): String =
     "surface=$surfaceKind parentChannelId=${parentChannelId.orEmpty()} " +
         "parentMessageId=${parentMessageId.orEmpty()} originParentMessageId=${originParentMessageId.orEmpty()} " +
         "originStatus=$originStatus hasOriginMessage=${originMessage != null} " +
@@ -10533,7 +10533,7 @@ internal const val ThreadRouteLoadingPlaceholderTitle = "Loading..."
 internal const val ThreadEmptyConversationTitle = "No messages yet"
 internal const val ThreadEmptyConversationDetail = "This conversation has no messages yet."
 
-internal fun KuiklyThreadScreenPayload.mergedEmptyTitleWith(base: KuiklyThreadScreenPayload): String =
+internal fun RaftThreadScreenPayload.mergedEmptyTitleWith(base: RaftThreadScreenPayload): String =
     if (
         base.emptyTitle == ThreadRouteLoadingPlaceholderTitle &&
             status in setOf("empty", "content")
@@ -10543,7 +10543,7 @@ internal fun KuiklyThreadScreenPayload.mergedEmptyTitleWith(base: KuiklyThreadSc
         base.emptyTitle
     }
 
-internal fun KuiklyThreadScreenPayload.mergedEmptyDetailWith(base: KuiklyThreadScreenPayload): String =
+internal fun RaftThreadScreenPayload.mergedEmptyDetailWith(base: RaftThreadScreenPayload): String =
     if (
         base.emptyTitle == ThreadRouteLoadingPlaceholderTitle &&
             status in setOf("empty", "content")
@@ -10553,7 +10553,7 @@ internal fun KuiklyThreadScreenPayload.mergedEmptyDetailWith(base: KuiklyThreadS
         base.emptyDetail
     }
 
-internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withRouteContext(base: RaftThreadScreenPayload): RaftThreadScreenPayload =
     (if (hasResolvedReplyThreadStreamFrom(base)) {
         copy(
             navigationLabel = base.navigationLabel,
@@ -10571,8 +10571,8 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             knownMarkdownDirectMessagePeerNames =
                 base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
-            emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else mergedEmptyTitleWith(base),
-            emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else mergedEmptyDetailWith(base)
+            emptyTitle = if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) emptyTitle else mergedEmptyTitleWith(base),
+            emptyDetail = if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) emptyDetail else mergedEmptyDetailWith(base)
         )
     } else {
         copy(
@@ -10599,12 +10599,12 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
         )
     }).withReplyParentRouteIdentityFrom(base)
 
-private fun KuiklyThreadScreenPayload.withReplyParentRouteIdentityFrom(
-    routePayload: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withReplyParentRouteIdentityFrom(
+    routePayload: RaftThreadScreenPayload
+): RaftThreadScreenPayload {
     if (
-        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
-        routePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
+        surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
+        routePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread
     ) {
         return this
     }
@@ -10636,12 +10636,12 @@ private fun KuiklyThreadScreenPayload.withReplyParentRouteIdentityFrom(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withStoreResolvedReplyOriginFrom(
-    storePayload: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withStoreResolvedReplyOriginFrom(
+    storePayload: RaftThreadScreenPayload
+): RaftThreadScreenPayload {
     if (
-        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
-        storePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
+        storePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
         originMessage != null ||
         storePayload.originStatus != "loaded"
     ) {
@@ -10674,7 +10674,7 @@ private fun KuiklyThreadScreenPayload.withStoreResolvedReplyOriginFrom(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withRouteIntentFrom(routePayload: RaftThreadScreenPayload): RaftThreadScreenPayload {
     val resolvedIdentityPayload =
         if (routePayload.resolveThreadRouteIdentity().canRenderTimelineCandidates) {
             withResolvedReplyThreadRouteIntentFrom(routePayload)
@@ -10705,9 +10705,9 @@ private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyTh
     )
 }
 
-internal fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
-    patch: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload {
+internal fun RaftThreadScreenPayload.withHomeContextProjectionFrom(
+    patch: RaftThreadScreenPayload
+): RaftThreadScreenPayload {
     val knownNames =
         patch.knownMarkdownChannelNames.takeIf { it.isNotEmpty() && it != knownMarkdownChannelNames }
             ?: knownMarkdownChannelNames
@@ -10721,9 +10721,9 @@ internal fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
-    routePayload: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
+    routePayload: RaftThreadScreenPayload
+): RaftThreadScreenPayload =
     if (routePayload.hasResolvedReplyThreadStreamFrom(this)) {
         copy(
             sourceThreadId = routePayload.sourceThreadId,
@@ -10743,12 +10743,12 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
     }
 
 internal fun buildMarkdownChannelLaunchPayload(
-    currentPayload: KuiklyThreadScreenPayload,
+    currentPayload: RaftThreadScreenPayload,
     home: HomeSnapshot,
     channelLabel: String,
     requiredKind: ConversationKind? = null,
     knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
-): KuiklyThreadScreenPayload? {
+): RaftThreadScreenPayload? {
     val channel =
         resolveMarkdownChannelConversation(
             home = home,
@@ -10761,7 +10761,7 @@ internal fun buildMarkdownChannelLaunchPayload(
     val streamChannelId = conversation.threadStreamChannelId() ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation,
-        timeContext = currentPayload.toSlockTimeContext(),
+        timeContext = currentPayload.toRaftTimeContext(),
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
         instanceIdOverride = "shared-shell-thread-$streamChannelId"
@@ -10769,7 +10769,7 @@ internal fun buildMarkdownChannelLaunchPayload(
 }
 
 internal fun buildMarkdownThreadRefLaunchPayload(
-    currentPayload: KuiklyThreadScreenPayload,
+    currentPayload: RaftThreadScreenPayload,
     home: HomeSnapshot,
     channelLabel: String,
     threadShortId: String,
@@ -10778,7 +10778,7 @@ internal fun buildMarkdownThreadRefLaunchPayload(
     threadChannelId: String? = null,
     requiredParentKind: ConversationKind? = null,
     knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
-): KuiklyThreadScreenPayload? {
+): RaftThreadScreenPayload? {
     val channel =
         resolveMarkdownChannelConversation(
             home = home,
@@ -10810,7 +10810,7 @@ internal fun buildMarkdownThreadRefLaunchPayload(
         )
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation,
-        timeContext = currentPayload.toSlockTimeContext(),
+        timeContext = currentPayload.toRaftTimeContext(),
         anchorMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
@@ -10823,7 +10823,7 @@ internal fun resolveMarkdownChannelConversation(
     channelLabel: String,
     requiredKind: ConversationKind? = null,
     knownMemberProfilesById: Map<String, MemberProfile> = emptyMap(),
-    currentPayload: KuiklyThreadScreenPayload? = null,
+    currentPayload: RaftThreadScreenPayload? = null,
     threadShortId: String? = null
 ): ConversationSummary? {
     val rawKey = channelLabel.markdownChannelLookupKey()
@@ -10848,12 +10848,12 @@ internal fun resolveMarkdownChannelConversation(
     ) {
         val currentDmChannelId = currentPayload?.let { payload ->
             when {
-                payload.parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                payload.parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage ||
                     payload.parentChannelKind == "dm" ||
                     payload.resolveThreadRouteIdentity().parentConversationKind == ConversationKind.DirectMessage -> {
                     payload.parentChannelId?.takeIf { it.isNotBlank() }
                 }
-                payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
                     payload.channelKind == "dm" ||
                     payload.dmPeerIdentity != null -> {
                     payload.resolveThreadRouteIdentity().timelineChannelId
@@ -11034,14 +11034,14 @@ private fun String.markdownChannelLookupKey(): String =
         .trim()
         .lowercase()
 
-private fun KuiklyThreadScreenPayload.markdownThreadRefTarget(
+private fun RaftThreadScreenPayload.markdownThreadRefTarget(
     parentChannelId: String,
     threadShortId: String
 ): MarkdownThreadRefTarget? {
     val shortId = threadShortId.trim().lowercase()
     if (parentChannelId.isBlank() || shortId.isBlank()) return null
     val routeIsParentChannel =
-        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
+        surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
             (sourceThreadId == parentChannelId || streamChannelId == parentChannelId)
     val originIsParentMessage =
         this.parentChannelId == parentChannelId &&
@@ -11103,7 +11103,7 @@ private fun ThreadSnapshot.markdownThreadRefTarget(
     return targetMessageId?.let { MarkdownThreadRefTarget(parentMessageId = it) }
 }
 
-private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.withoutRouteCandidateContent(): RaftThreadScreenPayload =
     if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {
         val originCandidate = validatedUnresolvedReplyOriginCandidate()
         copy(
@@ -11144,17 +11144,17 @@ private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThre
         ).withLaunchHeaderContext()
     }
 
-private fun KuiklyThreadScreenPayload.validatedUnresolvedReplyOriginCandidate(): KuiklyThreadMessageItem? {
+private fun RaftThreadScreenPayload.validatedUnresolvedReplyOriginCandidate(): RaftThreadMessageItem? {
     val expectedParentMessageId =
         parentMessageId?.takeIf { it.isNotBlank() }
             ?: originParentMessageId?.takeIf { it.isNotBlank() }
             ?: return null
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
     if (sourceThreadId?.isNotBlank() == true || streamChannelId?.isNotBlank() == true) return null
     return originMessage?.takeIf { message -> message.id == expectedParentMessageId }
 }
 
-private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
+private fun RaftThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }
         ?: originParentMessageId?.takeIf { it.isNotBlank() }
@@ -11162,21 +11162,21 @@ private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolea
     val streamCandidate =
         streamChannelId?.takeIf { it.isNotBlank() }
             ?: sourceThreadId?.takeIf { it.isNotBlank() }
-    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+    return surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         parentMessage.isNotBlank() &&
         (streamCandidate == null || streamCandidate == parentChannel)
 }
 
-private fun KuiklyThreadScreenPayload.shouldFetchReplyThreadByParentPair(): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+private fun RaftThreadScreenPayload.shouldFetchReplyThreadByParentPair(): Boolean =
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         parentChannelId?.isNotBlank() == true &&
         (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
 
-private fun KuiklyThreadScreenPayload.shouldResolveReplyThreadByParentPair(): Boolean =
+private fun RaftThreadScreenPayload.shouldResolveReplyThreadByParentPair(): Boolean =
     shouldFetchReplyThreadByParentPair() &&
         needsReplyThreadStreamResolution()
 
-private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boolean {
+private fun RaftThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boolean {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     parentMessageId?.takeIf { it.isNotBlank() }
         ?: originParentMessageId?.takeIf { it.isNotBlank() }
@@ -11185,11 +11185,11 @@ private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boole
         streamChannelId?.takeIf { it.isNotBlank() }
             ?: sourceThreadId?.takeIf { it.isNotBlank() }
             ?: return false
-    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+    return surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         streamCandidate != parentChannel
 }
 
-private fun ThreadSnapshot.parentPairMatchesRoute(base: KuiklyThreadScreenPayload): Boolean {
+private fun ThreadSnapshot.parentPairMatchesRoute(base: RaftThreadScreenPayload): Boolean {
     val expectedParentChannelId = base.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
     val expectedParentMessageId =
         base.parentMessageId?.takeIf { it.isNotBlank() }
@@ -11205,21 +11205,21 @@ private fun ThreadSnapshot.parentPairMatchesRoute(base: KuiklyThreadScreenPayloa
         parent.id.value == expectedParentMessageId
 }
 
-private fun KuiklyThreadScreenPayload.hasResolvedReplyThreadStreamFrom(base: KuiklyThreadScreenPayload): Boolean {
+private fun RaftThreadScreenPayload.hasResolvedReplyThreadStreamFrom(base: RaftThreadScreenPayload): Boolean {
     val source = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
     val baseSource =
         base.streamChannelId?.takeIf { it.isNotBlank() }
             ?: base.sourceThreadId?.takeIf { it.isNotBlank() }
             ?: base.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return false
-    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-        base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+    return surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        base.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         source != baseSource
 }
 
-private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
+private fun RaftThreadScreenPayload.withResolvedReplyThreadAction(
     action: ThreadActionResult
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val threadChannelId = action.threadChannelId.value.takeIf { it.isNotBlank() } ?: return this
     val resolvedParentMessageId =
         action.parentMessageId?.value?.takeIf { it.isNotBlank() }
@@ -11244,13 +11244,13 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
-    previous: KuiklyThreadScreenPayload,
+internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
+    previous: RaftThreadScreenPayload,
     preserveSelectedReactions: Boolean = true,
     preserveAuxiliaryProjectionFromPrevious: Boolean = false,
     refreshObservedMessageIds: Set<String>? = null,
     sendEchoMatchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val visibleWindowMessages =
         if (
             (canLoadMoreBefore || previous.canLoadMoreBefore) &&
@@ -11366,9 +11366,9 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
  * SharedTasksDataStore projection remain authoritative and may replace or remove these retained
  * facts. Identity is exact message id; unmatched rows never inherit another row's projection.
  */
-private fun List<KuiklyThreadMessageItem>.withAcceptedAuxiliaryProjectionFrom(
-    previous: List<KuiklyThreadMessageItem>
-): List<KuiklyThreadMessageItem> {
+private fun List<RaftThreadMessageItem>.withAcceptedAuxiliaryProjectionFrom(
+    previous: List<RaftThreadMessageItem>
+): List<RaftThreadMessageItem> {
     if (isEmpty() || previous.isEmpty()) return this
     val previousById = previous.associateBy { message -> message.id }
     return map { message ->
@@ -11379,9 +11379,9 @@ private fun List<KuiklyThreadMessageItem>.withAcceptedAuxiliaryProjectionFrom(
     }
 }
 
-private fun KuiklyThreadMessageItem.withAcceptedAuxiliaryProjectionFrom(
-    previous: KuiklyThreadMessageItem
-): KuiklyThreadMessageItem {
+private fun RaftThreadMessageItem.withAcceptedAuxiliaryProjectionFrom(
+    previous: RaftThreadMessageItem
+): RaftThreadMessageItem {
     if (id.isBlank() || id != previous.id) return this
     val previousHasTaskProjection =
         previous.taskId != null ||
@@ -11409,9 +11409,9 @@ private fun String?.toThreadRepliesParentScopeKind(): String =
         else -> "channel"
     }
 
-private fun KuiklyThreadScreenPayload.threadRepliesScopeIdentities(
+private fun RaftThreadScreenPayload.threadRepliesScopeIdentities(
     page: ThreadRepliesPageIdentity,
-    previous: KuiklyThreadScreenPayload,
+    previous: RaftThreadScreenPayload,
 ): List<ThreadRepliesScopeIdentity> {
     val previousById =
         (previous.messages + listOfNotNull(previous.originMessage)).associateBy { it.id }
@@ -11428,14 +11428,14 @@ private fun KuiklyThreadScreenPayload.threadRepliesScopeIdentities(
     }
 }
 
-private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesProjection(
+private fun RaftThreadScreenPayload.withAcceptedThreadRepliesProjection(
     accepted: Map<String, ThreadRepliesAcceptedProjection>,
-    previous: KuiklyThreadScreenPayload,
-): KuiklyThreadScreenPayload {
+    previous: RaftThreadScreenPayload,
+): RaftThreadScreenPayload {
     val previousById =
         (previous.messages + listOfNotNull(previous.originMessage)).associateBy { it.id }
 
-    fun KuiklyThreadMessageItem.project(): KuiklyThreadMessageItem {
+    fun RaftThreadMessageItem.project(): RaftThreadMessageItem {
         val projection = accepted[id]
         if (projection != null) {
             return copy(
@@ -11477,10 +11477,10 @@ private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesProjection(
  * requested, so each auxiliary field can use a three-way merge: apply [patch] only while the live
  * field still equals that baseline; otherwise retain the newer live value.
  */
-private fun KuiklyThreadScreenPayload.withSecondaryTimelineProjectionFrom(
-    patch: KuiklyThreadScreenPayload,
-    previous: KuiklyThreadScreenPayload,
-): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withSecondaryTimelineProjectionFrom(
+    patch: RaftThreadScreenPayload,
+    previous: RaftThreadScreenPayload,
+): RaftThreadScreenPayload {
     val patchById =
         (patch.messages + listOfNotNull(patch.originMessage))
             .filter { message -> message.id.isNotBlank() }
@@ -11492,7 +11492,7 @@ private fun KuiklyThreadScreenPayload.withSecondaryTimelineProjectionFrom(
     fun <T> projectField(live: T, baseline: T, candidate: T): T =
         if (live == baseline) candidate else live
 
-    fun KuiklyThreadMessageItem.project(): KuiklyThreadMessageItem {
+    fun RaftThreadMessageItem.project(): RaftThreadMessageItem {
         val candidate = patchById[id] ?: return this
         val baseline = previousById[id] ?: return this
         return copy(
@@ -11532,11 +11532,11 @@ private fun KuiklyThreadScreenPayload.withSecondaryTimelineProjectionFrom(
     }
 }
 
-private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesProjection(
+private fun RaftThreadScreenPayload.withAcceptedThreadRepliesProjection(
     accepted: ThreadRepliesAcceptedProjection?,
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     accepted ?: return this
-    fun KuiklyThreadMessageItem.project(): KuiklyThreadMessageItem =
+    fun RaftThreadMessageItem.project(): RaftThreadMessageItem =
         if (id == accepted.identity.parentMessageId) {
             copy(
                 threadChannelId = accepted.identity.threadChannelId,
@@ -11555,8 +11555,8 @@ private fun KuiklyThreadScreenPayload.withAcceptedThreadRepliesProjection(
     }
 }
 
-private fun List<KuiklyThreadMessageItem>.shouldRetainExpandedTimelineWindowFrom(
-    previous: List<KuiklyThreadMessageItem>
+private fun List<RaftThreadMessageItem>.shouldRetainExpandedTimelineWindowFrom(
+    previous: List<RaftThreadMessageItem>
 ): Boolean {
     if (isEmpty() || previous.size <= size) return false
     val previousIds = previous.map { it.id }
@@ -11572,9 +11572,9 @@ private fun List<KuiklyThreadMessageItem>.shouldRetainExpandedTimelineWindowFrom
     return existingIncomingIds == previousIds.takeLast(existingIncomingIds.size)
 }
 
-private fun List<KuiklyThreadMessageItem>.mergeIntoExpandedTimelineWindow(
-    previous: List<KuiklyThreadMessageItem>
-): List<KuiklyThreadMessageItem> {
+private fun List<RaftThreadMessageItem>.mergeIntoExpandedTimelineWindow(
+    previous: List<RaftThreadMessageItem>
+): List<RaftThreadMessageItem> {
     val incomingById = associateBy { it.id }
     val previousIds = previous.mapTo(mutableSetOf()) { it.id }
     return (
@@ -11583,12 +11583,12 @@ private fun List<KuiklyThreadMessageItem>.mergeIntoExpandedTimelineWindow(
         ).sortedByThreadTimeline()
 }
 
-private fun KuiklyThreadScreenPayload.shouldPreserveLoadedOriginFrom(
-    previous: KuiklyThreadScreenPayload
+private fun RaftThreadScreenPayload.shouldPreserveLoadedOriginFrom(
+    previous: RaftThreadScreenPayload
 ): Boolean {
     val previousOrigin = previous.originMessage ?: return false
     if (originMessage != null) return false
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || previous.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread || previous.surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
         return false
     }
     if (originStatus != "missing" && originStatus != "loading") return false
@@ -11630,10 +11630,10 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
     }
 }
 
-private fun List<KuiklyThreadMessageItem>.withSelectedReactionsFrom(
-    previous: List<KuiklyThreadMessageItem>,
+private fun List<RaftThreadMessageItem>.withSelectedReactionsFrom(
+    previous: List<RaftThreadMessageItem>,
     enabled: Boolean
-): List<KuiklyThreadMessageItem> {
+): List<RaftThreadMessageItem> {
     if (!enabled || isEmpty() || previous.isEmpty()) return this
     val previousById = previous.associateBy { it.id }
     var changed = false
@@ -11647,10 +11647,10 @@ private fun List<KuiklyThreadMessageItem>.withSelectedReactionsFrom(
     return if (changed) merged else this
 }
 
-private fun KuiklyThreadMessageItem.withSelectedReactionsFrom(
-    previous: KuiklyThreadMessageItem?,
+private fun RaftThreadMessageItem.withSelectedReactionsFrom(
+    previous: RaftThreadMessageItem?,
     enabled: Boolean
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     if (!enabled || previous == null) return this
     val selectedPrevious = previous.reactions.filter { it.selected && it.count > 0 }
     if (selectedPrevious.isEmpty()) return this
@@ -11659,9 +11659,9 @@ private fun KuiklyThreadMessageItem.withSelectedReactionsFrom(
     return if (orderedReactions === reactions) this else copy(reactions = orderedReactions)
 }
 
-private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
-    selectedPrevious: List<KuiklyThreadReactionItem>
-): List<KuiklyThreadReactionItem> {
+private fun List<RaftThreadReactionItem>.withSelectedReactionsFrom(
+    selectedPrevious: List<RaftThreadReactionItem>
+): List<RaftThreadReactionItem> {
     var changed = false
     val byEmoji = associateBy { it.emoji }.toMutableMap()
     selectedPrevious.forEach { previousReaction ->
@@ -11681,9 +11681,9 @@ private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
     return if (changed) byEmoji.values.toList() else this
 }
 
-private fun List<KuiklyThreadReactionItem>.orderedLike(
-    previous: List<KuiklyThreadReactionItem>
-): List<KuiklyThreadReactionItem> {
+private fun List<RaftThreadReactionItem>.orderedLike(
+    previous: List<RaftThreadReactionItem>
+): List<RaftThreadReactionItem> {
     if (size <= 1 || previous.isEmpty()) return this
     val previousOrder = previous.map { it.emoji }.filter { it.isNotBlank() }.distinct()
     if (previousOrder.isEmpty()) return this
@@ -11700,11 +11700,11 @@ private fun List<KuiklyThreadReactionItem>.orderedLike(
     return if (ordered == this) this else ordered
 }
 
-private fun List<KuiklyThreadTaskItem>.withReferencedThreadTasksFrom(
-    previous: List<KuiklyThreadTaskItem>,
-    messages: List<KuiklyThreadMessageItem>,
-    originMessage: KuiklyThreadMessageItem?
-): List<KuiklyThreadTaskItem> {
+private fun List<RaftThreadTaskItem>.withReferencedThreadTasksFrom(
+    previous: List<RaftThreadTaskItem>,
+    messages: List<RaftThreadMessageItem>,
+    originMessage: RaftThreadMessageItem?
+): List<RaftThreadTaskItem> {
     if (previous.isEmpty()) return this
     val referencedMessages = messages + listOfNotNull(originMessage)
     if (referencedMessages.none { it.hasThreadTaskReference() }) return this
@@ -11721,11 +11721,11 @@ private fun List<KuiklyThreadTaskItem>.withReferencedThreadTasksFrom(
     return this + retained
 }
 
-private fun KuiklyThreadMessageItem.hasThreadTaskReference(): Boolean =
+private fun RaftThreadMessageItem.hasThreadTaskReference(): Boolean =
     taskId?.isNotBlank() == true || taskNumber != null
 
-private fun KuiklyThreadTaskItem.matchesAnyThreadTaskReference(
-    messages: List<KuiklyThreadMessageItem>
+private fun RaftThreadTaskItem.matchesAnyThreadTaskReference(
+    messages: List<RaftThreadMessageItem>
 ): Boolean =
     messages.any { message ->
         val taskIdMatches =
@@ -11740,8 +11740,8 @@ private fun KuiklyThreadTaskItem.matchesAnyThreadTaskReference(
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
 
-private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId?): KuiklyThreadMemberItem =
-    KuiklyThreadMemberItem(
+private fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId?): RaftThreadMemberItem =
+    RaftThreadMemberItem(
         id = id.value,
         displayName = displayName,
         handle = handle,
@@ -11773,14 +11773,14 @@ private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): Str
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
-private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
-    basePayload: KuiklyThreadScreenPayload,
-    currentPayload: KuiklyThreadFilesPayload?,
+private fun ChannelFilesSnapshot.toRaftThreadFilesPayload(
+    basePayload: RaftThreadScreenPayload,
+    currentPayload: RaftThreadFilesPayload?,
     append: Boolean
-): KuiklyThreadFilesPayload {
+): RaftThreadFilesPayload {
     val incoming = items.map { item ->
         val attachment = item.attachment
-        KuiklyThreadFileItem(
+        RaftThreadFileItem(
             attachmentId = attachment.id.value,
             messageId = item.messageId?.value.orEmpty(),
             channelId = item.channelId?.value.orEmpty(),
@@ -11803,7 +11803,7 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
         } else {
             incoming
         }.distinctBy { item -> item.attachmentId }
-    return KuiklyThreadFilesPayload(
+    return RaftThreadFilesPayload(
         instanceId = basePayload.instanceId,
         status = if (merged.isEmpty()) "empty" else "content",
         items = merged,
@@ -11814,11 +11814,11 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withReplySummaries(
+private fun RaftThreadScreenPayload.withReplySummaries(
     snapshot: ThreadReplySummariesSnapshot,
     authority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Targeted,
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     if (snapshot.threads.isEmpty()) {
         return if (replySummariesAuthority == authority) this else copy(replySummariesAuthority = authority)
     }
@@ -11850,10 +11850,10 @@ private fun KuiklyThreadScreenPayload.withReplySummaries(
     }
 }
 
-private fun KuiklyThreadMessageItem.withReplySummary(
+private fun RaftThreadMessageItem.withReplySummary(
     summary: InboxItem,
     followedThreadKeys: Set<String>
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     val summaryThreadChannelId = summary.threadChannelId ?: summary.channelId
     val nextThreadChannelId = threadChannelId ?: summaryThreadChannelId.value
     val nextReplyCount = summary.replyCount.coerceAtLeast(0)
@@ -11887,8 +11887,8 @@ private fun KuiklyThreadMessageItem.withReplySummary(
     )
 }
 
-private fun KuiklyThreadFilesPayload?.orEmptyFilesPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadFilesPayload =
-    this ?: KuiklyThreadFilesPayload(instanceId = basePayload.instanceId)
+private fun RaftThreadFilesPayload?.orEmptyFilesPayload(basePayload: RaftThreadScreenPayload): RaftThreadFilesPayload =
+    this ?: RaftThreadFilesPayload(instanceId = basePayload.instanceId)
 
 private fun build.raft.app.data.ChannelFileItem.filesSourceLabel(): String =
     sourceParentMessageShortId
@@ -11899,14 +11899,14 @@ private fun build.raft.app.data.ChannelFileItem.filesSourceLabel(): String =
             ?.replaceFirstChar { char -> char.uppercaseChar() }
             .orEmpty()
 
-private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
+private fun RaftThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()
 
 /** Task #1137: the offline stand-in for a channel that was empty when last seen. */
-private fun KuiklyThreadScreenPayload.isDurableEmptyStandIn(): Boolean =
+private fun RaftThreadScreenPayload.isDurableEmptyStandIn(): Boolean =
     durableLastKnown && status == "empty"
 
-private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
+private fun RaftThreadScreenPayload.cacheThreadId(): String? =
     resolveThreadRouteIdentity().timelineChannelId
 
 /**
@@ -11914,8 +11914,8 @@ private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
  * message, read the same way [resolveThreadRouteIdentity] reads them. `null` for any other surface
  * or an incomplete reply identity, which has no durable thread scope.
  */
-internal fun KuiklyThreadScreenPayload.durableReplyParentOrNull(): ThreadDurableReplyParent? {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+internal fun RaftThreadScreenPayload.durableReplyParentOrNull(): ThreadDurableReplyParent? {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return null
     val rootMessage =
         parentMessageId?.takeIf { it.isNotBlank() }
@@ -11927,9 +11927,9 @@ internal fun KuiklyThreadScreenPayload.durableReplyParentOrNull(): ThreadDurable
 /** The durable V2 scope kinds a route's surface may be shown from (task #168 step 3 adds `thread`). */
 private fun ThreadRouteIdentity.durableScopeKinds(): Set<String> =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
-        KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
-        KuiklyThreadSurfaceKind.ReplyThread -> setOf("thread")
+        RaftThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
+        RaftThreadSurfaceKind.DirectMessage -> setOf("dm")
+        RaftThreadSurfaceKind.ReplyThread -> setOf("thread")
         else -> emptySet()
     }
 
@@ -11940,12 +11940,12 @@ private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolea
         messageThreadId = threadId.value
     )
 
-private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
+private fun RaftThreadScreenPayload.isUsableCachedPayloadForRoute(route: RaftThreadScreenPayload): Boolean =
     ThreadCandidateProofGate
         .prove(route = route.toThreadRouteId(), candidate = toThreadRouteId())
         .let { it is ThreadIdentityProof.Accepted }
 
-private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {
+private fun RaftThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val parentMessageStr =
         parentMessageId?.takeIf { it.isNotBlank() }
@@ -11954,7 +11954,7 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
     val stream = streamChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val source = sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
     val isReplyThread =
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
             (parentChannel != null && parentMessage != null)
     return when {
         isReplyThread && parentChannel != null && parentMessage != null -> {
@@ -11987,7 +11987,7 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
     }
 }
 
-private fun KuiklyThreadScreenPayload.visibleReadMarker(
+private fun RaftThreadScreenPayload.visibleReadMarker(
     visibleTailIndex: Int? = null
 ): ThreadVisibleReadMarker? {
     val channelId = cacheThreadId() ?: return null
@@ -12002,8 +12002,8 @@ private fun KuiklyThreadScreenPayload.visibleReadMarker(
             .asSequence()
             .filter { message -> message.seq != null }
             .maxWithOrNull(
-                compareBy<KuiklyThreadMessageItem> { message -> message.seq ?: Long.MIN_VALUE }
-                    .thenBy(KuiklyThreadMessageItem::id)
+                compareBy<RaftThreadMessageItem> { message -> message.seq ?: Long.MIN_VALUE }
+                    .thenBy(RaftThreadMessageItem::id)
             )
             ?: messages.lastOrNull()
             ?: return null
@@ -12014,12 +12014,12 @@ private fun KuiklyThreadScreenPayload.visibleReadMarker(
     )
 }
 
-private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
+private fun RaftThreadScreenPayload.applyRealtimeEvent(
     event: RealtimeEvent,
     currentUserId: String?,
     activeReplyParentMessageId: MessageId? = null,
     shouldPreserveReactionsForRealtime: (Message, String?) -> Boolean = { _, _ -> false }
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     when (event) {
         is MessageNew ->
             applyRealtimeMessages(listOf(event.message), currentUserId, activeReplyParentMessageId)
@@ -12039,7 +12039,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
         else -> this
     }
 
-private fun KuiklyThreadScreenPayload.realtimeNewerGapServerSeq(
+private fun RaftThreadScreenPayload.realtimeNewerGapServerSeq(
     event: RealtimeEvent,
     activeReplyParentMessageId: MessageId? = null
 ): Long? {
@@ -12061,11 +12061,11 @@ private fun KuiklyThreadScreenPayload.realtimeNewerGapServerSeq(
         .maxOrNull()
 }
 
-private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
+private fun RaftThreadScreenPayload.applyRealtimeMessages(
     messages: List<Message>,
     currentUserId: String?,
     activeReplyParentMessageId: MessageId?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val currentMaxSeq = this.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
     val existingIds = this.messages.mapTo(mutableSetOf()) { it.id }
     val relevant =
@@ -12078,7 +12078,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
             currentMaxSeq <= 0L || seq <= currentMaxSeq + 1L
         }
     if (relevant.isEmpty()) return this
-    val incoming = relevant.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+    val incoming = relevant.map { message -> message.toRaftThreadMessageItem(currentUserId) }
     val baseMessages = this.messages.absorbingCanonicalSendEchoes(incoming)
     val merged =
         (baseMessages + incoming)
@@ -12125,7 +12125,7 @@ internal fun gapCatchUpDecision(
     }
 
 /** The newest server-backed message of the timeline (local sends and their shadows excluded). */
-internal fun KuiklyThreadScreenPayload.gapCatchUpAnchorMessageId(): String? =
+internal fun RaftThreadScreenPayload.gapCatchUpAnchorMessageId(): String? =
     messages.lastOrNull { message ->
         message.id.isNotBlank() &&
             message.seq != null &&
@@ -12141,9 +12141,9 @@ internal const val SharedThreadGapCatchUpPageLimit: Int = 200
  * (relative to [base]) as gap-refill arrivals, which the ↓ x new projection
  * excludes. Live realtime events and resume refreshes never call this.
  */
-internal fun KuiklyThreadScreenPayload.withGapRefillTagFrom(
-    base: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload {
+internal fun RaftThreadScreenPayload.withGapRefillTagFrom(
+    base: RaftThreadScreenPayload
+): RaftThreadScreenPayload {
     val baseIds = base.messages.mapTo(mutableSetOf()) { it.id }
     val added =
         messages.mapTo(mutableSetOf()) { it.id } - baseIds
@@ -12152,11 +12152,11 @@ internal fun KuiklyThreadScreenPayload.withGapRefillTagFrom(
     return copy(gapRefillMessageIds = gapRefillMessageIds + newlyExcluded)
 }
 
-internal fun KuiklyThreadScreenPayload.mergePagedMessages(
-    pageMessages: List<KuiklyThreadMessageItem>,
+internal fun RaftThreadScreenPayload.mergePagedMessages(
+    pageMessages: List<RaftThreadMessageItem>,
     before: Boolean,
     pageSize: Int
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val baseMessages = messages.absorbingCanonicalSendEchoes(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
     val mergedMessages =
@@ -12178,9 +12178,9 @@ internal fun KuiklyThreadScreenPayload.mergePagedMessages(
         .asLoadedEmptyReplyThreadPayload()
 }
 
-private fun KuiklyThreadScreenPayload.withLocalSendStarted(
-    message: KuiklyThreadMessageItem
-): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withLocalSendStarted(
+    message: RaftThreadMessageItem
+): RaftThreadScreenPayload {
     val sendingMessage =
         message.copy(
             deliveryState = ThreadMessageDeliverySending,
@@ -12200,11 +12200,11 @@ private fun KuiklyThreadScreenPayload.withLocalSendStarted(
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
-private fun KuiklyThreadScreenPayload.withLocalSendFailure(
+private fun RaftThreadScreenPayload.withLocalSendFailure(
     messageId: String,
     errorCode: String?,
     errorMessage: String?
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     copy(
         messages =
             messages.map { message ->
@@ -12220,25 +12220,25 @@ private fun KuiklyThreadScreenPayload.withLocalSendFailure(
             }
     )
 
-private fun KuiklyThreadScreenPayload.withoutLocalSendMessage(messageId: String): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.withoutLocalSendMessage(messageId: String): RaftThreadScreenPayload =
     copy(messages = messages.filterNot { it.id == messageId && it.pendingSendContext != null })
 
-private fun KuiklyThreadScreenPayload.withoutLocalFailedSendMessage(messageId: String): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.withoutLocalFailedSendMessage(messageId: String): RaftThreadScreenPayload =
     copy(messages = messages.filterNot { it.id == messageId && it.isPersistentLocalFailedMessage() })
 
-private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withoutTransientLocalSendingMessages(): RaftThreadScreenPayload {
     val retainedMessages = messages.filterNot { it.isTransientLocalSendingMessage() }
     return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
 }
 
-private fun KuiklyThreadScreenPayload.withoutLocalPendingSendMessages(): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.withoutLocalPendingSendMessages(): RaftThreadScreenPayload {
     val retainedMessages = messages.filterNot { it.pendingSendContext != null }
     return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
 }
 
-private fun List<KuiklyThreadMessageItem>.withRetainedTransientLocalSendingMessagesFrom(
-    previousMessages: List<KuiklyThreadMessageItem>
-): List<KuiklyThreadMessageItem> {
+private fun List<RaftThreadMessageItem>.withRetainedTransientLocalSendingMessagesFrom(
+    previousMessages: List<RaftThreadMessageItem>
+): List<RaftThreadMessageItem> {
     val existingIds = map { it.id }.toSet()
     val retainedSendingMessages =
         previousMessages.filter { message ->
@@ -12247,10 +12247,10 @@ private fun List<KuiklyThreadMessageItem>.withRetainedTransientLocalSendingMessa
     return if (retainedSendingMessages.isEmpty()) this else (this + retainedSendingMessages).sortedByThreadTimeline()
 }
 
-private fun List<KuiklyThreadMessageItem>.withRetainedCanonicalOwnSendsAfterRefreshFrom(
-    previousMessages: List<KuiklyThreadMessageItem>,
+private fun List<RaftThreadMessageItem>.withRetainedCanonicalOwnSendsAfterRefreshFrom(
+    previousMessages: List<RaftThreadMessageItem>,
     refreshObservedMessageIds: Set<String>?
-): List<KuiklyThreadMessageItem> {
+): List<RaftThreadMessageItem> {
     refreshObservedMessageIds ?: return this
     val existingIds = mapTo(mutableSetOf()) { message -> message.id }
     val incomingRandomIds = mapNotNullTo(mutableSetOf()) { message -> message.randomId?.takeIf { it.isNotBlank() } }
@@ -12265,15 +12265,15 @@ private fun List<KuiklyThreadMessageItem>.withRetainedCanonicalOwnSendsAfterRefr
     return if (retainedMessages.isEmpty()) this else (this + retainedMessages).sortedByThreadTimeline()
 }
 
-private fun KuiklyThreadMessageItem.isCanonicalOwnSend(): Boolean =
+private fun RaftThreadMessageItem.isCanonicalOwnSend(): Boolean =
     isOwn &&
         pendingSendContext == null &&
         deliveryState.equals(ThreadMessageDeliverySent, ignoreCase = true) &&
         !randomId.isNullOrBlank()
 
-private fun List<KuiklyThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
-    previousMessages: List<KuiklyThreadMessageItem>
-): List<KuiklyThreadMessageItem> {
+private fun List<RaftThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
+    previousMessages: List<RaftThreadMessageItem>
+): List<RaftThreadMessageItem> {
     val existingIds = map { it.id }.toSet()
     val retainedFailedMessages =
         previousMessages.filter { message ->
@@ -12282,12 +12282,12 @@ private fun List<KuiklyThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
     return if (retainedFailedMessages.isEmpty()) this else (this + retainedFailedMessages).sortedByThreadTimeline()
 }
 
-private fun KuiklyThreadMessageItem.isPersistentLocalFailedMessage(): Boolean =
+private fun RaftThreadMessageItem.isPersistentLocalFailedMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) &&
         pendingSendContext != null
 
-private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
+private fun RaftThreadScreenPayload.trimToLatestThreadWindow(limit: Int): RaftThreadScreenPayload {
     if (limit <= 0 || messages.isEmpty()) return withOriginReplyCountAtLeastLoadedReplies()
     val sortedMessages = messages.sortedByThreadTimeline()
     if (sortedMessages.size <= limit) {
@@ -12312,14 +12312,14 @@ private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): Kuik
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
-internal fun KuiklyThreadScreenPayload.withOriginReplyCountAtLeastLoadedReplies(): KuiklyThreadScreenPayload {
+internal fun RaftThreadScreenPayload.withOriginReplyCountAtLeastLoadedReplies(): RaftThreadScreenPayload {
     val origin = originMessage ?: return this
     val loadedReplyCount = messages.size
     if (loadedReplyCount <= origin.replyCount) return this
     return copy(originMessage = origin.copy(replyCount = loadedReplyCount))
 }
 
-internal fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
+internal fun List<RaftThreadMessageItem>.sortedByThreadTimeline(): List<RaftThreadMessageItem> =
     sortedWith(SharedThreadTimelineComparator)
 
 /**
@@ -12329,14 +12329,14 @@ internal fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<Kuikly
  * sequence has not arrived yet is kept in a separate fallback lane ordered by
  * its numeric creation instant. Optimistic/failed sends remain last and use
  * their creation instant plus a stable local-send ordinal. No branch reads the
- * localized [KuiklyThreadMessageItem.timestampLabel].
+ * localized [RaftThreadMessageItem.timestampLabel].
  *
  * The old pair-dependent comparator used `seq` only when both operands had it,
  * then compared display strings for mixed pairs. That admitted cycles such as
  * A(seq=1,label=z) < B(seq=2,label=a) < M(seq=null,label=m) < A.
  */
 internal val SharedThreadTimelineComparator =
-    Comparator<KuiklyThreadMessageItem> { left, right ->
+    Comparator<RaftThreadMessageItem> { left, right ->
         compareValues(left.threadTimelineSortLane(), right.threadTimelineSortLane())
             .takeIf { it != 0 }
             ?: compareValues(left.threadTimelineSequenceKey(), right.threadTimelineSequenceKey())
@@ -12348,23 +12348,23 @@ internal val SharedThreadTimelineComparator =
             ?: left.id.compareTo(right.id)
     }
 
-private fun KuiklyThreadMessageItem.threadTimelineSortLane(): Int =
+private fun RaftThreadMessageItem.threadTimelineSortLane(): Int =
     when {
         hasLocalSendState() -> 2
         seq != null -> 0
         else -> 1
     }
 
-private fun KuiklyThreadMessageItem.threadTimelineSequenceKey(): Long =
+private fun RaftThreadMessageItem.threadTimelineSequenceKey(): Long =
     if (threadTimelineSortLane() == 0) seq ?: Long.MAX_VALUE else Long.MAX_VALUE
 
-private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
+private fun RaftThreadScreenPayload.applyRealtimeMessageUpdate(
     message: Message,
     currentUserId: String?,
     activeReplyParentMessageId: MessageId?,
     preserveExistingReactions: Boolean = false
-): KuiklyThreadScreenPayload {
-    val incoming = message.toKuiklyThreadMessageItem(currentUserId)
+): RaftThreadScreenPayload {
+    val incoming = message.toRaftThreadMessageItem(currentUserId)
     val matchesTimeline = messages.any { it.id == incoming.id }
     val matchesOrigin = originMessage?.id == incoming.id
     val replyThreadContentChannelId = replyThreadContentChannelId()
@@ -12426,8 +12426,8 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
-private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
-    fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
+private fun RaftThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): RaftThreadScreenPayload {
+    fun RaftThreadMessageItem.updateIfMatches(): RaftThreadMessageItem =
         if (id == event.parentMessageId.value) {
             copy(
                 threadChannelId = event.threadChannelId.value,
@@ -12450,7 +12450,7 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
         .withOriginReplyCountAtLeastLoadedReplies()
 }
 
-internal fun KuiklyThreadScreenPayload.withActionCard(messageId: String, card: ThreadActionCard): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withActionCard(messageId: String, card: ThreadActionCard): RaftThreadScreenPayload =
     copy(
         messages = messages.map { message ->
             if (message.id == messageId) message.withActionCard(card) else message
@@ -12460,7 +12460,7 @@ internal fun KuiklyThreadScreenPayload.withActionCard(messageId: String, card: T
         }
     )
 
-private fun KuiklyThreadMessageItem.withActionCard(card: ThreadActionCard): KuiklyThreadMessageItem =
+private fun RaftThreadMessageItem.withActionCard(card: ThreadActionCard): RaftThreadMessageItem =
     copy(metadata = metadata.filterKeys { !it.startsWith("actionCard.") } + card.toMessageMetadata())
 
 private fun List<String>.cleanActionCardIds(): List<String> =
@@ -12468,7 +12468,7 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .filter { it.isNotBlank() }
         .distinct()
 
-internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScreenPayload): RaftThreadScreenPayload {
     val acceptsPatchHeader =
         resolveThreadRouteIdentity().canRetainThreadPageFor(patch.resolveThreadRouteIdentity())
     val patchTitle =
@@ -12541,28 +12541,28 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
-internal fun KuiklyThreadScreenPayload.withThreadContentProjectionFrom(
-    patch: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withThreadContentProjectionFrom(
+    patch: RaftThreadScreenPayload
+): RaftThreadScreenPayload =
     withResolvedReplyThreadIdentityFrom(patch)
         .withContentSliceFrom(patch)
         .withTaskSliceFrom(patch)
 
-internal fun KuiklyThreadScreenPayload.withCanonicalConversationAccessFrom(
-    patch: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withCanonicalConversationAccessFrom(
+    patch: RaftThreadScreenPayload
+): RaftThreadScreenPayload =
     copy(
         joined = patch.joined,
         canSend = patch.canSend,
         composer = composer.copy(enabled = patch.composer.enabled)
     )
 
-internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallback(
+internal fun RaftThreadScreenPayload.withInitialHomeConversationAccessFallback(
     candidate: ConversationAccessCandidate?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     candidate ?: return this
     if (!acceptsInitialConversationAccessCandidate(candidate)) return this
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
         // Reply capability belongs to the parent Channel/DM, not to the
         // synthetic thread conversation returned with reply content.
         return copy(
@@ -12588,11 +12588,11 @@ internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallback
  * a mounted Composer back into a Join footer. Reply threads still need the Home candidate because
  * their canonical stream response does not attest the parent channel's write authority.
  */
-internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallbackUnlessCanonical(
+internal fun RaftThreadScreenPayload.withInitialHomeConversationAccessFallbackUnlessCanonical(
     canonicalAccessResolved: Boolean,
     candidate: ConversationAccessCandidate?,
-): KuiklyThreadScreenPayload =
-    if (canonicalAccessResolved && surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+): RaftThreadScreenPayload =
+    if (canonicalAccessResolved && surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
         this
     } else {
         withInitialHomeConversationAccessFallback(candidate)
@@ -12646,8 +12646,8 @@ private fun ThreadAccessResolution.afterRefreshResult(
 // enrichment. The complete reply identity keeps stale or unresolved route
 // candidates from acquiring access; parent context remains auxiliary and may
 // degrade inline without hiding the canonical timeline.
-internal fun KuiklyThreadScreenPayload.hasReadableCanonicalReplyContent(): Boolean {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || status != "content" || messages.isEmpty()) return false
+internal fun RaftThreadScreenPayload.hasReadableCanonicalReplyContent(): Boolean {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread || status != "content" || messages.isEmpty()) return false
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     val parentMessage =
         parentMessageId?.takeIf { it.isNotBlank() }
@@ -12660,10 +12660,10 @@ internal fun KuiklyThreadScreenPayload.hasReadableCanonicalReplyContent(): Boole
     return routeIdentity.canRenderTimelineCandidates && routeIdentity.timelineChannelId != null
 }
 
-private fun KuiklyThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+private fun RaftThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     if (!isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)) return this
     return copy(
         joined = false,
@@ -12672,26 +12672,26 @@ private fun KuiklyThreadScreenPayload.withReadOnlyReplyAccessWhenHomeCandidateUn
     )
 }
 
-private fun KuiklyThreadScreenPayload.isReadOnlyReplyAccessFallback(
+private fun RaftThreadScreenPayload.isReadOnlyReplyAccessFallback(
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
     homeLookupComplete &&
         homeAccessCandidate == null &&
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread
 
 // Write authority is a terminal access-state invariant, not an inference from
 // whichever payload fields survived the latest projection. In particular, a
 // canonical permission revocation clears readable content, so re-evaluating
 // only the read-only reply fallback would otherwise turn writes back on.
-private fun KuiklyThreadScreenPayload.hasWriteAuthorityForAccess(
+private fun RaftThreadScreenPayload.hasWriteAuthorityForAccess(
     accessResolution: ThreadAccessResolution,
     homeLookupComplete: Boolean,
     homeAccessCandidate: ConversationAccessCandidate?
 ): Boolean =
     accessResolution == ThreadAccessResolution.Resolved &&
         (
-            surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+            surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
                 (
                     homeLookupComplete &&
                         homeAccessCandidate != null &&
@@ -12700,9 +12700,9 @@ private fun KuiklyThreadScreenPayload.hasWriteAuthorityForAccess(
         ) &&
         !isReadOnlyReplyAccessFallback(homeLookupComplete, homeAccessCandidate)
 
-private fun KuiklyThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(
+private fun RaftThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(
     accessResolution: ThreadAccessResolution
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     if (
         accessResolution == ThreadAccessResolution.NoPermission ||
         accessResolution == ThreadAccessResolution.Error
@@ -12727,12 +12727,12 @@ private fun DataResult<*>.diagnosticsResultReason(): String =
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
     this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)
 
-internal fun KuiklyThreadScreenPayload.withTaskSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withTaskSliceFrom(patch: RaftThreadScreenPayload): RaftThreadScreenPayload =
     copy(tasks = patch.tasks)
 
-internal fun KuiklyThreadScreenPayload.withResolvedReplyThreadIdentityFrom(
-    patch: KuiklyThreadScreenPayload
-): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withResolvedReplyThreadIdentityFrom(
+    patch: RaftThreadScreenPayload
+): RaftThreadScreenPayload =
     if (patch.hasResolvedReplyThreadStreamFrom(this)) {
         copy(
             instanceId = patch.instanceId,
@@ -12754,7 +12754,7 @@ internal fun KuiklyThreadScreenPayload.withResolvedReplyThreadIdentityFrom(
         this
     }
 
-internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withMembersPatchFrom(patch: RaftThreadScreenPayload): RaftThreadScreenPayload =
     copy(
         membersCount = patch.membersCount,
         members = patch.members,
@@ -12767,11 +12767,11 @@ internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadS
         removeMemberErrorCode = patch.removeMemberErrorCode
     )
 
-internal fun KuiklyThreadScreenPayload.withMessageReaction(
+internal fun RaftThreadScreenPayload.withMessageReaction(
     messageId: String,
     emoji: String,
     selected: Boolean
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val cleanMessageId = messageId.trim()
     val cleanEmoji = emoji.trim()
     if (cleanMessageId.isBlank() || cleanEmoji.isBlank()) return this
@@ -12785,10 +12785,10 @@ internal fun KuiklyThreadScreenPayload.withMessageReaction(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.withMessageReactions(
+internal fun RaftThreadScreenPayload.withMessageReactions(
     messageId: String,
-    reactions: List<KuiklyThreadReactionItem>
-): KuiklyThreadScreenPayload {
+    reactions: List<RaftThreadReactionItem>
+): RaftThreadScreenPayload {
     val cleanMessageId = messageId.trim()
     if (cleanMessageId.isBlank()) return this
     return copy(
@@ -12801,10 +12801,10 @@ internal fun KuiklyThreadScreenPayload.withMessageReactions(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.withMessageSaved(
+internal fun RaftThreadScreenPayload.withMessageSaved(
     messageId: String,
     saved: Boolean
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val cleanMessageId = messageId.trim()
     if (cleanMessageId.isBlank()) return this
     return copy(
@@ -12817,7 +12817,7 @@ internal fun KuiklyThreadScreenPayload.withMessageSaved(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.withSavedMessageIds(savedIds: Set<String>): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withSavedMessageIds(savedIds: Set<String>): RaftThreadScreenPayload =
     copy(
         messages = messages.map { message -> message.copy(isSaved = message.id in savedIds) },
         originMessage = originMessage?.let { message -> message.copy(isSaved = message.id in savedIds) }
@@ -12827,7 +12827,7 @@ internal fun KuiklyThreadScreenPayload.withSavedMessageIds(savedIds: Set<String>
 // (roster + mention candidates) so reaction-tooltip name resolution can backfill
 // reactor ids the mutation/realtime payload didn't name. The current user is in
 // this roster, so their own just-added reaction resolves without a server round.
-private fun KuiklyThreadScreenPayload.threadReactorNameById(): Map<String, String> {
+private fun RaftThreadScreenPayload.threadReactorNameById(): Map<String, String> {
     val byId = LinkedHashMap<String, String>()
     (members + memberCandidates).forEach { member ->
         val id = member.id.trim()
@@ -12837,11 +12837,11 @@ private fun KuiklyThreadScreenPayload.threadReactorNameById(): Map<String, Strin
     return byId
 }
 
-private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
+private fun RaftThreadScreenPayload.withMessageMutationSummary(
     summary: MessageMutationSummary,
     currentUserId: String?,
     currentUserName: String? = null
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val messageId = summary.messageId.trim()
     if (messageId.isBlank()) return this
     val reactions = summary.reactions.toThreadReactionItems(currentUserId, threadReactorNameById(), currentUserName)
@@ -12855,14 +12855,14 @@ private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withReplyThreadRead(
+private fun RaftThreadScreenPayload.withReplyThreadRead(
     parentMessageId: String,
     threadChannelId: String?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val cleanParentMessageId = parentMessageId.trim()
     if (cleanParentMessageId.isBlank()) return this
     val cleanThreadChannelId = threadChannelId?.trim()?.takeIf { it.isNotBlank() }
-    fun KuiklyThreadMessageItem.clearIfParent(): KuiklyThreadMessageItem {
+    fun RaftThreadMessageItem.clearIfParent(): RaftThreadMessageItem {
         if (id != cleanParentMessageId) return this
         return copy(
             threadChannelId = cleanThreadChannelId ?: this.threadChannelId,
@@ -12876,16 +12876,16 @@ private fun KuiklyThreadScreenPayload.withReplyThreadRead(
     )
 }
 
-private fun KuiklyThreadScreenPayload.withMessageThreadFollowed(
+private fun RaftThreadScreenPayload.withMessageThreadFollowed(
     parentMessageId: String,
     threadChannelId: String?,
     followed: Boolean,
     replyCount: Int
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val cleanParentMessageId = parentMessageId.trim()
     if (cleanParentMessageId.isBlank()) return this
     val cleanThreadChannelId = threadChannelId?.trim()?.takeIf { it.isNotBlank() }
-    fun KuiklyThreadMessageItem.updateIfParent(): KuiklyThreadMessageItem {
+    fun RaftThreadMessageItem.updateIfParent(): RaftThreadMessageItem {
         if (id != cleanParentMessageId) return this
         return copy(
             threadChannelId = cleanThreadChannelId ?: this.threadChannelId,
@@ -12899,7 +12899,7 @@ private fun KuiklyThreadScreenPayload.withMessageThreadFollowed(
     )
 }
 
-private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selected: Boolean): KuiklyThreadMessageItem {
+private fun RaftThreadMessageItem.withReactionSelection(emoji: String, selected: Boolean): RaftThreadMessageItem {
     var matched = false
     val updated =
         reactions.mapNotNull { reaction ->
@@ -12920,7 +12920,7 @@ private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selecte
         }
     val nextReactions =
         if (!matched && selected) {
-            updated + KuiklyThreadReactionItem(emoji = emoji, count = 1, selected = true)
+            updated + RaftThreadReactionItem(emoji = emoji, count = 1, selected = true)
         } else {
             updated
         }
@@ -12928,7 +12928,7 @@ private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selecte
 }
 
 // task #569 follow-up: the who-reacted tooltip reads reactorNames off the
-// KuiklyThreadReactionItem. The server's initial GET already carries names
+// RaftThreadReactionItem. The server's initial GET already carries names
 // (messageService enrichWithSenderNames), but the addReaction mutation summary
 // and any reduced payload can arrive with reactorNames empty while reactorIds
 // is populated — so right after you tap a reaction the tooltip degraded to the
@@ -12979,11 +12979,11 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(
     currentUserId: String?,
     memberNameById: Map<String, String> = emptyMap(),
     currentUserName: String? = null
-): List<KuiklyThreadReactionItem> =
+): List<RaftThreadReactionItem> =
     mapNotNull { reaction ->
         val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
-        KuiklyThreadReactionItem(
+        RaftThreadReactionItem(
             emoji = emoji,
             count = count,
             selected = currentUserId != null && currentUserId in reaction.reactorIds,
@@ -13006,17 +13006,17 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(
 private val PendingReactionRealtimeGuard.key: String
     get() = "$messageId\u0000$emoji"
 
-private fun List<KuiklyThreadReactionItem>.selectedForEmoji(emoji: String): Boolean =
+private fun List<RaftThreadReactionItem>.selectedForEmoji(emoji: String): Boolean =
     any { reaction -> reaction.emoji == emoji && reaction.selected && reaction.count > 0 }
 
 private fun List<MessageReaction>?.toRealtimeThreadReactionItems(
     currentUserId: String?,
     memberNameById: Map<String, String> = emptyMap()
-): List<KuiklyThreadReactionItem>? =
+): List<RaftThreadReactionItem>? =
     this?.mapNotNull { reaction ->
         val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
-        KuiklyThreadReactionItem(
+        RaftThreadReactionItem(
             emoji = emoji,
             count = count,
             selected = currentUserId != null && currentUserId in reaction.reactorIds,
@@ -13031,7 +13031,7 @@ private fun List<MessageReaction>?.toRealtimeThreadReactionItems(
     }
 
 private fun Message.matchesSharedThread(
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     activeReplyParentMessageId: MessageId?
 ): Boolean {
     val replyThreadContentChannelId = payload.replyThreadContentChannelId()
@@ -13049,11 +13049,11 @@ private fun Message.matchesSharedThread(
         activeReplyParentMessageId?.let { parentMessageId == it } == true
 }
 
-private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
-    update: KuiklyThreadMessageItem,
-    reactionUpdate: List<KuiklyThreadReactionItem>? = null,
+private fun RaftThreadMessageItem.mergeRealtimeUpdate(
+    update: RaftThreadMessageItem,
+    reactionUpdate: List<RaftThreadReactionItem>? = null,
     preserveExistingReactions: Boolean = false
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     val currentAuthorId = authorId.resolvedRealtimeThreadAuthorIdOrNull()
     val incomingAuthorId = update.authorId.resolvedRealtimeThreadAuthorIdOrNull()
     // A message author is immutable. Sparse realtime patches have historically
@@ -13109,9 +13109,9 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
 private fun String.resolvedRealtimeThreadAuthorIdOrNull(): String? =
     trim().takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
 
-private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
-    updates: List<KuiklyThreadAttachmentItem>
-): List<KuiklyThreadAttachmentItem> {
+private fun RaftThreadMessageItem.mergeAttachmentCommentMetadata(
+    updates: List<RaftThreadAttachmentItem>
+): List<RaftThreadAttachmentItem> {
     if (updates.isEmpty()) return attachments
     if (attachments.isEmpty()) return updates
     val previousById = attachments.associateBy { it.id }
@@ -13125,12 +13125,12 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
     }
 }
 
-private fun ThreadSnapshot.toKuiklyThreadPayload(
-    base: KuiklyThreadScreenPayload,
+private fun ThreadSnapshot.toRaftThreadPayload(
+    base: RaftThreadScreenPayload,
     currentUserId: String?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val baseHasReplyThreadIdentity =
-        base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+        base.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
             (
                 base.parentChannelId?.isNotBlank() == true &&
                     (base.parentMessageId?.isNotBlank() == true || base.originParentMessageId?.isNotBlank() == true)
@@ -13140,8 +13140,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             base.parentChannelId.isNullOrBlank() &&
             base.focusedMessageId?.isNotBlank() == true &&
             (
-                base.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-                    base.surfaceKind == KuiklyThreadSurfaceKind.Channel
+                base.surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+                    base.surfaceKind == RaftThreadSurfaceKind.Channel
                 )
     val routeIsReplyThread =
         baseHasReplyThreadIdentity ||
@@ -13171,14 +13171,14 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             }
     val surfaceKind =
         when {
-            conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            conversation.kind == ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
             routeIsReplyThread &&
                 (resolvedParentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank()) ->
-                KuiklyThreadSurfaceKind.ReplyThread
+                RaftThreadSurfaceKind.ReplyThread
             else -> base.surfaceKind
         }
     val channelKind =
-        if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        if (surfaceKind == RaftThreadSurfaceKind.Channel) {
             conversation.resolveThreadRouteIdentity().channelKind
                 .withRouteChannelKindFallback(base.resolveThreadRouteIdentity().channelKind ?: base.channelKind)
                 ?: base.channelKind
@@ -13187,25 +13187,25 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val streamChannelId =
         base.streamChannelId
-            ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            ?: if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 conversation.thread?.streamChannelId?.value
             } else {
                 conversation.channelId?.value ?: conversation.threadId.value
             }
     val parentChannelId =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             base.parentChannelId ?: conversation.thread?.parentChannelId?.value
         } else {
             null
         }
     val parentMessageId =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             base.parentMessageId ?: resolvedParentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
         } else {
             null
         }
     val parentSurfaceKind =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             // Parent shape is immutable route intent. Snapshot content may omit it, but it must
             // never erase a valid launch identity before the directory projection renders the
             // header. Preserve malformed non-blank input too so display enrichment still rejects
@@ -13217,7 +13217,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             null
         }
     val parentChannelKind =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             base.parentChannelKind.normalizedThreadChannelKind()
                 ?: conversation.threadParentChannelKind()
         } else {
@@ -13225,7 +13225,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val sourceThreadId =
         base.sourceThreadId
-            ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            ?: if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 conversation.thread?.streamChannelId?.value
             } else {
                 conversation.channelId?.value ?: conversation.threadId.value
@@ -13238,7 +13238,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         ).replyThreadContentChannelId()
     val parentConversationMessagePatch =
         if (baseTargetsParentConversation) {
-            parentMessage?.toKuiklyThreadMessageItem(currentUserId)
+            parentMessage?.toRaftThreadMessageItem(currentUserId)
         } else {
             null
         }
@@ -13258,7 +13258,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 replyThreadContentChannelId == null || message.belongsToReplyThreadContent(replyThreadContentChannelId)
             }
             .map { message ->
-                val item = message.toKuiklyThreadMessageItem(currentUserId)
+                val item = message.toRaftThreadMessageItem(currentUserId)
                 if (parentConversationMessagePatch?.id == item.id) {
                     item.mergeRealtimeUpdate(parentConversationMessagePatch)
                 } else {
@@ -13266,24 +13266,24 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 }
             }
             .sortedByThreadTimeline()
-    val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+    val isDirectMessage = surfaceKind == RaftThreadSurfaceKind.DirectMessage
     val safeDirectMessagePeerName = conversation.safeDisplayNameOrNull().takeIf { isDirectMessage }
     val headerContext =
         SharedThreadHeaderContextStore.conversationContext(
             surfaceKind = surfaceKind,
             conversation = conversation,
-            originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
+            originMessage = resolvedParentMessage?.toRaftThreadMessageItem(currentUserId),
             parentMessageId = parentId,
             originPending =
-                surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                     resolvedParentMessage == null &&
                     parentId != null &&
                     base.originStatus == "loading"
         )
     val resolvedComposer =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             base.composer.copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 mentionChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
                 streamChannelId = streamChannelId
@@ -13324,7 +13324,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         originStatus = headerContext.originStatus,
         originErrorCode = headerContext.originErrorCode,
         emptyTitle =
-            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 ThreadReplyEmptyTitle
             } else if (
                 cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty() &&
@@ -13337,7 +13337,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 base.emptyTitle
             },
         emptyDetail =
-            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                 ThreadReplyEmptyDetail
             } else if (
                 cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty() &&
@@ -13350,7 +13350,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         composer = resolvedCapabilityComposer,
         showTaskOpenActions = base.showTaskOpenActions && supportsChannelTasks,
         showTaskStatusActions = base.showTaskStatusActions && supportsChannelTasks,
-        tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
+        tasks = tasks.map { task -> task.toRaftThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
         joined = conversation.joined,
@@ -13375,7 +13375,7 @@ private fun Message.isSparseReplyOriginParentCandidate(): Boolean =
 private fun String?.withRouteChannelKindFallback(routeKind: String?): String? {
     val normalized = normalizedThreadChannelKind()
     val route = routeKind.normalizedThreadChannelKind()
-    return if (normalized == KuiklyThreadSurfaceKind.Channel && route != null && route != KuiklyThreadSurfaceKind.Channel) {
+    return if (normalized == RaftThreadSurfaceKind.Channel && route != null && route != RaftThreadSurfaceKind.Channel) {
         route
     } else {
         normalized ?: route
@@ -13394,8 +13394,8 @@ private fun ThreadSnapshot.matchesFocusedThreadRoute(
     return focusedMessage.channelId?.value == routeId || focusedMessage.threadId.value == routeId
 }
 
-private fun KuiklyThreadScreenPayload.focusedMessageContextChannelIdOrNull(): ChannelId? {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+private fun RaftThreadScreenPayload.focusedMessageContextChannelIdOrNull(): ChannelId? {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
     return listOfNotNull(streamChannelId, sourceThreadId)
         .firstNotNullOfOrNull { value -> value.takeIf { it.isNotBlank() }?.let(::ChannelId) }
 }
@@ -13415,8 +13415,8 @@ private fun ThreadSnapshot.withConversationAccessFallback(
     return if (nextConversation == current) this else copy(conversation = nextConversation)
 }
 
-private fun KuiklyThreadScreenPayload.conversationAccessFallbackIds(): List<String> =
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+private fun RaftThreadScreenPayload.conversationAccessFallbackIds(): List<String> =
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
         listOfNotNull(replyParentAccessIdentityOrNull()?.first)
     } else {
         listOfNotNull(sourceThreadId, streamChannelId, parentChannelId)
@@ -13424,10 +13424,10 @@ private fun KuiklyThreadScreenPayload.conversationAccessFallbackIds(): List<Stri
             .distinct()
     }
 
-private fun KuiklyThreadScreenPayload.acceptsInitialConversationAccessCandidate(
+private fun RaftThreadScreenPayload.acceptsInitialConversationAccessCandidate(
     candidate: ConversationAccessCandidate
 ): Boolean {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
         return acceptsConversationAccessCandidate(candidate)
     }
     val (parentId, parentKind) = replyParentAccessIdentityOrNull() ?: return false
@@ -13435,10 +13435,10 @@ private fun KuiklyThreadScreenPayload.acceptsInitialConversationAccessCandidate(
     return candidate.conversationKind == parentKind
 }
 
-private fun KuiklyThreadScreenPayload.replyParentAccessIdentityOrNull(): Pair<String, ConversationKind>? {
+private fun RaftThreadScreenPayload.replyParentAccessIdentityOrNull(): Pair<String, ConversationKind>? {
     val routeIdentity = resolveThreadRouteIdentity()
     if (
-        routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
         !routeIdentity.hasCompleteReplyIdentity
     ) {
         return null
@@ -13462,7 +13462,7 @@ private fun ConversationSummary.headerFallbackIds(): Set<String> =
         thread?.streamChannelId?.value
     ).filter { it.isNotBlank() }.toSet()
 
-internal fun KuiklyThreadMessageItem.toMessage(
+internal fun RaftThreadMessageItem.toMessage(
     threadId: ThreadId,
     channelId: ChannelId,
     currentUserId: String? = null,
@@ -13541,7 +13541,7 @@ internal fun KuiklyThreadMessageItem.toMessage(
     )
 }
 
-private fun List<KuiklyThreadReactionItem>.toMessageReactions(
+private fun List<RaftThreadReactionItem>.toMessageReactions(
     currentUserId: String?,
     currentUserName: String?
 ): List<MessageReaction>? =
@@ -13568,7 +13568,7 @@ private fun List<KuiklyThreadReactionItem>.toMessageReactions(
         )
     }.takeIf { it.isNotEmpty() }
 
-private fun KuiklyThreadMessageItem.toMemberProfile(kind: MemberKind): MemberProfile {
+private fun RaftThreadMessageItem.toMemberProfile(kind: MemberKind): MemberProfile {
     val cleanAuthorDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }
     val cleanMembershipStatus =
         senderMembershipStatus?.takeIf { it.isNotBlank() }
@@ -13600,7 +13600,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(kind: MemberKind): MemberPro
     )
 }
 
-private fun KuiklyThreadAttachmentItem.toAttachment(): Attachment =
+private fun RaftThreadAttachmentItem.toAttachment(): Attachment =
     Attachment(
         id = AttachmentId(id),
         name = name,
@@ -13618,7 +13618,7 @@ internal fun StoredAuthSession.currentServerSlug(): String? =
             ?.takeIf { it.isNotBlank() }
         ?: servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
 
-private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentRef? {
+private fun RaftThreadMessageCommentRef.toMessageCommentRef(): MessageCommentRef? {
     val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
     val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
     return MessageCommentRef(
@@ -13630,7 +13630,7 @@ private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentR
     )
 }
 
-private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): MessageCommentHostSource? {
+private fun RaftThreadMessageCommentHostSource.toMessageCommentHostSource(): MessageCommentHostSource? {
     val cleanType = type.commentHostTypeOrNull() ?: return null
     val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
@@ -13644,7 +13644,7 @@ private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): M
     )
 }
 
-internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
+internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThreadMessageItem {
     val pendingSendContext = metadata.localSendContextFromMetadata()
     val resolvedAvatar =
         resolveAvatarSlot(
@@ -13653,7 +13653,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             avatarWireValue = author.avatar?.wireValue,
             avatarUrl = author.avatarUrl
         )
-    return KuiklyThreadMessageItem(
+    return RaftThreadMessageItem(
         id = id.value,
         authorId = author.id.value,
         authorName = author.displayName,
@@ -13696,9 +13696,9 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         taskAssigneeKind = task?.assignee?.kind?.memberKindWireValue(),
         taskAssigneeId = task?.assignee?.id?.value,
         taskAssigneeName = task?.assignee?.displayName,
-        deliveryState = deliveryState.toKuiklyThreadDeliveryState(),
+        deliveryState = deliveryState.toRaftThreadDeliveryState(),
         attachments = attachments.map { attachment ->
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = attachment.id.value,
                 name = attachment.name,
                 mimeType = attachment.mimeType,
@@ -13709,7 +13709,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             )
         },
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
-        commentRef = commentRef?.toKuiklyThreadCommentRef(),
+        commentRef = commentRef?.toRaftThreadCommentRef(),
         forwardBundle = forwardBundle,
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
@@ -13728,7 +13728,7 @@ private val ThreadLocalSendMetadataJson =
     }
 
 private fun Map<String, String>.withLocalSendMetadata(
-    context: KuiklyThreadPendingSendContext?,
+    context: RaftThreadPendingSendContext?,
     errorCode: String?,
     errorMessage: String?
 ): Map<String, String> {
@@ -13752,11 +13752,11 @@ private fun Map<String, String>.withoutLocalSendMetadata(): Map<String, String> 
             key != ThreadLocalSendErrorMessageMetadataKey
     }
 
-private fun Map<String, String>.localSendContextFromMetadata(): KuiklyThreadPendingSendContext? =
+private fun Map<String, String>.localSendContextFromMetadata(): RaftThreadPendingSendContext? =
     get(ThreadLocalSendContextMetadataKey)
         ?.let { value ->
             runCatching {
-                ThreadLocalSendMetadataJson.decodeFromString<KuiklyThreadPendingSendContext>(value)
+                ThreadLocalSendMetadataJson.decodeFromString<RaftThreadPendingSendContext>(value)
             }.getOrNull()
         }
 
@@ -13767,24 +13767,24 @@ private fun String.toMessageDeliveryState(): MessageDeliveryState =
         else -> MessageDeliveryState.Sent
     }
 
-private fun MessageDeliveryState.toKuiklyThreadDeliveryState(): String =
+private fun MessageDeliveryState.toRaftThreadDeliveryState(): String =
     when (this) {
         MessageDeliveryState.Sending -> ThreadMessageDeliverySending
         MessageDeliveryState.Failed -> ThreadMessageDeliveryFailed
         MessageDeliveryState.Sent -> ThreadMessageDeliverySent
     }
 
-private fun MessageCommentRef.toKuiklyThreadCommentRef(): KuiklyThreadMessageCommentRef =
-    KuiklyThreadMessageCommentRef(
+private fun MessageCommentRef.toRaftThreadCommentRef(): RaftThreadMessageCommentRef =
+    RaftThreadMessageCommentRef(
         attachmentId = attachmentId.value,
         filename = filename,
         hostMessageId = hostMessageId?.value,
-        hostSource = hostSource?.toKuiklyThreadCommentHostSource(),
+        hostSource = hostSource?.toRaftThreadCommentHostSource(),
         anchorLabel = anchorLabel
     )
 
-private fun MessageCommentHostSource.toKuiklyThreadCommentHostSource(): KuiklyThreadMessageCommentHostSource =
-    KuiklyThreadMessageCommentHostSource(
+private fun MessageCommentHostSource.toRaftThreadCommentHostSource(): RaftThreadMessageCommentHostSource =
+    RaftThreadMessageCommentHostSource(
         type = type,
         routeKind = routeKind,
         channelId = channelId.value,
@@ -13793,8 +13793,8 @@ private fun MessageCommentHostSource.toKuiklyThreadCommentHostSource(): KuiklyTh
         rootThreadChannelId = rootThreadChannelId?.value
     )
 
-private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
-    KuiklyThreadTaskItem(
+private fun TaskSummary.toRaftThreadTaskItem(): RaftThreadTaskItem =
+    RaftThreadTaskItem(
         id = id.value,
         title = title,
         status = status.toWireValue(),

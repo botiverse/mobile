@@ -1,52 +1,52 @@
 package build.raft.app.data
 
-import build.raft.app.SlockAdaptiveDetailCloseRequest
-import build.raft.app.SlockAdaptiveDetailIdentity
-import build.raft.app.SlockAdaptiveDetailSelection
-import build.raft.app.SlockAdaptivePaneLayout
-import build.raft.app.SlockAdaptiveWorkspaceIntent
-import build.raft.app.SlockAdaptiveWorkspacePresentation
-import build.raft.app.SlockAdaptiveWorkspaceState
+import build.raft.app.RaftAdaptiveDetailCloseRequest
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptiveDetailSelection
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptiveWorkspaceIntent
+import build.raft.app.RaftAdaptiveWorkspacePresentation
+import build.raft.app.RaftAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
-import build.raft.app.reduceSlockAdaptiveWorkspace
-import build.raft.app.toSlockAdaptiveDetailIdentity
+import build.raft.app.reduceRaftAdaptiveWorkspace
+import build.raft.app.toRaftAdaptiveDetailIdentity
 
 internal fun shouldOpenWithinAdaptiveDetail(
-    source: SlockAdaptiveDetailCloseRequest?,
-    workspace: SlockAdaptiveWorkspaceState?,
+    source: RaftAdaptiveDetailCloseRequest?,
+    workspace: RaftAdaptiveWorkspaceState?,
     desktopModeEnabled: Boolean,
     targetServerId: String?,
 ): Boolean = source != null && desktopModeEnabled &&
-    workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
+    workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane &&
     targetServerId == workspace.serverId
 
 /** Only route identity/intent is retained; conversation state stays in its canonical store. */
 internal data class AdaptiveDetailHistory(
-    val owner: SlockAdaptiveDetailSelection,
+    val owner: RaftAdaptiveDetailSelection,
     val previous: List<WireThreadLaunchPayload>,
 )
 
 internal fun SharedAdaptiveWorkspaceSession.navigateDetail(
-    source: SlockAdaptiveDetailCloseRequest,
+    source: RaftAdaptiveDetailCloseRequest,
     target: WireThreadLaunchPayload,
     serverId: String,
 ): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
     if (current.shellInstanceId != source.shellInstanceId ||
-        !current.parentVisible || current.pane.layout != SlockAdaptivePaneLayout.DualPane ||
+        !current.parentVisible || current.pane.layout != RaftAdaptivePaneLayout.DualPane ||
         current.serverId != serverId ||
         !current.acceptsDetailCallback(source.identityKey, source.generation)
     ) return this
     val previousPayload = launchPayload ?: return this
-    val identity = target.toSlockAdaptiveDetailIdentity(serverId) ?: return this
+    val identity = target.toRaftAdaptiveDetailIdentity(serverId) ?: return this
     if (identity == current.selection?.identity) return this
-    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
     val selection = next.selection ?: return this
     val previous = detailHistory?.takeIf { it.owner == current.selection }?.previous.orEmpty()
     // Opening the parent from a reply header returns to its existing position in this pane.
     val parentIndex = previous.indexOfLast {
-        it.toSlockAdaptiveDetailIdentity(serverId)?.copy(focusedMessageId = null) ==
+        it.toRaftAdaptiveDetailIdentity(serverId)?.copy(focusedMessageId = null) ==
             identity.copy(focusedMessageId = null)
     }
     val history = if (parentIndex >= 0) previous.take(parentIndex) else previous + previousPayload.copy(
@@ -61,7 +61,7 @@ internal fun SharedAdaptiveWorkspaceSession.navigateDetail(
 }
 
 internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
-    source: SlockAdaptiveDetailCloseRequest,
+    source: RaftAdaptiveDetailCloseRequest,
 ): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
     if (current.shellInstanceId != source.shellInstanceId ||
@@ -69,10 +69,10 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
     ) return this
     val previous = detailHistory?.takeIf { it.owner == current.selection }?.previous.orEmpty()
     val target = previous.lastOrNull()
-    val identity = target?.toSlockAdaptiveDetailIdentity(current.serverId)
+    val identity = target?.toRaftAdaptiveDetailIdentity(current.serverId)
     if (identity != null) {
         // A resize may have made the retained detail compact; Back still unwinds its history.
-        val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.ParkSelection(identity))
+        val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.ParkSelection(identity))
         return copy(
             workspace = next,
             launchPayload = target,
@@ -80,7 +80,7 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
         )
     }
     return copy(
-        workspace = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.CloseDetail(source.identityKey, source.generation)),
+        workspace = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.CloseDetail(source.identityKey, source.generation)),
         launchPayload = null,
         detailHistory = null,
     )
@@ -93,16 +93,16 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
  * Returns this session unchanged when the pane cannot host the detail.
  */
 internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
-    identity: SlockAdaptiveDetailIdentity,
+    identity: RaftAdaptiveDetailIdentity,
     target: WireThreadLaunchPayload,
 ): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
     // The wide pane must be able to host the detail. Checked up front: a compact workspace that
     // already retains this identity would otherwise look "opened" and skip the full-page route.
-    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane || current.serverId != identity.serverId) {
+    if (current.pane.layout != RaftAdaptivePaneLayout.DualPane || current.serverId != identity.serverId) {
         return this
     }
-    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
     if (next.selection?.identity != identity) return this
     return copy(workspace = next, launchPayload = target)
 }
@@ -115,7 +115,7 @@ internal fun SharedAdaptiveWorkspaceSession.closeDetailCompletely(): SharedAdapt
     val current = workspace ?: return this
     if (current.selection == null) return copy(launchPayload = null, detailHistory = null)
     return copy(
-        workspace = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail),
+        workspace = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail),
         launchPayload = null,
         detailHistory = null,
     )
@@ -123,7 +123,7 @@ internal fun SharedAdaptiveWorkspaceSession.closeDetailCompletely(): SharedAdapt
 
 internal fun SharedAdaptiveWorkspaceSession.detailListSelectionId(): String? =
     detailHistory?.takeIf { it.owner == workspace?.selection }?.previous?.firstOrNull()
-        ?.toSlockAdaptiveDetailIdentity(workspace?.serverId.orEmpty())?.threadId
+        ?.toRaftAdaptiveDetailIdentity(workspace?.serverId.orEmpty())?.threadId
         ?: workspace?.selection?.identity?.let { it.parentChannelId ?: it.threadId }
 
 internal fun SharedAdaptiveWorkspaceSession.hasVisibleDetailBackHistory(): Boolean =
@@ -146,9 +146,9 @@ internal fun SharedAdaptiveWorkspaceSession.selectedConversationWhenShellReturns
     val current = workspace ?: return null
     if (!desktopModeOnLargeScreen || current.selection == null) return null
     return when (current.presentation) {
-        SlockAdaptiveWorkspacePresentation.Split,
-        SlockAdaptiveWorkspacePresentation.DetailOnly -> detailListSelectionId()
-        SlockAdaptiveWorkspacePresentation.ListOnly,
-        SlockAdaptiveWorkspacePresentation.Inactive -> null
+        RaftAdaptiveWorkspacePresentation.Split,
+        RaftAdaptiveWorkspacePresentation.DetailOnly -> detailListSelectionId()
+        RaftAdaptiveWorkspacePresentation.ListOnly,
+        RaftAdaptiveWorkspacePresentation.Inactive -> null
     }
 }

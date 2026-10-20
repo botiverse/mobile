@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.resources.MR
@@ -71,10 +71,10 @@ internal fun ThreadFilesVisualScreen() {
 }
 
 @Serializable
-internal data class KuiklyThreadFilesPayload(
+internal data class RaftThreadFilesPayload(
     val instanceId: String = "",
     val status: String = "loading",
-    val items: List<KuiklyThreadFileItem> = emptyList(),
+    val items: List<RaftThreadFileItem> = emptyList(),
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
     val nextCursor: String? = null,
@@ -85,7 +85,7 @@ internal data class KuiklyThreadFilesPayload(
 )
 
 @Serializable
-internal data class KuiklyThreadFileItem(
+internal data class RaftThreadFileItem(
     val attachmentId: String,
     val messageId: String = "",
     val channelId: String = "",
@@ -104,15 +104,15 @@ internal data class KuiklyThreadFileItem(
 
 internal fun threadFileCreatedAtValue(value: String?): String = value.orEmpty()
 
-private fun threadFilesVisualPayload(): KuiklyThreadFilesPayload =
-    KuiklyThreadFilesPayload(
+private fun threadFilesVisualPayload(): RaftThreadFilesPayload =
+    RaftThreadFilesPayload(
         instanceId = "visual-thread-files-list",
         status = "ready",
         hasMore = true,
         nextCursor = "next-files-page",
         items =
             listOf(
-                KuiklyThreadFileItem(
+                RaftThreadFileItem(
                     attachmentId = "visual-file-image",
                     messageId = "msg-files-image",
                     channelId = "visual-thread-composer",
@@ -125,7 +125,7 @@ private fun threadFilesVisualPayload(): KuiklyThreadFilesPayload =
                     mimeType = "image/png",
                     thumbnailUrl = ThreadFilesVisualPreviewUri
                 ),
-                KuiklyThreadFileItem(
+                RaftThreadFileItem(
                     attachmentId = "visual-file-pdf",
                     messageId = "msg-files-pdf",
                     channelId = "visual-thread-composer",
@@ -139,7 +139,7 @@ private fun threadFilesVisualPayload(): KuiklyThreadFilesPayload =
                     sourceParentMessageShortId = "f8e569cb",
                     mimeType = "application/pdf"
                 ),
-                KuiklyThreadFileItem(
+                RaftThreadFileItem(
                     attachmentId = "visual-file-zip",
                     messageId = "msg-files-zip",
                     channelId = "visual-thread-composer",
@@ -177,13 +177,13 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentTerminalStatusResource
 
 @Composable
 internal fun ThreadFilesContent(
-    payload: KuiklyThreadFilesPayload,
+    payload: RaftThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     autoLoadRouteListKey: String = payload.instanceId,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
         verticalArrangement = Arrangement.Top
     ) {
         when (payload.status) {
@@ -209,7 +209,7 @@ internal fun ThreadFilesContent(
 
 @Composable
 private fun ThreadFilesList(
-    payload: KuiklyThreadFilesPayload,
+    payload: RaftThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     autoLoadRouteListKey: String,
     onEvent: (action: String, attachmentId: String?) -> Unit
@@ -347,7 +347,7 @@ internal fun threadFilesShouldRequestLoadMore(
 
 @Composable
 private fun ThreadFileRow(
-    item: KuiklyThreadFileItem,
+    item: RaftThreadFileItem,
     openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit,
     onDownload: () -> Unit,
@@ -362,8 +362,8 @@ private fun ThreadFileRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(82.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .background(RaftColor.SurfaceWhite)
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -377,12 +377,12 @@ private fun ThreadFileRow(
         ) {
             Text(
                 text = item.name,
-                style = SlockType.Input.copy(
+                style = RaftType.Input.copy(
                     fontSize = 14.sp,
                     lineHeight = 18.sp,
-                    color = SlockColor.TextBlack
+                    color = RaftColor.TextBlack
                 ),
-                color = SlockColor.TextBlack,
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -390,12 +390,12 @@ private fun ThreadFileRow(
             openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
                 Text(
                     text = statusLabel,
-                    style = SlockType.Input.copy(
+                    style = RaftType.Input.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
-                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray
+                        color = if (isOpening) RaftColor.TextBlack else RaftColor.TextMutedGray
                     ),
-                    color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    color = if (isOpening) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -407,12 +407,12 @@ private fun ThreadFileRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ThreadFileIconActionButton(
-                iconName = SlockLucideIconName.ExternalLink,
+                iconName = RaftLucideIconName.ExternalLink,
                 enabled = !isOpening && canOpenSource,
                 onClick = openSourceIfIdle
             )
             ThreadFileIconActionButton(
-                iconName = if (isOpening) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Download,
+                iconName = if (isOpening) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Download,
                 enabled = !isOpening,
                 onClick = downloadIfIdle
             )
@@ -425,33 +425,33 @@ internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel()
     val state = this
     return when (state?.status) {
         "downloading", "paused" ->
-            slockFilePreviewLocalizedActiveDownloadStatusLabel(state.progress, state.status)
+            raftFilePreviewLocalizedActiveDownloadStatusLabel(state.progress, state.status)
         else -> state.threadAttachmentTerminalStatusResource()?.let { resource -> stringResource(resource) }
     }
 }
 
 @Composable
-private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
+private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
     val thumbnailUrl = item.thumbnailUrl?.takeIf { it.isNotBlank() }
-    val isImage = slockFilePreviewIsImageAttachment(fileName = item.name, mimeType = item.mimeType)
+    val isImage = raftFilePreviewIsImageAttachment(fileName = item.name, mimeType = item.mimeType)
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .background(RaftColor.SurfaceWhite)
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
-            SlockAspectFitImagePreviewSurface(
+            RaftAspectFitImagePreviewSurface(
                 source = thumbnailUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 borderWidth = 0.dp,
-                contentScale = SlockImageThumbnailContentScale
+                contentScale = RaftImageThumbnailContentScale
             )
         }
         if (!(isImage && thumbnailUrl != null)) {
-            SlockLucideIcon(
+            RaftLucideIcon(
                 name = item.threadFileTypeIconName().wireName,
                 modifier = Modifier.size(18.dp)
             )
@@ -460,7 +460,7 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
 }
 
 @Composable
-private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
+private fun ThreadFileMetaLine(item: RaftThreadFileItem) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -468,12 +468,12 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
         item.displaySizeLabel().takeIf { it.isNotBlank() }?.let { label ->
             Text(
                 text = label,
-                style = SlockType.Input.copy(
+                style = RaftType.Input.copy(
                     fontSize = 11.sp,
                     lineHeight = 14.sp,
-                    color = SlockColor.TextMutedGray
+                    color = RaftColor.TextMutedGray
                 ),
-                color = SlockColor.TextMutedGray,
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -483,19 +483,19 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockLucideIcon(
-                    name = SlockLucideIconName.Clock3.wireName,
+                RaftLucideIcon(
+                    name = RaftLucideIconName.Clock3.wireName,
                     modifier = Modifier.size(12.dp),
-                    color = SlockColor.TextMutedGrayArgb
+                    color = RaftColor.TextMutedGrayArgb
                 )
-                SlockRelativeTimestampText(
+                RaftRelativeTimestampText(
                     value = label,
-                    style = SlockType.Input.copy(
+                    style = RaftType.Input.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
-                        color = SlockColor.TextMutedGray
+                        color = RaftColor.TextMutedGray
                     ),
-                    color = SlockColor.TextMutedGray,
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -504,44 +504,44 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
     }
 }
 
-internal fun KuiklyThreadFileItem.displaySizeLabel(): String =
+internal fun RaftThreadFileItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
-internal fun KuiklyThreadFileItem.threadFileHasSourceTarget(): Boolean =
+internal fun RaftThreadFileItem.threadFileHasSourceTarget(): Boolean =
     threadFileSourceFocusMessageId() != null
 
-internal fun KuiklyThreadFileItem.threadFileSourceFocusMessageId(): String? =
+internal fun RaftThreadFileItem.threadFileSourceFocusMessageId(): String? =
     messageId.takeIf { it.isNotBlank() }
 
 @Composable
 private fun ThreadFileIconActionButton(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(
+    RaftBrutalIconButton(
         iconName = iconName,
         onClick = onClick,
         enabled = enabled,
         size = 28.dp,
         iconSize = 14.dp,
-        iconSpinning = iconName == SlockLucideIconName.LoaderCircle
+        iconSpinning = iconName == RaftLucideIconName.LoaderCircle
     )
 }
 
-private fun KuiklyThreadFileItem.threadFileTypeIconName(): SlockLucideIconName {
+private fun RaftThreadFileItem.threadFileTypeIconName(): RaftLucideIconName {
     val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
     val lowerName = name.lowercase()
     return when {
-        slockFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType) -> SlockLucideIconName.Image
-        normalizedMime.startsWith("video/") -> SlockLucideIconName.FileVideoCamera
-        normalizedMime == "application/pdf" || lowerName.endsWith(".pdf") -> SlockLucideIconName.FileText
+        raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType) -> RaftLucideIconName.Image
+        normalizedMime.startsWith("video/") -> RaftLucideIconName.FileVideoCamera
+        normalizedMime == "application/pdf" || lowerName.endsWith(".pdf") -> RaftLucideIconName.FileText
         normalizedMime.contains("zip") ||
             normalizedMime.contains("archive") ||
             lowerName.endsWith(".zip") ||
             lowerName.endsWith(".tar") ||
-            lowerName.endsWith(".gz") -> SlockLucideIconName.Archive
-        else -> SlockLucideIconName.File
+            lowerName.endsWith(".gz") -> RaftLucideIconName.Archive
+        else -> RaftLucideIconName.File
     }
 }
 
@@ -555,7 +555,7 @@ private fun ThreadFilesLoadMore(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = if (loading) stringResource(MR.strings.common_loading) else label,
             onClick = onClick,
             enabled = !loading,
@@ -574,13 +574,13 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
     ) {
         Text(
             text = stringResource(MR.strings.thread_files_error_load),
-            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         Text(
             text = errorCode,
-            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         ThreadFilesLoadMore(loading = false, onClick = onRetry, label = stringResource(MR.strings.common_retry))
     }
@@ -595,15 +595,15 @@ private fun ThreadFilesStateMessage(title: String, detail: String?) {
     ) {
         Text(
             text = title,
-            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         detail?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = it,
-                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )

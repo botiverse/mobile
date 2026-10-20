@@ -27,7 +27,7 @@ internal fun ThreadCommentAnchorVisualScreen() {
             mutableStateOf(
                 ThreadAttachmentCommentsDialogState(
                     attachment =
-                        KuiklyThreadAttachmentItem(
+                        RaftThreadAttachmentItem(
                             id = "att-anchor-1",
                             name = "agent-tabs-full-page-review.md",
                             mimeType = "text/markdown",
@@ -57,16 +57,16 @@ internal fun ThreadCommentAnchorVisualScreen() {
                 )
             )
         }
-    SlockFilePreviewPageScaffold(
+    RaftFilePreviewPageScaffold(
         title = "FILE PREVIEW",
         subtitle = "agent-tabs-full-page-review.md",
-        iconName = SlockLucideIconName.FileText,
+        iconName = RaftLucideIconName.FileText,
         onBack = {},
         contentPadding = 0.dp
     ) {
-        SlockFilePreviewPayloadContent(
+        RaftFilePreviewPayloadContent(
             payload =
-                SlockFilePreviewPayload(
+                RaftFilePreviewPayload(
                     kind = "markdown",
                     title = "FILE PREVIEW",
                     name = "agent-tabs-full-page-review.md",
@@ -76,7 +76,7 @@ internal fun ThreadCommentAnchorVisualScreen() {
             onOpenUrl = {},
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
-        SlockFilePreviewAttachmentCommentsPanel(
+        RaftFilePreviewAttachmentCommentsPanel(
             state = state,
             onClose = {},
             onFilterChange = { state = state.copy(filter = it) },

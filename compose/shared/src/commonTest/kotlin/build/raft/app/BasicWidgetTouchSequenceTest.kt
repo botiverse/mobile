@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 class BasicWidgetTouchSequenceTest {
     @Test
     fun changedPositionOnReleaseEmitsUpAndRearmsTheNextPointer() {
-        val tracker = SlockTouchSequenceTracker<Long>()
+        val tracker = RaftTouchSequenceTracker<Long>()
 
         assertEquals(TouchType.Down, tracker.onChange(pointerId = 1L, pressed = true, positionChanged = false))
         assertEquals(TouchType.Move, tracker.onChange(pointerId = 1L, pressed = true, positionChanged = true))
@@ -17,7 +17,7 @@ class BasicWidgetTouchSequenceTest {
 
     @Test
     fun untrackedPointerCannotStealOrEndTheActiveGesture() {
-        val tracker = SlockTouchSequenceTracker<Long>()
+        val tracker = RaftTouchSequenceTracker<Long>()
 
         assertEquals(TouchType.Down, tracker.onChange(pointerId = 1L, pressed = true, positionChanged = false))
         assertNull(tracker.onChange(pointerId = 2L, pressed = true, positionChanged = true))

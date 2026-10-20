@@ -1,7 +1,7 @@
 package build.raft.app.core.data.auth
 
 import build.raft.app.BuildConfig
-import build.raft.app.data.SlockKeyValueStore
+import build.raft.app.data.RaftKeyValueStore
 import android.content.Context
 import android.util.Base64
 import java.security.MessageDigest
@@ -58,7 +58,7 @@ object AndroidMobileOAuth {
 }
 
 class AndroidMobileOAuthPendingStore(context: Context) {
-    private val store: SlockKeyValueStore =
+    private val store: RaftKeyValueStore =
         AndroidMMKVKeyValueStore(context.applicationContext, "slockMobileOAuth")
 
     fun save(request: AndroidMobileOAuthPendingRequest) {

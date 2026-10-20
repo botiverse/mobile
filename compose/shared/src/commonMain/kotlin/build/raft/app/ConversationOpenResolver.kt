@@ -90,7 +90,7 @@ internal fun resolveOpenRequest(
     val projection =
         projectionHit?.takeIf { hit ->
             !sourceMessageIdentity.isThreadShaped() ||
-                hit.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+                hit.surfaceKind == RaftThreadSurfaceKind.ReplyThread
         }
     val validatesNotificationThreadIdentity =
         (
@@ -129,7 +129,7 @@ internal fun resolveOpenRequest(
                         ?.takeIf { it.isNotBlank() }
                         ?.let { parentId ->
                             conversationDirectory.resolve(parentId)
-                                ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+                                ?.takeUnless { it.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
                                 ?.canonicalChannelId
                                 ?.let { canonicalId -> canonicalId != parentId }
                         } == true
@@ -149,7 +149,7 @@ internal fun resolveOpenRequest(
         sourceMessageIdentity.parentConversationKind
             ?: sourceMessageIdentity.parentChannelId
                 ?.let(conversationDirectory::resolve)
-                ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+                ?.takeUnless { it.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
                 ?.conversationKind
     val conversation =
         if (activityInternalJointParentSource || notificationThreadProjectionMismatch) {
@@ -286,7 +286,7 @@ internal fun TaskSummary.resolveTaskThreadOpenRequest(
 
 internal fun AuthPendingOpenRequest.Thread.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity {
     val kind =
-        if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        if (surfaceKind == RaftThreadSurfaceKind.Channel) {
             parseConversationKindOrNull(channelKind)
         } else {
             parseConversationKindOrNull(surfaceKind)
@@ -343,7 +343,7 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
 /**
  * Anchor strategies by open source. The third user-visible strategy — the foreground
  * banner's "anchor on the tapped message itself" — lives with the banner
- * (`foregroundBannerAnchorMessageId`, SlockForegroundBannerHost.kt) because that request is
+ * (`foregroundBannerAnchorMessageId`, RaftForegroundBannerHost.kt) because that request is
  * built outside the resolver; keep the three in sync when adding a source (t2b/#419).
  */
 private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(

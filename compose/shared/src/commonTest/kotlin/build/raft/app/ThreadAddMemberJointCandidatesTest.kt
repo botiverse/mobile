@@ -14,19 +14,19 @@ class ThreadAddMemberJointCandidatesTest {
     private val peer = "server_peer"
 
     private val serverDirectory = listOf(
-        KuiklyThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = local),
-        KuiklyThreadMemberItem(id = "agent_b", displayName = "Agent B", kind = "agent", sourceServerId = local),
-        KuiklyThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = local),
-        KuiklyThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = local),
-        KuiklyThreadMemberItem(id = "user_new", displayName = "New", kind = "human", sourceServerId = local),
+        RaftThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = local),
+        RaftThreadMemberItem(id = "agent_b", displayName = "Agent B", kind = "agent", sourceServerId = local),
+        RaftThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = local),
+        RaftThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = local),
+        RaftThreadMemberItem(id = "user_new", displayName = "New", kind = "human", sourceServerId = local),
     )
 
     @Test
     fun jointRosterHumansFromPeerServerRemainAddableCandidates() {
         val jointRoster = listOf(
-            KuiklyThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = peer),
-            KuiklyThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = peer),
-            KuiklyThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = local),
+            RaftThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = peer),
+            RaftThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = peer),
+            RaftThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = local),
         )
 
         val candidates = threadAddMemberCandidatesExcludingJoined(serverDirectory, jointRoster, local)
@@ -44,9 +44,9 @@ class ThreadAddMemberJointCandidatesTest {
     @Test
     fun ordinaryChannelRosterStillExcludesEveryExistingMember() {
         val roster = listOf(
-            KuiklyThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = local),
-            KuiklyThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = local),
-            KuiklyThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = null),
+            RaftThreadMemberItem(id = "agent_a", displayName = "Agent A", kind = "agent", sourceServerId = local),
+            RaftThreadMemberItem(id = "user_artin", displayName = "artin", kind = "human", sourceServerId = local),
+            RaftThreadMemberItem(id = "user_local", displayName = "Local", kind = "human", sourceServerId = null),
         )
 
         assertEquals(

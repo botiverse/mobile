@@ -12,7 +12,7 @@ class SharedServerVersionGateTest {
     private class FakeVersionTransport(
         private val response: AuthNetworkResponse?,
         var requestedBaseUrl: String? = null
-    ) : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
+    ) : RaftAuthTransport by AuthDataSourceTest.FakeAuthApi() {
         override suspend fun serverVersion(): AuthNetworkResponse {
             return response ?: throw RuntimeException("network down")
         }
@@ -129,10 +129,10 @@ class SharedServerVersionGateTest {
 
     @Test
     fun customEnvironmentSaveRejectedWhenServerUnreachable() = runBlocking {
-        val kv = InMemorySlockKeyValueStore()
+        val kv = InMemoryRaftKeyValueStore()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(),
+                sessionStore = InMemoryRaftAuthSessionStore(),
                 apiEnvironmentStore = SharedApiEnvironmentStore(kv),
                 serverVersionProbe = { ServerVersionProbe.Unreachable }
             )
@@ -148,10 +148,10 @@ class SharedServerVersionGateTest {
 
     @Test
     fun customEnvironmentSaveRejectedWhenServerOutdated() = runBlocking {
-        val kv = InMemorySlockKeyValueStore()
+        val kv = InMemoryRaftKeyValueStore()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(),
+                sessionStore = InMemoryRaftAuthSessionStore(),
                 apiEnvironmentStore = SharedApiEnvironmentStore(kv),
                 serverVersionProbe = { ServerVersionProbe.Incompatible("1.12.0") }
             )
@@ -169,8 +169,8 @@ class SharedServerVersionGateTest {
         var probed = false
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(),
-                apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+                sessionStore = InMemoryRaftAuthSessionStore(),
+                apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
                 serverVersionProbe = {
                     probed = true
                     ServerVersionProbe.Unreachable

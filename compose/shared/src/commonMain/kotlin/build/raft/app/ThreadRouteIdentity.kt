@@ -18,15 +18,15 @@ internal data class ThreadRouteIdentity(
 
     val routeKind: String
         get() =
-            if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
-                channelKind.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+            if (surfaceKind == RaftThreadSurfaceKind.Channel) {
+                channelKind.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
             } else {
                 surfaceKind
             }
 
     val hasCompleteReplyIdentity: Boolean
         get() =
-            surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+            surfaceKind != RaftThreadSurfaceKind.ReplyThread ||
                 (parentKey != null && parentConversationKind != null)
 }
 
@@ -38,23 +38,23 @@ internal data class ThreadRouteIdentity(
  */
 internal fun ThreadRouteIdentity.isValidPendingSendRoute(): Boolean {
     if (surfaceKind !in setOf(
-            KuiklyThreadSurfaceKind.Channel,
-            KuiklyThreadSurfaceKind.DirectMessage,
-            KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadSurfaceKind.Channel,
+            RaftThreadSurfaceKind.DirectMessage,
+            RaftThreadSurfaceKind.ReplyThread,
         )
     ) return false
     if (instanceKey.isBlank()) return false
     if (timelineKey.isNullOrBlank() != !canRenderTimelineCandidates) return false
     return when (surfaceKind) {
-        KuiklyThreadSurfaceKind.Channel ->
+        RaftThreadSurfaceKind.Channel ->
             channelKind.normalizedThreadChannelKind() != null &&
                 parentConversationKind == null &&
                 parentKey == null
-        KuiklyThreadSurfaceKind.DirectMessage ->
+        RaftThreadSurfaceKind.DirectMessage ->
             channelKind == null &&
                 parentConversationKind == null &&
                 parentKey == null
-        KuiklyThreadSurfaceKind.ReplyThread ->
+        RaftThreadSurfaceKind.ReplyThread ->
             channelKind == null &&
                 parentConversationKind in setOf(
                     ConversationKind.Channel,
@@ -83,7 +83,7 @@ internal fun ThreadRouteIdentity.isPendingSendEquivalentTo(
 ): Boolean {
     if (!isValidPendingSendRoute() || !other.isValidPendingSendRoute()) return false
     if (surfaceKind != other.surfaceKind) return false
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return this == other
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return this == other
     // A pending send must never be admitted or consumed from an untyped reply
     // parent.  Treating null as a wildcard would let a Channel-shaped route
     // and a DM-shaped route share the same local row when one side has lost its
@@ -112,8 +112,8 @@ internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIde
     if (routeKind != incoming.routeKind) return false
     if (instanceKey == incoming.instanceKey) return true
     if (
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-        incoming.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        incoming.surfaceKind == RaftThreadSurfaceKind.ReplyThread
     ) {
         val sameParent = parentKey != null && parentKey == incoming.parentKey
         val sameTimeline = timelineKey != null && timelineKey == incoming.timelineKey
@@ -122,7 +122,7 @@ internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIde
     return false
 }
 
-internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
+internal fun RaftThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
     return resolveThreadRouteIdentity(
         surfaceKind = surfaceKind,
@@ -141,9 +141,9 @@ internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdenti
     val isReplyThread = kind == ConversationKind.Thread
     val surface =
         when (kind) {
-            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-            else -> KuiklyThreadSurfaceKind.Channel
+            ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+            ConversationKind.Thread -> RaftThreadSurfaceKind.ReplyThread
+            else -> RaftThreadSurfaceKind.Channel
         }
     val streamChannelId =
         if (isReplyThread) {
@@ -181,10 +181,10 @@ internal fun resolveThreadRouteIdentity(
     parentMessageId: String?,
     parentConversationKind: ConversationKind? = null
 ): ThreadRouteIdentity {
-    val surface = surfaceKind.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
+    val surface = surfaceKind.takeIf { it.isNotBlank() } ?: RaftThreadSurfaceKind.Channel
     val routeKind =
-        if (surface == KuiklyThreadSurfaceKind.Channel) {
-            channelKind.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+        if (surface == RaftThreadSurfaceKind.Channel) {
+            channelKind.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
         } else {
             surface
         }
@@ -197,7 +197,7 @@ internal fun resolveThreadRouteIdentity(
             null
         }
     val isReplyThread =
-        surface == KuiklyThreadSurfaceKind.ReplyThread ||
+        surface == RaftThreadSurfaceKind.ReplyThread ||
             (parentChannel != null && parentMessage != null)
     val streamCandidate =
         streamChannelId.nonBlank()
@@ -208,7 +208,7 @@ internal fun resolveThreadRouteIdentity(
         when {
             resolvedStream != null ->
                 ThreadRouteIdentity(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     channelKind = null,
                     parentConversationKind = parentConversationKind,
                     instanceKey = "reply-stream:$resolvedStream",
@@ -218,7 +218,7 @@ internal fun resolveThreadRouteIdentity(
                 )
             parentChannel != null && parentMessage != null ->
                 ThreadRouteIdentity(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     channelKind = null,
                     parentConversationKind = parentConversationKind,
                     instanceKey = "reply-parent:$parentChannel:$parentMessage",
@@ -228,7 +228,7 @@ internal fun resolveThreadRouteIdentity(
                 )
             else ->
                 ThreadRouteIdentity(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     channelKind = null,
                     parentConversationKind = parentConversationKind,
                     instanceKey = instanceId.nonBlank() ?: "reply-pending",
@@ -241,7 +241,7 @@ internal fun resolveThreadRouteIdentity(
         val timelineKey = streamCandidate
         ThreadRouteIdentity(
             surfaceKind = surface,
-            channelKind = routeKind.takeIf { surface == KuiklyThreadSurfaceKind.Channel },
+            channelKind = routeKind.takeIf { surface == RaftThreadSurfaceKind.Channel },
             parentConversationKind = null,
             instanceKey = timelineKey?.let { "$routeKind:$it" } ?: instanceId.nonBlank() ?: "$routeKind:pending",
             timelineKey = timelineKey,
@@ -254,7 +254,7 @@ internal fun resolveThreadRouteIdentity(
 private fun ConversationSummary.conversationThreadChannelKind(): String? =
     when (kind) {
         ConversationKind.Joint -> "joint"
-        ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         else -> channelType.normalizedThreadChannelKind()
     }

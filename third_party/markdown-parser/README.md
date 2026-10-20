@@ -39,7 +39,7 @@ Only these vendored files intentionally differ from frozen upstream:
 
 `GFMMarkerProcessor` adds a typed table-provider constructor seam whose default
 remains the stock `GitHubTableMarkerProvider()`. Slock supplies a composed
-provider from `SlockGFMFlavourDescriptor`; the upstream provider implementation
+provider from `RaftGFMFlavourDescriptor`; the upstream provider implementation
 stays byte-exact, while Raft's policy recognizes chat-friendly tables whose
 separator immediately follows a paragraph line without rewriting source text.
 
@@ -47,7 +47,7 @@ separator immediately follows a paragraph line without rewriting source text.
 lazy-continuation policy seam, exposed as a second `GFMMarkerProcessor`
 constructor parameter with a stock-permissive default (the full CommonMark and
 GFM spec suites pass unchanged on the fork). Slock supplies a policy from
-`SlockGFMFlavourDescriptor` that ends a paragraph when a lazily-continued line
+`RaftGFMFlavourDescriptor` that ends a paragraph when a lazily-continued line
 drops a block-quote constraint, so `> quote` followed by an unmarked reply
 line renders as a quote plus a plain paragraph, matching the web chat
 dialect; list lazy continuation is unaffected.

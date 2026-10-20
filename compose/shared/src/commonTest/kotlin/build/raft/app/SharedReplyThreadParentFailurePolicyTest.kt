@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
 class SharedReplyThreadParentFailurePolicyTest {
     @Test
     fun canonicalRepliesAreReadableForChannelAndDirectParentsWithoutOriginEnrichment() {
-        val channel = readableReplyPayload(parentSurfaceKind = KuiklyThreadSurfaceKind.Channel, parentChannelKind = "joint")
-        val direct = readableReplyPayload(parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage, parentChannelKind = null)
+        val channel = readableReplyPayload(parentSurfaceKind = RaftThreadSurfaceKind.Channel, parentChannelKind = "joint")
+        val direct = readableReplyPayload(parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage, parentChannelKind = null)
 
         assertTrue(channel.hasReadableCanonicalReplyContent())
         assertTrue(direct.hasReadableCanonicalReplyContent())
@@ -71,16 +71,16 @@ class SharedReplyThreadParentFailurePolicyTest {
     }
 
     private fun readableReplyPayload(
-        parentSurfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+        parentSurfaceKind: String = RaftThreadSurfaceKind.Channel,
         parentChannelKind: String? = "channel",
         parentChannelId: String = "channel-1"
-    ): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    ): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "reply-message-1",
             title = ThreadReplyPageTitle,
             subtitle = null,
             status = "content",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "thread-message-1",
             streamChannelId = "thread-message-1",
             parentChannelId = parentChannelId,
@@ -93,7 +93,7 @@ class SharedReplyThreadParentFailurePolicyTest {
             originMessage = null,
             messages =
                 listOf(
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "reply-1",
                         authorId = "user-1",
                         authorName = "Artin",
@@ -108,7 +108,7 @@ class SharedReplyThreadParentFailurePolicyTest {
             canonicalChannelId = parentChannelId,
             aliases = setOf(parentChannelId),
             conversationKind = ConversationKind.Joint,
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = "joint",
             title = title,
             subtitle = null

@@ -6,7 +6,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
-import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -33,7 +33,7 @@ internal fun nextThreadFocusedMessageRequestNonce(): Int =
 @Serializable
 internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
-    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val channelKind: String? = null,
     val threadId: String? = null,
     val sourceThreadId: String? = null,
@@ -54,7 +54,7 @@ internal data class WireThreadLaunchPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour,
+    val timeFormat: String = RaftTimeFormat24Hour,
     val composerSeedText: String = "",
     val composerSyncNonce: Int = 0,
     val composerFocusRequestNonce: Int = 0,
@@ -70,12 +70,12 @@ internal data class WireThreadLaunchPayload(
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
             .any { !it.isNullOrBlank() }
 
-    fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
+    fun toInitialPayload(fallbackInstanceId: String): RaftThreadScreenPayload {
         return toInitialPayloadOrNull(fallbackInstanceId)
             ?: error("Invalid thread launch route kind")
     }
 
-    fun toInitialPayloadOrNull(fallbackInstanceId: String): KuiklyThreadScreenPayload? {
+    fun toInitialPayloadOrNull(fallbackInstanceId: String): RaftThreadScreenPayload? {
         val routeKinds = toThreadLaunchRouteKindsOrNull() ?: return null
         val isReplyThread = routeKinds.isReplyThread
         val resolvedParentSurfaceKind = routeKinds.parentSurfaceKind
@@ -103,7 +103,7 @@ internal data class WireThreadLaunchPayload(
                 )
                 .title
         val resolvedComposer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 surfaceKind = routeKinds.surfaceKind,
                 seedText = composerSeedText,
                 syncNonce = composerSyncNonce,
@@ -114,17 +114,17 @@ internal data class WireThreadLaunchPayload(
                 parentMessageId = parentMessageId.nonBlank(),
                 streamChannelId = resolvedStreamId
             )
-        val initialPayload = KuiklyThreadScreenPayload(
+        val initialPayload = RaftThreadScreenPayload(
             instanceId = resolvedInstanceId,
             title = resolvedTitle,
             subtitle = null,
             status = "loading",
             surfaceKind = routeKinds.surfaceKind,
             channelKind =
-                if (routeKinds.surfaceKind == KuiklyThreadSurfaceKind.Channel) {
-                    routeKinds.channelKind ?: KuiklyThreadSurfaceKind.Channel
+                if (routeKinds.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    routeKinds.channelKind ?: RaftThreadSurfaceKind.Channel
                 } else {
-                    KuiklyThreadSurfaceKind.Channel
+                    RaftThreadSurfaceKind.Channel
                 },
             sourceThreadId = resolvedSourceId,
             streamChannelId = resolvedStreamId,
@@ -133,8 +133,8 @@ internal data class WireThreadLaunchPayload(
             parentSurfaceKind = resolvedParentSurfaceKind,
             parentChannelKind = resolvedParentChannelKind,
             parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
-            dmPeerIdentity = dmPeerIdentity.takeIf { routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-            memberScopedMentions = routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
+            dmPeerIdentity = dmPeerIdentity.takeIf { routeKinds.surfaceKind == RaftThreadSurfaceKind.DirectMessage },
+            memberScopedMentions = routeKinds.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
                     originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
@@ -155,8 +155,8 @@ internal data class WireThreadLaunchPayload(
             nowEpochMillis = nowEpochMillis,
             timeFormat = timeFormat,
             composer = resolvedComposer,
-            showMembersAction = !isReplyThread && routeKinds.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
-            showSettingsAction = !isReplyThread && routeKinds.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+            showMembersAction = !isReplyThread && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+            showSettingsAction = !isReplyThread && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
             showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null && resolvedParentSurfaceKind != null,
             showTaskOpenActions = supportsChannelTasks,
             showTaskStatusActions = supportsChannelTasks,
@@ -249,9 +249,9 @@ private fun WireThreadLaunchPayload.toThreadLaunchRouteKindsOrNull(): ThreadLaun
         } else {
             surfaceConversationKind
         }
-    val normalizedSurfaceKind = routeKind.toKuiklySurfaceKind()
+    val normalizedSurfaceKind = routeKind.toRaftSurfaceKind()
     val normalizedChannelKind =
-        if (normalizedSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        if (normalizedSurfaceKind == RaftThreadSurfaceKind.Channel) {
             routeKind.toLaunchChannelKind(channelKind)
         } else {
             null
@@ -281,7 +281,7 @@ private fun WireThreadLaunchPayload.toThreadLaunchRouteKindsOrNull(): ThreadLaun
     if (parentKind != null && parentSurface == null) return null
     val parentChannel =
         when (parentKind) {
-            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
             ConversationKind.Joint -> "joint"
             ConversationKind.Channel ->
                 parentKind.toLaunchChannelKind(parentChannelKind)
@@ -441,12 +441,12 @@ internal fun ThreadLaunchIdentityConstructionResult.Accepted.toNormalizedLegacyW
     when (val route = routeId) {
         is ThreadRouteId.ChannelThread ->
             template.copy(
-                surfaceKind = identity.kind.toKuiklySurfaceKind(),
+                surfaceKind = identity.kind.toRaftSurfaceKind(),
                 channelKind =
                     when (identity.kind) {
                         ConversationKind.Channel ->
                             identity.channelType.normalizedThreadChannelKind()
-                                ?: KuiklyThreadSurfaceKind.Channel
+                                ?: RaftThreadSurfaceKind.Channel
                         ConversationKind.Joint -> JointChannelKindWireValue
                         else -> null
                     },
@@ -469,7 +469,7 @@ internal fun ThreadLaunchIdentityConstructionResult.Accepted.toNormalizedLegacyW
                 identity.thread?.parentChannelKind.normalizedThreadChannelKind()
                     ?: parentKind.threadChannelKindWireValue()
             template.copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = null,
                 threadId = null,
                 sourceThreadId = null,
@@ -487,17 +487,17 @@ internal fun ThreadLaunchIdentityConstructionResult.Accepted.toNormalizedLegacyW
 
 private fun ConversationKind.toLaunchChannelKind(rawKind: String?): String? =
     when (this) {
-        ConversationKind.Channel -> rawKind.normalizedLaunchChannelKindOrNull() ?: KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Channel -> rawKind.normalizedLaunchChannelKindOrNull() ?: RaftThreadSurfaceKind.Channel
         ConversationKind.Joint -> "joint"
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         else -> null
     }
 
 private fun ConversationKind.toLaunchParentSurfaceKindOrNull(): String? =
     when (this) {
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         ConversationKind.Channel,
-        ConversationKind.Joint -> KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Joint -> RaftThreadSurfaceKind.Channel
         else -> null
     }
 
@@ -519,7 +519,7 @@ private fun WireThreadLaunchPayload.toThreadLaunchOriginFallback(): ThreadLaunch
     )
 }
 
-internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withSharedShellEventCapabilities(): RaftThreadScreenPayload =
     copy(
         subtitle =
             if (showModeTabs) {
@@ -530,7 +530,7 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
         showOpenInChannelAction =
             showOpenInChannelAction ||
                 (
-                    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                         originParentMessageId?.isNotBlank() == true &&
                         parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != null
                     ),
@@ -538,15 +538,15 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
         showMembersAction = showMembersAction && showModeTabs
     )
 
-internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLaunchPayload =
+internal fun RaftThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLaunchPayload =
     WireThreadLaunchPayload(
         instanceId = instanceId,
         surfaceKind = surfaceKind,
         channelKind = channelKind.takeIf { it.isNotBlank() },
         threadId =
             when (surfaceKind) {
-                KuiklyThreadSurfaceKind.ReplyThread,
-                KuiklyThreadSurfaceKind.DirectMessage -> streamChannelId.nonBlank() ?: sourceThreadId.nonBlank()
+                RaftThreadSurfaceKind.ReplyThread,
+                RaftThreadSurfaceKind.DirectMessage -> streamChannelId.nonBlank() ?: sourceThreadId.nonBlank()
                 else -> null
             },
         sourceThreadId = sourceThreadId.nonBlank(),
@@ -556,7 +556,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         parentSurfaceKind = parentSurfaceKind.parsedThreadParentSurfaceKindOrNull(),
         parentChannelKind = parentChannelKind.normalizedThreadChannelKind(),
         parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
-        dmPeerIdentity = dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        dmPeerIdentity = dmPeerIdentity.takeIf { surfaceKind == RaftThreadSurfaceKind.DirectMessage },
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
         focusedMessageId = focusedMessageId.nonBlank(),
         selectedTab = selectedTab,
@@ -574,7 +574,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         focusedMessageRequestNonce = focusedMessageRequestNonce
     )
 
-internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayloadOrNull(): WireThreadLaunchPayload? {
+internal fun RaftThreadScreenPayload.toWireThreadLaunchPayloadOrNull(): WireThreadLaunchPayload? {
     val launchPayload = toWireThreadLaunchPayload()
     if (!launchPayload.hasRouteIdentity()) return null
     return launchPayload.takeIf { it.toInitialPayloadOrNull(instanceId) != null }
@@ -608,7 +608,7 @@ internal fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
 internal fun parseThreadScreenPayload(
     payload: String,
     instanceId: String
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     return parseThreadScreenPayloadWithTrace(payload, instanceId).payload
 }
 
@@ -620,7 +620,7 @@ internal fun parseThreadScreenPayloadWithTrace(
     val source = payload.trim().takeIf { it.isNotEmpty() } ?: "{}"
     val parsed = parseThreadLaunchPayload(source, instanceId)
     val resultPayload =
-        parsed ?: KuiklyThreadScreenPayload(
+        parsed ?: RaftThreadScreenPayload(
             instanceId = instanceId,
             status = "error",
             errorCode = "payload_parse_failed"
@@ -634,13 +634,13 @@ internal fun parseThreadScreenPayloadWithTrace(
 }
 
 internal data class ThreadLaunchPayloadParseTrace(
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val durationMs: Long,
     val responseBytes: Int,
     val result: String
 )
 
-internal fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =
+internal fun parseThreadLaunchPayload(source: String, instanceId: String): RaftThreadScreenPayload? =
     runCatching {
         threadPageJson
             .decodeFromString(WireThreadLaunchPayload.serializer(), source)

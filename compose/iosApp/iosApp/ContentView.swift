@@ -4,7 +4,7 @@ import UIKit
 import shared
 
 struct ContentView: View {
-    @SwiftUI.StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
+    @SwiftUI.StateObject private var oauthRouteStore = RaftIosOAuthRouteStore.shared
     // task #471: shell identity of the UIWindowScene hosting this view. Starts
     // at the legacy id; ShellContextResolver replaces it once the scene's
     // RaftIosSceneDelegate context is known.
@@ -41,15 +41,15 @@ struct ContentView: View {
     }
 
     fileprivate static func hostPageData(
-        _ destination: SlockIosOAuthDestination,
+        _ destination: RaftIosOAuthDestination,
         shellContext: RaftIosShellContext
     ) -> [String: Any] {
         var data = destination.pageData
         data["pageName"] = destination.pageName
-        data["slockSocialAuthProviders"] = slockIosOAuthProviders
+        data["slockSocialAuthProviders"] = raftIosOAuthProviders
         // Browser web login is available; the shared gate decides whether it replaces the login page.
         data["slockWebLoginSupported"] = true
-        // Shell identity contract (shared/SlockShellStoreLaunch.kt). A blank or
+        // Shell identity contract (shared/RaftShellStoreLaunch.kt). A blank or
         // absent slockShellInstanceId falls back to Legacy anyway, so injecting
         // "legacy-app-shell" for the single-window path is byte-equivalent.
         // slockShellServerId is always written — even as null — so a serialized
@@ -107,7 +107,7 @@ struct ContentView_Previews: PreviewProvider {
 // arriving via scene(_:continue:) mutates the context's @Published fields and
 // must re-render with the new shell identity + route owner.
 private struct ShellHostView: View {
-    @SwiftUI.ObservedObject var oauthRouteStore: SlockIosOAuthRouteStore
+    @SwiftUI.ObservedObject var oauthRouteStore: RaftIosOAuthRouteStore
     @SwiftUI.ObservedObject var shellContext: RaftIosShellContext
 
     var body: some View {
@@ -118,7 +118,7 @@ private struct ShellHostView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let effective =
             !targetShellId.isEmpty && targetShellId != shellContext.shellInstanceId
-            ? SlockIosOAuthDestination(
+            ? RaftIosOAuthDestination(
                 pageName: "compose_slock_app_shell",
                 pageData: ["pageName": "compose_slock_app_shell"],
                 revision: "shell-mismatch",
@@ -133,14 +133,14 @@ private struct ShellHostView: View {
             .id("\(effective.revision)|\(shellContext.shellInstanceId)")
             .ignoresSafeArea()
             .onOpenURL { url in
-                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
+                _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
                     url,
                     shellInstanceId: shellContext.shellInstanceId,
                     source: "swiftui_open_url"
                 )
             }
             .onAppear {
-                SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
+                RaftIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
             }
     }
 }

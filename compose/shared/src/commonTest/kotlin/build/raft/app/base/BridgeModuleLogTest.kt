@@ -1,7 +1,7 @@
 package build.raft.app.base
 
-import build.raft.app.flushSlockPlatformLogsForTest
-import build.raft.app.installSlockPlatformLogSink
+import build.raft.app.flushRaftPlatformLogsForTest
+import build.raft.app.installRaftPlatformLogSink
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -12,21 +12,21 @@ import kotlin.test.assertEquals
  * bridge. Diagnostics lambdas fire from worker coroutines; a bridge call off
  * the context thread trips the fork's release-live KR_ASSERT_CONTEXT_HTREAD
  * and aborts the app (the TestFlight SIGABRTs). log() therefore routes through
- * the bridge-free SlockPlatformLog channel — these tests pin that contract.
+ * the bridge-free RaftPlatformLog channel — these tests pin that contract.
  */
 class BridgeModuleLogTest {
 
     private val captured = mutableListOf<Triple<String, String, String>>()
 
     private fun installCapture() {
-        installSlockPlatformLogSink { level, tag, message ->
+        installRaftPlatformLogSink { level, tag, message ->
             captured += Triple(level, tag, message)
         }
     }
 
     @AfterTest
     fun uninstall() {
-        installSlockPlatformLogSink(null)
+        installRaftPlatformLogSink(null)
     }
 
     @Test
@@ -41,7 +41,7 @@ class BridgeModuleLogTest {
         module.log(BridgeLogLevel.Warn, "warned")
         module.logError("boom")
         module.logDebug("dbg")
-        flushSlockPlatformLogsForTest()
+        flushRaftPlatformLogsForTest()
 
         assertEquals(
             listOf(
@@ -62,7 +62,7 @@ class BridgeModuleLogTest {
         BridgeLogLevel.entries.forEach { level ->
             module.log(level, "m-${level.wireValue}")
         }
-        flushSlockPlatformLogsForTest()
+        flushRaftPlatformLogsForTest()
 
         assertEquals(
             BridgeLogLevel.entries.map { it.wireValue },

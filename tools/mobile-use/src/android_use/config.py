@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 DEFAULT_PACKAGE = "build.raft.app"
 DEFAULT_MAIN_COMPONENT = "build.raft.app/.MainActivity"
-DEFAULT_KUIKLY_COMPONENT = "build.raft.app/.shared.SlockKuiklyActivity"
+DEFAULT_KUIKLY_COMPONENT = "build.raft.app/.shared.RaftLegacyHostActivity"
 DEFAULT_DIAGNOSTICS_ACTION = "build.raft.app.diagnostics.OPEN"
 DEFAULT_DIAGNOSTICS_COMPONENT = "build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity"
 
@@ -36,7 +36,7 @@ class AndroidConfig:
             device=device or os.environ.get("ANDROID_SERIAL"),
             package=resolved_package,
             main_component=main_component or os.environ.get("ANDROID_USE_MAIN_COMPONENT") or f"{resolved_package}/.MainActivity",
-            kuikly_component=kuikly_component or os.environ.get("ANDROID_USE_KUIKLY_COMPONENT") or f"{resolved_package}/.shared.SlockKuiklyActivity",
+            kuikly_component=kuikly_component or os.environ.get("ANDROID_USE_KUIKLY_COMPONENT") or f"{resolved_package}/.shared.RaftLegacyHostActivity",
         )
 
     def tool_status(self) -> dict[str, object]:

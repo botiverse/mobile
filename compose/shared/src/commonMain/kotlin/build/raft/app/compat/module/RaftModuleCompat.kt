@@ -3,8 +3,8 @@ package build.raft.app.compat.module
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
-import build.raft.app.slockLogWarn
-import build.raft.app.slockSha256Hex
+import build.raft.app.raftLogWarn
+import build.raft.app.raftSha256Hex
 import build.raft.app.toJsonObject
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  * TODO(cmp-switch): Kuikly `Module` on top of the CMP host's bridge transport.
  *
  * `BridgeModule` (HRBridgeModule) and Kuikly's built-in Router/Codec/Performance modules keep
- * their API; native calls go over `SlockCmpHost.bridgeTransport` (the same HRBridgeModule wire the
+ * their API; native calls go over `RaftCmpHost.bridgeTransport` (the same HRBridgeModule wire the
  * Kuikly renderer used) and callbacks are delivered on the main thread, where CMP composes.
  * Synchronous native calls (`syncCall = true`) go through `HostBridgeTransport.callSync`; a host
  * without a synchronous path for the method gets the call sent asynchronously and the caller an
@@ -77,13 +77,13 @@ abstract class Module {
     ): ReturnValue {
         val transport = pager?.host?.bridgeTransport
         if (transport == null) {
-            slockLogWarn("RaftModuleCompat", "no_bridge_transport module=${moduleName()} method=$methodName")
+            raftLogWarn("RaftModuleCompat", "no_bridge_transport module=${moduleName()} method=$methodName")
             return ReturnValue(null)
         }
         if (syncCall) {
             val syncResult = runCatching { transport.callSync(methodName, param?.toString().orEmpty()) }.getOrNull()
             if (syncResult != null) return ReturnValue(null, syncResult)
-            slockLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
+            raftLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
         }
         val ref: CallbackRef? = callback?.let { "cb-${callbackSequence.incrementAndGet()}" }
         if (ref != null && !detached) liveCallbacks.add(ref)
@@ -116,7 +116,7 @@ class RouterModule : Module() {
     fun openPage(pageName: String, pageData: JSONObject? = null) {
         val navigator = pager?.host?.navigator
         if (navigator == null) {
-            slockLogWarn("RaftModuleCompat", "no_navigator openPage=$pageName")
+            raftLogWarn("RaftModuleCompat", "no_navigator openPage=$pageName")
             return
         }
         navigator.openPage(pageName, (pageData ?: JSONObject()).toJsonObject())
@@ -135,7 +135,7 @@ class RouterModule : Module() {
 class CodecModule : Module() {
     override fun moduleName(): String = MODULE_NAME
 
-    fun sha256(string: String): String = slockSha256Hex(string.encodeToByteArray())
+    fun sha256(string: String): String = raftSha256Hex(string.encodeToByteArray())
 
     companion object {
         const val MODULE_NAME = "KRCodecModule"

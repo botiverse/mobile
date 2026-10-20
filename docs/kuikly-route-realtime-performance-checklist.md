@@ -168,7 +168,7 @@ Prioritize these surfaces:
 - `ThreadPage.kt`: Thread store state collection, route startup effects, task
   join effects, render/performance snapshots, files effects, auto-scroll
   effects, and repeated render logs.
-- `SlockHomeComponents.kt`: Home render/refresh effects, pull-refresh timers,
+- `RaftHomeComponents.kt`: Home render/refresh effects, pull-refresh timers,
   server sort effects, and `home_render` logging frequency.
 - `MembersPage.kt`: member detail refresh effects and activity timeline effects,
   especially payload/list-size keyed effects.

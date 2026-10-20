@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -110,7 +110,7 @@ class ThreadComposerTemporaryFileRetirementTest {
 
     @Test
     fun retirementFenceRunsCallbackOutsideLockAndRejectsSiblingClaimsThenReleases() = runBlocking {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val fake = FakeRetirementHandler()
         val ref = "cache/shared.jpg"
         fake.files[ref] = "shared"
@@ -214,7 +214,7 @@ class ThreadComposerTemporaryFileRetirementTest {
 
     @Test
     fun retirementCallbackFailureRollsBackWithoutRestoringDanglingReference() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val fake = FakeRetirementHandler()
         val ref = "cache/callback-failure.jpg"
         fake.files[ref] = "shared"
@@ -251,7 +251,7 @@ class ThreadComposerTemporaryFileRetirementTest {
 
     @Test
     fun partialRetirementFailureRollsBackWithoutDanglingMovedOrMissingReferences() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val refMoved = "cache/partial-moved.jpg"
         val refMissing = "cache/partial-missing.jpg"
         val fake = FakeRetirementHandler()
@@ -285,7 +285,7 @@ class ThreadComposerTemporaryFileRetirementTest {
 
     @Test
     fun lateClearUsesDurableOwnershipAndAllowsSuccessorRefReuse() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val fake = FakeRetirementHandler()
         val ref = "cache/late.jpg"
         fake.files[ref] = "owner-a"

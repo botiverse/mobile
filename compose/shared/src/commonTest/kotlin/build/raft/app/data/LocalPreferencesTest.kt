@@ -9,7 +9,7 @@ class LocalPreferencesTest {
     @Test
     fun localeDefaultsToSystemWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentLocaleRepository(
-            KeyValueLocalePreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueLocalePreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val snapshot = repository.getLocale()
@@ -28,7 +28,7 @@ class LocalPreferencesTest {
 
     @Test
     fun localePersistsSelectedValue() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
 
         val selected = repository.selectLocale(AppLocale.Japanese)
@@ -40,7 +40,7 @@ class LocalPreferencesTest {
 
     @Test
     fun localePersistsExplicitSystemSelection() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
 
         repository.selectLocale(AppLocale.System)
@@ -60,7 +60,7 @@ class LocalPreferencesTest {
             )
 
         expectedLocales.forEach { expected ->
-            val store = InMemorySlockKeyValueStore()
+            val store = InMemoryRaftKeyValueStore()
             val preferences = KeyValueLocalePreferenceStore(store)
             preferences.saveLocale(expected)
 
@@ -88,12 +88,12 @@ class LocalPreferencesTest {
     fun linkOpenModeDefaultsToSystemBrowserAndFallsBackUnknownValues() = runBlocking {
         val emptyRepository =
             PersistentLinkOpenPreferenceRepository(
-                KeyValueLinkOpenPreferenceStore(InMemorySlockKeyValueStore())
+                KeyValueLinkOpenPreferenceStore(InMemoryRaftKeyValueStore())
             )
         val unknownRepository =
             PersistentLinkOpenPreferenceRepository(
                 KeyValueLinkOpenPreferenceStore(
-                    InMemorySlockKeyValueStore(
+                    InMemoryRaftKeyValueStore(
                         mapOf("navigation:link_open_mode" to "unsupported")
                     )
                 )
@@ -107,7 +107,7 @@ class LocalPreferencesTest {
 
     @Test
     fun linkOpenModePersistsInAppBrowserUsingNavigationKey() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository =
             PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(store))
 
@@ -121,7 +121,7 @@ class LocalPreferencesTest {
     @Test
     fun chatLayoutDefaultsToSharedValuesWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentChatLayoutPreferenceRepository(
-            KeyValueChatLayoutPreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val snapshot = repository.getChatLayoutPreference()
@@ -149,7 +149,7 @@ class LocalPreferencesTest {
 
     @Test
     fun threadUnreadJumpDefaultsOffButPreservesExplicitOn() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
         assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
@@ -161,7 +161,7 @@ class LocalPreferencesTest {
 
     @Test
     fun desktopModeDefaultsOnAndPreservesExplicitOff() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
         assertEquals(true, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
@@ -178,7 +178,7 @@ class LocalPreferencesTest {
 
     @Test
     fun desktopModeLegacyInstallsWithoutValueStillDefaultsOn() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         // Simulate a pre-#45 install: other layout prefs exist but the new key is absent.
         KeyValueChatLayoutPreferenceStore(store).saveCompactConsecutiveMessages(false)
 
@@ -189,7 +189,7 @@ class LocalPreferencesTest {
 
     @Test
     fun serverDrawerDefaultsOffButPreservesExplicitOn() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
         assertEquals(false, repository.getChatLayoutPreference().serverDrawerEnabled)
@@ -211,7 +211,7 @@ class LocalPreferencesTest {
 
     @Test
     fun legacyBrowserTranslationTargetRemainsSystemAfterUpgrade() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         store.putString("settings.translationTargetLanguage", "browser")
         val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
 
@@ -224,7 +224,7 @@ class LocalPreferencesTest {
 
     @Test
     fun chatLayoutRestoresExplicitSendKeyChoiceAfterDefaultChangesToNewLine() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         store.putBoolean("chatLayout:composer_send_key_enabled", true)
         val repository =
             PersistentChatLayoutPreferenceRepository(
@@ -238,7 +238,7 @@ class LocalPreferencesTest {
 
     @Test
     fun chatLayoutRestoresExplicitSingleTapThreadChoiceAcrossDefaultChanges() = runBlocking {
-        val disabledStore = InMemorySlockKeyValueStore()
+        val disabledStore = InMemoryRaftKeyValueStore()
         val disabledPreferenceStore = KeyValueChatLayoutPreferenceStore(disabledStore)
         disabledPreferenceStore.saveSingleTapOpensThreadEnabled(false)
 
@@ -247,7 +247,7 @@ class LocalPreferencesTest {
                 KeyValueChatLayoutPreferenceStore(disabledStore)
             ).getChatLayoutPreference()
 
-        val enabledStore = InMemorySlockKeyValueStore()
+        val enabledStore = InMemoryRaftKeyValueStore()
         val enabledPreferenceStore = KeyValueChatLayoutPreferenceStore(enabledStore)
         enabledPreferenceStore.saveSingleTapOpensThreadEnabled(true)
 
@@ -264,7 +264,7 @@ class LocalPreferencesTest {
     fun homeServerAvatarPreferenceDefaultsOnAndKeepsAnExplicitOff() = runBlocking {
         // Task #470: on for anyone without a stored choice; a user who turned it off stays off.
         val key = "mobile:home_server_avatar_enabled"
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
 
         assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
@@ -282,7 +282,7 @@ class LocalPreferencesTest {
     @Test
     fun conversationForwardGestureDefaultsOffFailsClosedAndPersistsIndependently() = runBlocking {
         val key = "mobile:conversation_forward_gesture_enabled"
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
         val repository = PersistentChatLayoutPreferenceRepository(preferenceStore)
 
@@ -307,7 +307,7 @@ class LocalPreferencesTest {
 
     @Test
     fun chatLayoutPersistsSelectedValues() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(
             KeyValueChatLayoutPreferenceStore(store)
         )
@@ -389,7 +389,7 @@ class LocalPreferencesTest {
 
     @Test
     fun tasksViewModeDefaultsAndPersistsSelectedMode() = runBlocking {
-        val repository = KeyValueTasksViewPreferenceRepository(InMemorySlockKeyValueStore())
+        val repository = KeyValueTasksViewPreferenceRepository(InMemoryRaftKeyValueStore())
 
         assertEquals(TasksViewMode.List, repository.getTasksViewModeSync(TasksViewMode.List))
 

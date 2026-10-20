@@ -20,7 +20,7 @@ class ThreadPanelFollowActionTest {
         threadChannelId: String? = "thread-ch-1",
         isThreadFollowed: Boolean = false,
         id: String = "msg-1",
-    ) = KuiklyThreadMessageItem(
+    ) = RaftThreadMessageItem(
         id = id,
         authorId = "author-1",
         authorName = "Author",

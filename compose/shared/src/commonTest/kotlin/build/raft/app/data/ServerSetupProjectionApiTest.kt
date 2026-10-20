@@ -18,7 +18,7 @@ class ServerSetupProjectionApiTest {
                     """{"surface":"computer_runtime","phase":"in_progress","currentStep":"computer_runtime","blocksChat":true,"allowedExits":["retry"],"gateReason":"runtime_not_ready","futureField":1}""",
             )
         )
-        val result = SlockServerSetupProjectionRepository(transport).load(ServerId("server-a"))
+        val result = RaftServerSetupProjectionRepository(transport).load(ServerId("server-a"))
 
         assertEquals(ServerId("server-a"), transport.serverId)
         val projection = assertIs<DataResult.Content<ServerSetupProjection>>(result).data
@@ -29,7 +29,7 @@ class ServerSetupProjectionApiTest {
 
     @Test
     fun phaseNullDoesNotFabricateCompletion() = runBlocking {
-        val result = SlockServerSetupProjectionRepository(
+        val result = RaftServerSetupProjectionRepository(
             RecordingSetupApi(
                 HomeNetworkResponse(
                     code = 200,
@@ -45,7 +45,7 @@ class ServerSetupProjectionApiTest {
 
     @Test
     fun missingBlocksChatFailsClosedAsContractMismatch() = runBlocking {
-        val result = SlockServerSetupProjectionRepository(
+        val result = RaftServerSetupProjectionRepository(
             RecordingSetupApi(HomeNetworkResponse(code = 200, bodyText = """{"surface":"none"}"""))
         ).load(ServerId("server-a"))
 
@@ -57,7 +57,7 @@ class ServerSetupProjectionApiTest {
 
 private class RecordingSetupApi(
     private val response: HomeNetworkResponse,
-) : SlockServerSetupProjectionApi {
+) : RaftServerSetupProjectionApi {
     var serverId: ServerId? = null
 
     override suspend fun projection(serverId: ServerId): HomeNetworkResponse {

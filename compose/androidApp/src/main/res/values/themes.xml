@@ -1,32 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Slock" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.Raft" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowBackground">@color/slock_surface_cream</item>
+        <item name="android:windowBackground">@color/raft_surface_cream</item>
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">@color/slock_accent_pink</item>
-        <item name="android:textColorHighlight">@color/slock_accent_pink</item>
+        <item name="android:colorAccent">@color/raft_accent_pink</item>
+        <item name="android:textColorHighlight">@color/raft_accent_pink</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>
 
-    <style name="Theme.Slock.Starting" parent="Theme.SplashScreen">
-        <item name="android:windowBackground">@color/slock_surface_cream</item>
-        <item name="windowSplashScreenBackground">@color/slock_surface_cream</item>
+    <style name="Theme.Raft.Starting" parent="Theme.SplashScreen">
+        <item name="android:windowBackground">@color/raft_surface_cream</item>
+        <item name="windowSplashScreenBackground">@color/raft_surface_cream</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="postSplashScreenTheme">@style/Theme.Slock</item>
+        <item name="postSplashScreenTheme">@style/Theme.Raft</item>
     </style>
 
-    <style name="Theme.Slock.AppShellStarting" parent="Theme.Slock.Starting" />
+    <style name="Theme.Raft.AppShellStarting" parent="Theme.Raft.Starting" />
 
     <!-- Pushed Kuikly pages (thread, members, ...) run inside
-         SlockKuiklyActivity stacked on top of another app activity.
+         RaftLegacyHostActivity stacked on top of another app activity.
          A translucent window lets the underlying page show through the
          open/close transition instead of flashing the opaque cream
          window background while the Kuikly render surface attaches.
          The app-shell activities keep their opaque splash themes. -->
-    <style name="Theme.Slock.Translucent" parent="Theme.Slock">
+    <style name="Theme.Raft.Translucent" parent="Theme.Raft">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>

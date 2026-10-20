@@ -5,8 +5,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  * :ui-cmp — app UI on official Compose Multiplatform (see the CMP migration assessment, §3.2).
  *
  * Holds the CMP page registry and router split (which page names render on CMP instead of Kuikly),
- * the page root (`SlockCmpRoot`: theme, page args, host), the bridge-wire HostCapabilities adapter
- * and the CMP pages themselves. Hosts: androidApp `SlockCmpActivity`; iOS `SlockCmpIos` (exported
+ * the page root (`RaftCmpRoot`: theme, page args, host), the bridge-wire HostCapabilities adapter
+ * and the CMP pages themselves. Hosts: androidApp `RaftCmpActivity`; iOS `RaftCmpIos` (exported
  * through the :shared framework, the app's only Kotlin framework).
  *
  * Depends on :core (data layer, HostCapabilities) and :designsystem. It must never depend on Kuikly;
@@ -36,7 +36,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // HostCapabilities is part of this module's public API (SlockCmpHost).
+            // HostCapabilities is part of this module's public API (RaftCmpHost).
             api(project(":core"))
             implementation(project(":designsystem"))
             implementation(compose.runtime)

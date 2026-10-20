@@ -31,7 +31,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             $0.activityType == RaftIosShellWindowContract.shellUserActivityType
         }), let context = RaftIosShellWindowContract.context(from: activity) {
             shellContext.apply(context)
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "RaftIosShellWindow",
                 "scene_identity_resolved source=user_activity shell=\(context.shellInstanceId)"
@@ -49,7 +49,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         for context in connectionOptions.urlContexts {
-            _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
+            _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
                 context.url,
                 shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_connect"
@@ -57,7 +57,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let response = connectionOptions.notificationResponse {
             let content = response.notification.request.content
-            SlockIosPushHost.acceptSystemNotificationOpen(
+            RaftIosPushHost.acceptSystemNotificationOpen(
                 userInfo: content.userInfo,
                 categoryIdentifier: content.categoryIdentifier,
                 shellInstanceId: shellInstanceId(for: scene),
@@ -65,7 +65,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             )
         }
         if let shortcutItem = connectionOptions.shortcutItem {
-            SlockIosDesktopShortcutHost.acceptShortcutItem(
+            RaftIosDesktopShortcutHost.acceptShortcutItem(
                 shortcutItem,
                 shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_connect"
@@ -75,7 +75,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(
+            _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
                 context.url,
                 shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_open_url"
@@ -88,7 +88,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
         shellContext.apply(context)
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "RaftIosShellWindow",
             "scene_identity_updated source=continue_activity shell=\(context.shellInstanceId)"
@@ -100,7 +100,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         performActionFor shortcutItem: UIApplicationShortcutItem,
         completionHandler: @escaping (Bool) -> Void
     ) {
-        SlockIosDesktopShortcutHost.acceptShortcutItem(
+        RaftIosDesktopShortcutHost.acceptShortcutItem(
             shortcutItem,
             shellInstanceId: shellInstanceId(for: windowScene),
             source: "scene_perform_action"
@@ -123,11 +123,11 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         // Only document shells get their shared-store scope released; the legacy
         // shell scope is process-wide and stays alive across scene drops.
-        SlockShellStoreLaunchKt.releaseSlockShellStoreScope(
+        RaftShellStoreLaunchKt.releaseRaftShellStoreScope(
             shellInstanceId: shellInstanceId,
             serverId: context?.serverId
         )
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "RaftIosShellWindow",
             "scene_released shell=\(shellInstanceId)"

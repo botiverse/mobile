@@ -3,11 +3,11 @@ package build.raft.app.core.data
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import build.raft.app.data.SlockPlatformFileChunkSource
-import build.raft.app.data.SlockPlatformFileReadResult
-import build.raft.app.data.SlockPlatformFileResolver
-import build.raft.app.data.SlockPlatformFileStatResult
-import build.raft.app.data.SlockSharedPlatformFileResolverProvider
+import build.raft.app.data.RaftPlatformFileChunkSource
+import build.raft.app.data.RaftPlatformFileReadResult
+import build.raft.app.data.RaftPlatformFileResolver
+import build.raft.app.data.RaftPlatformFileStatResult
+import build.raft.app.data.RaftSharedPlatformFileResolverProvider
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -16,16 +16,16 @@ import kotlinx.coroutines.withContext
 
 internal class AndroidPlatformFileResolver(
     context: Context
-) : SlockPlatformFileResolver {
+) : RaftPlatformFileResolver {
     private val appContext = context.applicationContext
 
-    override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult =
+    override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult =
         withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = openFileRefStream(Uri.parse(fileRef)).use { input -> input.readBytes() }
-                SlockPlatformFileReadResult(code = 200, bytes = bytes, sizeBytes = bytes.size.toLong())
+                RaftPlatformFileReadResult(code = 200, bytes = bytes, sizeBytes = bytes.size.toLong())
             }.getOrElse { throwable ->
-                SlockPlatformFileReadResult(
+                RaftPlatformFileReadResult(
                     code = 400,
                     bytes = ByteArray(0),
                     errorCode = "attachment_read_failed",
@@ -34,19 +34,19 @@ internal class AndroidPlatformFileResolver(
             }
         }
 
-    override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult =
+    override suspend fun statFile(fileRef: String): RaftPlatformFileStatResult =
         withContext(Dispatchers.IO) {
             runCatching {
                 val uri = Uri.parse(fileRef)
                 openFileRefStream(uri).use { }
                 val sizeBytes = fileRefSize(uri)
                     ?: throw IOException("Attachment size unavailable")
-                SlockPlatformFileStatResult(
+                RaftPlatformFileStatResult(
                     code = 200,
                     sizeBytes = sizeBytes
                 )
             }.getOrElse { throwable ->
-                SlockPlatformFileStatResult(
+                RaftPlatformFileStatResult(
                     code = 400,
                     errorCode = "attachment_read_failed",
                     message = throwable.message ?: "Unable to read file"
@@ -57,7 +57,7 @@ internal class AndroidPlatformFileResolver(
     override suspend fun openFileStream(
         fileRef: String,
         expectedSizeBytes: Long
-    ): SlockPlatformFileChunkSource =
+    ): RaftPlatformFileChunkSource =
         withContext(Dispatchers.IO) {
             val uri = Uri.parse(fileRef)
             val input = openFileRefStream(uri)
@@ -68,7 +68,7 @@ internal class AndroidPlatformFileResolver(
                     "Attachment size changed: expected=$expectedSizeBytes actual=${actualSizeBytes ?: "unknown"}"
                 )
             }
-            input.toSlockPlatformFileChunkSource()
+            input.toRaftPlatformFileChunkSource()
         }
 
     private fun openFileRefStream(uri: Uri): java.io.InputStream {
@@ -101,9 +101,9 @@ internal class AndroidPlatformFileResolver(
         }
 }
 
-internal fun InputStream.toSlockPlatformFileChunkSource(): SlockPlatformFileChunkSource {
+internal fun InputStream.toRaftPlatformFileChunkSource(): RaftPlatformFileChunkSource {
     val input = this
-    return object : SlockPlatformFileChunkSource {
+    return object : RaftPlatformFileChunkSource {
         override suspend fun read(maxBytes: Int): ByteArray =
             withContext(Dispatchers.IO) {
                 var read: Int
@@ -126,7 +126,7 @@ internal fun InputStream.toSlockPlatformFileChunkSource(): SlockPlatformFileChun
 
 fun installAndroidAppScopePlatformFileResolver(context: Context) {
     val appContext = context.applicationContext
-    SlockSharedPlatformFileResolverProvider.installAppScopeResolver {
+    RaftSharedPlatformFileResolverProvider.installAppScopeResolver {
         AndroidPlatformFileResolver(appContext)
     }
 }

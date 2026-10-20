@@ -12,7 +12,7 @@ class FilesMessagesApiTest {
     @Test
     fun typedFilesAndMessagesApiAcceptsCanonicalUpstreamWrappers() = runBlocking {
         val transport = RecordingFilesMessagesApi()
-        val client = SlockFilesMessagesApiClient(transport)
+        val client = RaftFilesMessagesApiClient(transport)
 
         val files = client.channelFiles(ChannelId("channel-1"))
         val url = client.attachmentUrl(AttachmentId("attachment-1"), disposition = "attachment")
@@ -55,7 +55,7 @@ class FilesMessagesApiTest {
     @Test
     fun typedFilesAndMessagesApiRejectsGuessedWrappersAndAliases() = runBlocking {
         val client =
-            SlockFilesMessagesApiClient(
+            RaftFilesMessagesApiClient(
                 RecordingFilesMessagesApi(
                     channelFilesBody = """{"items":[{"id":"a1"}],"cursor":"next"}""",
                     attachmentUrlBody = """{"downloadUrl":"https://cdn.slock.test/a.png"}""",
@@ -91,7 +91,7 @@ class FilesMessagesApiTest {
             """{"channelId":"channel-1","targetMessageId":"message-1","messages":[{"id":"message-1"}],"historyLimited":false}""",
         private val reactionBody: String =
             """{"id":"message-1","content":"hello","reactions":[{"emoji":"👀","count":1,"reactorIds":["user-1"],"reactorNames":["Artin"]}]}"""
-    ) : SlockFilesMessagesApi {
+    ) : RaftFilesMessagesApi {
         val calls = mutableListOf<String>()
 
         override suspend fun channelFiles(channelId: ChannelId, limit: Int, cursor: String?): HomeNetworkResponse {

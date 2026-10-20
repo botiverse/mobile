@@ -20,10 +20,10 @@ class ThreadComposerSuggestionSearchTest {
     fun memberSearchRanksExactPrefixSubstringAndFuzzyMatches() {
         val suggestions =
             listOf(
-                KuiklyComposerMemberItem(displayName = "Android Developer", handle = "android-developer"),
-                KuiklyComposerMemberItem(displayName = "Cindy", handle = "cindy"),
-                KuiklyComposerMemberItem(displayName = "Dev Ops", handle = "devops"),
-                KuiklyComposerMemberItem(displayName = "Product Owner", handle = "owner", description = "Android developer contact")
+                RaftComposerMemberItem(displayName = "Android Developer", handle = "android-developer"),
+                RaftComposerMemberItem(displayName = "Cindy", handle = "cindy"),
+                RaftComposerMemberItem(displayName = "Dev Ops", handle = "devops"),
+                RaftComposerMemberItem(displayName = "Product Owner", handle = "owner", description = "Android developer contact")
             )
 
         assertEquals(
@@ -40,9 +40,9 @@ class ThreadComposerSuggestionSearchTest {
     fun channelSearchMatchesChinesePinyinFullInitialsAndMixedQuery() {
         val suggestions =
             listOf(
-                KuiklyComposerChannelItem(name = "对话流专修"),
-                KuiklyComposerChannelItem(name = "输入框专修"),
-                KuiklyComposerChannelItem(name = "markdown专修")
+                RaftComposerChannelItem(name = "对话流专修"),
+                RaftComposerChannelItem(name = "输入框专修"),
+                RaftComposerChannelItem(name = "markdown专修")
             )
 
         assertEquals(
@@ -79,8 +79,8 @@ class ThreadComposerSuggestionSearchTest {
     fun memberSearchMatchesMixedLatinChinesePinyin() {
         val suggestions =
             listOf(
-                KuiklyComposerMemberItem(displayName = "KMP-专家", handle = "KMP-专家"),
-                KuiklyComposerMemberItem(displayName = "KMP Developer", handle = "KMP-Developer")
+                RaftComposerMemberItem(displayName = "KMP-专家", handle = "KMP-专家"),
+                RaftComposerMemberItem(displayName = "KMP Developer", handle = "KMP-Developer")
             )
 
         assertEquals(
@@ -97,8 +97,8 @@ class ThreadComposerSuggestionSearchTest {
     fun channelNameMatchRanksAheadOfSubtitleMatch() {
         val suggestions =
             listOf(
-                KuiklyComposerChannelItem(name = "general", subtitle = "markdown triage"),
-                KuiklyComposerChannelItem(name = "markdown专修", subtitle = "docs")
+                RaftComposerChannelItem(name = "general", subtitle = "markdown triage"),
+                RaftComposerChannelItem(name = "markdown专修", subtitle = "docs")
             )
 
         assertEquals(
@@ -111,8 +111,8 @@ class ThreadComposerSuggestionSearchTest {
     fun legacyRawContainsStillMatchesSymbolQueries() {
         val suggestions =
             listOf(
-                KuiklyComposerChannelItem(name = "general"),
-                KuiklyComposerChannelItem(name = "c++")
+                RaftComposerChannelItem(name = "general"),
+                RaftComposerChannelItem(name = "c++")
             )
 
         assertEquals(
@@ -125,8 +125,8 @@ class ThreadComposerSuggestionSearchTest {
     fun blankQueryKeepsOriginalOrder() {
         val suggestions =
             listOf(
-                KuiklyComposerMemberItem(displayName = "B", handle = "b"),
-                KuiklyComposerMemberItem(displayName = "A", handle = "a")
+                RaftComposerMemberItem(displayName = "B", handle = "b"),
+                RaftComposerMemberItem(displayName = "A", handle = "a")
             )
 
         assertEquals(
@@ -139,7 +139,7 @@ class ThreadComposerSuggestionSearchTest {
     fun blankQueryIsBoundedToThirtyResults() {
         val suggestions =
             (0 until 100).map { index ->
-                KuiklyComposerMemberItem(displayName = "Member $index", handle = "member-$index")
+                RaftComposerMemberItem(displayName = "Member $index", handle = "member-$index")
             }
 
         assertEquals(
@@ -219,7 +219,7 @@ class ThreadComposerSuggestionSearchTest {
     fun blankMemberQueryKeepsSingleServerOrderAndLimit() {
         val suggestions =
             (0 until 100).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Member $index",
                     handle = "member-$index",
                     sourceServerId = "server-local",
@@ -238,7 +238,7 @@ class ThreadComposerSuggestionSearchTest {
     fun blankMemberQueryInterleavesJointServerCandidatesBeforeLimit() {
         val local =
             (0 until 35).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Local $index",
                     handle = "local-$index",
                     sourceServerId = "server-local",
@@ -247,7 +247,7 @@ class ThreadComposerSuggestionSearchTest {
             }
         val remote =
             (0 until 20).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Remote $index",
                     handle = "remote-$index",
                     sourceServerId = "server-remote",
@@ -272,7 +272,7 @@ class ThreadComposerSuggestionSearchTest {
     fun blankMemberQueryPrioritizesCurrentChannelBeforeSourceServerRoundRobin() {
         val outsideLocal =
             (0 until 35).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Outside local $index",
                     handle = "outside-local-$index",
                     inMentionChannel = false,
@@ -282,7 +282,7 @@ class ThreadComposerSuggestionSearchTest {
             }
         val outsideRemote =
             (0 until 10).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Outside remote $index",
                     handle = "outside-remote-$index",
                     inMentionChannel = false,
@@ -293,7 +293,7 @@ class ThreadComposerSuggestionSearchTest {
             }
         val inChannelLocal =
             listOf(
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Channel agent",
                     handle = "channel-agent",
                     inMentionChannel = true,
@@ -304,7 +304,7 @@ class ThreadComposerSuggestionSearchTest {
             )
         val inChannelRemote =
             listOf(
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Remote channel agent",
                     handle = "remote-channel-agent",
                     inMentionChannel = true,
@@ -335,7 +335,7 @@ class ThreadComposerSuggestionSearchTest {
     fun blankMemberQueryPreservesThreadThenChannelPriorityBeforeOutsideLimit() {
         val outside =
             (0 until 35).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Outside $index",
                     handle = "outside-$index",
                     inMentionChannel = false,
@@ -344,7 +344,7 @@ class ThreadComposerSuggestionSearchTest {
                 )
             }
         val threadParticipant =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Thread participant",
                 handle = "thread-participant",
                 inMentionChannel = false,
@@ -355,7 +355,7 @@ class ThreadComposerSuggestionSearchTest {
                 sourceServerLabel = "Remote Lab"
             )
         val channelMember =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Channel agent",
                 handle = "channel-agent",
                 inMentionChannel = true,
@@ -380,14 +380,14 @@ class ThreadComposerSuggestionSearchTest {
     fun blankMemberQueryUsesExclusiveIdentityTiersWhenThreadAndChannelEntriesOverlap() {
         val outside =
             (0 until 35).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Outside $index",
                     handle = "outside-$index",
                     inMentionChannel = false
                 )
             }
         val channelCopy =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Shared agent",
                 handle = "shared-agent",
                 memberId = "agent-1",
@@ -406,13 +406,13 @@ class ThreadComposerSuggestionSearchTest {
     @Test
     fun blankMemberQueryKeepsCurrentScopeFirstEvenWhenDirectoryFitsImmediateLimit() {
         val outside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside",
                 handle = "outside",
                 inMentionChannel = false
             )
         val agent =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Channel agent",
                 handle = "channel-agent",
                 inMentionChannel = true,
@@ -428,7 +428,7 @@ class ThreadComposerSuggestionSearchTest {
     fun tenThousandCandidateRankingKeepsBoundedTopThirtyWithinBudget() {
         val suggestions =
             (0 until 10_000).map { index ->
-                KuiklyComposerMemberItem(
+                RaftComposerMemberItem(
                     displayName = "Target Member $index",
                     handle = "target-member-${index.toString().padStart(5, '0')}",
                     description = "Large directory benchmark candidate"

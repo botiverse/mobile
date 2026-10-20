@@ -49,10 +49,10 @@ class AppLoginCallbacksTest {
     }
 
     @Test fun bridgeRejectsMalformedCallbacksWithoutStartingAnExchange() {
-        assertEquals(false, SlockAppLoginBridge.completeCallbackUri("raft://oauth/callback?requestId=r&code=c"))
-        assertEquals(false, SlockAppLoginBridge.completeCallback("raft-evil://login/callback", "r", "c", ""))
-        assertEquals(false, SlockAppLoginBridge.completeCallback("raft://login/callback", "r", "c", "e"))
-        assertEquals(false, SlockAppLoginBridge.completeCallback("raft://login/callback", " ", "c", ""))
+        assertEquals(false, RaftAppLoginBridge.completeCallbackUri("raft://oauth/callback?requestId=r&code=c"))
+        assertEquals(false, RaftAppLoginBridge.completeCallback("raft-evil://login/callback", "r", "c", ""))
+        assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", "r", "c", "e"))
+        assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", " ", "c", ""))
         assertTrue(APP_LOGIN_RETURN_URIS.all { it.endsWith("://login/callback") })
     }
 }

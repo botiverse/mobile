@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
@@ -101,7 +101,7 @@ class SettingsComputersWebViewTest {
     fun computersStandaloneLaunchCarriesOnlyShellIdentity() {
         val pageData =
             settingsComputersPageData(
-                SlockShellStoreScope.create(
+                RaftShellStoreScope.create(
                     shellInstanceId = "shell-computers",
                     initialServerId = "server-1"
                 )
@@ -109,8 +109,8 @@ class SettingsComputersWebViewTest {
 
         assertEquals(SETTINGS_WEB_VIEW_PAGE, pageData.optString("pageName"))
         assertEquals("computers", pageData.optString(SETTINGS_WEB_VIEW_SURFACE))
-        assertEquals("shell-computers", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("shell-computers", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("server-1", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertFalse(pageData.has("payload"))
         assertFalse(pageData.has("accessToken"))
         assertFalse(pageData.has("serverSlug"))
@@ -123,7 +123,7 @@ class SettingsComputersWebViewTest {
         val pageData =
             settingsComputerPageData(
                 storeScope =
-                    SlockShellStoreScope.create(
+                    RaftShellStoreScope.create(
                         shellInstanceId = "shell-computer-detail",
                         initialServerId = "stale-server",
                     ),
@@ -134,14 +134,14 @@ class SettingsComputersWebViewTest {
         assertEquals(target, settingsComputerRouteIdentityFromPageData(pageData))
         assertEquals(SETTINGS_WEB_VIEW_PAGE, pageData.optString("pageName"))
         assertEquals("computers", pageData.optString(SETTINGS_WEB_VIEW_SURFACE))
-        assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("server-1", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals("machine-42", pageData.optString(SETTINGS_COMPUTER_ID))
         assertEquals(
             setOf(
                 "pageName",
                 SETTINGS_WEB_VIEW_SURFACE,
-                SLOCK_SHELL_INSTANCE_ID,
-                SLOCK_SHELL_SERVER_ID,
+                RAFT_SHELL_INSTANCE_ID,
+                RAFT_SHELL_SERVER_ID,
                 SETTINGS_COMPUTER_ID,
             ),
             Json.parseToJsonElement(pageData.toString()).jsonObject.keys,
@@ -159,7 +159,7 @@ class SettingsComputersWebViewTest {
         assertNull(
             settingsComputerRouteIdentityFromPageData(
                 build.raft.app.compat.json.JSONObject()
-                    .put(SLOCK_SHELL_SERVER_ID, "server-1"),
+                    .put(RAFT_SHELL_SERVER_ID, "server-1"),
             ),
         )
     }

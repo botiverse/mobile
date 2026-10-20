@@ -107,20 +107,20 @@ class AvatarPriorityTest {
     fun humanUploadedAvatarRecognitionMatchesWebPathContract() {
         assertEquals(
             "/api/avatars/users/0123456789abcdef.webp",
-            "/api/avatars/users/0123456789abcdef.webp".slockUploadedHumanAvatarWireValueOrNull()
+            "/api/avatars/users/0123456789abcdef.webp".raftUploadedHumanAvatarWireValueOrNull()
         )
         assertEquals(
             "https://cdn.slock.ai/avatars/users/0123456789abcdef.webp?cache=1",
             "https://cdn.slock.ai/avatars/users/0123456789abcdef.webp?cache=1"
-                .slockUploadedHumanAvatarWireValueOrNull()
+                .raftUploadedHumanAvatarWireValueOrNull()
         )
         assertNull(
             "https://lh3.googleusercontent.com/a/provider-default"
-                .slockUploadedHumanAvatarWireValueOrNull()
+                .raftUploadedHumanAvatarWireValueOrNull()
         )
         assertNull(
             "https://cdn.slock.ai/avatars/agents/0123456789abcdef.webp"
-                .slockUploadedHumanAvatarWireValueOrNull()
+                .raftUploadedHumanAvatarWireValueOrNull()
         )
     }
 

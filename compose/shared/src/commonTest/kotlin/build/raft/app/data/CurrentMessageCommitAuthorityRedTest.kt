@@ -265,7 +265,7 @@ class CurrentMessageCommitAuthorityRedTest {
             durable.snapshots[scope] = empty
             val lane = durable.lane()
             durable.seedReady(lane, scope, empty)
-            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()), lane)
+            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()), lane)
             val event = canonicalEvent(CanonicalMessageFoldKind.New)
 
             assertTrue(owner.acceptProcessMutation(grant, event, source = "normal-process"))
@@ -285,7 +285,7 @@ class CurrentMessageCommitAuthorityRedTest {
         try {
             fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
             val grant = assertNotNull(fixture.provider.authorityFlow("shell-a").value?.grant("server-a"))
-            val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+            val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
             val durable = OwnerDurableStore()
             val scope = durable.scope(grant)
             var cancelBeforeLane = true
@@ -332,7 +332,7 @@ class CurrentMessageCommitAuthorityRedTest {
                     error("null runner must not enter the lane")
                 },
             )
-            val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+            val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
             val owner = SharedRealtimeDomainEventOwner(
                 cursorStore = cursorStore,
                 runIfCurrentGrant = fixture.provider::runIfCurrentGrant,
@@ -366,7 +366,7 @@ class CurrentMessageCommitAuthorityRedTest {
                     throw IllegalStateException("lane-failure")
                 },
             )
-            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()), lane)
+            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()), lane)
             var sinkCount = 0
             owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(
@@ -398,7 +398,7 @@ class CurrentMessageCommitAuthorityRedTest {
             val lane = CurrentGrantMessageShadowCommitLane(
                 isEnabledForServer = { throw IllegalStateException("lane-failure") },
             )
-            val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+            val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
             val owner = fixture.owner(cursorStore, lane)
             var sinkCount = 0
             owner.registerGuardedSinks(
@@ -445,7 +445,7 @@ class CurrentMessageCommitAuthorityRedTest {
             durable.snapshots[scope] = old
             val lane = durable.lane()
             durable.seedReady(lane, scope, old)
-            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()), lane)
+            val owner = fixture.owner(RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()), lane)
             var legacySinkCount = 0
             owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(
@@ -620,7 +620,7 @@ class CurrentMessageCommitAuthorityRedTest {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = process,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -630,7 +630,7 @@ class CurrentMessageCommitAuthorityRedTest {
         return Fixture(auth, provider, scope)
     }
 
-    private class FakeTypedAuthSessionStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private class FakeTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
         private var session: StoredAuthSession? = null
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 16)
 

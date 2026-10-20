@@ -31,7 +31,7 @@ class AgentIssueReportRepositoryTest {
         var hashedBundle = ""
         val repository =
             AgentIssueReportRepository(
-                sessionStore = InMemorySlockAuthSessionStore(session),
+                sessionStore = InMemoryRaftAuthSessionStore(session),
                 selectedServerStore = selectedServerStore(),
                 networkClient = network,
                 sha256Hex = { bundle ->
@@ -142,7 +142,7 @@ class AgentIssueReportRepositoryTest {
         val network = RecordingAgentIssueNetworkClient()
         val repository =
             AgentIssueReportRepository(
-                sessionStore = InMemorySlockAuthSessionStore(session),
+                sessionStore = InMemoryRaftAuthSessionStore(session),
                 selectedServerStore = selectedServerStore(),
                 networkClient = network,
                 sha256Hex = { "a".repeat(64) }
@@ -167,10 +167,10 @@ class AgentIssueReportRepositoryTest {
     }
 
     private fun selectedServerStore(): SelectedServerStore =
-        SelectedServerStore(SlockShellStoreScope.create("agent-issue-test", serverId.value))
+        SelectedServerStore(RaftShellStoreScope.create("agent-issue-test", serverId.value))
 }
 
-private class RecordingAgentIssueNetworkClient : SlockNetworkClient {
+private class RecordingAgentIssueNetworkClient : RaftNetworkClient {
     val calls = mutableListOf<String>()
     var attestationBody = ""
     var createBody = ""

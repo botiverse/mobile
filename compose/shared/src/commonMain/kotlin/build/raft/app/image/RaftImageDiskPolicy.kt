@@ -1,7 +1,7 @@
 package build.raft.app.image
 
-import build.raft.app.data.SlockAvatarContentKind
-import build.raft.app.data.slockAvatarContentIdentity
+import build.raft.app.data.RaftAvatarContentKind
+import build.raft.app.data.raftAvatarContentIdentity
 
 /**
  * Disk cache policy of the Raft network image fetcher.
@@ -17,8 +17,8 @@ internal const val RAFT_IMAGE_EXTERNAL_DISK_TTL_MILLIS: Long = 24L * 60 * 60 * 1
 
 /** True when a network image URL's disk entry must expire (its content can change upstream). */
 internal fun raftNetworkImageExpires(url: String): Boolean {
-    val kind = runCatching { slockAvatarContentIdentity(url).kind }.getOrNull()
-    return kind != SlockAvatarContentKind.RaftImmutable
+    val kind = runCatching { raftAvatarContentIdentity(url).kind }.getOrNull()
+    return kind != RaftAvatarContentKind.RaftImmutable
 }
 
 internal data class RaftImageDiskMetadata(

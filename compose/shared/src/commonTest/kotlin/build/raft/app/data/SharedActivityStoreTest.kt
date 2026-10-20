@@ -68,8 +68,8 @@ class SharedActivityStoreTest {
         val canaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val legacyInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
         val canaryInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
-        val legacyVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
-        val canaryVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val legacyVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val canaryVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         var legacyEffects = 0
         var canaryEffects = 0
         val legacy =
@@ -123,7 +123,7 @@ class SharedActivityStoreTest {
     fun selectedReadStateRealtimeUsesSynchronousPatchOnlyProjectionWithoutLegacyCheckpoint() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()), snapshot(emptyList())))
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             ServerId("server-1"),
             MemberId("user-1"),
@@ -1941,7 +1941,7 @@ class SharedActivityStoreTest {
                 initialSnapshots =
                     listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
             )
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         var homeReconcileRequests = 0
         val store =
             activityStore(
@@ -1976,7 +1976,7 @@ class SharedActivityStoreTest {
                 initialSnapshots =
                     listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
             )
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
@@ -2011,7 +2011,7 @@ class SharedActivityStoreTest {
                         snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
                     )
             )
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
@@ -2051,7 +2051,7 @@ class SharedActivityStoreTest {
                         snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
                     )
             )
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
@@ -2083,7 +2083,7 @@ class SharedActivityStoreTest {
                         snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)
                     )
             )
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
@@ -2112,7 +2112,7 @@ class SharedActivityStoreTest {
     fun readStateBulkScopesFoldIndependentlyWithoutSchedulingActivityRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
@@ -3439,7 +3439,7 @@ class SharedActivityStoreTest {
     @Test
     fun loadInitialAppliesResultWhenAccessTokenRotatedMidFlight() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        val authStore = InMemoryRaftAuthSessionStore(sampleSession())
         val inbox = DeferredInboxRepository()
         val diagnostics = mutableListOf<String>()
         val store =
@@ -3525,7 +3525,7 @@ class SharedActivityStoreTest {
         val standaloneStore =
             activityStore(
                 scope = standaloneScope,
-                authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2")),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession(userId = "user-2")),
                 inboxRepository = DeferredInboxRepository(),
                 persistSlices = listOf(persistSlice)
             )
@@ -3792,7 +3792,7 @@ class SharedActivityStoreTest {
             val store =
                 activityStore(
                     scope = scope,
-                    authStore = InMemorySlockAuthSessionStore(sampleSession(serverId = serverId)),
+                    authStore = InMemoryRaftAuthSessionStore(sampleSession(serverId = serverId)),
                     inboxRepository =
                         FakeInboxRepository(
                             initialSnapshots =
@@ -3890,7 +3890,7 @@ class SharedActivityStoreTest {
 
         val secondInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-2")))))
         store.updateRuntimeIntegrations(
-            authStore = InMemorySlockAuthSessionStore(sampleSession(serverId = "server-2")),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession(serverId = "server-2")),
             inboxRepository = secondInbox,
             readReceiptRepository = FakeReadReceiptRepository(),
             conversationRepository = FakeConversationRepository()
@@ -4067,16 +4067,16 @@ class SharedActivityStoreTest {
                         StoredAuthServer(id = "server-2", name = "Two")
                     )
             )
-        val processStore = InMemorySlockAuthSessionStore(processSession)
+        val processStore = InMemoryRaftAuthSessionStore(processSession)
         val authA =
-            SlockShellAuthSessionStore(
+            RaftShellAuthSessionStore(
                 processStore,
-                SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
+                SelectedServerStore(RaftShellStoreScope.create("shell-a", "server-1"))
             )
         val authB =
-            SlockShellAuthSessionStore(
+            RaftShellAuthSessionStore(
                 processStore,
-                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
             )
         val inboxA = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
         val inboxB = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
@@ -4255,7 +4255,7 @@ class SharedActivityStoreTest {
         val store =
             activityStore(
                 scope = scope,
-                authStore = InMemorySlockAuthSessionStore(session),
+                authStore = InMemoryRaftAuthSessionStore(session),
                 diagnosticsLogger = { message -> lines.add(message) }
             )
 
@@ -4290,8 +4290,8 @@ class SharedActivityStoreTest {
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
         perReceiverStateVersionStore: PerReceiverStateVersionStore =
-            PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
-        authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            PerReceiverStateVersionStore(InMemoryRaftKeyValueStore()),
+        authStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },

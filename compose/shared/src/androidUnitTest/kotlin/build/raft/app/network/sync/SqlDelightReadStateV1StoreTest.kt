@@ -4,7 +4,7 @@ import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlin.io.path.deleteIfExists
@@ -81,12 +81,12 @@ class SqlDelightReadStateV1StoreTest {
         val url = "jdbc:sqlite:${path.toAbsolutePath()}"
         try {
             JdbcSqliteDriver(url).use { driver ->
-                build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
-                SqlDelightReadStateV1Store(SlockSqlDatabase(driver), now = { 100L })
+                build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
+                SqlDelightReadStateV1Store(RaftSqlDatabase(driver), now = { 100L })
                     .commit(scope, fact(9, 90), ReadStateV1CommitMode.Snapshot, current)
             }
             JdbcSqliteDriver(url).use { driver ->
-                assertEquals(fact(9, 90), SqlDelightReadStateV1Store(SlockSqlDatabase(driver), now = { 200L }).restore(scope))
+                assertEquals(fact(9, 90), SqlDelightReadStateV1Store(RaftSqlDatabase(driver), now = { 200L }).restore(scope))
             }
         } finally {
             path.deleteIfExists()
@@ -189,9 +189,9 @@ class SqlDelightReadStateV1StoreTest {
 
     private fun fact(version: Long, seq: Long) = ReadStateV1Fact(scope.channelId, version, seq)
 
-    private fun freshDatabase(): Pair<SlockSqlDatabase, CountingDriver> {
+    private fun freshDatabase(): Pair<RaftSqlDatabase, CountingDriver> {
         val driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
-        return SlockSqlDatabase(driver) to driver
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
+        return RaftSqlDatabase(driver) to driver
     }
 }

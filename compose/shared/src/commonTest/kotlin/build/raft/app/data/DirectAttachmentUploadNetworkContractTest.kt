@@ -3,12 +3,12 @@ package build.raft.app.data
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockHttpExecutorResponse
-import build.raft.app.network.SlockHttpFileBody
-import build.raft.app.network.SlockRequestPriority
-import build.raft.app.network.SlockRequestScheduler
-import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftHttpExecutorResponse
+import build.raft.app.network.RaftHttpFileBody
+import build.raft.app.network.RaftRequestPriority
+import build.raft.app.network.RaftRequestScheduler
+import build.raft.app.network.RaftRequestTimeoutException
 import com.tencent.kmm.network.export.NetworkByteStreamSink
 import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
@@ -24,7 +24,7 @@ class DirectAttachmentUploadNetworkContractTest {
     @Test
     fun unboundRepositoryDirectSessionOperationsNeverReachExecutorOrFileResolver() = runBlocking {
         val executor = RecordingExecutor()
-        val resolver = RecordingResolver(SlockPlatformFileStatResult(code = 200, sizeBytes = 3L))
+        val resolver = RecordingResolver(RaftPlatformFileStatResult(code = 200, sizeBytes = 3L))
         val repository =
             RealConversationRepository(
                 sessionStore = authenticatedSessionStore(),
@@ -105,7 +105,7 @@ class DirectAttachmentUploadNetworkContractTest {
     fun directFilePutRejectsMissingZeroAndNegativeStatLengthsBeforeTransport() = runBlocking {
         listOf<Long?>(null, 0L, -1L).forEach { statSize ->
             val executor = RecordingExecutor()
-            val resolver = RecordingResolver(SlockPlatformFileStatResult(code = 200, sizeBytes = statSize))
+            val resolver = RecordingResolver(RaftPlatformFileStatResult(code = 200, sizeBytes = statSize))
             val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
 
             val response =
@@ -126,7 +126,7 @@ class DirectAttachmentUploadNetworkContractTest {
     @Test
     fun directFilePutRejectsFileRefAndBytesBeforeStatOrTransport() = runBlocking {
         val executor = RecordingExecutor()
-        val resolver = RecordingResolver(SlockPlatformFileStatResult(code = 200, sizeBytes = 3L))
+        val resolver = RecordingResolver(RaftPlatformFileStatResult(code = 200, sizeBytes = 3L))
         val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
 
         val response =
@@ -152,7 +152,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val executor = RecordingExecutor()
         val resolver =
             RecordingResolver(
-                stat = SlockPlatformFileStatResult(code = 200, sizeBytes = 3L),
+                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
                 statFailure = IllegalStateException("private resolver path"),
             )
         val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
@@ -177,7 +177,7 @@ class DirectAttachmentUploadNetworkContractTest {
             val executor = RecordingExecutor()
             val resolver =
                 RecordingResolver(
-                    SlockPlatformFileStatResult(
+                    RaftPlatformFileStatResult(
                         code = status,
                         errorCode = "platform_error_$FileRef",
                         message = "could not stat $FileRef",
@@ -185,7 +185,7 @@ class DirectAttachmentUploadNetworkContractTest {
                 )
             val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
 
-            val preparation = assertIs<SlockPlatformFilePreparationResult.Rejected>(
+            val preparation = assertIs<RaftPlatformFilePreparationResult.Rejected>(
                 bound.prepareAttachmentUploadFile(file(sizeBytes = 999L))
             )
             val response =
@@ -215,7 +215,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val cancellation = CancellationException("caller canceled file admission")
         val resolver =
             RecordingResolver(
-                stat = SlockPlatformFileStatResult(code = 200, sizeBytes = 3L),
+                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
                 statFailure = cancellation,
             )
         val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
@@ -262,7 +262,7 @@ class DirectAttachmentUploadNetworkContractTest {
     @Test
     fun staleAuthorityRejectsDirectFileBeforeStatOrExecutor() = runBlocking {
         val executor = RecordingExecutor()
-        val resolver = RecordingResolver(SlockPlatformFileStatResult(code = 200, sizeBytes = 3L))
+        val resolver = RecordingResolver(RaftPlatformFileStatResult(code = 200, sizeBytes = 3L))
         val staleBinding = expectedBinding().copy(accountId = "other-user")
         val bound = client(executor = executor, resolver = resolver).boundTo(staleBinding)
 
@@ -285,7 +285,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val source = CountingChunkSource(totalBytes = 3L)
         val resolver =
             RecordingResolver(
-                stat = SlockPlatformFileStatResult(code = 200, sizeBytes = 3L),
+                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
                 source = source,
             )
         val executor =
@@ -312,7 +312,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val source = CountingChunkSource(totalBytes = 3L)
         val resolver =
             RecordingResolver(
-                stat = SlockPlatformFileStatResult(code = 200, sizeBytes = 3L),
+                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
                 source = source,
             )
         val executor =
@@ -351,7 +351,7 @@ class DirectAttachmentUploadNetworkContractTest {
             client(
                 executor = executor,
                 warningLogger = { schedulerEvents += it },
-                requestScheduler = SlockRequestScheduler(logger = { schedulerEvents += it }),
+                requestScheduler = RaftRequestScheduler(logger = { schedulerEvents += it }),
             ).boundTo(expectedBinding())
 
         val response =
@@ -373,7 +373,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val executor =
             RecordingExecutor(
                 bytesResponse =
-                    SlockHttpExecutorResponse(
+                    RaftHttpExecutorResponse(
                         code = 200,
                         bodyText = leaked,
                         errorBodyText = null,
@@ -403,7 +403,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val executor =
             RecordingExecutor(
                 bytesResponse =
-                    SlockHttpExecutorResponse(
+                    RaftHttpExecutorResponse(
                         code = 403,
                         bodyText = null,
                         errorBodyText = leaked,
@@ -433,7 +433,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val executor =
             RecordingExecutor(
                 bytesFailure =
-                    SlockRequestTimeoutException(
+                    RaftRequestTimeoutException(
                         "Raft request timed out after 383000ms " +
                             "key=attachments/upload-sessions/presigned-put reason=PUT url=$PresignedUrl"
                     )
@@ -462,7 +462,7 @@ class DirectAttachmentUploadNetworkContractTest {
         val source = CountingChunkSource(totalBytes = 3L)
         val resolver =
             RecordingResolver(
-                stat = SlockPlatformFileStatResult(code = 200, sizeBytes = 3L),
+                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
                 source = source,
             )
         val executor =
@@ -490,11 +490,11 @@ class DirectAttachmentUploadNetworkContractTest {
 
     private fun client(
         executor: RecordingExecutor,
-        resolver: SlockPlatformFileResolver? = null,
+        resolver: RaftPlatformFileResolver? = null,
         warningLogger: (String) -> Unit = {},
-        requestScheduler: SlockRequestScheduler = SlockRequestScheduler(logger = warningLogger),
-    ): SharedSlockNetworkClient =
-        SharedSlockNetworkClient(
+        requestScheduler: RaftRequestScheduler = RaftRequestScheduler(logger = warningLogger),
+    ): SharedRaftNetworkClient =
+        SharedRaftNetworkClient(
             sessionStore = authenticatedSessionStore(),
             baseUrl = ApiBaseUrl,
             platformFileResolver = resolver,
@@ -503,8 +503,8 @@ class DirectAttachmentUploadNetworkContractTest {
             requestScheduler = requestScheduler,
         )
 
-    private fun authenticatedSessionStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun authenticatedSessionStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                 accessToken = "access-token",
@@ -514,8 +514,8 @@ class DirectAttachmentUploadNetworkContractTest {
             )
         )
 
-    private fun expectedBinding(): SlockExpectedAuthBinding =
-        SlockExpectedAuthBinding(
+    private fun expectedBinding(): RaftExpectedAuthBinding =
+        RaftExpectedAuthBinding(
             accountId = "user-1",
             accessToken = "access-token",
             refreshToken = "refresh-token",
@@ -566,19 +566,19 @@ class DirectAttachmentUploadNetworkContractTest {
     }
 
     private class RecordingExecutor(
-        private val respond: suspend (method: String, url: String) -> SlockHttpExecutorResponse = { _, _ ->
+        private val respond: suspend (method: String, url: String) -> RaftHttpExecutorResponse = { _, _ ->
             response()
         },
-        private val consumeFile: suspend (SlockHttpFileBody) -> Unit = {},
-        private val bytesResponse: SlockHttpExecutorResponse = response(),
+        private val consumeFile: suspend (RaftHttpFileBody) -> Unit = {},
+        private val bytesResponse: RaftHttpExecutorResponse = response(),
         private val bytesFailure: Throwable? = null,
-    ) : SlockHttpExecutor {
+    ) : RaftHttpExecutor {
         data class Request(val method: String, val url: String)
         data class ByteBody(val url: String, val headers: Map<String, String>, val bytes: ByteArray)
 
         val requests = mutableListOf<Request>()
         val byteBodies = mutableListOf<ByteBody>()
-        val fileBodies = mutableListOf<SlockHttpFileBody>()
+        val fileBodies = mutableListOf<RaftHttpFileBody>()
         var multipartCalls: Int = 0
             private set
 
@@ -586,50 +586,50 @@ class DirectAttachmentUploadNetworkContractTest {
             get() = requests.size + byteBodies.size + fileBodies.size + multipartCalls
 
         override suspend fun execute(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             method: String,
             headers: Map<String, String>,
             bodyText: String?,
             jsonBody: Boolean,
-        ): SlockHttpExecutorResponse {
+        ): RaftHttpExecutorResponse {
             requests += Request(method = method, url = url)
             return respond(method, url)
         }
 
         override suspend fun executeMultipart(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
-        ): SlockHttpExecutorResponse {
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        ): RaftHttpExecutorResponse {
             multipartCalls += 1
             return respond("POST", url)
         }
 
         override suspend fun executeBytes(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             method: String,
             headers: Map<String, String>,
             bodyBytes: ByteArray,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
-        ): SlockHttpExecutorResponse {
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        ): RaftHttpExecutorResponse {
             byteBodies += ByteBody(url = url, headers = headers, bytes = bodyBytes)
             bytesFailure?.let { throw it }
             return bytesResponse
         }
 
         override suspend fun executeFile(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             method: String,
             headers: Map<String, String>,
-            body: SlockHttpFileBody,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
-        ): SlockHttpExecutorResponse {
+            body: RaftHttpFileBody,
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        ): RaftHttpExecutorResponse {
             fileBodies += body
             consumeFile(body)
             return response()
@@ -637,17 +637,17 @@ class DirectAttachmentUploadNetworkContractTest {
     }
 
     private class RecordingResolver(
-        private val stat: SlockPlatformFileStatResult,
-        private val source: SlockPlatformFileChunkSource = CountingChunkSource(0L),
+        private val stat: RaftPlatformFileStatResult,
+        private val source: RaftPlatformFileChunkSource = CountingChunkSource(0L),
         private val statFailure: Throwable? = null,
-    ) : SlockPlatformFileResolver {
+    ) : RaftPlatformFileResolver {
         val statCalls = mutableListOf<String>()
         val openCalls = mutableListOf<Pair<String, Long>>()
 
-        override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult =
+        override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult =
             error("direct file PUT must not materialize the whole file")
 
-        override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult {
+        override suspend fun statFile(fileRef: String): RaftPlatformFileStatResult {
             statCalls += fileRef
             statFailure?.let { throw it }
             return stat
@@ -656,7 +656,7 @@ class DirectAttachmentUploadNetworkContractTest {
         override suspend fun openFileStream(
             fileRef: String,
             expectedSizeBytes: Long,
-        ): SlockPlatformFileChunkSource {
+        ): RaftPlatformFileChunkSource {
             openCalls += fileRef to expectedSizeBytes
             return source
         }
@@ -664,7 +664,7 @@ class DirectAttachmentUploadNetworkContractTest {
 
     private class CountingChunkSource(
         totalBytes: Long,
-    ) : SlockPlatformFileChunkSource {
+    ) : RaftPlatformFileChunkSource {
         private var remaining = totalBytes
         var closeCount: Int = 0
             private set
@@ -695,7 +695,7 @@ class DirectAttachmentUploadNetworkContractTest {
         fun response(
             code: Int = 200,
             body: String? = "{}",
-        ): SlockHttpExecutorResponse =
-            SlockHttpExecutorResponse(code = code, bodyText = body, errorBodyText = null)
+        ): RaftHttpExecutorResponse =
+            RaftHttpExecutorResponse(code = code, bodyText = body, errorBodyText = null)
     }
 }

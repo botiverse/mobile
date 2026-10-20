@@ -20,7 +20,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 /**
  * Read-only view of a Compose text field (a SetText-capable semantics node) in a CMP page.
  *
- * CMP pages render their editors as Compose BasicTextFields inside SlockCmpActivity's ComposeView,
+ * CMP pages render their editors as Compose BasicTextFields inside RaftCmpActivity's ComposeView,
  * so connected tests that used to find an Android EditText read the field's semantics instead.
  * [id] is the semantics node id: it survives recomposition and changes only if the text field is
  * re-created, which makes it the counterpart of the old EditText instance identity.
@@ -39,7 +39,7 @@ internal data class RaftTextFieldSnapshot(
 )
 
 /** Text fields of the activity's Compose roots, in semantics tree order. */
-internal fun ActivityScenario<SlockCmpActivity>.raftTextFields(): List<RaftTextFieldSnapshot> {
+internal fun ActivityScenario<RaftCmpActivity>.raftTextFields(): List<RaftTextFieldSnapshot> {
     var fields: List<RaftTextFieldSnapshot> = emptyList()
     onActivity { activity ->
         fields = activity.raftTextFieldNodes().map { node -> node.toRaftTextFieldSnapshot() }
@@ -48,26 +48,26 @@ internal fun ActivityScenario<SlockCmpActivity>.raftTextFields(): List<RaftTextF
 }
 
 /** The first text field of the page (the composer on composer pages), or null when none is attached. */
-internal fun ActivityScenario<SlockCmpActivity>.raftFirstTextField(): RaftTextFieldSnapshot? =
+internal fun ActivityScenario<RaftCmpActivity>.raftFirstTextField(): RaftTextFieldSnapshot? =
     raftTextFields().firstOrNull()
 
 /** Main-thread check that the page has attached a text field (for activity-level readiness probes). */
-internal fun SlockCmpActivity.raftHasTextField(): Boolean = raftTextFieldNodes().isNotEmpty()
+internal fun RaftCmpActivity.raftHasTextField(): Boolean = raftTextFieldNodes().isNotEmpty()
 
 /** Requests focus for text field [id] through its semantics action, as accessibility would. */
-internal fun ActivityScenario<SlockCmpActivity>.raftRequestTextFieldFocus(id: Int): Boolean =
+internal fun ActivityScenario<RaftCmpActivity>.raftRequestTextFieldFocus(id: Int): Boolean =
     raftPerformOnTextField(id) { config ->
         config.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke() == true
     }
 
 /** Places the caret of text field [id] at [start]..[end] through its semantics action. */
-internal fun ActivityScenario<SlockCmpActivity>.raftSetTextFieldSelection(id: Int, start: Int, end: Int): Boolean =
+internal fun ActivityScenario<RaftCmpActivity>.raftSetTextFieldSelection(id: Int, start: Int, end: Int): Boolean =
     raftPerformOnTextField(id) { config ->
         config.getOrNull(SemanticsActions.SetSelection)?.action?.invoke(start, end, false) == true
     }
 
 /** The IME connection of the focused view, i.e. what the soft keyboard talks to. */
-internal fun SlockCmpActivity.raftFocusedInputConnection(): InputConnection? =
+internal fun RaftCmpActivity.raftFocusedInputConnection(): InputConnection? =
     currentFocus?.onCreateInputConnection(EditorInfo())
 
 /**
@@ -75,7 +75,7 @@ internal fun SlockCmpActivity.raftFocusedInputConnection(): InputConnection? =
  * InputConnection. A Compose text field starts its input session asynchronously after it gains
  * focus, so "semantics says focused" is not yet "the IME can type".
  */
-internal fun ActivityScenario<SlockCmpActivity>.raftAwaitTextInputSession(
+internal fun ActivityScenario<RaftCmpActivity>.raftAwaitTextInputSession(
     description: String,
     timeoutMs: Long = 12_000L,
 ) {
@@ -91,7 +91,7 @@ internal fun ActivityScenario<SlockCmpActivity>.raftAwaitTextInputSession(
     throw AssertionError("Timed out waiting for a text input session on $description")
 }
 
-private fun ActivityScenario<SlockCmpActivity>.raftPerformOnTextField(
+private fun ActivityScenario<RaftCmpActivity>.raftPerformOnTextField(
     id: Int,
     action: (SemanticsConfiguration) -> Boolean,
 ): Boolean {
@@ -103,7 +103,7 @@ private fun ActivityScenario<SlockCmpActivity>.raftPerformOnTextField(
     return performed
 }
 
-private fun SlockCmpActivity.raftTextFieldNodes(): List<SemanticsNode> =
+private fun RaftCmpActivity.raftTextFieldNodes(): List<SemanticsNode> =
     window.decorView.raftComposeRoots().flatMap { root ->
         root.semanticsOwner
             .getAllSemanticsNodes(mergingEnabled = false)

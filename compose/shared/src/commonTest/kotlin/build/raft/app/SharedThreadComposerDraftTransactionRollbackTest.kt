@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.MviPersistSlice
 import build.raft.app.data.MviPersistSliceTransitionSnapshot
 import kotlinx.coroutines.runBlocking
@@ -85,7 +85,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
 
     @Test
     fun finalizeMarkerMakesManualRollbackFailClosedForEveryDeferredRetirement() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val retired = mutableListOf<Pair<String, Set<String>>>()
         val persistence =
             SharedThreadComposerDraftPersistence(
@@ -153,7 +153,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
 
     @Test
     fun finalizeMarkerLifecycleIsPreparedBoundAndIdempotent() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val transaction = persistence.beginTransition(emptyList())
 
@@ -173,7 +173,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
         assertGateIsReleased(storage)
     }
 
-    private fun assertGateIsReleased(storage: InMemorySlockKeyValueStore) {
+    private fun assertGateIsReleased(storage: InMemoryRaftKeyValueStore) {
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val probe = persistence.beginTransition(emptyList())
         probe.rollback()
@@ -181,7 +181,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
     }
 
     private fun draftFixture(): DraftFixture {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val validKey =
@@ -217,7 +217,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
     }
 
     private data class DraftFixture(
-        val storage: InMemorySlockKeyValueStore,
+        val storage: InMemoryRaftKeyValueStore,
         val persistence: SharedThreadComposerDraftPersistence,
         val persistSlice: SharedThreadComposerDraftPersistSlice,
         val currentKey: String,
@@ -233,7 +233,7 @@ class SharedThreadComposerDraftTransactionRollbackTest {
             store.dispatch(
                 SharedThreadComposerDraftIntent.Start(
                     composer =
-                        KuiklyThreadComposerPayload(
+                        RaftThreadComposerPayload(
                             instanceId = "rollback-composer",
                             seedText = "",
                             seedAsTask = false

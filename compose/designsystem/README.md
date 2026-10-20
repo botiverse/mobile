@@ -32,7 +32,7 @@ Sources of truth:
 | Kind | Where | How |
 | --- | --- | --- |
 | Colours | `tokens/RaftUiColorTokens.g.kt` | Generated. `RaftUiPalette` (mode-invariant) and `RaftUiThemeColors.RaftLight` / `.RaftDark` |
-| Radii, strokes, spacing, sizes, elevation | `tokens/RaftDimensions.kt` | Hand-written, ported from compose/shared `SlockDesignTokens.kt` |
+| Radii, strokes, spacing, sizes, elevation | `tokens/RaftDimensions.kt` | Hand-written, ported from compose/shared `RaftDesignTokens.kt` |
 | Type scale | `theme/RaftTypography.kt` | raft-ui `--text-*` and `--field-*` / `--card-title-*`, 1:1 with the Typography page (see Typography below) |
 
 The colours come from the same generator and vendored CSS as the Kuikly tokens in
@@ -89,7 +89,7 @@ RaftThemeState.App.apply(RaftAppearance.Dark)   // true when the resolved theme 
 RaftTheme(appearance = RaftAppearance.Light) { ... }
 ```
 
-- `RaftThemeState` is an observable Compose state holder modelled on `SlockThemeState`
+- `RaftThemeState` is an observable Compose state holder modelled on `RaftAppThemeState`
   (`Light` / `Dark` / `System`, default `Light`). As there, `apply()` and
   `onSystemDarkChanged()` return whether the resolved theme changed, not whether the
   stored choice did. Unlike Kuikly, hosts don't report the OS setting: `RaftTheme` reads

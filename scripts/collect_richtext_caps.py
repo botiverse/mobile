@@ -2,7 +2,7 @@
 """Collect the SLOCK_RICHTEXT_CAPS marker into per-case visual metadata.
 
 task #441 (unified renderer Phase 3c, collection side). The shared render
-contract exposes `slockRichTextCapsLine()`; each native render host prints ONE
+contract exposes `raftRichTextCapsLine()`; each native render host prints ONE
 line, after the first frame, of the form:
 
     SLOCK_RICHTEXT_CAPS {"inlineCodeChrome":true,"slockRefChrome":true,"reactionAtlas":false,"declaredDivergences":[...]}

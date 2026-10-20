@@ -1087,7 +1087,7 @@ class KmmResourceI18nTest {
     @Test
     fun hostLayerStringResourcesAreGenerated() {
         // Native-host alert/toast copy resolves through the shared
-        // SlockHostStrings facade on Android and iOS.
+        // RaftHostStrings facade on Android and iOS.
         listOf(
             MR.strings.host_feedback_prompt_message,
             MR.strings.host_feedback_prompt_placeholder,

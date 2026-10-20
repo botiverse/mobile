@@ -97,7 +97,7 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
         }
     }
 
-    private class Rig(database: SlockSqlDatabase, maxFactsPerScope: Int) {
+    private class Rig(database: RaftSqlDatabase, maxFactsPerScope: Int) {
         val logs = mutableListOf<String>()
         private val network = RecordingNetworkClient(canonicalV2TestPage())
         private val store = SqlDelightCanonicalMessageV2Store(
@@ -140,11 +140,11 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
         ) = writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null) { true }
     }
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

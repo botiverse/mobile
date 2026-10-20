@@ -9,8 +9,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.SlockTimeFormat12Hour
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -86,11 +86,11 @@ class MembersDirectMessageLaunchTest {
 
     @Test
     fun agentDetailMessageActionBuildsDirectMessageLaunchPayload() {
-        val timeContext = SlockTimeContext(
+        val timeContext = RaftTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20_275L,
             nowEpochMillis = 1_756_963_200_000L,
-            timeFormat = SlockTimeFormat12Hour
+            timeFormat = RaftTimeFormat12Hour
         )
 
         val payload =
@@ -113,8 +113,8 @@ class MembersDirectMessageLaunchTest {
 
         assertNotNull(payload)
         assertEquals("members-message-agent-product-ux-dm-agent-product-ux-artin", payload.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.channelKind)
         assertEquals("dm-agent-product-ux-artin", payload.threadId)
         assertEquals("dm-agent-product-ux-artin", payload.sourceThreadId)
         assertEquals("dm-agent-product-ux-artin", payload.streamChannelId)
@@ -126,11 +126,11 @@ class MembersDirectMessageLaunchTest {
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20_275L, payload.todayEpochDay)
         assertEquals(1_756_963_200_000L, payload.nowEpochMillis)
-        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+        assertEquals(RaftTimeFormat12Hour, payload.timeFormat)
 
         val pageData = payload.toThreadPageData()
-        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("dmPeerName"))
         assertEquals("", pageData.optString("dmPeerAvatar"))
     }
@@ -152,7 +152,7 @@ class MembersDirectMessageLaunchTest {
                     channelId = ChannelId("dm-human-artin"),
                     name = "artin"
                 ),
-                timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                timeContext = RaftTimeContext(localOffsetMinutes = 0)
             )
 
         assertNotNull(payload)
@@ -166,9 +166,9 @@ class MembersDirectMessageLaunchTest {
         val url = "https://custom.raft.example/s/workspace/channel/channel-1?msg=message-1"
         var inAppOpenCount = 0
         var externallyOpenedUrl: String? = null
-        var rejectedReason: SlockLinkRejectReason? = null
+        var rejectedReason: RaftLinkRejectReason? = null
         val navigator =
-            SlockLinkNavigator(
+            RaftLinkNavigator(
                 modeProvider = { LinkOpenMode.InAppBrowser },
                 openInAppBrowser = {
                     inAppOpenCount += 1
@@ -178,10 +178,10 @@ class MembersDirectMessageLaunchTest {
                 onRejected = { rejectedReason = it },
             )
 
-        assertNull(url.toSlockThreadWebLinkTarget())
+        assertNull(url.toRaftThreadWebLinkTarget())
         val decision = navigator.openMembersReminderForceExternalFallback(url)
 
-        assertEquals(SlockLinkOpenTarget.ExternalBrowser, decision.target)
+        assertEquals(RaftLinkOpenTarget.ExternalBrowser, decision.target)
         assertEquals(url, externallyOpenedUrl)
         assertEquals(0, inAppOpenCount)
         assertNull(rejectedReason)
@@ -191,10 +191,10 @@ class MembersDirectMessageLaunchTest {
     fun membersReminderThreadPermalinkBuildsChannelReplyLaunchPayload() {
         val payload =
             requireNotNull(
-                SlockThreadWebLinkTarget(
+                RaftThreadWebLinkTarget(
                     channelId = "channel-general",
                     messageId = "reply-message",
-                    routeKind = KuiklyThreadSurfaceKind.Channel,
+                    routeKind = RaftThreadSurfaceKind.Channel,
                     threadParentMessageId = "parent-message"
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "reply-message",
@@ -207,41 +207,41 @@ class MembersDirectMessageLaunchTest {
                                 canonicalChannelId = "channel-general",
                                 aliases = setOf("channel-general"),
                                 conversationKind = ConversationKind.Channel,
-                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = RaftThreadSurfaceKind.Channel,
                                 title = "general"
                             )
                         ).toSharedConversationDirectoryState(),
                     timeContext =
-                        SlockTimeContext(
+                        RaftTimeContext(
                             localOffsetMinutes = 480,
                             todayEpochDay = 20_275L,
                             nowEpochMillis = 1_756_963_200_000L,
-                            timeFormat = SlockTimeFormat12Hour
+                            timeFormat = RaftTimeFormat12Hour
                         )
                 )
             )
 
         assertEquals("members-reminder-channel-general-reply-message", payload.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.channelKind)
         assertEquals("channel-general", payload.parentChannelId)
         assertEquals("parent-message", payload.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentChannelKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.parentChannelKind)
         assertEquals("parent-message", payload.originParentMessageId)
         assertEquals("reply-message", payload.focusedMessageId)
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20_275L, payload.todayEpochDay)
         assertEquals(1_756_963_200_000L, payload.nowEpochMillis)
-        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+        assertEquals(RaftTimeFormat12Hour, payload.timeFormat)
     }
 
     @Test
     fun humanMemberReminderChannelPermalinkUsesRouteServerDirectory() {
         val payload =
             requireNotNull(
-                SlockThreadWebLinkTarget(
+                RaftThreadWebLinkTarget(
                     channelId = "channel-general",
                     messageId = "channel-message"
                 ).toMembersReminderThreadLaunchPayload(
@@ -255,16 +255,16 @@ class MembersDirectMessageLaunchTest {
                                 canonicalChannelId = "channel-general",
                                 aliases = setOf("channel-general"),
                                 conversationKind = ConversationKind.Channel,
-                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = RaftThreadSurfaceKind.Channel,
                                 title = "general"
                             )
                         ).toSharedConversationDirectoryState(),
-                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                    timeContext = RaftTimeContext(localOffsetMinutes = 0)
                 )
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("channel-general", payload.sourceThreadId)
         assertEquals("channel-general", payload.streamChannelId)
         assertEquals("channel-message", payload.focusedMessageId)
@@ -274,25 +274,25 @@ class MembersDirectMessageLaunchTest {
     fun membersReminderDmThreadPermalinkPreservesDirectMessageParentKind() {
         val payload =
             requireNotNull(
-                SlockThreadWebLinkTarget(
+                RaftThreadWebLinkTarget(
                     channelId = "dm-agent-artin",
                     messageId = "dm-reply",
-                    routeKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    routeKind = RaftThreadSurfaceKind.DirectMessage,
                     threadParentMessageId = "dm-parent-message"
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "dm-reply",
                     server = ServerSummary(ServerId("server-1"), "Raft"),
                     conversationIdentityProvider = null,
-                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                    timeContext = RaftTimeContext(localOffsetMinutes = 0)
                 )
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.channelKind)
         assertEquals("dm-agent-artin", payload.parentChannelId)
         assertEquals("dm-parent-message", payload.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentChannelKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentChannelKind)
         assertEquals("dm-parent-message", payload.originParentMessageId)
         assertEquals("dm-reply", payload.focusedMessageId)
     }
@@ -301,20 +301,20 @@ class MembersDirectMessageLaunchTest {
     fun membersReminderDmPermalinkBuildsDirectMessageLaunchPayload() {
         val payload =
             requireNotNull(
-                SlockThreadWebLinkTarget(
+                RaftThreadWebLinkTarget(
                     channelId = "dm-agent-artin",
                     messageId = "dm-message",
-                    routeKind = KuiklyThreadSurfaceKind.DirectMessage
+                    routeKind = RaftThreadSurfaceKind.DirectMessage
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "dm-message",
                     server = ServerSummary(ServerId("server-1"), "Raft"),
                     conversationIdentityProvider = null,
-                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                    timeContext = RaftTimeContext(localOffsetMinutes = 0)
                 )
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.channelKind)
         assertEquals("dm-agent-artin", payload.threadId)
         assertEquals("dm-agent-artin", payload.sourceThreadId)
         assertEquals("dm-agent-artin", payload.streamChannelId)

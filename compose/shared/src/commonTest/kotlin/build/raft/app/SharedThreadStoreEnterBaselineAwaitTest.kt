@@ -195,8 +195,8 @@ class SharedThreadStoreEnterBaselineAwaitTest {
             selectionGeneration = 1L,
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",
@@ -204,7 +204,7 @@ class SharedThreadStoreEnterBaselineAwaitTest {
             canSend = true,
         )
 
-    private fun memoryContent(body: String): KuiklyThreadScreenPayload =
+    private fun memoryContent(body: String): RaftThreadScreenPayload =
         build.raft.app.data.buildSharedThreadPayloadFromMessagesPage(
             basePayload = basePayload(),
             page = build.raft.app.data.ThreadMessagesPage(

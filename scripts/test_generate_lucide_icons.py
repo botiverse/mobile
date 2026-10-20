@@ -230,8 +230,8 @@ class GenerateLucideIconsTest(unittest.TestCase):
     def test_compose_table_covers_manifest_in_enum_order(self):
         with open(GENERATOR.DEFAULT_COMPOSE_OUTPUT, encoding="utf-8") as file:
             source = file.read()
-        spec_body = source.split("fun spec(name: SlockLucideIconName)", 1)[1].split("fun filledSpec", 1)[0]
-        branches = re.findall(r"^\s+SlockLucideIconName\.(\w+) ->$", spec_body, re.MULTILINE)
+        spec_body = source.split("fun spec(name: RaftLucideIconName)", 1)[1].split("fun filledSpec", 1)[0]
+        branches = re.findall(r"^\s+RaftLucideIconName\.(\w+) ->$", spec_body, re.MULTILINE)
         self.assertEqual([GENERATOR.pascal_name(icon) for icon in GENERATOR.LUCIDE_ICONS], branches)
         self.assertNotIn("else ->", spec_body)
 
@@ -265,7 +265,7 @@ class GenerateLucideIconsTest(unittest.TestCase):
         self.assertIn('fillPaint = "currentColor", strokeWidth = 1.5f)', first)
         spec_body = first.split("fun spec(", 1)[1].split("fun filledSpec", 1)[0]
         filled_body = first.split("fun filledSpec", 1)[1]
-        self.assertIn("SlockLucideIconName.Bookmark ->", spec_body)
+        self.assertIn("RaftLucideIconName.Bookmark ->", spec_body)
         self.assertIn('"filled-bookmark"', filled_body)
         self.assertIn(
             'RaftLucidePathSpec("M 5 3 L 19 3 L 19 21 L 12 17 L 5 21 Z", fillPaint = "currentColor")',

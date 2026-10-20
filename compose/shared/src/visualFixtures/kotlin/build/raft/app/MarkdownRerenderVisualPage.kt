@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.BasePager
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import androidx.compose.runtime.Composable
@@ -21,9 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 
-const val SLOCK_MARKDOWN_RERENDER_VISUAL_PAGE = "compose_markdown_rerender_visual"
+const val RAFT_MARKDOWN_RERENDER_VISUAL_PAGE = "compose_markdown_rerender_visual"
 
-@Page(SLOCK_MARKDOWN_RERENDER_VISUAL_PAGE, supportInLocal = true)
+@Page(RAFT_MARKDOWN_RERENDER_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeMarkdownRerenderVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
@@ -48,15 +48,15 @@ private fun MarkdownRerenderVisualScreen() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(start = 20.dp, top = (statusBarHeight + 32).dp, end = 20.dp)
     ) {
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .background(RaftColor.SurfaceWhite)
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -65,13 +65,13 @@ private fun MarkdownRerenderVisualScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
+                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                            .background(RaftColor.SurfaceWhite)
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    SlockMarkdownBody(
+                    RaftMarkdownBody(
                         body = bodies[index],
-                        textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        textStyle = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                         highlightedMentions = setOf("artin"),
                         isTagValid = ::isMarkdownRerenderTagValid,
                         performanceKey = "markdown-rerender-list-$index",

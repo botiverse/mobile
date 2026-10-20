@@ -28,7 +28,7 @@ import kotlin.test.assertTrue
 class TasksPaginatedWiringTest {
 
     /** Records which server read the ViewModel actually issued. */
-    private class RecordingTasksApi : SlockTasksApi {
+    private class RecordingTasksApi : RaftTasksApi {
         val pageCalls = mutableListOf<Pair<String?, Int?>>()
         var serverTasksCalls = 0
 
@@ -73,7 +73,7 @@ class TasksPaginatedWiringTest {
     fun serverScopeWithSharedStoreRequestsThePaginatedSummaryPage() = runBlocking {
         val api = RecordingTasksApi()
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -125,7 +125,7 @@ class TasksPaginatedSharedStoreMergeTest {
         return """{"tasks":[$items],$cursor}"""
     }
 
-    private class PagingApi(private val first: String, private val second: String) : SlockTasksApi {
+    private class PagingApi(private val first: String, private val second: String) : RaftTasksApi {
         var pages = 0
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 500, bodyText = null)
@@ -150,7 +150,7 @@ class TasksPaginatedSharedStoreMergeTest {
     fun aLoadMorePageLandsInTheSharedProjectionWithoutDuplicates() = runBlocking {
         val api = PagingApi(first = pageJson("a", 2, "cur1"), second = pageJson("b", 2, null))
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "u", email = "u@slock.ai"),
                     accessToken = "t",
@@ -212,7 +212,7 @@ class TasksPaginatedOwnerSwitchTest {
         private val firstPage: String,
         private val secondPage: String,
         private val allowSecondPage: CompletableDeferred<Unit>,
-    ) : SlockTasksApi {
+    ) : RaftTasksApi {
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 500, bodyText = null)
 
@@ -254,7 +254,7 @@ class TasksPaginatedOwnerSwitchTest {
                 refreshToken = "r",
                 selectedServerId = "server-1",
             )
-        val authStore = InMemorySlockAuthSessionStore(session)
+        val authStore = InMemoryRaftAuthSessionStore(session)
         // Production-like owner identity: api base + principal, on the SAME server.
         val shared =
             SharedTasksDataStore(
@@ -322,7 +322,7 @@ class TasksPaginatedOwnerSwitchTest {
                 refreshToken = "r",
                 selectedServerId = "server-1",
             )
-        val authStore = InMemorySlockAuthSessionStore(session)
+        val authStore = InMemoryRaftAuthSessionStore(session)
         // Identity is derived from the SAME principal both times, so the identity
         // string is identical across the logout/login; only the generation moves.
         val shared =
@@ -380,7 +380,7 @@ class TasksPaginatedSentinelSingleFlightTest {
         private val firstPage: String,
         private val gate: CompletableDeferred<Unit>,
         private val secondPage: String,
-    ) : SlockTasksApi {
+    ) : RaftTasksApi {
         var pageCalls = 0
             private set
 
@@ -420,7 +420,7 @@ class TasksPaginatedSentinelSingleFlightTest {
         val gate = CompletableDeferred<Unit>()
         val api = CountedGatedApi(firstPage = page("a", 2, "cur1"), gate = gate, secondPage = page("b", 1, null))
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "u", email = "u@slock.ai"),
                     accessToken = "t",

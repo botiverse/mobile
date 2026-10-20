@@ -7,7 +7,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
@@ -206,7 +206,7 @@ class MarkdownContentIntegrityTest {
 
         testCases.forEach { case ->
             val parserContent = MarkdownParserContent.from(case.source).parserContent
-            val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+            val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
             val paragraphs = mutableListOf<org.intellij.markdown.ast.ASTNode>()
             fun collect(node: org.intellij.markdown.ast.ASTNode) {
                 if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -218,7 +218,7 @@ class MarkdownContentIntegrityTest {
                 DefaultAnnotatorSettings(
                     linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                     codeSpanStyle = SpanStyle(),
-                    annotator = slockMarkdownAnnotator(parserContent),
+                    annotator = raftMarkdownAnnotator(parserContent),
                 )
             val annotated =
                 buildAnnotatedString {
@@ -365,7 +365,7 @@ class MarkdownContentIntegrityTest {
     fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
         val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
         val parserContent = MarkdownParserContent.from(source).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val allNodes = buildList {
             fun collect(node: ASTNode) {
                 add(node)
@@ -441,10 +441,10 @@ class MarkdownContentIntegrityTest {
 
 
     private fun renderTopParagraphs(content: String): List<String> {
-        // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
+        // Uses the PRODUCTION annotator (raftMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -455,7 +455,7 @@ class MarkdownContentIntegrityTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = slockMarkdownAnnotator(parserContent)
+                annotator = raftMarkdownAnnotator(parserContent)
             )
         return paragraphs.map { paragraph ->
             buildAnnotatedString {
@@ -466,7 +466,7 @@ class MarkdownContentIntegrityTest {
 
     private fun renderTopParagraphsWithLinks(content: String): List<RenderedParagraph> {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -477,7 +477,7 @@ class MarkdownContentIntegrityTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = slockMarkdownAnnotator(parserContent),
+                annotator = raftMarkdownAnnotator(parserContent),
             )
         return paragraphs.map { paragraph ->
             val annotated =

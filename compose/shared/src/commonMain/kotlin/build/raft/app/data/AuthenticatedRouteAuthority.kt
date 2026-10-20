@@ -20,7 +20,7 @@ internal data class AuthenticatedRouteAuthorityReceipt(
     val authGeneration: Long,
     val selectionGeneration: Long,
     val canManageSettings: Boolean,
-    val expectedAuthBinding: SlockExpectedAuthBinding,
+    val expectedAuthBinding: RaftExpectedAuthBinding,
 )
 
 internal interface AuthenticatedRouteAuthorityGateway {
@@ -28,7 +28,7 @@ internal interface AuthenticatedRouteAuthorityGateway {
 
     suspend fun isCurrent(receipt: AuthenticatedRouteAuthorityReceipt): Boolean
 
-    fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient
+    fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient
 }
 
 internal const val AUTHENTICATED_ROUTE_AUTHORITY_CHANGED = "authenticated_route_authority_changed"
@@ -40,7 +40,7 @@ internal class AuthenticatedRouteOperationRunner(
     suspend fun <T> run(
         block: suspend (
             receipt: AuthenticatedRouteAuthorityReceipt,
-            networkClient: SlockNetworkClient,
+            networkClient: RaftNetworkClient,
         ) -> DataResult<T>,
     ): DataResult<T> {
         val receipt = gateway.capture(owner) ?: return authenticatedRouteAuthorityChanged()
@@ -86,7 +86,7 @@ internal fun ThreadReplyCacheIdentitySnapshot.toAuthenticatedRouteAuthorityRecei
                 ?.permissions
                 ?.canManageSettings == true,
         expectedAuthBinding =
-            SlockExpectedAuthBinding(
+            RaftExpectedAuthBinding(
                 accountId = normalizedOwner.accountId,
                 accessToken = session.accessToken,
                 refreshToken = session.refreshToken,

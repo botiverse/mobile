@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class RaftLucideImageVectorsTest {
     @Test
     fun everyIconNameResolvesToNonEmptyVector() {
-        SlockLucideIconName.entries.forEach { name ->
+        RaftLucideIconName.entries.forEach { name ->
             val spec = RaftLucideIconPaths.spec(name)
             assertEquals(name.wireName, spec.name, "spec name for $name")
             val vector = RaftLucideImageVectors.vector(name)
@@ -36,7 +36,7 @@ class RaftLucideImageVectorsTest {
 
     @Test
     fun defaultLucideStrokeModel() {
-        val path = RaftLucideImageVectors.vector(SlockLucideIconName.Check).paths().single()
+        val path = RaftLucideImageVectors.vector(RaftLucideIconName.Check).paths().single()
         assertEquals(2f, path.strokeLineWidth)
         assertEquals(StrokeCap.Round, path.strokeLineCap)
         assertEquals(StrokeJoin.Round, path.strokeLineJoin)
@@ -47,39 +47,39 @@ class RaftLucideImageVectorsTest {
     @Test
     fun strokeWidthOverrideAppliesToStrokedPaths() {
         val path =
-            RaftLucideImageVectors.vector(SlockLucideIconName.Check, strokeWidthOverride = 4f).paths().single()
+            RaftLucideImageVectors.vector(RaftLucideIconName.Check, strokeWidthOverride = 4f).paths().single()
         assertEquals(4f, path.strokeLineWidth)
         val ignored =
-            RaftLucideImageVectors.vector(SlockLucideIconName.Check, strokeWidthOverride = 0f).paths().single()
+            RaftLucideImageVectors.vector(RaftLucideIconName.Check, strokeWidthOverride = 0f).paths().single()
         assertEquals(2f, ignored.strokeLineWidth)
     }
 
     @Test
     fun vectorsAreCached() {
         assertSame(
-            RaftLucideImageVectors.vector(SlockLucideIconName.Bell),
-            RaftLucideImageVectors.vector(SlockLucideIconName.Bell)
+            RaftLucideImageVectors.vector(RaftLucideIconName.Bell),
+            RaftLucideImageVectors.vector(RaftLucideIconName.Bell)
         )
     }
 
     @Test
     fun sourceFillsArePreserved() {
-        val mosaic = RaftLucideImageVectors.vector(SlockLucideIconName.Mosaic).paths().single()
+        val mosaic = RaftLucideImageVectors.vector(RaftLucideIconName.Mosaic).paths().single()
         assertNotNull(mosaic.fill)
         assertNull(mosaic.stroke)
 
-        val keyRound = RaftLucideImageVectors.vector(SlockLucideIconName.KeyRound).paths()
+        val keyRound = RaftLucideImageVectors.vector(RaftLucideIconName.KeyRound).paths()
         assertTrue(keyRound.any { it.fill != null && it.stroke != null })
     }
 
     @Test
     fun fillSelectsFilledBookmarkVariant() {
-        assertEquals("filled-bookmark", RaftLucideImageVectors.spec(SlockLucideIconName.Bookmark, filled = true).name)
-        val filled = RaftLucideImageVectors.vector(SlockLucideIconName.Bookmark, filled = true).paths().single()
+        assertEquals("filled-bookmark", RaftLucideImageVectors.spec(RaftLucideIconName.Bookmark, filled = true).name)
+        val filled = RaftLucideImageVectors.vector(RaftLucideIconName.Bookmark, filled = true).paths().single()
         assertNotNull(filled.fill)
         assertNotNull(filled.stroke)
         // Icons without a filled variant fall back to the outline.
-        assertEquals("bell", RaftLucideImageVectors.spec(SlockLucideIconName.Bell, filled = true).name)
+        assertEquals("bell", RaftLucideImageVectors.spec(RaftLucideIconName.Bell, filled = true).name)
     }
 
     @Test

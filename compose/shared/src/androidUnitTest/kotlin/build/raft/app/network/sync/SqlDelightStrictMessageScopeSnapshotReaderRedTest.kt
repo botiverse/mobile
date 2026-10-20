@@ -3,7 +3,7 @@ package build.raft.app.network.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.data.RelationalValue
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
@@ -24,9 +24,9 @@ class SqlDelightStrictMessageScopeSnapshotReaderRedTest {
         val driverA = JdbcSqliteDriver("jdbc:sqlite:${file.toAbsolutePath()}")
         val driverB = JdbcSqliteDriver("jdbc:sqlite:${file.toAbsolutePath()}")
         try {
-            SlockSqlDatabase.Schema.create(driverA).value
-            val databaseA = SlockSqlDatabase(driverA)
-            val databaseB = SlockSqlDatabase(driverB)
+            RaftSqlDatabase.Schema.create(driverA).value
+            val databaseA = RaftSqlDatabase(driverA)
+            val databaseB = RaftSqlDatabase(driverB)
             runBlocking {
                 assertEquals("wal", enableWal(databaseA))
                 assertEquals("wal", enableWal(databaseB))
@@ -111,12 +111,12 @@ class SqlDelightStrictMessageScopeSnapshotReaderRedTest {
         }
     }
 
-    private suspend fun enableWal(database: SlockSqlDatabase): String {
+    private suspend fun enableWal(database: RaftSqlDatabase): String {
         val value = database.query("PRAGMA journal_mode=WAL;").rows.single().single()
         return (value as RelationalValue.Text).value.lowercase()
     }
 
-    private fun adapter(database: SlockSqlDatabase): DefaultFoldPersistenceAdapter =
+    private fun adapter(database: RaftSqlDatabase): DefaultFoldPersistenceAdapter =
         DefaultFoldPersistenceAdapter(
             runner = SqlDelightFoldPersistTransactionRunner(database),
             store = SqlDelightFoldPersistStore(database, now = { 1L }),

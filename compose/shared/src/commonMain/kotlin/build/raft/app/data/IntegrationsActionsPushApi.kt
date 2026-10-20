@@ -28,7 +28,7 @@ private val integrationsActionsPushJson = Json {
  * Field names are exact camelCase. No snake_case fallbacks, no speculative
  * aliases like `secret`/`key`/`state`.
  */
-internal interface SlockIntegrationsActionsPushApi {
+internal interface RaftIntegrationsActionsPushApi {
     suspend fun integrationsOverview(): HomeNetworkResponse
     suspend fun integrationClients(): HomeNetworkResponse
     suspend fun createIntegrationClient(body: String): HomeNetworkResponse
@@ -46,9 +46,9 @@ internal interface SlockIntegrationsActionsPushApi {
     suspend fun testPush(): HomeNetworkResponse
 }
 
-internal class SlockIntegrationsActionsPushNetworkApi(
-    private val networkClient: SlockNetworkClient
-) : SlockIntegrationsActionsPushApi {
+internal class RaftIntegrationsActionsPushNetworkApi(
+    private val networkClient: RaftNetworkClient
+) : RaftIntegrationsActionsPushApi {
     override suspend fun integrationsOverview(): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Visible, "integrations/overview")
 
@@ -95,8 +95,8 @@ internal class SlockIntegrationsActionsPushNetworkApi(
         networkClient.request(DataRequestPriority.Foreground, "push/test", method = "POST")
 }
 
-internal class SlockIntegrationsActionsPushApiClient(
-    private val transport: SlockIntegrationsActionsPushApi
+internal class RaftIntegrationsActionsPushApiClient(
+    private val transport: RaftIntegrationsActionsPushApi
 ) {
     suspend fun integrationsOverview(): DataResult<IntegrationsOverviewPage> =
         transport.integrationsOverview().mapApiBody(

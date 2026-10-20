@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 
-internal object KuiklyThreadSurfaceKind {
+internal object RaftThreadSurfaceKind {
     const val Channel = "channel"
     const val DirectMessage = "dm"
     const val ReplyThread = "thread"
@@ -18,10 +18,10 @@ internal const val JointChannelKindWireValue = "joint"
  * thread; its `routeKind` routes as a channel or dm. Unknown values reject (null).
  */
 internal fun String.commentHostTypeOrNull(): String? =
-    takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.ReplyThread }
+    takeIf { it == RaftThreadSurfaceKind.Channel || it == RaftThreadSurfaceKind.ReplyThread }
 
 internal fun String.commentHostRouteKindOrNull(): String? =
-    takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.DirectMessage }
+    takeIf { it == RaftThreadSurfaceKind.Channel || it == RaftThreadSurfaceKind.DirectMessage }
 
 // t5/#419 finale: the ConversationSummary thread-surface family delegates to the canonical
 // ThreadLaunchConversationIdentity extensions (the conversion is a plain field copy), so the
@@ -45,13 +45,13 @@ internal fun String?.isMemberScopedThreadChannelType(): Boolean =
  * Qualified parent-surface projection: a reply thread's PARENT can only be a dm or channel
  * surface — Thread/System/Inbox (and unknown) are not valid parent shapes and project to
  * null for the caller to treat as unresolved. This is intentionally narrower than
- * [toKuiklySurfaceKind] (which maps Thread to "thread").
+ * [toRaftSurfaceKind] (which maps Thread to "thread").
  */
 internal fun ConversationKind?.threadParentSurfaceKindOrNull(): String? =
     when (this) {
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         ConversationKind.Channel,
-        ConversationKind.Joint -> KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Joint -> RaftThreadSurfaceKind.Channel
         else -> null
     }
 
@@ -105,9 +105,9 @@ internal fun threadSurfaceComposerPlaceholder(
     fallbackId: String
 ): String =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage ->
+        RaftThreadSurfaceKind.DirectMessage ->
             "Message @${displayName.removePrefix("@").ifBlank { fallbackId }}"
-        KuiklyThreadSurfaceKind.ReplyThread -> "Reply in thread"
+        RaftThreadSurfaceKind.ReplyThread -> "Reply in thread"
         else -> "Message #${displayName.removePrefix("#").ifBlank { fallbackId }}"
     }
 
@@ -126,8 +126,8 @@ internal fun buildThreadSurfaceComposerPayload(
     mentionChannelId: String? = null,
     parentMessageId: String? = null,
     streamChannelId: String? = null
-): KuiklyThreadComposerPayload =
-    KuiklyThreadComposerPayload(
+): RaftThreadComposerPayload =
+    RaftThreadComposerPayload(
         seedText = seedText,
         seedAsTask = seedAsTask,
         syncNonce = syncNonce,

@@ -7,8 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
@@ -26,18 +26,18 @@ internal class ComposeSettingsHandsFeedbackPage :
     }
 }
 
-internal fun Pager.openSettingsHandsFeedbackPage(storeScope: SlockShellStoreScope) {
+internal fun Pager.openSettingsHandsFeedbackPage(storeScope: RaftShellStoreScope) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_HANDS_FEEDBACK_PAGE,
         settingsHandsFeedbackPageData(storeScope)
     )
 }
 
-internal fun settingsHandsFeedbackPageData(storeScope: SlockShellStoreScope): JSONObject =
+internal fun settingsHandsFeedbackPageData(storeScope: RaftShellStoreScope): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_HANDS_FEEDBACK_PAGE)
-        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
     }
 
 @Composable
@@ -45,7 +45,7 @@ private fun SettingsHandsFeedbackScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     var accountId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(environment.authStore) {
@@ -55,12 +55,12 @@ private fun SettingsHandsFeedbackScreen() {
     SettingsDetailShell(
         title = settingsHandsFeedbackTitle(),
         subtitle = "",
-        iconName = SlockLucideIconName.MessageSquarePlus,
+        iconName = RaftLucideIconName.MessageSquarePlus,
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     ) {
         val resolvedAccountId = accountId
         if (resolvedAccountId == null) {
-            SlockCenteredLoading()
+            RaftCenteredLoading()
         } else {
             SharedHandsFeedbackContent(
                 pager = pager,
@@ -70,7 +70,7 @@ private fun SettingsHandsFeedbackScreen() {
                 accountId = resolvedAccountId,
                 // task #176: this standalone page is outside the app shell, so the
                 // bottom composer reserves the system navigation bar itself.
-                bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg
+                bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg
             )
         }
     }

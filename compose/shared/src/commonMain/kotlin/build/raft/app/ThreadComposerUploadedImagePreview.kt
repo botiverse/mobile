@@ -15,7 +15,7 @@ internal fun threadComposerUploadedImagePreviewPayload(
     replacementAttachmentIds: List<String>,
     selectedIndex: Int,
     originalImage: Boolean,
-): SlockFilePreviewPayload? {
+): RaftFilePreviewPayload? {
     if (files.isEmpty() || files.any { it.fileRef.isNullOrBlank() } ||
         replacementAttachmentIds.size != files.size || replacementAttachmentIds.any(String::isBlank)
     ) return null

@@ -20,10 +20,10 @@ from pathlib import Path
 
 ACTION_CALLS = (
     "Button",
-    "SlockBrutalActionButton",
-    "SlockBrutalIconButton",
-    "SlockModalActionButton",
-    "SlockRaftUiButton",
+    "RaftBrutalActionButton",
+    "RaftBrutalIconButton",
+    "RaftModalActionButton",
+    "RaftUiButton",
 )
 SEMANTIC_TOKENS = (
     "AccentRed",
@@ -36,10 +36,10 @@ SEMANTIC_TOKENS = (
 TOKEN_PATTERN = "|".join(SEMANTIC_TOKENS)
 TRANSLUCENT_ASSIGNMENT_RE = re.compile(
     rf"(?P<property>backgroundColor|buttonColor|activeBackgroundColor|color)\s*=\s*"
-    rf"SlockColor\.(?P<token>{TOKEN_PATTERN})\.copy\(\s*alpha\s*=\s*(?P<alpha>0(?:\.\d+)?)f?\s*\)"
+    rf"RaftColor\.(?P<token>{TOKEN_PATTERN})\.copy\(\s*alpha\s*=\s*(?P<alpha>0(?:\.\d+)?)f?\s*\)"
 )
 TRANSLUCENT_BACKGROUND_RE = re.compile(
-    rf"\.background\(\s*SlockColor\.(?P<token>{TOKEN_PATTERN})\.copy\("
+    rf"\.background\(\s*RaftColor\.(?P<token>{TOKEN_PATTERN})\.copy\("
     rf"\s*alpha\s*=\s*(?P<alpha>0(?:\.\d+)?)f?\s*\)"
 )
 
@@ -128,16 +128,16 @@ def scan_root(root: Path) -> list[Finding]:
 
 def self_test() -> None:
     source = """
-SlockBrutalIconButton(
+RaftBrutalIconButton(
     iconName = icon,
     onClick = {},
-    backgroundColor = SlockColor.AccentRed.copy(alpha = 0.18f),
+    backgroundColor = RaftColor.AccentRed.copy(alpha = 0.18f),
 )
-Box(Modifier.background(SlockColor.AccentOrange.copy(alpha = 0.2f)))
+Box(Modifier.background(RaftColor.AccentOrange.copy(alpha = 0.2f)))
 """
     findings = scan_text("Fixture.kt", source)
     assert len(findings) == 1, findings
-    assert findings[0].kind == "SlockBrutalIconButton.backgroundColor"
+    assert findings[0].kind == "RaftBrutalIconButton.backgroundColor"
     assert findings[0].token == "AccentRed"
 
 
@@ -166,7 +166,7 @@ def main() -> int:
         for item in findings:
             print(
                 f"{item.path}:{item.line}: {item.kind} uses "
-                f"SlockColor.{item.token} alpha={item.alpha:g} :: {item.excerpt}"
+                f"RaftColor.{item.token} alpha={item.alpha:g} :: {item.excerpt}"
             )
     else:
         print("No translucent semantic action fills found.")

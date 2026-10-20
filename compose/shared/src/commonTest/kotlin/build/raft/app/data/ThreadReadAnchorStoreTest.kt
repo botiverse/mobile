@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 class ThreadReadAnchorStoreTest {
     @Test
     fun ownerIdentityIsolatedAndFrontierOnlyAdvances() {
-        val persistence = InMemorySlockKeyValueStore()
+        val persistence = InMemoryRaftKeyValueStore()
         val store = KeyValueThreadReadAnchorStore(persistence)
         val owner = owner(accountId = "account-a", conversationId = "channel-a")
 
@@ -26,7 +26,7 @@ class ThreadReadAnchorStoreTest {
 
     @Test
     fun malformedAndNonPositiveRecordsFailClosed() {
-        val store = KeyValueThreadReadAnchorStore(InMemorySlockKeyValueStore())
+        val store = KeyValueThreadReadAnchorStore(InMemoryRaftKeyValueStore())
         val owner = owner()
 
         assertNull(store.advance(owner, ThreadReadAnchor(seq = 0L, messageId = "zero")))

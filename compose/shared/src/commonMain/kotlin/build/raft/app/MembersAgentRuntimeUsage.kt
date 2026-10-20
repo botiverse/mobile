@@ -7,9 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockProgressBar
-import build.raft.app.components.SlockProgressBarTone
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftProgressBar
+import build.raft.app.components.RaftProgressBarTone
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -21,7 +21,7 @@ import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -164,7 +164,7 @@ internal fun membersRuntimeUsageStatusColor(
     offered: Boolean,
     attention: Boolean
 ): Color? =
-    if (!offered) null else if (attention) SlockColor.AccentOrange else SlockColor.AccentLime
+    if (!offered) null else if (attention) RaftColor.AccentOrange else RaftColor.AccentLime
 
 /**
  * Runtime chip of the agent's Runtime Config section. For runtimes that report account usage
@@ -216,15 +216,15 @@ internal fun MembersAgentRuntimeUsageChip(
     if (attention) {
         Text(
             text = stringResource(MR.strings.member_runtime_usage_attention),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
     // Read before the dialog: its content is rehosted in a separate native window where page
     // composition locals are not retained.
-    val timeContext = LocalSlockTimeContextProvider.current?.current
+    val timeContext = LocalRaftTimeContextProvider.current?.current
     if (dialogOpen && offered) {
         LaunchedEffect(Unit) { access?.log?.invoke("member_runtime_usage_dialog_composed") }
         MembersRuntimeAccountUsageDialog(
@@ -241,13 +241,13 @@ internal fun MembersAgentRuntimeUsageChip(
 @Composable
 private fun MembersRuntimeAccountUsageDialog(
     runtimeLabel: String,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     load: RuntimeAccountUsageLoad?,
     loading: Boolean,
     onReload: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.member_runtime_usage_title),
         overline = runtimeLabel,
         onDismiss = onDismiss,
@@ -259,7 +259,7 @@ private fun MembersRuntimeAccountUsageDialog(
             is RuntimeAccountUsageLoad.Failed ->
                 MembersRuntimeUsageNote(
                     text = stringResource(MR.strings.member_runtime_usage_read_failed),
-                    color = SlockColor.AccentRed
+                    color = RaftColor.AccentRed
                 )
             is RuntimeAccountUsageLoad.Loaded ->
                 when (val read = load.read) {
@@ -280,7 +280,7 @@ private fun MembersRuntimeAccountUsageDialog(
                     }
                 }
         }
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label =
                 if (loading) {
                     stringResource(MR.strings.member_runtime_usage_reading)
@@ -298,14 +298,14 @@ private fun MembersRuntimeAccountUsageDialog(
 private fun MembersRuntimeUsageAccountCard(
     account: RuntimeAccountUsageAccount,
     stale: Boolean,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ) {
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(if (stale) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(if (stale) RaftColor.SurfaceCream else RaftColor.SurfaceWhite)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -317,17 +317,17 @@ private fun MembersRuntimeUsageAccountCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = account.planLabel ?: stringResource(MR.strings.member_runtime_usage_account_fallback),
-                    style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 17.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 17.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 account.identityLabel?.let { identity ->
                     Text(
                         text = identity,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -345,7 +345,7 @@ private fun MembersRuntimeUsageAccountCard(
 @Composable
 private fun MembersRuntimeUsageWindowRow(
     window: RuntimeAccountUsageWindow,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         val percent = window.displayPercentOrNull()
@@ -353,19 +353,19 @@ private fun MembersRuntimeUsageWindowRow(
             // Never drawn as a bar: an unusable window is not "0% used".
             Text(
                 text = window.label + " · " + stringResource(MR.strings.member_runtime_usage_window_unavailable),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         } else {
-            SlockProgressBar(
+            RaftProgressBar(
                 value = percent,
                 tone =
                     if (window.status == RuntimeAccountUsageWindowStatus.LimitReached) {
-                        SlockProgressBarTone.Orange
+                        RaftProgressBarTone.Orange
                     } else {
-                        SlockProgressBarTone.Cyan
+                        RaftProgressBarTone.Cyan
                     },
                 label = window.label,
                 showPercent = true
@@ -373,16 +373,16 @@ private fun MembersRuntimeUsageWindowRow(
             if (window.status == RuntimeAccountUsageWindowStatus.LimitReached) {
                 Text(
                     text = stringResource(MR.strings.member_runtime_usage_limit_reached),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack
                 )
             }
             window.resetsAt?.let { resetsAt ->
-                val resetLabel = slockRelativeTimestampLabel(resetsAt, timeContext)
+                val resetLabel = raftRelativeTimestampLabel(resetsAt, timeContext)
                 Text(
                     text = stringResource(MR.strings.member_runtime_usage_resets_at, resetLabel),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1
                 )
             }
@@ -401,27 +401,27 @@ internal fun RuntimeAccountUsageWindow.displayPercentOrNull(): Int? {
 private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
     val (label, color) =
         when (health) {
-            RuntimeAccountUsageHealth.Ok -> stringResource(MR.strings.member_runtime_usage_health_ok) to SlockColor.AccentLime
+            RuntimeAccountUsageHealth.Ok -> stringResource(MR.strings.member_runtime_usage_health_ok) to RaftColor.AccentLime
             RuntimeAccountUsageHealth.RateLimited ->
-                stringResource(MR.strings.member_runtime_usage_health_rate_limited) to SlockColor.AccentOrange
+                stringResource(MR.strings.member_runtime_usage_health_rate_limited) to RaftColor.AccentOrange
             RuntimeAccountUsageHealth.ReauthRequired ->
-                stringResource(MR.strings.member_runtime_usage_health_reauth_required) to SlockColor.AccentOrange
+                stringResource(MR.strings.member_runtime_usage_health_reauth_required) to RaftColor.AccentOrange
             RuntimeAccountUsageHealth.Unsupported ->
-                stringResource(MR.strings.member_runtime_usage_health_unsupported) to SlockColor.SurfaceCream
+                stringResource(MR.strings.member_runtime_usage_health_unsupported) to RaftColor.SurfaceCream
             RuntimeAccountUsageHealth.Error ->
-                stringResource(MR.strings.member_runtime_usage_health_error) to SlockColor.AccentRed
+                stringResource(MR.strings.member_runtime_usage_health_error) to RaftColor.AccentRed
             RuntimeAccountUsageHealth.Unknown ->
-                stringResource(MR.strings.member_runtime_usage_health_unknown) to SlockColor.SurfaceCream
+                stringResource(MR.strings.member_runtime_usage_health_unknown) to RaftColor.SurfaceCream
         }
     Text(
         text = label,
-        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
+        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
+        color = RaftColor.TextBlack,
         maxLines = 1,
         modifier =
             Modifier
                 .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
                 .padding(horizontal = 6.dp, vertical = 2.dp)
     )
 }
@@ -430,13 +430,13 @@ private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
 private fun MembersRuntimeUsageBanner(text: String) {
     Text(
         text = text,
-        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
+        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
+        color = RaftColor.TextBlack,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.AccentOrange)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(RaftColor.AccentOrange)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
     )
 }
@@ -444,15 +444,15 @@ private fun MembersRuntimeUsageBanner(text: String) {
 @Composable
 private fun MembersRuntimeUsageNote(
     text: String,
-    color: Color = SlockColor.TextMutedGray,
+    color: Color = RaftColor.TextMutedGray,
     bold: Boolean = false
 ) {
     Text(
         text = text,
         style =
-            SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp).let {
-                if (bold) it.withSlockFontWeight(FontWeight.Bold) else it
+            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp).let {
+                if (bold) it.withRaftFontWeight(FontWeight.Bold) else it
             },
-        color = if (bold) SlockColor.TextBlack else color
+        color = if (bold) RaftColor.TextBlack else color
     )
 }

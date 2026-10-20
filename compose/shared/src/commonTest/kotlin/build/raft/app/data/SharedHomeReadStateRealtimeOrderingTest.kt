@@ -39,7 +39,7 @@ class SharedHomeReadStateRealtimeOrderingTest {
                 releaseCommit.await()
             }
         })
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"),
             PerReceiverReadStateCheckpoint(99, 99),
@@ -55,9 +55,9 @@ class SharedHomeReadStateRealtimeOrderingTest {
         val api = ReconcileBlockingHomeApi()
         val session = sampleSession()
         store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(session),
+            authStore = InMemoryRaftAuthSessionStore(session),
             dataSource = SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(session),
+                sessionStore = InMemoryRaftAuthSessionStore(session),
                 api = api,
                 parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) },
             ),
@@ -139,7 +139,7 @@ class SharedHomeReadStateRealtimeOrderingTest {
         unreadTotal = 0,
     )
 
-    private class ReconcileBlockingHomeApi : SlockHomeApi {
+    private class ReconcileBlockingHomeApi : RaftHomeApi {
         private var nextChannels: CallGate? = null
         fun blockNextChannels() = CallGate().also { nextChannels = it }
 

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * These values are runtime configuration, not authenticated-session state. The platform host
  * seeds them on the first root auth/AppShell page, and every later auth route reads this store.
- * Clearing or replacing [SlockAuthSessionStore] must not clear these capabilities.
+ * Clearing or replacing [RaftAuthSessionStore] must not clear these capabilities.
  *
  * Legacy provider-probe and local-override values are retained for compatibility.
  * Apple button availability is determined solely by the iOS host capability;

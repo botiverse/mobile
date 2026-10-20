@@ -65,8 +65,8 @@ internal interface ThreadAgentFollowersRepository {
 
 /** One repository per account/environment/server/thread route; every request is authority bound. */
 internal class RealThreadAgentFollowersRepository(
-    private val network: SlockNetworkClient,
-    private val auth: SlockAuthSessionStore,
+    private val network: RaftNetworkClient,
+    private val auth: RaftAuthSessionStore,
     private val accountId: String,
     private val serverId: String,
     private val threadId: String,
@@ -102,7 +102,7 @@ internal class RealThreadAgentFollowersRepository(
             return DataResult.Error(ScreenError("thread_followers_scope_changed", retryable = false))
         }
         return try {
-            val bound = network.boundTo(SlockExpectedAuthBinding(
+            val bound = network.boundTo(RaftExpectedAuthBinding(
                 accountId, session.accessToken, session.refreshToken, serverId, environmentId,
             ))
             val response = bound.request(priority, path, method, query, ServerId(serverId), body)

@@ -2,7 +2,7 @@ package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.compose.elements.blockQuoteTablePlainText
 import com.tencent.kuiklybase.markdown.compose.elements.requiresBlockQuotePlainTextFallback
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -65,7 +65,7 @@ class MarkdownBlockQuoteTableFallbackTest {
     }
 
     private fun blockQuoteContent(content: String): List<ASTNode> {
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
         val blockQuote = requireNotNull(tree.findChildOfType(BLOCK_QUOTE))
         return blockQuote.children.filter { it.type != BLOCK_QUOTE }
     }

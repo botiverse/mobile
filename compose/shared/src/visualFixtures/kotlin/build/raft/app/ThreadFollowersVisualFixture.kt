@@ -17,7 +17,7 @@ internal class ThreadFollowersVisualPage : BasePager() {
         val elegant = pageData.params.optBoolean("elegant", false)
         val single = pageData.params.optBoolean("single", false)
         setContent {
-            SlockThemeProvider(if (elegant) elegantTheme else brutalTheme) {
+            RaftThemeProvider(if (elegant) elegantTheme else brutalTheme) {
                 FollowersVisualContent(single)
             }
         }
@@ -35,11 +35,11 @@ private fun FollowersVisualContent(single: Boolean) {
     LaunchedEffect(store) { store.dispatch(ThreadAgentFollowersIntent.Refresh) }
     val state by store.state.collectAsState()
     ThreadFollowersOverlayHost {
-        Column(Modifier.fillMaxSize().background(LocalSlockTheme.current.surface)) {
+        Column(Modifier.fillMaxSize().background(LocalRaftTheme.current.surface)) {
             ThreadPageHeader(
-                payload = KuiklyThreadScreenPayload(
+                payload = RaftThreadScreenPayload(
                     instanceId = "followers-visual", title = "消息列 — #general", status = "content",
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread, selectedTab = "chat",
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread, selectedTab = "chat",
                     showModeTabs = false, showSettingsAction = false, showMembersAction = false,
                     showOpenInChannelAction = true,
                 ),

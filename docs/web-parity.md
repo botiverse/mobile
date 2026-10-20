@@ -10,7 +10,7 @@ Every file-level claim below was read at these commits. Re-check against a newer
 
 | Repo | Commit |
 |---|---|
-| `botiverse/mobile` | `7540fd973026a05c799b7e81c37b0f01979f0d11` (later commits up to the PR base touch thread read-state, avatar recovery, CI, docs and the HTML file preview's desktop mode, which moves `SlockFilePreview.kt:7401` to about `:7478`; none changes a row's status) |
+| `botiverse/mobile` | `7540fd973026a05c799b7e81c37b0f01979f0d11` (later commits up to the PR base touch thread read-state, avatar recovery, CI, docs and the HTML file preview's desktop mode, which moves `RaftFilePreview.kt:7401` to about `:7478`; none changes a row's status) |
 | `botiverse/slock` (`staging`) | `eb1c0f2a4ad54f2cb81dd50168d5a8ae6dd669d2` |
 
 Path conventions: mobile paths are relative to `compose/shared/src/commonMain/kotlin/build/raft/app/` unless they start with `compose/`; web paths are relative to `packages/web/src/`; server paths to `packages/server/src/`.
@@ -37,7 +37,7 @@ This is a pre-candidate audit snapshot: it ranks gaps but does not carry the per
 | # | Gap | Level | Why | Server | Effort |
 |---|---|---|---|---|---|
 | 1 | **Android push.** Android receives FCM messages but never sends its token to the server. | P0 | Core loop: once the app is backgrounded and the socket drops, Android users get no notifications. Default path for most Android users. | **Needed.** `routes/push.ts` `parseProvider` accepts only `"apns"`; an FCM provider plus a sender is required. | M–L (server) + S (Android client) |
-| 2 | **Invite / join links, password reset and device-login approval open in the browser.** | P1 | Joining a server from an invite is the main growth path; account recovery and CLI pairing are also link-driven. Today these bounce out of the app (Android `MainActivity` `shouldOpenUnsupportedSlockWebLinkExternally`; iOS universal-link handling TBC). | Present at slock staging `eb1c0f2a` (production TBC): `/auth/accept-invite`, `/auth/invite-info`, `/auth/reset-password`, `/auth/device/approve`. | M (invite) + S + S |
+| 2 | **Invite / join links, password reset and device-login approval open in the browser.** | P1 | Joining a server from an invite is the main growth path; account recovery and CLI pairing are also link-driven. Today these bounce out of the app (Android `MainActivity` `shouldOpenUnsupportedRaftWebLinkExternally`; iOS universal-link handling TBC). | Present at slock staging `eb1c0f2a` (production TBC): `/auth/accept-invite`, `/auth/invite-info`, `/auth/reset-password`, `/auth/device/approve`. | M (invite) + S + S |
 | 3 | **Search filters fail silently.** Picking two or more senders sends repeated `senderId`; the server only reads a single string (`routes/messages.ts:757`) and drops the filter without error (with no query and no other filter, the search returns nothing at all). Mobile also ignores the server's `nextCursor` / `incomplete`: a recent-sort text search that stops early tells the client to continue by cursor (web does), but mobile keeps paging by `offset`, so "load more" can duplicate or skip results. | P1 (silent failure) | Users can't tell the results are wrong. Web only allows one sender. | Present at staging `eb1c0f2a` (production TBC) if mobile limits to one sender and honours `nextCursor`; otherwise server needs array support. | S |
 | 4 | **Hosted agents.** No way to create, pick a model for, monitor, retry or stop a Raft-hosted agent. | P1 | The quickest way to get a first agent (no computer needed); new mobile-only users can't do it at all. | Present at staging `eb1c0f2a` (production TBC): `/agents/:id/hosted-runtime*`, `/agent-runtime-providers/:kind`. | L |
 | 5 | **System notification center and joint-channel invites.** Usage-limit incidents, computer/disk alerts, feedback replies and joint-channel invites are invisible on mobile, and a joint invite cannot be accepted there. | P1 | A blocked agent (usage limit) or a pending invite gives no signal on the phone. | Present at staging `eb1c0f2a` (production TBC): `/servers/:id/system-notifications-v2` (+ `/seen`, `/dismiss`), `/channels/joint-invites*`. | M + M |
@@ -79,7 +79,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Feature | Web | Mobile | Mobile evidence | Server | Effort |
 |---|---|---|---|---|---|
 | Channel / DM list, unread counts | `components/layout/Sidebar.tsx` | done | `data/ChannelRepositoryDataSource.kt` | `/channels`, `/channels/dm`, `/channels/unread` | – |
-| Sidebar sections, sort, move | `layout/SidebarSectionDialog.tsx`, `SidebarSortMenu.tsx` | done | `data/SidebarSections.kt`, `SlockHomeComponents.kt` | `servers/:id/sidebar-order` | – |
+| Sidebar sections, sort, move | `layout/SidebarSectionDialog.tsx`, `SidebarSortMenu.tsx` | done | `data/SidebarSections.kt`, `RaftHomeComponents.kt` | `servers/:id/sidebar-order` | – |
 | "Joined only" / "hide empty sections" toggles | i18n `layout.sidebar.*` | TBC | none found | client-only | S |
 | Pin / mute channel | `channel/ChannelPinMenuItem.tsx` | done | `ChannelSettingsPage.kt` | `PATCH /channels/:id/notification-settings` | – |
 | Mark read / unread / all read | `layout/SidebarReadToggleMenuItem.tsx` | done | `data/ReadReceiptRepositoryDataSource.kt` | existing | – |
@@ -93,14 +93,14 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | **Member channel role** | `hooks/useChannelMembers.ts:277` | missing | searched `/role` | `PATCH /channels/:id/members/:type/:id/role` | S |
 | **Stop all agents (SOS)** | `message/SOSDialog.tsx` | missing | searched `stop-all` | `POST /channels/:id/stop-all-agents` | S |
 | Start DM | `layout/sidebarDmContext.ts` | done | `data/ChannelRepositoryDataSource.kt` | `POST /channels/dm` | – |
-| Send, markdown, tables, mermaid | `message/MessageInput.tsx`, `markdown/MarkdownContent.tsx` | done | `markdown/SlockMarkdown.kt`, `SlockMermaidCard.kt` | `POST /messages` | – |
-| Code syntax highlighting | `markdown/ShikiHighlightedCode.tsx` | partial: copy button, no highlighting | `markdown/SlockMarkdown.kt` | client | M |
+| Send, markdown, tables, mermaid | `message/MessageInput.tsx`, `markdown/MarkdownContent.tsx` | done | `markdown/RaftMarkdown.kt`, `RaftMermaidCard.kt` | `POST /messages` | – |
+| Code syntax highlighting | `markdown/ShikiHighlightedCode.tsx` | partial: copy button, no highlighting | `markdown/RaftMarkdown.kt` | client | M |
 | Mentions, autocomplete, pending mention actions | `message/autocompleteTriggers.ts`, `PendingMentionActionStrip.tsx` | done | `ThreadComposerSuggestionSearch.kt`, `PendingMentionActionBatch.kt` | existing | – |
 | Reactions | `message/ReactionGlyph.tsx` | done | `data/ThreadApi.kt:393` | existing | – |
 | Who reacted | `store/reactionViewerReadModel.ts` | partial: names resolved on device | `SharedThreadStore.kt` `resolveThreadReactorNames` | `GET /messages/:id/reactions/viewer` unused | S |
-| Permalink, quoted preview, copy / quote / select | `message/MessageItem.tsx` | done | `SlockMessagePermalink.kt` | `GET /messages/context/:id` | – |
+| Permalink, quoted preview, copy / quote / select | `message/MessageItem.tsx` | done | `RaftMessagePermalink.kt` | `GET /messages/context/:id` | – |
 | Multi-select, share as image | `SelectModeToolbar.tsx` | done | strings `thread_action_select_message` | – | – |
-| Forward, forwarded bundle | `ForwardComposerDialog.tsx`, `ForwardedBundleCard.tsx` | done | `SlockForwardTargetPicker.kt`, `ThreadForwardBundleDetailStore.kt` | `POST /messages/forward` | – |
+| Forward, forwarded bundle | `ForwardComposerDialog.tsx`, `ForwardedBundleCard.tsx` | done | `RaftForwardTargetPicker.kt`, `ThreadForwardBundleDetailStore.kt` | `POST /messages/forward` | – |
 | Forward target search | `forwardComposerModel.tsx:206` | partial: local recent list only | – | `GET /messages/forward/targets/search` unused | S |
 | Translation | `message/MessageItem.tsx` | done | `ThreadMessageTranslation.kt` | existing | – |
 | Convert to task, done / reopen | `message/MessageItem.tsx` | done | `ThreadPage.kt` | `POST /tasks/convert-message` | – |
@@ -110,15 +110,15 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Unfollowed threads list | `store/inboxStore.ts:878` | partial | `data/SharedActivityStore.kt` (flag only) | `GET /channels/inbox/unfollowed` unused | S |
 | Saved messages | `saved/SavedPanel.tsx` | done | `HomeSavedPage.kt` | `/channels/saved*` | – |
 | Attachment upload | `message/MessageInput.tsx` | done | `DirectAttachmentUploadCoordinator.kt` | `/attachments/upload-sessions*` | – |
-| Image / video / audio / document / HTML preview | `ImageLightbox.tsx`, `MediaPreviewHost.tsx`, `DocumentPreviewHost.tsx` | done | `SlockFilePreview.kt`, `ThreadInline*Preview.kt` | `/attachments/:id/*` | – |
-| Diff preview with stats | `message/MessageItem.tsx` | TBC | `SlockFilePreview.kt:7401` only | – | M |
+| Image / video / audio / document / HTML preview | `ImageLightbox.tsx`, `MediaPreviewHost.tsx`, `DocumentPreviewHost.tsx` | done | `RaftFilePreview.kt`, `ThreadInline*Preview.kt` | `/attachments/:id/*` | – |
+| Diff preview with stats | `message/MessageItem.tsx` | TBC | `RaftFilePreview.kt:7401` only | – | M |
 | Attachment comments, channel files | `AttachmentCommentsPanel.tsx`, `ChannelFilesPanel.tsx` | done | `ThreadFilesContent.kt` | existing | – |
 | Drafts | `message/optimisticMessageDraft.ts` | done | `SharedThreadComposerDraftStore.kt` | client | – |
 | Live agent activity bar | `layout/LiveAgentActivityBar.tsx` | partial: status label in header only | `ThreadPage.kt` `liveActivityLabel` | realtime | S |
 | History-limit (plan) banner | `message/HistoryLimitBanner.tsx` | partial: flag read, no banner | `data/ThreadApi.kt:103` | existing | S |
 | In-conversation search | `message/threadSearch.ts` | done | `thread_placeholder_search` | `GET /messages/search` | – |
 | Action cards | – | done | `data/ThreadActionCards.kt` | existing | – |
-| Joint channels: view, badge, billing lock | `layout/Sidebar.tsx` | done (view only) | `SlockHomeComponents.kt`, `ChannelSettingsPage.kt:100` | `/channels` | – |
+| Joint channels: view, badge, billing lock | `layout/Sidebar.tsx` | done (view only) | `RaftHomeComponents.kt`, `ChannelSettingsPage.kt:100` | `/channels` | – |
 | **Joint: accept invite** | `layout/usePendingJointInvites.ts` | missing | searched `joint-invite`, `jointInvite` | `/channels/joint-invites`, `/joint-invites/:id/accept` | M |
 | Joint: create / invite / resend | `channel/CreateJointChannelDialog.tsx` | missing | same | `/channels/:id/joint-invites`, `/joint-invite/resend` | M |
 | Joint: convert / disconnect | `channel/JointConversionSection.tsx` | missing | searched `convert-to-joint` | `/convert-to-joint`, `/disconnect`, `/conversion-jobs/*` | L |
@@ -129,16 +129,16 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Feature | Web | Mobile | Mobile evidence | Server | Effort |
 |---|---|---|---|---|---|
 | Activity / inbox list | `store/inboxStore.ts` | done | `data/InboxSavedSearchRepositoryDataSource.kt`, `SharedInboxPanel.kt` | `GET /channels/inbox` | – |
-| Filters all / unread / mentions | `thread/ThreadsInbox.tsx:84-91` | partial: no combined "unread + mentions" | `data/SlockRepositories.kt:639` `InboxFilter` | existing | S |
+| Filters all / unread / mentions | `thread/ThreadsInbox.tsx:84-91` | partial: no combined "unread + mentions" | `data/RaftRepositories.kt:639` `InboxFilter` | existing | S |
 | Per-item read / unread / done / follow; mark all read | `thread/InboxContextMenu.tsx` | done | `data/SharedActivityStore.kt`, `data/ReadReceiptRepositoryDataSource.kt:58` | existing | – |
 | Pinned conversations first in Activity | `ThreadsInbox.tsx:644-663` | TBC | – | `sidebar-order` | S |
 | Unread badges (sidebar, server) | `store/serverStore.ts:711` | done | `data/ProcessActivityUnreadStore.kt`, `ServerUnreadSummaryDto.kt` | `/servers/unread-summary` | – |
 | Read state across devices | `store/readStateSync.ts` | done | `network/sync/ReadStateSyncDomain.kt`, `ReadStateV1Store.kt` | `read_state:updated` | – |
 | Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/ThreadReadAnchorStore.kt` | `messages/context/:id` | – |
 | Push: iOS (APNs) | `routes/push.ts` (server) | done | `data/IosPushRegistration.kt`, `compose/iosApp/iosApp/iOSApp.swift` | `/push/registrations` | – |
-| **Push: Android (FCM)** | RFC 045 | missing: token never registered | `compose/androidApp/.../push/SlockFirebaseMessagingService.kt` ("Server registration is intentionally left for the native push contract follow-up") | **server needs FCM provider** | M–L |
-| Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `SlockVisibleConversationRegistry.kt:67-131` | existing | – |
-| Notification tap routing, in-app banners | – | done | `AndroidUnreadNotificationPoster.kt`, `SlockForegroundBannerHost.kt` | existing | – |
+| **Push: Android (FCM)** | RFC 045 | missing: token never registered | `compose/androidApp/.../push/RaftFirebaseMessagingService.kt` ("Server registration is intentionally left for the native push contract follow-up") | **server needs FCM provider** | M–L |
+| Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `RaftVisibleConversationRegistry.kt:67-131` | existing | – |
+| Notification tap routing, in-app banners | – | done | `AndroidUnreadNotificationPoster.kt`, `RaftForegroundBannerHost.kt` | existing | – |
 | Per-channel mute, server push mode | `SettingsPanel.tsx:1545` | done | `SettingsRepositoryDataSource.kt:279` | existing | – |
 | Push preview mode | – (mobile-only) | unavailable | `data/SettingsRepositoryDataSource.kt:1452` | **server needs `pushPreviewMode`** | M |
 | Launcher badge | `layout/mobileAppBadge.ts` | partial: iOS yes, Android no | iOS `HRBridgeModule.m:3698` | `unread-summary` | S |
@@ -147,7 +147,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | **Search: multiple senders** | single sender only on web | **bug**: filter silently dropped | same file, line 99-103; server `routes/messages.ts:757` | see §1 | S |
 | Search: channel, date, @me, humans/agents, sort | `MessageSearchPage.tsx:1105-1147` | done | `SharedHomeSearchSavedStore.kt` | existing | – |
 | People / channel search, recent searches | `search/searchEntities.ts`, `searchHome.ts` | done | `data/SearchPersonalizationRepository.kt` | local | – |
-| Realtime reconnect (`sync:resume`, gap sync) | server `sync:resume` | done | Android `SocketIoRealtimeClient.kt:454`, iOS `SlockIosRealtimeHost.swift`, `data/realtime/MessageSeqRecoveryPolicy.kt` | existing | – |
+| Realtime reconnect (`sync:resume`, gap sync) | server `sync:resume` | done | Android `SocketIoRealtimeClient.kt:454`, iOS `RaftIosRealtimeHost.swift`, `data/realtime/MessageSeqRecoveryPolicy.kt` | existing | – |
 | sync-core domains (messages, read state, thread replies) | `packages/sync-core/src/` | partial | `network/sync/SyncCore.kt`, `MessageSyncDomain.kt`, `ThreadRepliesSyncDomain.kt` | – | M |
 | Activity sync domain (snapshot / difference) | `store/activityPanel/runtime.ts` (gate off by default) | partial: code present, not wired | `network/sync/activity/ActivitySyncDomain.kt` | `/channels/activity/snapshot`, `/difference` | L |
 
@@ -156,7 +156,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Feature | Web | Mobile | Mobile evidence | Server | Effort |
 |---|---|---|---|---|---|
 | Task board / list, filters | `task/TasksPanel.tsx` | done (separate status filter TBC) | `SharedTasksPage.kt` | `/tasks/server`, `/tasks/channel/:id` | – |
-| Create, claim, assign, status, detail | `task/CreateTaskDialog.tsx`, `TaskProperties.tsx` | done | `data/TasksDataSource.kt`, `SlockTasksDetailOverlay.kt` | existing | – |
+| Create, claim, assign, status, detail | `task/CreateTaskDialog.tsx`, `TaskProperties.tsx` | done | `data/TasksDataSource.kt`, `RaftTasksDetailOverlay.kt` | existing | – |
 | **Task history timeline** | `task/HistoryTimeline.tsx` | missing | searched `/history` | `GET /tasks/:id/history` | S |
 | Linked tasks in threads | `message/MessageItem.tsx` | done | `ThreadLinkedTaskProjection.kt` | existing | – |
 | Agent list, profile, avatar, permissions | `agent/AgentDetailPanel.tsx` | done | `MembersPage.kt`, `data/AgentsApi.kt` | existing | – |

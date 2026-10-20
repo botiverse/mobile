@@ -24,7 +24,7 @@ internal fun MembersAdaptiveWorkspace(
             else -> Modifier.weight(1f)
         }
         Box(listModifier.fillMaxHeight()) { listPane() }
-        Spacer(Modifier.width(if (split) 1.dp else 0.dp).fillMaxHeight().background(LocalSlockTheme.current.line))
+        Spacer(Modifier.width(if (split) 1.dp else 0.dp).fillMaxHeight().background(LocalRaftTheme.current.line))
         Box((if (split || selected) Modifier.weight(1f) else Modifier.width(0.dp)).fillMaxHeight()) {
             if (split || selected) detailPane()
         }

@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.RealtimeEventMapper
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
 import build.raft.app.host.HostRealtimeCapability
 import build.raft.app.model.RealtimeEvent
@@ -26,11 +26,11 @@ import kotlinx.serialization.json.JsonObject
  * remains on the AppShell-only task #354 boundary until its separate migration contract is approved.
  */
 internal class ProcessRealtimeIngressCoordinator(
-    private val events: KuiklyRealtimeEvents,
+    private val events: RaftRealtimeEvents,
     private val authorityProvider: RealtimeAuthorityProvider,
     private val authorityFlow: kotlinx.coroutines.flow.StateFlow<RealtimeScopeAuthority?>,
     private val domainOwner: SharedRealtimeDomainEventOwner,
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private val environmentStore: SharedApiEnvironmentStore,
     private val mapper: RealtimeEventMapper,
     private val nativeHost: ProcessRealtimeNativeHost,
@@ -61,21 +61,21 @@ internal class ProcessRealtimeIngressCoordinator(
 
     private suspend fun accept(eventData: JsonObject) {
         val transportSignal =
-            when (eventData.optString(SlockRealtimeNotifyContract.KeyAction)) {
-                SlockRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
-                SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined -> onRoomsJoined
+            when (eventData.optString(RaftRealtimeNotifyContract.KeyAction)) {
+                RaftRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
+                RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined -> onRoomsJoined
                 else -> null
             }
         if (transportSignal != null) {
             val serverId =
                 eventData
-                    .optString(SlockRealtimeNotifyContract.KeyServerId)
+                    .optString(RaftRealtimeNotifyContract.KeyServerId)
                     .trim()
                     .takeIf(String::isNotEmpty)
                     ?: return
             val transportEpoch =
                 eventData
-                    .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                    .optLong(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
                     .takeIf { it > 0L }
                     ?: return
             val witness = eventData.processRealtimeWitnessOrNull() ?: return
@@ -85,7 +85,7 @@ internal class ProcessRealtimeIngressCoordinator(
         }
         val event = decode(eventData) ?: return
         val envelopeServerId =
-            eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim().takeIf(String::isNotEmpty)
+            eventData.optString(RaftRealtimeNotifyContract.KeyServerId).trim().takeIf(String::isNotEmpty)
         val payloadServerId = event.serverIdHint()?.value
         if (envelopeServerId != null && payloadServerId != null && envelopeServerId != payloadServerId) return
         val serverId = envelopeServerId ?: payloadServerId ?: return
@@ -112,7 +112,7 @@ internal class ProcessRealtimeIngressCoordinator(
                     source = "process_normal_realtime",
                     presenceTransportEpoch =
                         eventData
-                            .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                            .optLong(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
                             .takeIf { it > 0L },
                 )
             }
@@ -135,8 +135,8 @@ internal class ProcessRealtimeIngressCoordinator(
     }
 
     private fun decode(eventData: JsonObject): RealtimeEvent? {
-        val eventName = eventData.optString(SlockRealtimeNotifyContract.KeyEventName).trim()
-        val rawPayload = eventData.optString(SlockRealtimeNotifyContract.KeyRawPayload).trim()
+        val eventName = eventData.optString(RaftRealtimeNotifyContract.KeyEventName).trim()
+        val rawPayload = eventData.optString(RaftRealtimeNotifyContract.KeyRawPayload).trim()
         if (eventName.isEmpty() || rawPayload.isEmpty()) return null
         return mapper.map(eventName, rawPayload)
     }
@@ -198,10 +198,10 @@ internal class BridgeProcessRealtimeNativeHost(
 }
 
 private fun JsonObject.processRealtimeWitnessOrNull(): RealtimeConnectionWitness? {
-    val scopeLeaseId = optString(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
-    val principalId = optString(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
-    val authGeneration = optLong(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)
-    val connectionFamilyId = optString(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId).trim()
+    val scopeLeaseId = optString(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
+    val principalId = optString(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
+    val authGeneration = optLong(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)
+    val connectionFamilyId = optString(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId).trim()
     if (scopeLeaseId.isEmpty() || principalId.isEmpty() || authGeneration <= 0L || connectionFamilyId.isEmpty()) {
         return null
     }

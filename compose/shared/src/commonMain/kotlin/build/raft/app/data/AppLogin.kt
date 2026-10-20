@@ -1,12 +1,12 @@
 package build.raft.app.data
 
-import build.raft.app.slockLogInfo
+import build.raft.app.raftLogInfo
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-const val SLOCK_APP_LOGIN_MMKV_NAMESPACE = "slockAppLogin"
+const val RAFT_APP_LOGIN_MMKV_NAMESPACE = "slockAppLogin"
 
 /** Pure browser login handoff; independent of provider OAuth and account linking. */
 @Serializable
@@ -26,7 +26,7 @@ internal interface AppLoginRuntime {
 }
 
 internal class AppLoginCoordinator(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
     private val runtime: () -> AppLoginRuntime?,
     private val now: () -> Long = ::defaultNowMillis,
     private val logger: (String) -> Unit = {},
@@ -99,12 +99,12 @@ internal class AppLoginCoordinator(
 /** [AppLoginCoordinator.complete] result for a callback that belongs to an earlier, replaced attempt. */
 internal const val APP_LOGIN_STALE_CALLBACK = "stale"
 
-internal object SlockAppLogin {
+internal object RaftAppLogin {
     private val coordinator by lazy {
         AppLoginCoordinator(
-            SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
+            RaftSharedKeyValueStoreProvider.create(RAFT_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
             runtime = {
-                SlockSharedStoreRegistry.currentOrNull()?.let { provider ->
+                RaftSharedStoreRegistry.currentOrNull()?.let { provider ->
                     createAppLoginRuntime(
                         provider.apiEnvironmentStore,
                         provider.authStore,
@@ -117,7 +117,7 @@ internal object SlockAppLogin {
         )
     }
 
-    private fun logAppLogin(message: String) = slockLogInfo("SlockAppLogin", message)
+    private fun logAppLogin(message: String) = raftLogInfo("SlockAppLogin", message)
 
     /**
      * No shared store provider yet: the browser callback can arrive before the app shell is (re)created
@@ -129,11 +129,11 @@ internal object SlockAppLogin {
         runCatching {
             val environments =
                 SharedApiEnvironmentStore(
-                    SlockSharedKeyValueStoreProvider.create(SharedApiEnvironmentStore.Namespace, "API environment").store
+                    RaftSharedKeyValueStoreProvider.create(SharedApiEnvironmentStore.Namespace, "API environment").store
                 )
             val sessions =
                 KeyValueAuthSessionStore(
-                    SlockSharedAuthSessionKeyValueStoreProvider.create().store,
+                    RaftSharedAuthSessionKeyValueStoreProvider.create().store,
                     diagnosticsLogger = ::logAppLogin,
                 )
             logAppLogin("app_login_runtime source=app_scope")
@@ -152,11 +152,11 @@ internal fun appLoginEnvironmentIdentity(environment: SharedSettingsApiEnvironme
 
 internal fun createAppLoginRuntime(
     environmentStore: SharedApiEnvironmentStore,
-    authStore: SlockAuthSessionStore,
-    avatarCacheRuntime: SlockAvatarCacheRuntime? = null,
+    authStore: RaftAuthSessionStore,
+    avatarCacheRuntime: RaftAvatarCacheRuntime? = null,
     diagnosticsLogger: (String) -> Unit = {},
-    transportFactory: (String) -> SlockAuthTransport = {
-        SharedSlockAuthTransport(baseUrl = it, warningLogger = diagnosticsLogger)
+    transportFactory: (String) -> RaftAuthTransport = {
+        SharedRaftAuthTransport(baseUrl = it, warningLogger = diagnosticsLogger)
     },
 ): AppLoginRuntime {
     val snapshot = environmentStore.current()
@@ -164,7 +164,7 @@ internal fun createAppLoginRuntime(
     // Capture the actual endpoints, not just "custom". Hydration must use the
     // same API as the exchange even if the environment changes while suspended.
     val auth = SharedAuthDataSource(transportFactory(snapshot.apiBaseUrl), authStore, diagnosticsLogger)
-        .withAvatarCacheRuntime(avatarCacheRuntime, UnsupportedSlockAvatarNativeCache) { snapshot.apiBaseUrl }
+        .withAvatarCacheRuntime(avatarCacheRuntime, UnsupportedRaftAvatarNativeCache) { snapshot.apiBaseUrl }
     fun isCurrent() = appLoginEnvironmentIdentity(environmentStore.current()) == identity
     return object : AppLoginRuntime {
         override val environment = identity

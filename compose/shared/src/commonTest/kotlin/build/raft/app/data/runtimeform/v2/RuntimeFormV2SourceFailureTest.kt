@@ -2,7 +2,7 @@ package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SlockComputersApi
+import build.raft.app.data.RaftComputersApi
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  * offline computer with a 409 on a source (archer, #raft-mobile-reconcile 276b5c21).
  */
 class RuntimeFormV2SourceFailureTest {
-    private class FormApi(private val sources: Map<String, HomeNetworkResponse>) : SlockComputersApi {
+    private class FormApi(private val sources: Map<String, HomeNetworkResponse>) : RaftComputersApi {
         override suspend fun runtimeFormV2(serverId: ServerId, machineId: String, runtimeId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = BUILTIN_V2_FORM_JSON)
 

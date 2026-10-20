@@ -1,14 +1,14 @@
 package build.raft.app.data
 
-import build.raft.app.SlockAdaptiveDetailIdentity
-import build.raft.app.SlockAdaptiveDetailSelection
-import build.raft.app.SlockAdaptivePaneLayout
-import build.raft.app.SlockAdaptivePanePosture
-import build.raft.app.SlockAdaptivePaneState
-import build.raft.app.SlockAdaptiveWorkspaceState
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptiveDetailSelection
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePanePosture
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
-import build.raft.app.SlockAdaptiveWorkspaceIntent
-import build.raft.app.reduceSlockAdaptiveWorkspace
+import build.raft.app.RaftAdaptiveWorkspaceIntent
+import build.raft.app.reduceRaftAdaptiveWorkspace
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -17,17 +17,17 @@ import kotlin.test.assertSame
 class SharedAdaptiveWorkspaceStoreTest {
     @Test
     fun shellScopedSessionSurvivesAppShellConsumerRecreation() {
-        val cache = SlockShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
-        val originalScope = SlockShellStoreScope.create("shell-a", initialServerId = "server-a")
+        val cache = RaftShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
+        val originalScope = RaftShellStoreScope.create("shell-a", initialServerId = "server-a")
         val store = cache.getOrPut(originalScope) { SharedAdaptiveWorkspaceStore() }
         val identity =
-            SlockAdaptiveDetailIdentity(
+            RaftAdaptiveDetailIdentity(
                 serverId = "server-a",
                 threadId = "channel-a",
                 surfaceKind = "channel",
                 streamChannelId = "channel-a",
             )
-        val selection = SlockAdaptiveDetailSelection(identity = identity, generation = 7L)
+        val selection = RaftAdaptiveDetailSelection(identity = identity, generation = 7L)
         val payload =
             WireThreadLaunchPayload(
                 instanceId = "shared-shell-thread-channel-a",
@@ -45,13 +45,13 @@ class SharedAdaptiveWorkspaceStoreTest {
         store.update {
             SharedAdaptiveWorkspaceSession(
                 workspace =
-                    SlockAdaptiveWorkspaceState(
+                    RaftAdaptiveWorkspaceState(
                         shellInstanceId = "shell-a",
                         serverId = "server-a",
                         pane =
-                            SlockAdaptivePaneState(
-                                layout = SlockAdaptivePaneLayout.DualPane,
-                                posture = SlockAdaptivePanePosture.Flat,
+                            RaftAdaptivePaneState(
+                                layout = RaftAdaptivePaneLayout.DualPane,
+                                posture = RaftAdaptivePanePosture.Flat,
                             ),
                         selection = selection,
                         generationCursor = 7L,
@@ -62,7 +62,7 @@ class SharedAdaptiveWorkspaceStoreTest {
         }
 
         val recreatedConsumer =
-            cache.getOrPut(SlockShellStoreScope.create("shell-a")) {
+            cache.getOrPut(RaftShellStoreScope.create("shell-a")) {
                 error("same shell scope must reuse its adaptive workspace store")
             }
 
@@ -81,14 +81,14 @@ class SharedAdaptiveWorkspaceStoreTest {
         val shellStore = SharedAdaptiveWorkspaceStore()
         val activityStore = SharedAdaptiveWorkspaceStore()
         val wide =
-            SlockAdaptivePaneState(
-                layout = SlockAdaptivePaneLayout.DualPane,
-                posture = SlockAdaptivePanePosture.Flat,
+            RaftAdaptivePaneState(
+                layout = RaftAdaptivePaneLayout.DualPane,
+                posture = RaftAdaptivePanePosture.Flat,
             )
         shellStore.update {
             it.copy(
                 workspace =
-                    SlockAdaptiveWorkspaceState(
+                    RaftAdaptiveWorkspaceState(
                         shellInstanceId = "shell-a",
                         serverId = "server-a",
                         pane = wide,
@@ -98,14 +98,14 @@ class SharedAdaptiveWorkspaceStoreTest {
         activityStore.update {
             it.copy(
                 workspace =
-                    SlockAdaptiveWorkspaceState(
+                    RaftAdaptiveWorkspaceState(
                         shellInstanceId = "shell-a:activity",
                         serverId = "server-a",
                         pane = wide,
                         selection =
-                            SlockAdaptiveDetailSelection(
+                            RaftAdaptiveDetailSelection(
                                 identity =
-                                    SlockAdaptiveDetailIdentity(
+                                    RaftAdaptiveDetailIdentity(
                                         serverId = "server-a",
                                         threadId = "activity-thread",
                                         surfaceKind = "channel",
@@ -119,16 +119,16 @@ class SharedAdaptiveWorkspaceStoreTest {
         shellStore.update { session ->
             val workspace = session.workspace ?: return@update session
             val identity =
-                SlockAdaptiveDetailIdentity(
+                RaftAdaptiveDetailIdentity(
                     serverId = "server-a",
                     threadId = "search-opened-b",
                     surfaceKind = "channel",
                 )
             session.copy(
                 workspace =
-                    reduceSlockAdaptiveWorkspace(
+                    reduceRaftAdaptiveWorkspace(
                         workspace,
-                        SlockAdaptiveWorkspaceIntent.ParkSelection(identity),
+                        RaftAdaptiveWorkspaceIntent.ParkSelection(identity),
                     ),
             )
         }

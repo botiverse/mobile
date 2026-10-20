@@ -25,13 +25,13 @@ class ThreadComposerUploadedImagePreviewTest {
                         selectedIndex = selected,
                         originalImage = original
                     ))
-                    val launch = slockFilePreviewLaunchDescriptor("opaque-session", payload)
-                    assertEquals(SlockFilePreviewRouteEphemeral, launch.routeKind)
+                    val launch = raftFilePreviewLaunchDescriptor("opaque-session", payload)
+                    assertEquals(RaftFilePreviewRouteEphemeral, launch.routeKind)
                     assertFalse(launch.requiresAuthenticatedRouteAuthority())
                     assertEquals("", launch.attachmentId)
                     assertTrue(launch.galleryAttachmentIds.isEmpty())
-                    val trace = slockFilePreviewResolveLaunchPayload(
-                        source = Json.encodeToString(WireSlockFilePreviewLaunchPayload.serializer(), launch),
+                    val trace = raftFilePreviewResolveLaunchPayload(
+                        source = Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch),
                         loadPreviewPayload = { id -> if (id == "opaque-session") payload else null }
                     )
                     assertEquals("success", trace.result)
@@ -41,7 +41,7 @@ class ThreadComposerUploadedImagePreviewTest {
                     assertTrue(restored.composerImageOriginalOptionEnabled)
                     assertTrue(restored.composerImageOwnedTemporaryFileRefs.isEmpty())
                     assertTrue(restored.imageGallery.none { it.composerImageOwnedTemporary })
-                    val deliveredReplacements = slockFilePreviewComposerImageEventsForPayload(
+                    val deliveredReplacements = raftFilePreviewComposerImageEventsForPayload(
                         eventPayload = restored,
                         singleEvent = { _, _, _ -> restored.composerImageReplaceAttachmentId },
                         galleryEvent = { _, item, _, _ -> item.composerImageReplaceAttachmentId }
@@ -66,11 +66,11 @@ class ThreadComposerUploadedImagePreviewTest {
         val payload = assertNotNull(threadComposerUploadedImagePreviewPayload(
             "thread", "action", listOf(image("first")), listOf("remote-first"), 0, true
         ))
-        val launch = slockFilePreviewLaunchDescriptor("expired-session", payload)
-        val wire = Json.encodeToString(WireSlockFilePreviewLaunchPayload.serializer(), launch)
+        val launch = raftFilePreviewLaunchDescriptor("expired-session", payload)
+        val wire = Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch)
         assertFalse(wire.contains("remote-first"))
         assertFalse(wire.contains("file:///"))
-        val trace = slockFilePreviewResolveLaunchPayload(wire, loadPreviewPayload = { null })
+        val trace = raftFilePreviewResolveLaunchPayload(wire, loadPreviewPayload = { null })
         assertEquals("ephemeral_expired", trace.result)
         assertFalse(trace.payload.composerImageCanComplete)
         assertEquals("", trace.payload.composerImageFileRef)
@@ -83,18 +83,18 @@ class ThreadComposerUploadedImagePreviewTest {
         assertNull(threadComposerUploadedImagePreviewPayload(
             "thread", "action", listOf(thumbnailOnly), listOf("remote-first"), 0, false
         ))
-        val remote = KuiklyThreadAttachmentItem(
+        val remote = RaftThreadAttachmentItem(
             id = "remote-first", name = "first.png", mimeType = "image/png"
         ).toThreadAttachmentLazyPreviewPayload(kind = "image")
-        val launch = slockFilePreviewLaunchDescriptor("remote-session", remote)
+        val launch = raftFilePreviewLaunchDescriptor("remote-session", remote)
         assertTrue(launch.requiresAuthenticatedRouteAuthority())
-        val trace = slockFilePreviewResolveLaunchPayload(
-            Json.encodeToString(WireSlockFilePreviewLaunchPayload.serializer(), launch),
+        val trace = raftFilePreviewResolveLaunchPayload(
+            Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch),
             loadPreviewPayload = { remote }
         )
         assertEquals("restored_thread_attachment", trace.result)
         assertTrue(trace.requiresAuthenticatedRouteAuthority())
-        assertEquals(SlockFilePreviewSourceThreadAttachment, trace.payload.source)
+        assertEquals(RaftFilePreviewSourceThreadAttachment, trace.payload.source)
         assertFalse(trace.payload.composerImageCanComplete)
     }
 
@@ -104,7 +104,7 @@ class ThreadComposerUploadedImagePreviewTest {
             val payload = assertNotNull(threadComposerUploadedImagePreviewPayload(
                 "thread", "action", files, files.map { "remote-${it.id}" }, 0, false
             ))
-            val registry = SlockFilePreviewEphemeralActionRegistry()
+            val registry = RaftFilePreviewEphemeralActionRegistry()
             registry.register("session", "thread", setOf("action"), payload.composerImageOwnedTemporaryFileRefs.toSet())
             assertTrue(registry.retireActive("session").cleanupFileRefs.isEmpty())
 
@@ -132,7 +132,7 @@ class ThreadComposerUploadedImagePreviewTest {
         }
     }
 
-    private fun assertLocalImage(payload: SlockFilePreviewPayload, file: PlatformFile, replacement: String) {
+    private fun assertLocalImage(payload: RaftFilePreviewPayload, file: PlatformFile, replacement: String) {
         assertEquals("image", payload.kind)
         assertTrue(payload.shouldRenderImagePreview())
         assertEquals("", payload.source) // No remote resolver/owner check on an ephemeral editor.

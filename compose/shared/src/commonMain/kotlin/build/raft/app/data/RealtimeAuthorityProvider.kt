@@ -48,8 +48,8 @@ internal data class CurrentMessageCommitContext(
  */
 internal class RealtimeAuthorityProvider(
     private val registry: RealtimeAuthorityRegistry,
-    private val authStore: SlockAuthSessionStore,
-    private val authEvents: SlockAuthSessionEventSource,
+    private val authStore: RaftAuthSessionStore,
+    private val authEvents: RaftAuthSessionEventSource,
     // Environment half of the session identity (task #1109). Read together with the session on every
     // reconcile; the API base url of the selected environment is the app-wide environment id
     // (same normalization as the presence binding and the pending-send journal owner key).

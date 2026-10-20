@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.desc.desc
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -231,7 +231,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         val context = kotlin.test.assertNotNull(dataSource.captureReplyCacheProducerContext())
         val reply =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-parent-1",
                 streamChannelId = "thread-parent-1",
                 parentChannelId = "channel-1",
@@ -270,7 +270,7 @@ class SharedThreadStoreDurableOlderPagingTest {
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
-            sessionStore = InMemorySlockAuthSessionStore(identity().session),
+            sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { identity() },
             durableLastKnownReader = reader,
@@ -325,8 +325,8 @@ class SharedThreadStoreDurableOlderPagingTest {
             selectionGeneration = 1L,
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",

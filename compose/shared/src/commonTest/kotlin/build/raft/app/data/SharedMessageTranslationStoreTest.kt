@@ -21,7 +21,7 @@ private fun testSession(serverId: String? = TestServerId): StoredAuthSession =
         selectedServerId = serverId
     )
 
-private class FakeAuthSessionStore(private var session: StoredAuthSession? = testSession()) : SlockAuthSessionStore {
+private class FakeAuthSessionStore(private var session: StoredAuthSession? = testSession()) : RaftAuthSessionStore {
     override suspend fun readSession(): StoredAuthSession? = session
     override suspend fun saveSession(session: StoredAuthSession) {
         this.session = session
@@ -40,7 +40,7 @@ private class FakeAuthSessionStore(private var session: StoredAuthSession? = tes
 private class FakeMessageTranslationApi(
     var serverBody: String = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":false}""",
     var batchResponses: MutableList<HomeNetworkResponse> = mutableListOf()
-) : SlockMessageTranslationApi {
+) : RaftMessageTranslationApi {
     val batchCalls = mutableListOf<Triple<List<String>, String, String>>()
 
     override suspend fun translateBatch(
@@ -72,7 +72,7 @@ class SharedMessageTranslationStoreTest {
     private fun store(
         api: FakeMessageTranslationApi,
         scope: CoroutineScope,
-        authStore: SlockAuthSessionStore = FakeAuthSessionStore(),
+        authStore: RaftAuthSessionStore = FakeAuthSessionStore(),
         translationMode: () -> TranslationModePreference = { TranslationModePreference.Automatic },
         translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
         systemLanguage: () -> String? = { null }

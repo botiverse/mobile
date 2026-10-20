@@ -6,7 +6,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
-import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.RaftBrutalActionButton
 import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
 
@@ -62,8 +62,8 @@ internal fun ChannelMembersCreateAgentDialog(
                     if (request == null) { error = failedLabel; return@launch }
                     val client = authority.networkClient(receipt)
                     val coordinator = SharedCreateAgentCoordinator(
-                        SlockAgentsApiClient(SlockAgentsNetworkApi(client)),
-                        SlockComputersApiClient(SlockComputersNetworkApi(client)),
+                        RaftAgentsApiClient(RaftAgentsNetworkApi(client)),
+                        RaftComputersApiClient(RaftComputersNetworkApi(client)),
                     )
                     val result = coordinator.createAgent(request.toCreateAgentRequest())
                         .recoverRejectedCreateAgentFormOrRetry(formStore, owner.serverId, request) { retry ->
@@ -96,11 +96,11 @@ internal fun ChannelMembersCreateAgentDialog(
         }
     }
     if (createdId != null) {
-        SlockUnifiedDialog(title = stringResource(MR.strings.thread_action_add_member),
+        RaftUnifiedDialog(title = stringResource(MR.strings.thread_action_add_member),
             onDismiss = onDismiss, dismissEnabled = !submitting) {
-            Text(error ?: joinFailedLabel, style = SlockType.Body)
-            SlockDialogFooter {
-                SlockBrutalActionButton(label = stringResource(MR.strings.common_retry),
+            Text(error ?: joinFailedLabel, style = RaftType.Body)
+            RaftDialogFooter {
+                RaftBrutalActionButton(label = stringResource(MR.strings.common_retry),
                     enabled = !submitting, onClick = { submit(null) })
             }
         }

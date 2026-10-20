@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -23,7 +23,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
     @Test
     fun openedDmPublishesDirectoryCandidateWithoutWritingHomeProductState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(authSessionFixture())
+        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
         val store = openedDmStore(authStore, scope)
 
         assertTrue(
@@ -35,7 +35,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
 
         val projection = store.resolveProjection(ServerId("server-1"), "dm-new")
         assertEquals("Artin", projection?.title)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, projection?.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, projection?.surfaceKind)
         assertEquals(MemberId("user-1"), projection?.peerIdentity?.memberId)
         assertNull(
             store.snapshotFor(ServerId("server-1")),
@@ -47,7 +47,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
     @Test
     fun openedDmCandidatesAccumulateAndHomeRemainsCanonical() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(authSessionFixture())
+        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
         val store =
             openedDmStore(
                 authStore = authStore,
@@ -95,7 +95,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
     @Test
     fun openedDmRejectsAccountAndServerDrift() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(authSessionFixture())
+        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
         val store = openedDmStore(authStore, scope)
         val mismatches =
             listOf(
@@ -128,7 +128,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
     @Test
     fun successorAccountOnSameServerDoesNotInheritEarlierDirectoryRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(authSessionFixture())
+        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
         val store = openedDmStore(authStore, scope)
         assertTrue(
             store.supplementOpenedDirectMessage(
@@ -158,7 +158,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
     }
 
     private fun openedDmStore(
-        authStore: SlockAuthSessionStore,
+        authStore: RaftAuthSessionStore,
         scope: CoroutineScope,
         homeSnapshot: HomeSnapshot? = null
     ): SharedHomeStore =
@@ -199,7 +199,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
             kind = MemberKind.Human
         )
 
-    private object RootEmptyHomeApi : SlockHomeApi {
+    private object RootEmptyHomeApi : RaftHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             HomeNetworkResponse(200, "[]")
 

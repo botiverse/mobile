@@ -19,7 +19,7 @@ THREAD_PATHS=(
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
-  compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
+  compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 )
 
@@ -310,7 +310,7 @@ thread_paths = %w[
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
-  compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
+  compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 ]
 thread = find_step(workflow, "Select Thread newer-pagination gate")

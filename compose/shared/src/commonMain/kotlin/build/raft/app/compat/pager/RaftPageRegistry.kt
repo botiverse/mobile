@@ -21,10 +21,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.cmp.RaftPageProvider
-import build.raft.app.cmp.SlockCmpRouter
-import build.raft.app.cmp.host.LocalSlockHost
-import build.raft.app.cmp.host.LocalSlockPageArgs
-import build.raft.app.cmp.host.SlockCmpPageArgs
+import build.raft.app.cmp.RaftCmpRouter
+import build.raft.app.cmp.host.LocalRaftHost
+import build.raft.app.cmp.host.LocalRaftPageArgs
+import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.image.raftInstallImageLoader
 import build.raft.app.toKuiklyJson
@@ -35,7 +35,7 @@ import kotlinx.atomicfu.atomic
  *
  * Built from the generated [raftProductPageFactories] / [raftVisualFixturePageFactories] (see
  * scripts/cmp_generate_page_registry.py). Page names and pageData contracts are the ones the
- * Kuikly `@Page` classes declared. Hosts call [install] once at startup so `SlockCmpRoot` can
+ * Kuikly `@Page` classes declared. Hosts call [install] once at startup so `RaftCmpRoot` can
  * render these pages.
  */
 object RaftPageRegistry {
@@ -56,10 +56,10 @@ object RaftPageRegistry {
         return { RaftPagerHost(factory) }
     }
 
-    /** Hosts call this once at startup (Android: `SlockApplication.onCreate`). */
+    /** Hosts call this once at startup (Android: `RaftApplication.onCreate`). */
     fun install() {
         raftInstallImageLoader()
-        SlockCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
+        RaftCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
     }
 }
 
@@ -67,20 +67,20 @@ private val pagerIdSequence = atomic(0)
 
 /**
  * Runs one Kuikly-style page: creates the [Pager] for [args] (by default the page this
- * `SlockCmpRoot` was opened with), calls `willInit()` / `created()` (the page sets its content
+ * `RaftCmpRoot` was opened with), calls `willInit()` / `created()` (the page sets its content
  * there), feeds window insets into [PageData], sends the `viewDidAppear` / `viewDidDisappear` pager
  * events while the host lifecycle is resumed and [active] is true, and provides [LocalActivity]
- * (for `getPager()` callers) and [LocalSlockPageArgs] (= [args]) to the page.
+ * (for `getPager()` callers) and [LocalRaftPageArgs] (= [args]) to the page.
  *
- * Child pages (`SlockKuiklyChildPage`) nest a second host with their own [args].
+ * Child pages (`RaftChildPage`) nest a second host with their own [args].
  */
 @Composable
 fun RaftPagerHost(
     factory: () -> Pager,
-    args: SlockCmpPageArgs = LocalSlockPageArgs.current,
+    args: RaftCmpPageArgs = LocalRaftPageArgs.current,
     active: Boolean = true,
 ) {
-    val host = LocalSlockHost.current
+    val host = LocalRaftHost.current
     // The Raft Coil loader must be the singleton before any page asks Coil for an image.
     remember { raftInstallImageLoader() }
     val pager =
@@ -164,7 +164,7 @@ fun RaftPagerHost(
 
     CompositionLocalProvider(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
-        LocalSlockPageArgs provides args,
+        LocalRaftPageArgs provides args,
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {

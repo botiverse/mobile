@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedHomeState
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -52,25 +52,25 @@ class AppShellForegroundResumePolicyTest {
         assertTrue(
             appShellLifecycleCanRefreshVisibleRoute(
                 pageVisible = true,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleResume
             )
         )
         assertTrue(
             appShellLifecycleCanRefreshVisibleRoute(
                 pageVisible = true,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleShow
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleShow
             )
         )
         assertFalse(
             appShellLifecycleCanRefreshVisibleRoute(
                 pageVisible = false,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleResume
             )
         )
         assertFalse(
             appShellLifecycleCanRefreshVisibleRoute(
                 pageVisible = true,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleHidden
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleHidden
             )
         )
     }

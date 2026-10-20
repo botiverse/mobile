@@ -1,7 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.SlockExternalShareEnvelopeHostMutationResult
-import build.raft.app.data.SlockExternalShareEnvelopeHostReadResult
+import build.raft.app.data.RaftExternalShareEnvelopeHostMutationResult
+import build.raft.app.data.RaftExternalShareEnvelopeHostReadResult
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -23,7 +23,7 @@ class AndroidExternalShareIntakeTest {
         val admitted = fixture.inbox.admit(spec("hello", "content://one"))
         val token = (admitted as AndroidExternalShareIntakeResult.Admitted).launch.token
 
-        val loaded = fixture.inbox.load(token) as SlockExternalShareEnvelopeHostReadResult.Content
+        val loaded = fixture.inbox.load(token) as RaftExternalShareEnvelopeHostReadResult.Content
         assertEquals("hello", loaded.record.text)
         assertEquals(1, loaded.record.items.size)
         assertTrue(loaded.record.items.single().localRef.startsWith("file:"))
@@ -34,11 +34,11 @@ class AndroidExternalShareIntakeTest {
 
         val consumptionId = "external-share-consume:$token"
         assertEquals(
-            SlockExternalShareEnvelopeHostMutationResult.Success,
+            RaftExternalShareEnvelopeHostMutationResult.Success,
             fixture.inbox.consume(token, consumptionId)
         )
         assertEquals(
-            SlockExternalShareEnvelopeHostMutationResult.Success,
+            RaftExternalShareEnvelopeHostMutationResult.Success,
             fixture.inbox.consume(token, consumptionId)
         )
         assertEquals(null, fixture.inbox.pendingLaunchOrNull())
@@ -147,12 +147,12 @@ class AndroidExternalShareIntakeTest {
             (fixture.inbox.admit(spec("text")) as AndroidExternalShareIntakeResult.Admitted).launch.token
 
         assertEquals(
-            SlockExternalShareEnvelopeHostMutationResult.Success,
+            RaftExternalShareEnvelopeHostMutationResult.Success,
             fixture.inbox.consume(token, "external-share-consume:$token")
         )
         val conflict = fixture.inbox.consume(token, "external-share-consume:another-token")
         assertEquals(
-            SlockExternalShareEnvelopeHostMutationResult.Failure(
+            RaftExternalShareEnvelopeHostMutationResult.Failure(
                 "external_share_consumption_identity_invalid",
                 retryable = false
             ),

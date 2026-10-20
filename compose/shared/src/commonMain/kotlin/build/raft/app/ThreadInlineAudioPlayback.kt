@@ -10,7 +10,7 @@ internal data class ThreadInlineAudioPlayback(
     val state: PlayState = PlayState.NONE,
     val currentTimeMs: Int = 0,
     val totalTimeMs: Int = 0,
-    val seekRequest: SlockFilePreviewVideoSeekRequest? = null
+    val seekRequest: RaftFilePreviewVideoSeekRequest? = null
 ) {
     fun toggle(): ThreadInlineAudioPlayback = when (state) {
         // A PLAY attribute equal to the previous PLAY is not dispatched again.
@@ -32,7 +32,7 @@ internal data class ThreadInlineAudioPlayback(
         val target = timeMs.coerceIn(0, totalTimeMs)
         return copy(
             currentTimeMs = target,
-            seekRequest = SlockFilePreviewVideoSeekRequest((seekRequest?.id ?: 0) + 1, target),
+            seekRequest = RaftFilePreviewVideoSeekRequest((seekRequest?.id ?: 0) + 1, target),
             // Seeking an ended item leaves it paused; the next Play must be a
             // new command. Seeking while playing/paused preserves that intent.
             control = if (state == PlayState.PLAY_END) VideoPlayControl.PAUSE else control,

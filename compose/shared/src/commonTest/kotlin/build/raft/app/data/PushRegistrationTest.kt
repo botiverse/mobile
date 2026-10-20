@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
+import build.raft.app.data.realtime.RaftRealtimeAppScopePolicy
 import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -19,12 +19,12 @@ import kotlinx.coroutines.withTimeout
 class PushRegistrationTest {
     @AfterTest
     fun tearDown() {
-        SlockPushRegistrationLifecycle.clearForTests()
+        RaftPushRegistrationLifecycle.clearForTests()
     }
 
     @Test
     fun installationIdentityIsStableForTheInstalledAppScope() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val coordinator = coordinator(store = store)
 
         val first = coordinator.installationId("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
@@ -37,7 +37,7 @@ class PushRegistrationTest {
 
     @Test
     fun atomicRegistrationWaitsForAuthThenDedupesAndRebindsOnAccountSwitch() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         var session: StoredAuthSession? = null
         val api = RecordingPushRegistrationApi()
         val coordinator =
@@ -97,7 +97,7 @@ class PushRegistrationTest {
 
     @Test
     fun logoutUnbindPreservesInstallationAndAllowsNextLoginToRebind() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         var session: StoredAuthSession? = storedSession("user-1")
         val api = RecordingPushRegistrationApi()
         val remoteNotifications = RecordingRemoteNotificationsController()
@@ -125,11 +125,11 @@ class PushRegistrationTest {
 
     @Test
     fun tokenRefreshDuringLogoutCannotRaceARegistrationBackAfterUnbind() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val calls = mutableListOf<String>()
-        lateinit var coordinator: SlockPushRegistrationCoordinator
+        lateinit var coordinator: RaftPushRegistrationCoordinator
         val api =
-            object : SlockPushRegistrationApi {
+            object : RaftPushRegistrationApi {
                 override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
                     calls += "POST"
                     return HomeNetworkResponse(code = 204, bodyText = null)
@@ -167,8 +167,8 @@ class PushRegistrationTest {
         val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
         val observed = CompletableDeferred<Unit>()
         var savedEvents = 0
-        SlockPushRegistrationLifecycle.install(
-            object : SlockPushRegistrationLifecycleSink {
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
                 override fun onSessionSaved() {
                     savedEvents += 1
                     if (savedEvents == 2) observed.complete(Unit)
@@ -179,7 +179,7 @@ class PushRegistrationTest {
                 override suspend fun unbindBeforeLogout() = Unit
             }
         )
-        SlockPushRegistrationLifecycle.observeSessionEvents(
+        RaftPushRegistrationLifecycle.observeSessionEvents(
             source = events,
             scope = CoroutineScope(SupervisorJob())
         )
@@ -194,8 +194,8 @@ class PushRegistrationTest {
         val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
         val invalidated = CompletableDeferred<AuthSessionClearReason>()
         var savedEvents = 0
-        SlockPushRegistrationLifecycle.install(
-            object : SlockPushRegistrationLifecycleSink {
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
                 override fun onSessionSaved() {
                     savedEvents += 1
                 }
@@ -207,7 +207,7 @@ class PushRegistrationTest {
                 override suspend fun unbindBeforeLogout() = Unit
             }
         )
-        SlockPushRegistrationLifecycle.observeSessionEvents(
+        RaftPushRegistrationLifecycle.observeSessionEvents(
             source = events,
             scope = CoroutineScope(SupervisorJob())
         )
@@ -222,7 +222,7 @@ class PushRegistrationTest {
 
     @Test
     fun crossInstanceMatchedAuthLossClearUnregistersWithoutAuthenticatedDelete() = runBlocking {
-        val authKv = InMemorySlockKeyValueStore()
+        val authKv = InMemoryRaftKeyValueStore()
         val observedStore = KeyValueAuthSessionStore(authKv)
         val clearingStore = KeyValueAuthSessionStore(authKv)
         val session = storedSession("user-1")
@@ -240,8 +240,8 @@ class PushRegistrationTest {
 
         val unregistered = CompletableDeferred<Unit>()
         remoteNotifications.onDisabled = { unregistered.complete(Unit) }
-        SlockPushRegistrationLifecycle.install(coordinator)
-        SlockPushRegistrationLifecycle.observeSessionEvents(
+        RaftPushRegistrationLifecycle.install(coordinator)
+        RaftPushRegistrationLifecycle.observeSessionEvents(
             source = observedStore.authSessionEvents,
             scope = CoroutineScope(SupervisorJob())
         )
@@ -311,7 +311,7 @@ class PushRegistrationTest {
         val api = RecordingPushRegistrationApi()
         val coordinator =
             coordinator(
-                spec = SlockPushProviderSpec.Fcm,
+                spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api
             )
@@ -451,7 +451,7 @@ class PushRegistrationTest {
     @Test
     fun deliveryStatusRequestsAreSpacedUnlessNoAnswerExists() = runBlocking {
         val clock = TestClock()
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val api = RecordingPushRegistrationApi()
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
         val coordinator =
@@ -534,7 +534,7 @@ class PushRegistrationTest {
         val api = RecordingPushRegistrationApi()
         val coordinator =
             coordinator(
-                spec = SlockPushProviderSpec.Fcm,
+                spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api
             )
@@ -562,7 +562,7 @@ class PushRegistrationTest {
     @Test
     fun networkApiUsesTheRfc045RegistrationRoutes() = runBlocking {
         val network = RecordingNetworkClient()
-        val api = SlockPushRegistrationNetworkApi(network)
+        val api = RaftPushRegistrationNetworkApi(network)
 
         api.upsert("""{"installationId":"installation-1"}""")
         api.unbind("installation-1")
@@ -579,17 +579,17 @@ class PushRegistrationTest {
     }
 
     private fun coordinator(
-        store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
-        spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
+        store: RaftKeyValueStore = InMemoryRaftKeyValueStore(),
+        spec: RaftPushProviderSpec = RaftPushProviderSpec.Apns,
         currentSession: suspend () -> StoredAuthSession? = { null },
-        api: SlockPushRegistrationApi = RecordingPushRegistrationApi(),
-        remoteNotificationsController: SlockIosRemoteNotificationsController =
+        api: RaftPushRegistrationApi = RecordingPushRegistrationApi(),
+        remoteNotificationsController: RaftIosRemoteNotificationsController =
             RecordingRemoteNotificationsController(),
         currentEnvironmentId: (() -> String?)? = null,
         clockMillis: () -> Long = { 0L },
         scope: CoroutineScope = CoroutineScope(SupervisorJob())
-    ): SlockPushRegistrationCoordinator =
-        SlockPushRegistrationCoordinator(
+    ): RaftPushRegistrationCoordinator =
+        RaftPushRegistrationCoordinator(
             store = store,
             spec = spec,
             currentSession = currentSession,
@@ -608,15 +608,15 @@ class PushRegistrationTest {
 
     /** Unconfined: a refresh launched by the coordinator has finished when the triggering call returns. */
     private fun deliveryStatusCoordinator(
-        store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
+        store: RaftKeyValueStore = InMemoryRaftKeyValueStore(),
         currentSession: suspend () -> StoredAuthSession?,
-        api: SlockPushRegistrationApi,
+        api: RaftPushRegistrationApi,
         clock: TestClock,
         environmentId: () -> String? = { "https://api.example/" }
-    ): SlockPushRegistrationCoordinator =
+    ): RaftPushRegistrationCoordinator =
         coordinator(
             store = store,
-            spec = SlockPushProviderSpec.Fcm,
+            spec = RaftPushProviderSpec.Fcm,
             currentSession = currentSession,
             api = api,
             currentEnvironmentId = environmentId,
@@ -624,17 +624,17 @@ class PushRegistrationTest {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         )
 
-    private suspend fun SlockPushRegistrationCoordinator.registerFcm(token: String = "cX9-AbC_dEfGhIjKlMnOpQ"): Boolean =
+    private suspend fun RaftPushRegistrationCoordinator.registerFcm(token: String = "cX9-AbC_dEfGhIjKlMnOpQ"): Boolean =
         updateRegistration(token, "build.raft.app", "production", "1.3.0")
 
     /** What the Android background path decides for a realtime event of [serverId]. */
-    private fun SlockPushRegistrationCoordinator.isRemotePushActiveFor(
+    private fun RaftPushRegistrationCoordinator.isRemotePushActiveFor(
         serverId: String,
         userId: String = "user-1",
         environmentId: String = "https://api.example/",
         now: Long
     ): Boolean =
-        SlockRealtimeAppScopePolicy.isRemotePushActive(
+        RaftRealtimeAppScopePolicy.isRemotePushActive(
             serverId = ServerId(serverId),
             environmentId = environmentId,
             currentUserId = userId,
@@ -660,7 +660,7 @@ class PushRegistrationTest {
             selectedServerId = serverId
         )
 
-    private class RecordingPushRegistrationApi : SlockPushRegistrationApi {
+    private class RecordingPushRegistrationApi : RaftPushRegistrationApi {
         val calls = mutableListOf<String>()
 
         var upsertResponse: HomeNetworkResponse = HomeNetworkResponse(code = 204, bodyText = null)
@@ -687,7 +687,7 @@ class PushRegistrationTest {
         }
     }
 
-    private class RecordingRemoteNotificationsController : SlockIosRemoteNotificationsController {
+    private class RecordingRemoteNotificationsController : RaftIosRemoteNotificationsController {
         val states = mutableListOf<Boolean>()
         var onDisabled: (() -> Unit)? = null
 
@@ -697,7 +697,7 @@ class PushRegistrationTest {
         }
     }
 
-    private class RecordingNetworkClient : SlockNetworkClient {
+    private class RecordingNetworkClient : RaftNetworkClient {
         val calls = mutableListOf<String>()
 
         override suspend fun request(

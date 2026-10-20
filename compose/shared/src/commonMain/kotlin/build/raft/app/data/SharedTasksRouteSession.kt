@@ -16,7 +16,7 @@ internal data class SharedTasksRouteOwner(
 internal class SharedTasksRouteSession(
     val owner: SharedTasksRouteOwner,
     parentScope: CoroutineScope,
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     dataSource: SharedTasksDataSource,
     sharedTasksDataStore: SharedTasksDataStore,
     diagnosticsLogger: (String) -> Unit = {}
@@ -25,7 +25,7 @@ internal class SharedTasksRouteSession(
         parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job])
     )
     // A queued action from a disposed tab must not resolve the newly selected server.
-    private val routeAuthStore = object : SlockAuthSessionStore by authStore {
+    private val routeAuthStore = object : RaftAuthSessionStore by authStore {
         override suspend fun readSession(): StoredAuthSession? =
             authStore.readSession()?.takeIf {
                 it.user.id == owner.accountId && it.currentServerId == owner.serverId

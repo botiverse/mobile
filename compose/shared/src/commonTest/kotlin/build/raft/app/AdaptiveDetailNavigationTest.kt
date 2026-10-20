@@ -6,25 +6,25 @@ import kotlin.test.*
 class AdaptiveDetailNavigationTest {
     private val channel = WireThreadLaunchPayload(threadId = "channel", sourceThreadId = "channel")
     private val reply = WireThreadLaunchPayload(
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
         sourceThreadId = "reply", streamChannelId = "reply", parentChannelId = "channel",
-        parentMessageId = "message", parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+        parentMessageId = "message", parentSurfaceKind = RaftThreadSurfaceKind.Channel,
     )
 
     private fun session(): SharedAdaptiveWorkspaceSession {
-        val state = SlockAdaptiveWorkspaceState(
+        val state = RaftAdaptiveWorkspaceState(
             shellInstanceId = "shell", serverId = "server",
-            pane = SlockAdaptivePaneState(widthPx = 2560, heightPx = 1600, density = 2f,
-                posture = SlockAdaptivePanePosture.Flat, layout = SlockAdaptivePaneLayout.DualPane),
+            pane = RaftAdaptivePaneState(widthPx = 2560, heightPx = 1600, density = 2f,
+                posture = RaftAdaptivePanePosture.Flat, layout = RaftAdaptivePaneLayout.DualPane),
         )
         return SharedAdaptiveWorkspaceSession(
-            workspace = reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.OpenDetail(channel.toSlockAdaptiveDetailIdentity("server")!!)),
+            workspace = reduceRaftAdaptiveWorkspace(state, RaftAdaptiveWorkspaceIntent.OpenDetail(channel.toRaftAdaptiveDetailIdentity("server")!!)),
             launchPayload = channel,
         )
     }
 
-    private fun SharedAdaptiveWorkspaceSession.source(): SlockAdaptiveDetailCloseRequest =
-        SlockAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
+    private fun SharedAdaptiveWorkspaceSession.source(): RaftAdaptiveDetailCloseRequest =
+        RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
 
     @Test fun returningToTheShellOnAPhoneClearsTheViewedConversation() {
         // A pushed conversation page closed: nothing in the shell is being viewed, so Home must count
@@ -37,7 +37,7 @@ class AdaptiveDetailNavigationTest {
 
     @Test fun returningToTheShellKeepsADetailStillShownBesideTheList() {
         val split = session()
-        assertEquals(SlockAdaptiveWorkspacePresentation.Split, split.workspace!!.presentation)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, split.workspace!!.presentation)
         assertEquals("channel", split.selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
 
         val closed = split.backFromDetail(split.source())
@@ -53,7 +53,7 @@ class AdaptiveDetailNavigationTest {
         assertFalse(opened.copy(workspace = opened.workspace!!.copy(parentVisible = false)).hasVisibleDetailBackHistory())
         assertEquals(reply, opened.launchPayload)
         assertEquals("channel", opened.detailListSelectionId())
-        assertEquals(SlockAdaptiveWorkspacePresentation.Split, opened.workspace!!.presentation)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, opened.workspace!!.presentation)
         val restored = opened.backFromDetail(opened.source())
         assertEquals(channel, restored.launchPayload)
         assertFalse(restored.hasVisibleDetailBackHistory())
@@ -68,30 +68,30 @@ class AdaptiveDetailNavigationTest {
         // before the first tap; the open must keep that instead of reverting to a stale snapshot.
         val stale = session().let { it.copy(workspace = it.workspace!!.copy(parentVisible = false)) }
         val live = stale.copy(workspace = stale.workspace!!.copy(parentVisible = true))
-        val replyIdentity = reply.toSlockAdaptiveDetailIdentity("server")!!
+        val replyIdentity = reply.toRaftAdaptiveDetailIdentity("server")!!
         val opened = live.withOpenedDetail(replyIdentity, reply)
         assertTrue(opened.workspace!!.parentVisible)
         assertEquals(replyIdentity, opened.workspace.selection!!.identity)
         assertEquals(reply, opened.launchPayload)
-        assertEquals(SlockAdaptiveWorkspacePresentation.Split, opened.workspace.presentation)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, opened.workspace.presentation)
         // A compact pane cannot host the detail: the session is left untouched.
         val compact = live.copy(
-            workspace = reduceSlockAdaptiveWorkspace(
+            workspace = reduceRaftAdaptiveWorkspace(
                 live.workspace!!,
-                SlockAdaptiveWorkspaceIntent.WindowChanged(
-                    SlockAdaptivePaneState(widthPx = 800, heightPx = 1600, density = 2f,
-                        posture = SlockAdaptivePanePosture.Flat, layout = SlockAdaptivePaneLayout.Compact)
+                RaftAdaptiveWorkspaceIntent.WindowChanged(
+                    RaftAdaptivePaneState(widthPx = 800, heightPx = 1600, density = 2f,
+                        posture = RaftAdaptivePanePosture.Flat, layout = RaftAdaptivePaneLayout.Compact)
                 )
             )
         )
         assertSame(compact, compact.withOpenedDetail(replyIdentity, reply))
         // Compact pane that already retains the SAME identity (e.g. parked after narrowing):
         // still not an in-pane open, so the caller falls back to the full-page route.
-        val channelIdentity = channel.toSlockAdaptiveDetailIdentity("server")!!
+        val channelIdentity = channel.toRaftAdaptiveDetailIdentity("server")!!
         assertEquals(channelIdentity, compact.workspace!!.selection!!.identity)
         assertSame(compact, compact.withOpenedDetail(channelIdentity, channel))
         // Another server's identity is never opened into this workspace.
-        val foreign = channel.toSlockAdaptiveDetailIdentity("other-server")!!
+        val foreign = channel.toRaftAdaptiveDetailIdentity("other-server")!!
         assertSame(live, live.withOpenedDetail(foreign, channel))
     }
 
@@ -117,7 +117,7 @@ class AdaptiveDetailNavigationTest {
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, false, "server"))
         assertFalse(shouldOpenWithinAdaptiveDetail(null, root.workspace, true, "server"))
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "other"))
-        val compact = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = SlockAdaptivePaneLayout.Compact))
+        val compact = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact))
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), compact, true, "server"))
     }
 
@@ -127,7 +127,7 @@ class AdaptiveDetailNavigationTest {
             assertEquals(root, root.navigateDetail(source, reply, "server"))
         }
         assertEquals(root, root.navigateDetail(root.source(), reply, "other-server"))
-        val compact = root.copy(workspace = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = SlockAdaptivePaneLayout.Compact)))
+        val compact = root.copy(workspace = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact)))
         assertEquals(compact, compact.navigateDetail(compact.source(), reply, "server"))
     }
 
@@ -135,11 +135,11 @@ class AdaptiveDetailNavigationTest {
         val store = SharedAdaptiveWorkspaceStore()
         store.update { session() }
         val opened = store.update { it.navigateDetail(it.source(), reply, "server") }
-        val compact = store.update { it.copy(workspace = it.workspace!!.copy(pane = it.workspace.pane.copy(layout = SlockAdaptivePaneLayout.Compact))) }
+        val compact = store.update { it.copy(workspace = it.workspace!!.copy(pane = it.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact))) }
         assertEquals(channel, compact.backFromDetail(compact.source()).launchPayload)
         store.update { opened }
-        val switched = store.update { it.copy(workspace = reduceSlockAdaptiveWorkspace(it.workspace!!,
-            SlockAdaptiveWorkspaceIntent.OpenDetail(channel.copy(threadId = "other", sourceThreadId = "other").toSlockAdaptiveDetailIdentity("server")!!))) }
+        val switched = store.update { it.copy(workspace = reduceRaftAdaptiveWorkspace(it.workspace!!,
+            RaftAdaptiveWorkspaceIntent.OpenDetail(channel.copy(threadId = "other", sourceThreadId = "other").toRaftAdaptiveDetailIdentity("server")!!))) }
         assertNull(switched.detailHistory)
         assertEquals(switched, switched.backFromDetail(opened.source()))
     }

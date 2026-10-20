@@ -7,8 +7,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.data.AuthSessionClearReason
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.AuthSessionTerminalRouteGate
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockAuthSessionTerminalSource
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftAuthSessionTerminalSource
 import build.raft.app.data.authSessionTerminalSourceOrNull
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onSubscription
@@ -25,7 +25,7 @@ internal data class AuthSessionTerminalRouteSignal(
 @Composable
 internal fun AuthSessionTerminalRouteEffect(
     enabled: Boolean,
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     onTerminal: (AuthSessionTerminalRouteSignal) -> Unit,
 ) {
     if (!enabled) return
@@ -52,7 +52,7 @@ internal fun AuthSessionTerminalRouteEffect(
 }
 
 internal suspend fun collectAuthSessionTerminalSignals(
-    terminalSource: SlockAuthSessionTerminalSource,
+    terminalSource: RaftAuthSessionTerminalSource,
     gate: AuthSessionTerminalRouteGate = AuthSessionTerminalRouteGate(),
     onTerminal: (AuthSessionTerminalRouteSignal) -> Unit,
 ) {

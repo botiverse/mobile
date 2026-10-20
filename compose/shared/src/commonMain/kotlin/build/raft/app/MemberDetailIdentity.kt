@@ -48,7 +48,7 @@ internal fun memberDetailIdentityFromWire(
     kindWireValue: String?,
     sourceServerId: String? = null,
     source: MemberDetailIdentitySource,
-    diagnostics: (String) -> Unit = { message -> slockLogWarn("MemberDetailIdentity", message) }
+    diagnostics: (String) -> Unit = { message -> raftLogWarn("MemberDetailIdentity", message) }
 ): MemberDetailIdentity? {
     val kind =
         kindWireValue.strictMemberKindOrNull(

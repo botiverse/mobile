@@ -5,7 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import build.raft.app.cmp.host.SlockCmpHost
+import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.CodecModule
 import build.raft.app.compat.module.Module
@@ -22,8 +22,8 @@ import kotlin.reflect.KProperty
  * `LocalActivity.current.getPager()` (pageData, pagerId, `acquireModule<RouterModule>()`, pager
  * events). This file keeps those names and semantics so the ~130 page classes and ~70
  * `getPager()` call sites compile unchanged; [RaftPagerHost] instantiates the page inside a
- * `SlockCmpRoot` and drives its lifecycle. New code should read `LocalSlockPageArgs` /
- * `LocalSlockHost` directly; this layer goes away once pages are plain composables.
+ * `RaftCmpRoot` and drives its lifecycle. New code should read `LocalRaftPageArgs` /
+ * `LocalRaftHost` directly; this layer goes away once pages are plain composables.
  */
 
 /** Kuikly `@Page`: marks a page class. Registration is [build.raft.app.compat.pager.RaftPageRegistry]. */
@@ -106,7 +106,7 @@ abstract class Pager : IPagerId {
         internal set
 
     /** The CMP host this page renders in (navigation, bridge transport, capabilities). */
-    var host: SlockCmpHost? = null
+    var host: RaftCmpHost? = null
         internal set
 
     var isAppeared: Boolean = false

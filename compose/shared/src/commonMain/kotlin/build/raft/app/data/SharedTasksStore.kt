@@ -287,7 +287,7 @@ sealed interface TasksPresentationIntent {
 }
 
 internal class SharedTasksViewModel(
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     dataSource: SharedTasksDataSource,
     private val scope: SharedTasksScope = SharedTasksScope.Server,
     private val sharedTasksDataStore: SharedTasksDataStore? = null,

@@ -1,8 +1,8 @@
 package build.raft.app.components
 
-import build.raft.app.SlockColor
-import build.raft.app.SlockStroke
-import build.raft.app.SlockType
+import build.raft.app.RaftColor
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,12 +90,12 @@ internal fun SharedHomeSearchInput(
     modifier: Modifier = Modifier
 ) {
     if (interactive) {
-        SlockBrutalInputField(
+        RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
             fieldMinHeight = 38.dp,
             horizontalPadding = 11.dp,
             verticalPadding = 5.dp,
@@ -123,14 +123,14 @@ internal fun SharedHomeSearchInput(
                     Modifier
                         .matchParentSize()
                         .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(SlockColor.ShadowBlack)
+                        .background(RaftColor.ShadowBlack)
             )
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(RaftColor.SurfaceWhite)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -138,8 +138,8 @@ internal fun SharedHomeSearchInput(
                 ) {
                     Text(
                         text = query.ifBlank { placeholder },
-                        style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                        color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = if (query.isBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -164,12 +164,12 @@ internal fun SharedHomeSearchInput(
     modifier: Modifier = Modifier
 ) {
     if (interactive) {
-        SlockBrutalInputField(
+        RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
             fieldMinHeight = 38.dp,
             horizontalPadding = 11.dp,
             verticalPadding = 5.dp,
@@ -197,14 +197,14 @@ internal fun SharedHomeSearchInput(
                     Modifier
                         .matchParentSize()
                         .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(SlockColor.ShadowBlack)
+                        .background(RaftColor.ShadowBlack)
             )
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(RaftColor.SurfaceWhite)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -212,8 +212,8 @@ internal fun SharedHomeSearchInput(
                 ) {
                     Text(
                         text = query.text.ifBlank { placeholder },
-                        style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                        color = if (query.text.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = if (query.text.isBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)

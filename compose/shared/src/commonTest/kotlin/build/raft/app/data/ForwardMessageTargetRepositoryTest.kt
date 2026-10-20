@@ -583,7 +583,7 @@ class ForwardMessageTargetRepositoryTest {
         nowMillis: () -> Long = { 0L }
     ): RealForwardMessageTargetRepository {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@example.com"),
                     accessToken = "access",
@@ -643,7 +643,7 @@ private data class ForwardNetworkCall(
     val body: String?
 )
 
-private class RecordingForwardNetworkClient : SlockNetworkClient {
+private class RecordingForwardNetworkClient : RaftNetworkClient {
     val calls = mutableListOf<ForwardNetworkCall>()
     var peerChannelsBody: String =
         """[{"id":"joint-peer-projection","name":"joint-room","type":"joint","joined":true,"jointChannelId":"joint-root","jointRole":"participant","jointPeerServerId":"server-source"}]"""

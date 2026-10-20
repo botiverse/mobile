@@ -1,47 +1,47 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 
 /**
  * task #37: the list column of the wide list + detail split is user-resizable (the web
- * useResizablePanel): dragged within [SLOCK_LIST_PANE_MIN_DP]..[SLOCK_LIST_PANE_MAX_DP], saved per
+ * useResizablePanel): dragged within [RAFT_LIST_PANE_MIN_DP]..[RAFT_LIST_PANE_MAX_DP], saved per
  * device (one width for every server, like the web localStorage value), and clamped to the
- * current window so the detail keeps at least [SLOCK_LIST_PANE_DETAIL_MIN_DP].
+ * current window so the detail keeps at least [RAFT_LIST_PANE_DETAIL_MIN_DP].
  */
-@SlockCoreInternalApi
-const val SLOCK_LIST_PANE_DEFAULT_DP = 360f
-@SlockCoreInternalApi
-const val SLOCK_LIST_PANE_MIN_DP = 280f
-@SlockCoreInternalApi
-const val SLOCK_LIST_PANE_MAX_DP = 520f
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_DEFAULT_DP = 360f
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_MIN_DP = 280f
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_MAX_DP = 520f
 
 /** Narrowest detail the list may leave; the 840dp dual-pane window with the default list. */
-@SlockCoreInternalApi
-const val SLOCK_LIST_PANE_DETAIL_MIN_DP = 400f
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_DETAIL_MIN_DP = 400f
 
 /** Divider between the list and the detail. */
-@SlockCoreInternalApi
-const val SLOCK_LIST_PANE_DIVIDER_DP = 1f
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_DIVIDER_DP = 1f
 
 /** The saved width, or the default when nothing (or nothing valid) was saved. */
-@SlockCoreInternalApi
-fun slockListPanePreferredWidthDp(stored: String?): Float =
+@RaftCoreInternalApi
+fun raftListPanePreferredWidthDp(stored: String?): Float =
     stored?.toFloatOrNull()
-        ?.takeIf { it.isFinite() && it >= SLOCK_LIST_PANE_MIN_DP && it <= SLOCK_LIST_PANE_MAX_DP }
-        ?: SLOCK_LIST_PANE_DEFAULT_DP
+        ?.takeIf { it.isFinite() && it >= RAFT_LIST_PANE_MIN_DP && it <= RAFT_LIST_PANE_MAX_DP }
+        ?: RAFT_LIST_PANE_DEFAULT_DP
 
 /**
  * The width the list renders at: [preferredDp] within the limits and within what the split row
  * ([rowWidthDp], null before it is measured) leaves after the detail minimum. The saved preference
  * is not changed by this clamp, so a window that grows back gets the user's width again.
  */
-@SlockCoreInternalApi
-fun slockListPaneWidthDp(preferredDp: Float, rowWidthDp: Float?): Float {
+@RaftCoreInternalApi
+fun raftListPaneWidthDp(preferredDp: Float, rowWidthDp: Float?): Float {
     val windowMax =
-        rowWidthDp?.let { it - SLOCK_LIST_PANE_DIVIDER_DP - SLOCK_LIST_PANE_DETAIL_MIN_DP }
-            ?: SLOCK_LIST_PANE_MAX_DP
-    val max = minOf(SLOCK_LIST_PANE_MAX_DP, windowMax).coerceAtLeast(SLOCK_LIST_PANE_MIN_DP)
-    return preferredDp.coerceIn(SLOCK_LIST_PANE_MIN_DP, max)
+        rowWidthDp?.let { it - RAFT_LIST_PANE_DIVIDER_DP - RAFT_LIST_PANE_DETAIL_MIN_DP }
+            ?: RAFT_LIST_PANE_MAX_DP
+    val max = minOf(RAFT_LIST_PANE_MAX_DP, windowMax).coerceAtLeast(RAFT_LIST_PANE_MIN_DP)
+    return preferredDp.coerceIn(RAFT_LIST_PANE_MIN_DP, max)
 }
 
 /**
@@ -49,22 +49,22 @@ fun slockListPaneWidthDp(preferredDp: Float, rowWidthDp: Float?): Float {
  * Starting from the rendered width (not the saved one) keeps the divider under the finger when
  * the window had clamped the list.
  */
-@SlockCoreInternalApi
-fun slockListPaneDraggedWidthDp(startWidthDp: Float, dragDeltaDp: Float, rowWidthDp: Float?): Float =
-    slockListPaneWidthDp(startWidthDp + dragDeltaDp, rowWidthDp)
+@RaftCoreInternalApi
+fun raftListPaneDraggedWidthDp(startWidthDp: Float, dragDeltaDp: Float, rowWidthDp: Float?): Float =
+    raftListPaneWidthDp(startWidthDp + dragDeltaDp, rowWidthDp)
 
 /** What a finished drag saves: whole dp, so the stored value is stable across densities. */
-@SlockCoreInternalApi
-fun slockListPaneStoredWidth(widthDp: Float): String =
-    widthDp.coerceIn(SLOCK_LIST_PANE_MIN_DP, SLOCK_LIST_PANE_MAX_DP).toInt().toString()
+@RaftCoreInternalApi
+fun raftListPaneStoredWidth(widthDp: Float): String =
+    widthDp.coerceIn(RAFT_LIST_PANE_MIN_DP, RAFT_LIST_PANE_MAX_DP).toInt().toString()
 
 /**
  * One list-divider drag. [end] reports the end exactly once per started drag however it is
  * reached (lift, gesture cancel, host inactive, handle disposed, density change); movement after
  * the end is ignored.
  */
-@SlockCoreInternalApi
-class SlockListPaneDragSession(private val onEnd: (reason: String) -> Unit) {
+@RaftCoreInternalApi
+class RaftListPaneDragSession(private val onEnd: (reason: String) -> Unit) {
     var active: Boolean = false
         private set
     private var startWidthDp = 0f

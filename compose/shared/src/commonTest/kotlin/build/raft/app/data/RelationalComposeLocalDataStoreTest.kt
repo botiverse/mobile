@@ -61,7 +61,7 @@ class RelationalComposeLocalDataStoreTest {
         )
     }
 
-    private class SnapshotRelationalStore : SlockRelationalStore {
+    private class SnapshotRelationalStore : RaftRelationalStore {
         private val values = mutableMapOf<Pair<String, String>, String>()
 
         override suspend fun execute(sql: String, bindArgs: List<RelationalValue>) {
@@ -97,7 +97,7 @@ class RelationalComposeLocalDataStoreTest {
                 else -> RelationalRows(emptyList(), emptyList())
             }
 
-        override suspend fun transaction(block: suspend SlockRelationalStore.() -> Unit) {
+        override suspend fun transaction(block: suspend RaftRelationalStore.() -> Unit) {
             block()
         }
 

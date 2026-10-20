@@ -31,7 +31,7 @@ class RuntimeAccountUsageTest {
     fun freshSnapshotParsesAccountsAndWindowsIgnoringUnknownFields() = runPortableCoroutineTest<Unit> {
         val api = FakeUsageApi { ok(FRESH_BODY) }
         val read = assertIs<DataResult.Content<RuntimeAccountUsageRead>>(
-            SlockComputersApiClient(api).runtimeAccountUsage(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude)
+            RaftComputersApiClient(api).runtimeAccountUsage(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude)
         ).data
         assertEquals(listOf("GET servers/s1/machines/m1/runtime-account-usage/claude"), api.calls)
         val available = assertIs<RuntimeAccountUsageRead.Available>(read)
@@ -102,7 +102,7 @@ class RuntimeAccountUsageTest {
             """[]"""
         ).forEach { body ->
             val error = assertIs<DataResult.Error>(
-                SlockComputersApiClient(FakeUsageApi { ok(body) })
+                RaftComputersApiClient(FakeUsageApi { ok(body) })
                     .runtimeAccountUsage(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude),
                 body
             )
@@ -243,9 +243,9 @@ class RuntimeAccountUsageTest {
     /** The identity the fake session currently authenticates as. */
     private var signedIn: SharedComputersOwner? = key().owner
 
-    private fun store(api: FakeUsageApi, clock: SlockEpochMillisSource = SlockEpochMillisSource { 0L }) =
+    private fun store(api: FakeUsageApi, clock: RaftEpochMillisSource = RaftEpochMillisSource { 0L }) =
         SharedRuntimeAccountUsageStore(
-            client = SlockComputersApiClient(api),
+            client = RaftComputersApiClient(api),
             currentIdentity = { signedIn },
             clock = clock
         )
@@ -264,7 +264,7 @@ class RuntimeAccountUsageTest {
     private class FakeUsageApi(
         private val beforeRespond: suspend () -> Unit = {},
         private val respond: (String) -> HomeNetworkResponse
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val calls = mutableListOf<String>()
 
         override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse {

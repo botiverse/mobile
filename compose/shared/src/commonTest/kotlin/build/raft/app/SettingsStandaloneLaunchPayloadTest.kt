@@ -152,11 +152,11 @@ class SettingsStandaloneLaunchPayloadTest {
         // password row (artin, task #341).
         val accounts =
             listOf(
-                KuiklySettingsConnectedAccount(providerId = "password", provider = "Email password", identifier = "artin@example.com", status = "connected"),
-                KuiklySettingsConnectedAccount(providerId = "", provider = "Email password", identifier = "artin@example.com", status = "connected"),
-                KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected"),
-                KuiklySettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected"),
-                KuiklySettingsConnectedAccount(providerId = "saml", provider = "SAML", identifier = "corp.example.com", status = "connected")
+                RaftSettingsConnectedAccount(providerId = "password", provider = "Email password", identifier = "artin@example.com", status = "connected"),
+                RaftSettingsConnectedAccount(providerId = "", provider = "Email password", identifier = "artin@example.com", status = "connected"),
+                RaftSettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected"),
+                RaftSettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected"),
+                RaftSettingsConnectedAccount(providerId = "saml", provider = "SAML", identifier = "corp.example.com", status = "connected")
             )
 
         assertEquals(
@@ -166,16 +166,16 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     // Sign in with Apple is iOS-only. The sign-in page gates its button on
-    // `slockPlatformSupportsAppleSignIn()`; this list had no such gate, so turning Apple on
+    // `raftPlatformSupportsAppleSignIn()`; this list had no such gate, so turning Apple on
     // server-side put a Connect entry on Android that can never complete (artin, task #981).
     @Test
     fun unsupportedHostHidesTheAppleConnectOfferButKeepsAnExistingAppleLink() {
         val offered =
-            KuiklySettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "Not connected", status = "notConnected")
+            RaftSettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "Not connected", status = "notConnected")
         val linked =
-            KuiklySettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "artin@example.com", status = "connected")
+            RaftSettingsConnectedAccount(providerId = "apple", provider = "Apple", identifier = "artin@example.com", status = "connected")
         val google =
-            KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected")
+            RaftSettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected")
 
         // Android: the offer disappears, everything else is untouched.
         assertEquals(

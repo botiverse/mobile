@@ -3,9 +3,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Page navigation for CMP pages (`RouterModule.openPage` / `closePage`, through each page's
- * `SlockCmpPageNavigator`). The former Kuikly `KRRouterHandler`: identity-only pageData,
+ * `RaftCmpPageNavigator`). The former Kuikly `KRRouterHandler`: identity-only pageData,
  * `slockReplaceCurrentPage` replacement and the login replacement dedupe. Every page is created
- * by `SlockPageControllerFactory` (a `RaftPageViewController` hosting the CMP page).
+ * by `RaftPageControllerFactory` (a `RaftPageViewController` hosting the CMP page).
  * Main thread only.
  */
 @interface RaftPageRouter : NSObject

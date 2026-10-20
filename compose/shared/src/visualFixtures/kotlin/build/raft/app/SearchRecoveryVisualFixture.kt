@@ -15,7 +15,7 @@ import build.raft.app.compat.pager.Page
 internal class SearchRecoveryVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(brutalTheme) { SearchRecoveryVisualContent() } }
+        setContent { RaftThemeProvider(brutalTheme) { SearchRecoveryVisualContent() } }
     }
 }
 
@@ -24,7 +24,7 @@ private fun SearchRecoveryVisualContent() {
     val scope = rememberCoroutineScope()
     var wireStatus by remember { mutableStateOf("Waiting for initial request") }
     val store = remember {
-        val auth = InMemorySlockAuthSessionStore(homeSearchVisualSession)
+        val auth = InMemoryRaftAuthSessionStore(homeSearchVisualSession)
         val network = SearchRecoveryVisualNetwork { wireStatus = it }
         SharedHomeSearchSavedStore(
             authStore = auth, savedRepository = RealSavedRepository(auth, network),
@@ -53,7 +53,7 @@ private fun SearchRecoveryVisualContent() {
     }
 }
 
-private class SearchRecoveryVisualNetwork(val report: (String) -> Unit) : SlockNetworkClient {
+private class SearchRecoveryVisualNetwork(val report: (String) -> Unit) : RaftNetworkClient {
     private var initial: List<Pair<String, String>>? = null
     override suspend fun request(
         priority: DataRequestPriority, path: String, method: String,

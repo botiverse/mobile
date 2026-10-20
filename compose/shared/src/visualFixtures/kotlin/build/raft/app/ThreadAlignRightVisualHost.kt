@@ -33,8 +33,8 @@ private fun threadAlignRightVisualFixtureMessage(
     body: String,
     deliveryState: String = ThreadMessageDeliverySent,
     pending: Boolean = false
-): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+): RaftThreadMessageItem =
+    RaftThreadMessageItem(
         id = id,
         authorId = "member-own",
         authorName = "You",
@@ -45,7 +45,7 @@ private fun threadAlignRightVisualFixtureMessage(
         deliveryState = deliveryState,
         pendingSendContext =
             if (pending) {
-                KuiklyThreadPendingSendContext(channelId = "channel-align-right", body = body)
+                RaftThreadPendingSendContext(channelId = "channel-align-right", body = body)
             } else {
                 null
             }
@@ -101,12 +101,12 @@ internal fun ThreadAlignRightVisualScreen() {
                 retryTint = Color(0xFFFFFF00)
             )
     ) {
-        Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             fixtures.forEach { message ->
                 Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
                 ThreadMessageCard(
                     message = message,
-                    messageBodyTextStyle = slockMessageBodyTextStyle("md"),
+                    messageBodyTextStyle = raftMessageBodyTextStyle("md"),
                     alignOwnMessageRight = true,
                     onShowActions = {},
                     onOpenMember = {},

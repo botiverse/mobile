@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.compat.pager.Pager
 
-internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Marketplace, storeScope)
 }
 

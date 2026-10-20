@@ -21,17 +21,17 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.SlockRelativeTimeLabel
-import build.raft.app.model.SlockTimeFormat12Hour
-import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.resolveSlockRelativeTimeLabel
+import build.raft.app.model.RaftRelativeTimeLabel
+import build.raft.app.model.RaftTimeFormat12Hour
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.resolveRaftRelativeTimeLabel
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
-import build.raft.app.model.slockEpochDayForDate
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.threadIdentity
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
@@ -58,8 +58,8 @@ import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
-import build.raft.app.data.SlockTasksApi
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftTasksApi
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.ThreadMessagesPage
@@ -80,7 +80,7 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import build.raft.app.slockMonoFamilyForWeight
+import build.raft.app.raftMonoFamilyForWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -194,7 +194,7 @@ class ThreadPayloadTest {
         val previousRouteIdentity =
             checkNotNull(previousShape.toInitialPayloadOrNull("fallback")).resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.channelKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launch.channelKind)
         assertEquals(null, previousShape.channelKind)
         assertEquals(previousRouteIdentity, newRouteIdentity)
     }
@@ -215,17 +215,17 @@ class ThreadPayloadTest {
                 parentSurfaceKind = "direct"
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, identity.thread?.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, identity.thread?.parentSurfaceKind)
 
         val payload = requireNotNull(buildStandaloneConversationThreadLaunchPayload(identity, timeContext = null))
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
     }
 
     @Test
     fun screenPayloadWireLaunchPreservesDirectParentSurfaceKind() {
         val launch =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "dm-parent-1",
                 parentMessageId = "parent-message-1",
                 parentSurfaceKind = "direct",
@@ -233,7 +233,7 @@ class ThreadPayloadTest {
                 streamChannelId = "reply-stream-1"
             ).toWireThreadLaunchPayload()
 
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
     }
 
     @Test
@@ -252,19 +252,19 @@ class ThreadPayloadTest {
     fun composerPendingImageAttachmentGroupIncludesReadyImagesForGallery() {
         val attachments =
             listOf(
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "image-1",
                     fileName = "first.png",
                     mimeType = "image/png",
                     previewUri = "file://first"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "file-1",
                     fileName = "notes.txt",
                     mimeType = "text/plain",
                     previewUri = "file://notes"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "image-2",
                     fileName = "second.jpg",
                     mimeType = "image/jpeg",
@@ -283,21 +283,21 @@ class ThreadPayloadTest {
     fun composerPendingImageAttachmentGroupIgnoresUploadingFailedAndMissingPreviewImages() {
         val attachments =
             listOf(
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "image-uploading",
                     fileName = "uploading.png",
                     mimeType = "image/png",
                     previewUri = "file://uploading",
                     status = "uploading"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "image-failed",
                     fileName = "failed.png",
                     mimeType = "image/png",
                     previewUri = "file://failed",
                     status = "failed"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "image-no-preview",
                     fileName = "no-preview.png",
                     mimeType = "image/png"
@@ -363,11 +363,11 @@ class ThreadPayloadTest {
 
     @Test
     fun composerImagePickerRequiresMatchingImageMimeAndExtension() {
-        assertTrue(slockComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = "image/jpeg"))
-        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "clip.jpg", mimeType = "video/mp4"))
-        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "clip.mp4", mimeType = "image/jpeg"))
-        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = ""))
-        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "photo", mimeType = "image/jpeg"))
+        assertTrue(raftComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = "image/jpeg"))
+        assertFalse(raftComposerImagePickerIsStrictImage(fileName = "clip.jpg", mimeType = "video/mp4"))
+        assertFalse(raftComposerImagePickerIsStrictImage(fileName = "clip.mp4", mimeType = "image/jpeg"))
+        assertFalse(raftComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = ""))
+        assertFalse(raftComposerImagePickerIsStrictImage(fileName = "photo", mimeType = "image/jpeg"))
     }
 
     @Test
@@ -377,7 +377,7 @@ class ThreadPayloadTest {
                 PlatformFile(id = "image", fileName = "photo.png", mimeType = "image/png"),
                 PlatformFile(id = "video", fileName = "clip.mp4", mimeType = "video/mp4"),
             )
-        val allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files)
+        val allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files)
 
         assertFalse(allFilesAreImages)
         assertEquals(
@@ -491,7 +491,7 @@ class ThreadPayloadTest {
     @Test
     fun threadMessagePermalinkMatchesReactChannelRoute() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "channel-1",
                 channelKind = "channel"
             )
@@ -511,8 +511,8 @@ class ThreadPayloadTest {
     @Test
     fun threadMessagePermalinkUsesParentThreadParamForReplyRows() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "parent-1",
                 sourceThreadId = "thread-1",
@@ -538,8 +538,8 @@ class ThreadPayloadTest {
         // parent channel kind of "direct" routes as dm (the old private vocab table
         // rejected it and fell to the channel route).
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "dm-parent",
                 parentMessageId = "parent-1",
                 sourceThreadId = "thread-1",
@@ -577,7 +577,7 @@ class ThreadPayloadTest {
                 body = "Parent",
                 replyCount = 4,
                 isThreadFollowed = true
-            ).toKuiklyThreadMessageItem(currentUserId = null)
+            ).toRaftThreadMessageItem(currentUserId = null)
 
         assertEquals("thread-1", row.threadChannelId)
         assertEquals(4, row.replyCount)
@@ -587,7 +587,7 @@ class ThreadPayloadTest {
     @Test
     fun compactThreadAuthorSuppressionResetsAfterWindowDayOrAuthorChanges() {
         val base =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "u-artin",
                 authorName = "Artin",
@@ -624,7 +624,7 @@ class ThreadPayloadTest {
                         timestampLabel = "Now",
                         deliveryState = ThreadMessageDeliverySending,
                         pendingSendContext =
-                            KuiklyThreadPendingSendContext(
+                            RaftThreadPendingSendContext(
                                 channelId = "channel-1",
                                 body = "optimistic"
                             )
@@ -646,16 +646,16 @@ class ThreadPayloadTest {
                 originPreview = null,
                 originErrorCode = null,
                 timeContext =
-                    SlockTimeContext(
+                    RaftTimeContext(
                         localOffsetMinutes = 480,
-                        todayEpochDay = slockEpochDayForDate(2026, 6, 28),
-                        timeFormat = SlockTimeFormat12Hour
+                        todayEpochDay = raftEpochDayForDate(2026, 6, 28),
+                        timeFormat = RaftTimeFormat12Hour
                     ),
                 members = emptyList()
             )
         val compactTimestamp =
             twelveHourRenderConfig.formatCompactTimestampLabel(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "message-24h",
                     authorId = "user-1",
                     authorName = "User",
@@ -689,12 +689,12 @@ class ThreadPayloadTest {
     @Test
     fun threadDateDividerLabelAppearsOnlyWhenLocalDayChanges() {
         val timeContext =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 0,
-                todayEpochDay = slockEpochDayForDate(2026, 7, 4)
+                todayEpochDay = raftEpochDayForDate(2026, 7, 4)
             )
         val julyOne =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "u-artin",
                 authorName = "Artin",
@@ -714,7 +714,7 @@ class ThreadPayloadTest {
     @Test
     fun threadDateDividerLabelsRefreshAcrossLocalMidnightWithoutReorderingMessages() {
         val previousDayMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "u-artin",
                 authorName = "Artin",
@@ -726,22 +726,22 @@ class ThreadPayloadTest {
                 timestampLabel = "2026-07-23T00:01:00+08:00"
             )
         val provider =
-            SlockTimeContextProvider(
-                SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                    parseSlockTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!,
-                    SlockLegacyTestDatetimeFoundationOwner,
+            RaftTimeContextProvider(
+                RaftTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
+                    parseRaftTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!,
+                    RaftLegacyTestDatetimeFoundationOwner,
                 )
             )
         val renderConfig =
-            KuiklyThreadScreenPayload(localOffsetMinutes = 480).toThreadTimelineRenderConfig()
+            RaftThreadScreenPayload(localOffsetMinutes = 480).toThreadTimelineRenderConfig()
         val launchDividerContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
 
         assertEquals("TODAY", threadDateDividerLabel(null, previousDayMessage, launchDividerContext))
 
         provider.update(
-            SlockTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                parseSlockTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!,
-                SlockLegacyTestDatetimeFoundationOwner,
+            RaftTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
+                parseRaftTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!,
+                RaftLegacyTestDatetimeFoundationOwner,
             )
         )
         val refreshedContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
@@ -751,8 +751,8 @@ class ThreadPayloadTest {
         assertEquals(
             listOf("m1", "m2"),
             listOf(previousDayMessage, currentDayMessage)
-                .sortedBy { parseSlockTimestampEpochMillisOrNull(it.timestampLabel, refreshedContext.localOffsetMinutes) }
-                .map(KuiklyThreadMessageItem::id)
+                .sortedBy { parseRaftTimestampEpochMillisOrNull(it.timestampLabel, refreshedContext.localOffsetMinutes) }
+                .map(RaftThreadMessageItem::id)
         )
     }
 
@@ -766,7 +766,7 @@ class ThreadPayloadTest {
         // Space Mono ships weight in the family (Kuikly drops serialized weight),
         // so the bold divider uses the mono Bold family with Normal weight (#375).
         assertEquals(FontWeight.Normal, style.fontWeight)
-        assertEquals(slockMonoFamilyForWeight(FontWeight.Bold), style.fontFamily)
+        assertEquals(raftMonoFamilyForWeight(FontWeight.Bold), style.fontFamily)
     }
 
     @Test
@@ -774,11 +774,11 @@ class ThreadPayloadTest {
         val payload =
             buildMarkdownChannelLaunchPayload(
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         instanceId = "current-thread",
                         alignOwnMessagesRight = true,
                         localOffsetMinutes = 480,
-                        timeFormat = SlockTimeFormat12Hour
+                        timeFormat = RaftTimeFormat12Hour
                     ),
                 home =
                     markdownChannelHomeSnapshot(
@@ -794,8 +794,8 @@ class ThreadPayloadTest {
             )
 
         checkNotNull(payload)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.channelKind)
         assertEquals("channel-general-id", payload.sourceThreadId)
         assertEquals("channel-general-id", payload.streamChannelId)
         assertEquals("chat", payload.selectedTab)
@@ -803,14 +803,14 @@ class ThreadPayloadTest {
         assertEquals(emptyList(), payload.messages)
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(480, payload.localOffsetMinutes)
-        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+        assertEquals(RaftTimeFormat12Hour, payload.timeFormat)
     }
 
     @Test
     fun markdownChannelLaunchPayloadPreservesJointChannelKind() {
         val payload =
             buildMarkdownChannelLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home =
                     markdownChannelHomeSnapshot(
                         ConversationSummary(
@@ -825,7 +825,7 @@ class ThreadPayloadTest {
             )
 
         checkNotNull(payload)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("joint", payload.channelKind)
         assertEquals("joint-local-id", payload.streamChannelId)
     }
@@ -848,8 +848,8 @@ class ThreadPayloadTest {
                 )
             )
 
-        assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#missing"))
-        assertEquals(null, buildMarkdownChannelLaunchPayload(KuiklyThreadScreenPayload(), home, "#design"))
+        assertEquals(null, buildMarkdownChannelLaunchPayload(RaftThreadScreenPayload(), home, "#missing"))
+        assertEquals(null, buildMarkdownChannelLaunchPayload(RaftThreadScreenPayload(), home, "#design"))
     }
 
     @Test
@@ -857,12 +857,12 @@ class ThreadPayloadTest {
         val payload =
             buildMarkdownThreadRefLaunchPayload(
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         instanceId = "current-thread",
                         alignOwnMessagesRight = true,
                         compactConsecutiveMessages = true,
                         localOffsetMinutes = 480,
-                        timeFormat = SlockTimeFormat12Hour
+                        timeFormat = RaftTimeFormat12Hour
                     ),
                 home =
                     markdownChannelHomeSnapshot(
@@ -882,7 +882,7 @@ class ThreadPayloadTest {
             )
 
         checkNotNull(payload)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("joint", payload.parentChannelKind)
         assertEquals("home-channel-id", payload.parentChannelId)
         assertEquals("5fbf9608-1111-2222-3333-444444444444", payload.parentMessageId)
@@ -895,7 +895,7 @@ class ThreadPayloadTest {
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.compactConsecutiveMessages)
         assertEquals(480, payload.localOffsetMinutes)
-        assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+        assertEquals(RaftTimeFormat12Hour, payload.timeFormat)
     }
 
     @Test
@@ -951,7 +951,7 @@ class ThreadPayloadTest {
 
     @Test
     fun cachedTimelineRendersWhileComposerWaitsForResolvedAccessInBothConversationSurfaces() {
-        val uncachedLoadingPayload = KuiklyThreadScreenPayload(status = "loading")
+        val uncachedLoadingPayload = RaftThreadScreenPayload(status = "loading")
         assertFalse(uncachedLoadingPayload.hasRenderableContentForComposer())
         assertTrue(
             uncachedLoadingPayload.shouldRenderThreadLoadingShell(
@@ -959,14 +959,14 @@ class ThreadPayloadTest {
                 accessResolution = ThreadAccessResolution.Loading
             )
         )
-        listOf(KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.ReplyThread).forEach { surfaceKind ->
+        listOf(RaftThreadSurfaceKind.Channel, RaftThreadSurfaceKind.ReplyThread).forEach { surfaceKind ->
             val cachedLoadingPayload =
-                KuiklyThreadScreenPayload(
+                RaftThreadScreenPayload(
                     status = "loading",
                     surfaceKind = surfaceKind,
                     messages =
                         listOf(
-                            KuiklyThreadMessageItem(
+                            RaftThreadMessageItem(
                                 id = "m1",
                                 authorId = "u1",
                                 authorName = "Artin",
@@ -1024,8 +1024,8 @@ class ThreadPayloadTest {
             )
             assertTrue(cachedContentPayload.hasRenderableContentForComposer())
         }
-        val unjoinedLoading = KuiklyThreadScreenPayload(status = "loading", joined = false)
-        val unjoinedContent = KuiklyThreadScreenPayload(status = "content", joined = false)
+        val unjoinedLoading = RaftThreadScreenPayload(status = "loading", joined = false)
+        val unjoinedContent = RaftThreadScreenPayload(status = "content", joined = false)
         assertFalse(
             unjoinedLoading.isThreadPrimaryFooterReady(
                 timelineSlice = unjoinedLoading.toThreadTimelineSlice(),
@@ -1038,25 +1038,25 @@ class ThreadPayloadTest {
                 accessResolution = ThreadAccessResolution.Resolved
             )
         )
-        assertTrue(KuiklyThreadScreenPayload(status = "content").hasRenderableContentForComposer())
-        assertTrue(KuiklyThreadScreenPayload(status = "empty").hasRenderableContentForComposer())
-        assertFalse(KuiklyThreadScreenPayload(status = "error").hasRenderableContentForComposer())
-        assertFalse(KuiklyThreadScreenPayload(status = "no_permission").hasRenderableContentForComposer())
+        assertTrue(RaftThreadScreenPayload(status = "content").hasRenderableContentForComposer())
+        assertTrue(RaftThreadScreenPayload(status = "empty").hasRenderableContentForComposer())
+        assertFalse(RaftThreadScreenPayload(status = "error").hasRenderableContentForComposer())
+        assertFalse(RaftThreadScreenPayload(status = "no_permission").hasRenderableContentForComposer())
     }
 
     @Test
     fun consumeComposerSeedForSendRemovesOnlySentAttachments() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         seedText = "Diagnostics attached",
                         seedAsTask = true,
                         syncNonce = 7,
                         pendingAttachments =
                             listOf(
-                                KuiklyPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt"),
-                                KuiklyPendingAttachmentItem(id = "manual-att-2", fileName = "manual.txt")
+                                RaftPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt"),
+                                RaftPendingAttachmentItem(id = "manual-att-2", fileName = "manual.txt")
                             )
                     )
             )
@@ -1076,14 +1076,14 @@ class ThreadPayloadTest {
     @Test
     fun consumeComposerSeedForSendPreservesUnmatchedSeedText() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         seedText = "Keep this draft",
                         syncNonce = 2,
                         pendingAttachments =
                             listOf(
-                                KuiklyPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt")
+                                RaftPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt")
                             )
                     )
             )
@@ -1102,7 +1102,7 @@ class ThreadPayloadTest {
     @Test
     fun threadRowDoesNotUseMessageStatusWhenCanonicalStatusIsUnavailable() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "agent-1",
                 authorName = "Agent",
@@ -1119,7 +1119,7 @@ class ThreadPayloadTest {
             AgentStatus.Working,
             resolveThreadAgentStatusIndicatorState(
                 message,
-                canonicalState = slockAgentStatusIndicatorState(
+                canonicalState = raftAgentStatusIndicatorState(
                     status = AgentStatus.Working,
                     presence = Presence.Active,
                     external = false
@@ -1131,7 +1131,7 @@ class ThreadPayloadTest {
     @Test
     @OptIn(ExperimentalSerializationApi::class)
     fun threadMemberSnapshotSchemaCarriesNoRuntimeStatus() {
-        val descriptor = KuiklyThreadMemberItem.serializer().descriptor
+        val descriptor = RaftThreadMemberItem.serializer().descriptor
         val names =
             (0 until descriptor.elementsCount)
                 .map(descriptor::getElementName)
@@ -1177,13 +1177,13 @@ class ThreadPayloadTest {
     fun inlineRepliesVisualFixturePinsItsOwnClockSoReplyTimestampsRenderRealDigits() {
         // The capture case components.thread.message-row.inline-replies exists to guard the inline
         // reply timestamp row, but every reply rendered the literal "unknown time": the fixture host
-        // installed no time context, so resolveSlockRelativeTimeLabel() answered Unknown for a
+        // installed no time context, so resolveRaftRelativeTimeLabel() answered Unknown for a
         // perfectly parseable createdAt. A row with no digits cannot guard digit rendering, which is
         // how the non-monospace timestamp fixed in #2074 got past it. The pinned clock below keeps
         // the capture deterministic while making the row show real, comparable digits.
         val payload =
             threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES, "visual-thread-inline-replies")
-        val timeContext = payload.toSlockTimeContext()
+        val timeContext = payload.toRaftTimeContext()
 
         assertEquals(1_784_888_400_000L, timeContext.nowEpochMillis)
         assertEquals(480, timeContext.localOffsetMinutes)
@@ -1195,18 +1195,18 @@ class ThreadPayloadTest {
         val message = payload.messages.single()
         assertEquals("2026-07-24T10:20:00Z", message.timestampLabel)
         assertNotEquals(
-            SlockRelativeTimeLabel.Unknown,
-            resolveSlockRelativeTimeLabel(message.timestampLabel, timeContext),
+            RaftRelativeTimeLabel.Unknown,
+            resolveRaftRelativeTimeLabel(message.timestampLabel, timeContext),
             "the header timestamp must resolve to a real label, not the unknown-time fallback"
         )
-        assertEquals("18:20", slockAbsoluteTimestampLabel(message.timestampLabel, timeContext))
+        assertEquals("18:20", raftAbsoluteTimestampLabel(message.timestampLabel, timeContext))
 
         val replies = message.inlineReplies?.replies.orEmpty()
         assertEquals(3, replies.size)
         replies.forEach { reply ->
             assertNotEquals(
-                SlockRelativeTimeLabel.Unknown,
-                resolveSlockRelativeTimeLabel(reply.createdAt, timeContext),
+                RaftRelativeTimeLabel.Unknown,
+                resolveRaftRelativeTimeLabel(reply.createdAt, timeContext),
                 "reply ${reply.messageId} must resolve to a real label, not the unknown-time fallback"
             )
         }
@@ -1214,7 +1214,7 @@ class ThreadPayloadTest {
         // on the pinned clock's local day, so the row renders bare digits at +08:00.
         assertEquals(
             listOf("18:16", "18:18", "18:20"),
-            replies.map { slockAbsoluteTimestampLabel(it.createdAt, timeContext) }
+            replies.map { raftAbsoluteTimestampLabel(it.createdAt, timeContext) }
         )
     }
 
@@ -1248,7 +1248,7 @@ class ThreadPayloadTest {
         val message = payload.messages.single()
 
         assertEquals("visual-thread-task524-markdown-visible", payload.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel-home", payload.parentChannelId)
         assertEquals("parent-task524-visible", payload.parentMessageId)
         assertFalse(payload.showReplyActions)
@@ -1265,7 +1265,7 @@ class ThreadPayloadTest {
     @Test
     fun genericAttachmentNoPreviewMetaLineHidesMimeType() {
         val attachment =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-1",
                 name = "archive.zip",
                 sizeLabel = "42 KB",
@@ -1278,14 +1278,14 @@ class ThreadPayloadTest {
     @Test
     fun attachmentChipMetaKeepsSemanticPreviewLabelsWithoutMime() {
         val pdf =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-pdf",
                 name = "visual-parity-notes.pdf",
                 sizeLabel = "184 KB",
                 mimeType = "application/pdf"
             )
         val html =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-html",
                 name = "thread-screen-preview.html",
                 sizeLabel = "32 KB",
@@ -1301,25 +1301,25 @@ class ThreadPayloadTest {
     @Test
     fun universalMp4UsesInlineVideoPreviewWithoutWideningUnknownFiles() {
         val mp4ByMime =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-video-mime",
                 name = "clip.bin",
                 mimeType = "video/mp4; codecs=avc1"
             )
         val mp4ByName =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-video-name",
                 name = "demo.MP4?download=1",
                 mimeType = "application/octet-stream"
             )
         val unknownVideo =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-video-unknown",
                 name = "demo.futurevideo",
                 mimeType = "video/vnd.future-container"
             )
         val archive =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-archive",
                 name = "demo.zip",
                 mimeType = "application/zip"
@@ -1334,37 +1334,37 @@ class ThreadPayloadTest {
     @Test
     fun threadAttachmentItemMatchesAudioAttachmentsByMimeOrExtension() {
         val mp3ByMime =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-mp3-mime",
                 name = "recording.bin",
                 mimeType = "audio/mpeg"
             )
         val wavByName =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-wav-name",
                 name = "recording.wav",
                 mimeType = "application/octet-stream"
             )
         val m4aByMime =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-m4a-mime",
                 name = "voice.bin",
                 mimeType = "audio/x-m4a"
             )
         val oggByName =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-ogg-name",
                 name = "music.ogg",
                 mimeType = ""
             )
         val flacByName =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-flac-name",
                 name = "lossless.flac",
                 mimeType = ""
             )
         val nonAudio =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = "att-archive",
                 name = "demo.zip",
                 mimeType = "application/zip"
@@ -1515,7 +1515,7 @@ class ThreadPayloadTest {
         val pending =
             WireThreadLaunchPayload(
                 instanceId = "thread-original",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 threadId = "reply-stream",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
@@ -1635,7 +1635,7 @@ class ThreadPayloadTest {
         )
         assertEquals(
             4,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 originStatus = "content",
                 messages = (0 until 3).map { index -> testThreadMessage("reply-$index") }
             ).latestMessageListItemIndex()
@@ -1645,7 +1645,7 @@ class ThreadPayloadTest {
     @Test
     fun threadBottomScrollPaddingAnchorsToLastLazyRow() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 originStatus = "content",
                 messages = (0 until 3).map { index -> testThreadMessage("reply-$index") },
                 canLoadMoreAfter = true
@@ -1666,7 +1666,7 @@ class ThreadPayloadTest {
     @Test
     fun threadInlineSearchMatchesOriginAndRepliesInListOrder() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 originStatus = "content",
                 originMessage = testThreadMessage("origin").copy(body = "The launch decision"),
                 messages =
@@ -1690,7 +1690,7 @@ class ThreadPayloadTest {
     @Test
     fun threadInlineSearchMatchesAuthorFieldsAndIgnoresBlankQuery() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 messages =
                     listOf(
                         testThreadMessage("reply-0").copy(authorName = "Artin", body = "hello"),
@@ -1709,7 +1709,7 @@ class ThreadPayloadTest {
     @Test
     fun threadRealOlderBoundaryRendersWithFullMessageList() {
         val fullPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 messages = listOf(testThreadMessage("reply-0"), testThreadMessage("reply-1")),
                 canLoadMoreBefore = false,
                 olderMessagesStatus = "idle"
@@ -1876,7 +1876,7 @@ class ThreadPayloadTest {
 
     @Test
     fun floatingOverlayPositionHandlesCrampedAndBottomAnchors() {
-        val cramped = SlockFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
+        val cramped = RaftFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
         assertEquals(
             Offset(8f, 8f),
             cramped.positionContent(
@@ -1886,7 +1886,7 @@ class ThreadPayloadTest {
             )
         )
 
-        val roomy = SlockFloatingOverlayLayout(size = Size(width = 420f, height = 560f))
+        val roomy = RaftFloatingOverlayLayout(size = Size(width = 420f, height = 560f))
         assertEquals(
             Offset(200f, 338f),
             roomy.positionContent(
@@ -1895,11 +1895,11 @@ class ThreadPayloadTest {
                 viewportGap = 8f,
                 horizontalOffset = -16f,
                 verticalOffset = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto
             )
         )
 
-        val rightEdgeFilter = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        val rightEdgeFilter = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         assertEquals(
             Offset(162f, 108f),
             rightEdgeFilter.positionContent(
@@ -1907,7 +1907,7 @@ class ThreadPayloadTest {
                 contentSize = Size(width = 220f, height = 360f),
                 viewportGap = 8f,
                 verticalOffset = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
                 horizontalAutoFlip = false
             )
         )
@@ -1919,14 +1919,14 @@ class ThreadPayloadTest {
                 contentSize = Size(width = 320f, height = 240f),
                 viewportGap = 8f,
                 verticalOffsetAbove = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Above
+                verticalPlacement = RaftFloatingVerticalPlacement.Above
             )
         )
     }
 
     @Test
     fun floatingOverlayPositionSupportsHorizontalCenterPlacement() {
-        val viewport = SlockFloatingOverlayLayout(size = Size(width = 400f, height = 800f))
+        val viewport = RaftFloatingOverlayLayout(size = Size(width = 400f, height = 800f))
         val anchor = Offset(x = 350f, y = 100f) // trigger is on the far right
 
         // Centered horizontally: (400 - 280) / 2 = 60f
@@ -1936,7 +1936,7 @@ class ThreadPayloadTest {
             contentSize = Size(width = 280f, height = 200f),
             viewportGap = 8f,
             verticalOffset = 6f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
         )
         assertEquals(Offset(60f, 106f), centered)
 
@@ -1947,7 +1947,7 @@ class ThreadPayloadTest {
             viewportGap = 8f,
             horizontalOffset = 10f,
             verticalOffset = 6f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
         )
         assertEquals(Offset(70f, 106f), withOffset)
 
@@ -1957,7 +1957,7 @@ class ThreadPayloadTest {
             contentSize = Size(width = 420f, height = 200f),
             viewportGap = 8f,
             verticalOffset = 6f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
         )
         assertEquals(Offset(8f, 106f), wideContent)
     }
@@ -1965,7 +1965,7 @@ class ThreadPayloadTest {
     @Test
     fun typedPayloadKeepsMembersAndSettingsActions() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 title = "对话流专修",
                 membersCount = 2,
@@ -1977,19 +1977,19 @@ class ThreadPayloadTest {
                 removeMemberErrorCode = "member_remove_failed",
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(id = "u1", displayName = "Artin", handle = "artin", roleLabel = "Owner"),
-                        KuiklyThreadMemberItem(id = "a1", displayName = "Android Bot", kind = "agent", avatarLabel = "AB")
+                        RaftThreadMemberItem(id = "u1", displayName = "Artin", handle = "artin", roleLabel = "Owner"),
+                        RaftThreadMemberItem(id = "a1", displayName = "Android Bot", kind = "agent", avatarLabel = "AB")
                     ),
                 memberCandidates =
                     listOf(
-                        KuiklyThreadMemberItem(id = "u2", displayName = "Cindy", handle = "cindy"),
-                        KuiklyThreadMemberItem(id = "a2", displayName = "QA Bot", kind = "agent")
+                        RaftThreadMemberItem(id = "u2", displayName = "Cindy", handle = "cindy"),
+                        RaftThreadMemberItem(id = "a2", displayName = "QA Bot", kind = "agent")
                     ),
                 settingsActions =
                     listOf(
-                        KuiklyThreadSettingsAction(id = "visibility"),
-                        KuiklyThreadSettingsAction(id = "archive"),
-                        KuiklyThreadSettingsAction(id = "delete")
+                        RaftThreadSettingsAction(id = "visibility"),
+                        RaftThreadSettingsAction(id = "archive"),
+                        RaftThreadSettingsAction(id = "delete")
                     )
             )
 
@@ -2053,7 +2053,7 @@ class ThreadPayloadTest {
     @Test
     fun threadAddMemberCandidateSubtitleUsesDescriptionWithoutRoleFallback() {
         val agent =
-            KuiklyThreadMemberItem(
+            RaftThreadMemberItem(
                 id = "agent-1",
                 displayName = "Release Steward",
                 kind = "agent",
@@ -2061,7 +2061,7 @@ class ThreadPayloadTest {
                 description = "  Coordinates release validation.  "
             )
         val human =
-            KuiklyThreadMemberItem(
+            RaftThreadMemberItem(
                 id = "human-1",
                 displayName = "Cindy",
                 kind = "human",
@@ -2069,7 +2069,7 @@ class ThreadPayloadTest {
                 description = "Reviews mobile release evidence."
             )
         val blank =
-            KuiklyThreadMemberItem(
+            RaftThreadMemberItem(
                 id = "agent-2",
                 displayName = "No Description",
                 kind = "agent",
@@ -2085,7 +2085,7 @@ class ThreadPayloadTest {
     fun threadAddMemberSearchUsesDescriptionWithoutRoleFallback() {
         val candidates =
             listOf(
-                KuiklyThreadMemberItem(
+                RaftThreadMemberItem(
                     id = "agent-1",
                     displayName = "Release Steward",
                     handle = "release-steward",
@@ -2093,7 +2093,7 @@ class ThreadPayloadTest {
                     roleLabel = "Runtime Operator",
                     description = "Coordinates package validation."
                 ),
-                KuiklyThreadMemberItem(
+                RaftThreadMemberItem(
                     id = "human-1",
                     displayName = "Cindy",
                     handle = "cindy",
@@ -2144,7 +2144,7 @@ class ThreadPayloadTest {
     @Test
     fun threadMemberRowsUseCanonicalStatusOnly() {
         val canonical =
-            slockAgentStatusIndicatorState(
+            raftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
                 external = false
@@ -2293,7 +2293,7 @@ class ThreadPayloadTest {
 
         assertEquals("thread-private", payload.instanceId)
         assertEquals("loading", payload.status)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("private", payload.channelKind)
     }
 
@@ -2316,8 +2316,8 @@ class ThreadPayloadTest {
 
         assertEquals("thread-direct", payload.instanceId)
         assertEquals("loading", payload.status)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.channelKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.channelKind)
         assertEquals(true, payload.memberScopedMentions)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
@@ -2354,10 +2354,10 @@ class ThreadPayloadTest {
         assertEquals(0, payload.membersCount)
         assertEquals(true, payload.joined)
         assertEquals(true, payload.canSend)
-        assertEquals(emptyList<KuiklyThreadMessageItem>(), payload.messages)
-        assertEquals(emptyList<KuiklyThreadTaskItem>(), payload.tasks)
-        assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.members)
-        assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.memberCandidates)
+        assertEquals(emptyList<RaftThreadMessageItem>(), payload.messages)
+        assertEquals(emptyList<RaftThreadTaskItem>(), payload.tasks)
+        assertEquals(emptyList<RaftThreadMemberItem>(), payload.members)
+        assertEquals(emptyList<RaftThreadMemberItem>(), payload.memberCandidates)
         assertEquals("", payload.resolveThreadComposer().seedText)
         assertEquals(false, payload.resolveThreadComposer().seedAsTask)
         assertEquals(emptyList(), payload.settingsActions)
@@ -2461,7 +2461,7 @@ class ThreadPayloadTest {
         val launch =
             WireThreadLaunchPayload(
                 instanceId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 threadId = "dm-1",
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
@@ -2617,7 +2617,7 @@ class ThreadPayloadTest {
         val headerDisplay =
             payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
 
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals("artin", headerDisplay.title)
@@ -2665,7 +2665,7 @@ class ThreadPayloadTest {
         val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("", payload.title)
         assertEquals("首页专修", headerDisplay.title)
         assertEquals("Home repair", headerDisplay.subtitle)
@@ -2696,7 +2696,7 @@ class ThreadPayloadTest {
             buildAppShellThreadPayloadFromSummary(plain)
                 .threadHeaderDisplayModelFromDirectory(plain.toConversationHeaderProjection())
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, bridgedHeader.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, bridgedHeader.surfaceKind)
         assertEquals("slack", bridgedHeader.bridgeProvider)
         assertEquals(null, plainHeader.bridgeProvider)
     }
@@ -2704,12 +2704,12 @@ class ThreadPayloadTest {
     @Test
     fun directoryProjectionUpdatesThreadHeaderWithoutChangingRouteIdentity() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "Channel",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             )
         val projection =
             SharedConversationDirectoryProjection(
@@ -2717,7 +2717,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1", "stream-channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "private",
                 title = "ops-room",
                 subtitle = "Operations"
@@ -2740,12 +2740,12 @@ class ThreadPayloadTest {
     @Test
     fun channelHeaderIgnoresPayloadTitleWithoutDirectoryProjection() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "wrong-network-title",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
 
@@ -2760,7 +2760,7 @@ class ThreadPayloadTest {
         val routePayload =
             WireThreadLaunchPayload(
                 instanceId = "notification-thread-channel-1-msg-42",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
                 focusedMessageId = "msg-42"
@@ -2773,7 +2773,7 @@ class ThreadPayloadTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-42",
                             authorId = "user-1",
                             authorName = "Artin",
@@ -2794,18 +2794,18 @@ class ThreadPayloadTest {
     @Test
     fun threadHeaderProjectionRoutePayloadUsesResolvedIdentityButNoDisplayContent() {
         val loadedPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-launch",
                 title = "wrong-network-title",
                 subtitle = "wrong-network-subtitle",
                 status = "content",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-42",
                             authorId = "user-1",
                             authorName = "Artin",
@@ -2819,7 +2819,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Joint,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 title = "对话流专修",
                 subtitle = "Thread fixes"
@@ -2845,13 +2845,13 @@ class ThreadPayloadTest {
     @Test
     fun contentSliceRejectsIdentityLikeTitleAndUsesSafeSameRouteHeaderMetadata() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "Channel",
                 subtitle = null,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
         val networkPatch =
@@ -2861,7 +2861,7 @@ class ThreadPayloadTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "user-1",
                             authorName = "Artin",
@@ -2890,7 +2890,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "dm-parent",
                 aliases = setOf("dm-parent"),
                 conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 title = "Cindy"
             )
@@ -2900,19 +2900,19 @@ class ThreadPayloadTest {
                 canonicalChannelId = "dm-parent",
                 aliases = setOf("dm-parent"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general"
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 title = "",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
                 parentChannelId = "dm-parent",
                 parentMessageId = "parent-message",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentSurfaceKind = "direct"
             )
 
@@ -2927,12 +2927,12 @@ class ThreadPayloadTest {
     @Test
     fun threadHeaderProjectionInputKeepsLastAcceptedProjectionWhenCurrentIsEmpty() {
         val routePayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
         val input = routePayload.threadHeaderProjectionInput()
@@ -2942,7 +2942,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Joint,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 title = "raft-mobile",
                 subtitle = "Mobile work"
@@ -2959,12 +2959,12 @@ class ThreadPayloadTest {
     @Test
     fun dmHeaderProjectionInputKeepsLastAcceptedAvatarWhenCurrentIsEmpty() {
         val routePayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-dm-1",
                 title = "",
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm"
             )
         val input = routePayload.threadHeaderProjectionInput()
@@ -2974,7 +2974,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "dm-1",
                 aliases = setOf("dm-1"),
                 conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 title = "artin",
                 avatarWireValue = "pixel:crown",
@@ -3001,12 +3001,12 @@ class ThreadPayloadTest {
     @Test
     fun jointPayloadIgnoresGenericChannelDirectoryProjection() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-joint-1",
                 title = "partner",
                 sourceThreadId = "joint-1",
                 streamChannelId = "joint-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
         val projection =
@@ -3015,7 +3015,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "joint-1",
                 aliases = setOf("joint-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "partner",
                 subtitle = "Generic projection"
@@ -3025,18 +3025,18 @@ class ThreadPayloadTest {
 
         assertFalse(payload.acceptsConversationHeaderProjection(projection))
         assertEquals("joint", headerDisplay.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
     fun genericChannelPayloadAcceptsSpecificDirectoryChannelKind() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-private-1",
                 title = "ops",
                 sourceThreadId = "private-1",
                 streamChannelId = "private-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel"
             )
         val projection =
@@ -3045,7 +3045,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "private-1",
                 aliases = setOf("private-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "private",
                 title = "ops"
             )
@@ -3054,18 +3054,18 @@ class ThreadPayloadTest {
 
         assertTrue(payload.acceptsConversationHeaderProjection(projection))
         assertEquals("private", headerDisplay.channelKind)
-        assertEquals(SlockLucideIconName.Lock, headerDisplay.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.Lock, headerDisplay.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
     fun directoryProjectionDrivesDmHeaderAvatarWithoutChangingRouteIdentity() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "dm-1",
                 title = "Direct Message",
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 dmPeerIdentity =
                     MemberDetailIdentity(
                         memberId = MemberId("agent-1"),
@@ -3080,7 +3080,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "dm-1",
                 aliases = setOf("dm-1", "agent-1"),
                 conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 title = "Product-UX-Designer",
                 avatarWireValue = "pixel:robot",
@@ -3110,15 +3110,15 @@ class ThreadPayloadTest {
     @Test
     fun directoryProjectionDoesNotChangeReplyThreadRequestIdentity() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "reply-message-1",
                 title = ThreadReplyPageTitle,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel
             )
         val projection =
             SharedConversationDirectoryProjection(
@@ -3126,7 +3126,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general"
             )
@@ -3184,7 +3184,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general"
             )
@@ -3220,13 +3220,13 @@ class ThreadPayloadTest {
     @Test
     fun threadHeaderInitialProjectionReadsCachedParentBeforeFlowCollection() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel
             )
         val parentProjection =
             SharedConversationDirectoryProjection(
@@ -3234,7 +3234,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general"
             )
@@ -3302,14 +3302,14 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadShowsParentMutedStatusWithoutExposingItsOwnMuteAction() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "reply-message-1",
                 title = ThreadReplyPageTitle,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 activityMuteSupported = true
             )
         val parentProjection =
@@ -3318,7 +3318,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1", "reply-thread-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general",
                 joined = true,
@@ -3336,12 +3336,12 @@ class ThreadPayloadTest {
     @Test
     fun channelPayloadKeepsActivityMuteStateWhenProjectionClaimsReplyThread() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 joined = true,
                 activityMuteSupported = true
             )
@@ -3351,7 +3351,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Thread,
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "channel",
                 title = "general",
                 joined = true,
@@ -3373,20 +3373,20 @@ class ThreadPayloadTest {
     @Test
     fun mutedIndicatorFollowsCanonicalMuteStateAcrossChannelAndDirectMessageSurfaces() {
         val unmutedChannel =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "channel-1",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 activityMuted = false,
                 activityMuteSupported = true
             )
         val mutedDirectMessage =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "dm-1",
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 activityMuted = true,
                 activityMuteSupported = true
             )
@@ -3407,12 +3407,12 @@ class ThreadPayloadTest {
                 permissions = ConversationPermissions(canSend = true)
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "notification-thread",
                 title = "Channel",
                 sourceThreadId = uuid,
                 streamChannelId = uuid,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             )
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
 
@@ -3422,10 +3422,10 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadHeaderUsesMatchedParentDirectoryProjectionForSubtitle() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 title = ThreadReplyPageTitle,
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
                 originParentMessageId = "message-1",
@@ -3437,7 +3437,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general",
                 subtitle = "General updates"
@@ -3447,16 +3447,16 @@ class ThreadPayloadTest {
 
         assertEquals(ThreadReplyPageTitle, headerDisplay.title)
         assertEquals("#general", headerDisplay.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, headerDisplay.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, headerDisplay.surfaceKind)
         assertEquals(null, payload.subtitle)
     }
 
     @Test
     fun replyThreadHeaderHidesUnverifiedChannelSubtitleWithoutDirectoryProjection() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 title = ThreadReplyPageTitle,
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
                 subtitle = "#product"
@@ -3481,10 +3481,10 @@ class ThreadPayloadTest {
         val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("private", payload.channelKind)
         assertEquals("private", headerDisplay.channelKind)
-        assertEquals(SlockLucideIconName.Lock, headerDisplay.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.Lock, headerDisplay.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
@@ -3501,10 +3501,10 @@ class ThreadPayloadTest {
         val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("joint", payload.channelKind)
         assertEquals("joint", headerDisplay.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, headerDisplay.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
@@ -3530,9 +3530,9 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadComposerUsesServerWideMemberSuggestionsWithMembershipHeaders() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "channel",
                 memberScopedMentions = true
             )
@@ -3544,15 +3544,15 @@ class ThreadPayloadTest {
     @Test
     fun jointReplyThreadComposerUsesParentChannelMemberScope() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "joint-channel-1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "joint",
                 memberScopedMentions = true,
                 composer =
                     buildThreadSurfaceComposerPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         displayName = ThreadReplyPageTitle,
                         fallbackId = "joint-parent-1",
                         enabled = true,
@@ -3570,9 +3570,9 @@ class ThreadPayloadTest {
     @Test
     fun directMessageReplyThreadComposerUsesServerWideMemberSuggestionsWithoutMembershipHeaders() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 memberScopedMentions = true
             )
 
@@ -3585,15 +3585,15 @@ class ThreadPayloadTest {
         val payload =
             WireThreadLaunchPayload(
                 instanceId = "joint-thread",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 sourceThreadId = "joint-1",
                 streamChannelId = "joint-1"
             ).toInitialPayload("fallback")
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("joint", payload.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
@@ -3601,7 +3601,7 @@ class ThreadPayloadTest {
         val payload =
             WireThreadLaunchPayload(
                 instanceId = "row-actions-thread",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
                 showReactionActions = false
@@ -3652,7 +3652,7 @@ class ThreadPayloadTest {
     fun threadSettingsActionsDropLegacyLeaveFallback() {
         val actions =
             listOf(
-                KuiklyThreadSettingsAction(
+                RaftThreadSettingsAction(
                     id = "leave"
                 )
             ).normalizedThreadSettingsChannelActions()
@@ -3671,9 +3671,9 @@ class ThreadPayloadTest {
     fun threadSettingsDisabledRecognizedActionsDoNotFallbackToDefaults() {
         val actions =
             listOf(
-                KuiklyThreadSettingsAction(id = "visibility", enabled = false),
-                KuiklyThreadSettingsAction(id = "archive", enabled = true),
-                KuiklyThreadSettingsAction(id = "delete", enabled = false)
+                RaftThreadSettingsAction(id = "visibility", enabled = false),
+                RaftThreadSettingsAction(id = "archive", enabled = true),
+                RaftThreadSettingsAction(id = "delete", enabled = false)
             ).normalizedThreadSettingsChannelActions()
 
         assertEquals(listOf("archive"), actions.map { it.id })
@@ -3683,9 +3683,9 @@ class ThreadPayloadTest {
     fun threadSettingsKnownActionsUseCanonicalUiModel() {
         val actions =
             listOf(
-                KuiklyThreadSettingsAction(id = "visibility"),
-                KuiklyThreadSettingsAction(id = "archive"),
-                KuiklyThreadSettingsAction(id = "delete")
+                RaftThreadSettingsAction(id = "visibility"),
+                RaftThreadSettingsAction(id = "archive"),
+                RaftThreadSettingsAction(id = "delete")
             ).normalizedThreadSettingsChannelActions()
 
         assertEquals(
@@ -3705,7 +3705,7 @@ class ThreadPayloadTest {
             actions.map { it.subtitle }
         )
         assertEquals(
-            listOf(SlockLucideIconName.Lock, SlockLucideIconName.Archive, SlockLucideIconName.Trash),
+            listOf(RaftLucideIconName.Lock, RaftLucideIconName.Archive, RaftLucideIconName.Trash),
             actions.map { it.icon }
         )
         assertEquals(true, actions.all { it.destructive })
@@ -3745,16 +3745,16 @@ class ThreadPayloadTest {
     @Test
     fun conversationAccessFallbackMustMatchRouteIdentityBeforeDisablingComposer() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 joined = true,
                 canSend = true,
                 composer =
-                    KuiklyThreadComposerPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    RaftThreadComposerPayload(
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         enabled = true,
                         streamChannelId = "channel-1"
                     )
@@ -3809,7 +3809,7 @@ class ThreadPayloadTest {
         assertEquals(true, payload.showReplyActions)
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.showSettingsAction)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
@@ -3819,7 +3819,7 @@ class ThreadPayloadTest {
         )
         val composer = payload.resolveThreadComposer()
         assertEquals("Message #channel-1", composer.placeholder)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, composer.surfaceKind)
         assertEquals("channel-1", composer.streamChannelId)
         assertEquals("idle", composer.composerMode)
     }
@@ -3844,7 +3844,7 @@ class ThreadPayloadTest {
         val regular = payloadFor("channel")
 
         // Joint task surfaces exist server-side; the client no longer hides them.
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals(true, payload.supportsChannelTasks())
         assertEquals(regular.showTaskOpenActions, payload.showTaskOpenActions)
         assertEquals(regular.showTaskStatusActions, payload.showTaskStatusActions)
@@ -3879,7 +3879,7 @@ class ThreadPayloadTest {
         val payload = payloadFor("joint")
         val regular = payloadFor("channel")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("joint", payload.parentChannelKind)
         assertEquals(true, payload.supportsChannelTasks())
         assertEquals(regular.showTaskOpenActions, payload.showTaskOpenActions)
@@ -3891,8 +3891,8 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadRealtimeRoomsIncludeParentChannelAndThreadRooms() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "dm-parent-channel",
                 sourceThreadId = "thread-channel",
                 streamChannelId = "thread-channel"
@@ -3907,8 +3907,8 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadRealtimeRoomsWaitForConcreteParentChannel() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = " ",
                 sourceThreadId = "thread-channel",
                 streamChannelId = "thread-channel"
@@ -3923,14 +3923,14 @@ class ThreadPayloadTest {
     @Test
     fun topLevelThreadMessagesCanConvertToTasksWhenTaskActionsAreEnabled() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 showTaskStatusActions = true
             )
 
         assertTrue(payload.canConvertMessagesToTasks())
         assertTrue(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "msg-1",
                 authorId = "u1",
                 authorName = "Artin",
@@ -3942,22 +3942,22 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadAndIneligibleMessagesCannotConvertToTasks() {
         val replyPayload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentMessageId = "parent-1",
                 originParentMessageId = "parent-1",
                 showTaskStatusActions = true
             )
         val disabledPayload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 showTaskStatusActions = false
             )
 
         assertFalse(replyPayload.canConvertMessagesToTasks())
         assertFalse(disabledPayload.canConvertMessagesToTasks())
         assertFalse(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "msg-task-id",
                 authorId = "u1",
                 authorName = "Artin",
@@ -3965,7 +3965,7 @@ class ThreadPayloadTest {
             ).canConvertToTask()
         )
         assertFalse(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "msg-task-number",
                 authorId = "u1",
                 authorName = "Artin",
@@ -3973,7 +3973,7 @@ class ThreadPayloadTest {
             ).canConvertToTask()
         )
         assertFalse(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "msg-system",
                 authorId = "system",
                 authorName = "System",
@@ -3981,13 +3981,13 @@ class ThreadPayloadTest {
             ).canConvertToTask()
         )
         assertFalse(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "msg-local",
                 authorId = "u1",
                 authorName = "Artin",
                 deliveryState = ThreadMessageDeliverySending,
                 pendingSendContext =
-                    KuiklyThreadPendingSendContext(
+                    RaftThreadPendingSendContext(
                         channelId = "channel-1",
                         body = "pending"
                     )
@@ -4025,14 +4025,14 @@ class ThreadPayloadTest {
 
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("dm-agent-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
         assertEquals(null, payload.dmPeerName)
         assertEquals("Product-UX-Designer", headerDisplay.title)
         val composer = payload.resolveThreadComposer(displayName = headerDisplay.title)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, composer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, composer.surfaceKind)
         assertEquals("dm-agent-1", composer.streamChannelId)
         assertEquals("Message @Product-UX-Designer", composer.placeholder)
         assertEquals("idle", composer.composerMode)
@@ -4051,7 +4051,7 @@ class ThreadPayloadTest {
                 )
             )
         val parentMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "dm-parent-1",
                 authorId = "agent-1",
                 authorName = "Product-UX-Designer",
@@ -4073,15 +4073,15 @@ class ThreadPayloadTest {
             )
         val parentPayload = parsedPayload.parentMessageContextLoadingPayload("dm-parent-1")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
         assertEquals("previous", replyPayload.parentNavigationHint)
         assertEquals("previous", launchPayload.parentNavigationHint)
         assertEquals("previous", parsedPayload.parentNavigationHint)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals("dm-agent-1", parsedPayload.parentChannelId)
         assertEquals("dm-parent-1", parsedPayload.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parsedPayload.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, parsedPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
         assertEquals("dm-agent-1", parentPayload.sourceThreadId)
         assertEquals("dm-agent-1", parentPayload.streamChannelId)
         assertEquals("", parentPayload.title)
@@ -4090,15 +4090,15 @@ class ThreadPayloadTest {
     @Test
     fun activityReplyThreadOpenActionTargetsParentChannelSurface() {
         val replyPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "channel",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
                 parentChannelId = "parent-channel",
                 parentMessageId = "parent-message",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "channel",
                 showOpenInChannelAction = true
             )
@@ -4115,7 +4115,7 @@ class ThreadPayloadTest {
 
         assertEquals(ConversationKind.Channel, parentIdentity.kind)
         assertEquals("parent-channel", parentIdentity.channelId?.value)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, parentPayload.surfaceKind)
         assertEquals("parent-channel", parentPayload.sourceThreadId)
         assertEquals(null, parentPayload.parentMessageId)
     }
@@ -4123,15 +4123,15 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadOpenParentRequiresCurrentSessionServer() {
         val replyPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "channel",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
                 parentChannelId = "parent-channel",
                 parentMessageId = "parent-message",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "channel",
                 showOpenInChannelAction = true
             )
@@ -4146,15 +4146,15 @@ class ThreadPayloadTest {
     @Test
     fun jointReplyThreadOpenParentUsesCurrentSessionProjectionWhenAvailable() {
         val replyPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-joint-reply-stream",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "channel",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
                 parentChannelId = "joint-parent",
                 parentMessageId = "parent-message",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "joint",
                 showOpenInChannelAction = true
             )
@@ -4164,7 +4164,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "joint-parent",
                 aliases = setOf("joint-parent"),
                 conversationKind = ConversationKind.Joint,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 title = "partner"
             )
@@ -4206,7 +4206,7 @@ class ThreadPayloadTest {
     @Test
     fun jointReplyThreadLaunchKeepsParentChannelKind() {
         val parentMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "joint-parent-1",
                 authorId = "u1",
                 authorName = "Artin",
@@ -4214,10 +4214,10 @@ class ThreadPayloadTest {
                 threadChannelId = "thread-joint-parent-1"
             )
         val jointPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-joint-1",
                 title = "partner",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 sourceThreadId = "joint-channel-1",
                 streamChannelId = "joint-channel-1",
@@ -4239,16 +4239,16 @@ class ThreadPayloadTest {
             )
         val parentPayload = parsedPayload.parentMessageContextLoadingPayload("joint-parent-1")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
         assertEquals("joint", replyPayload.parentChannelKind)
         assertEquals("joint", launchPayload.parentChannelKind)
         assertEquals("joint", parsedPayload.parentChannelKind)
         assertEquals(true, parsedPayload.threadComposerMemberScopedMentions())
-        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, parentPayload.surfaceKind)
         assertEquals("joint-channel-1", parentPayload.sourceThreadId)
         assertEquals("joint", parentPayload.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
@@ -4256,19 +4256,19 @@ class ThreadPayloadTest {
         fun launchFor(parentKind: String) =
             WireThreadLaunchPayload(
                 instanceId = "thread-route",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-channel-1",
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "joint-1",
                 parentMessageId = "parent-message-1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = parentKind,
                 originParentMessageId = "parent-message-1"
             ).toInitialPayload("fallback")
         val initialPayload = launchFor("joint")
         val regular = launchFor("channel")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals("joint", initialPayload.parentChannelKind)
         assertEquals(regular.showTaskOpenActions, initialPayload.showTaskOpenActions)
         assertEquals(regular.showTaskStatusActions, initialPayload.showTaskStatusActions)
@@ -4289,7 +4289,7 @@ class ThreadPayloadTest {
                             parentChannelId = ChannelId("channel-1"),
                             parentMessageId = MessageId("message-1"),
                             streamChannelId = ChannelId("thread-1"),
-                            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                            parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                             parentChannelKind = "channel"
                         ),
                     kind = ConversationKind.Thread,
@@ -4303,11 +4303,11 @@ class ThreadPayloadTest {
 
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
         assertEquals("message-1", payload.originParentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.parentSurfaceKind)
         assertEquals(null, payload.parentNavigationHint)
         assertEquals(null, payload.toWireThreadLaunchPayload().parentNavigationHint)
         assertEquals("missing", payload.originStatus)
@@ -4328,7 +4328,7 @@ class ThreadPayloadTest {
     fun threadHeaderDisplayTitleDoesNotRenderIdentityFallbacks() {
         assertEquals("Channel", threadHeaderDisplayTitle("123e4567-e89b-12d3-a456-426614174000"))
         assertEquals("Channel", threadHeaderDisplayTitle("deadbeef"))
-        assertEquals("Direct Message", threadHeaderDisplayTitle("123e4567-e89b-12d3-a456-426614174000", KuiklyThreadSurfaceKind.DirectMessage))
+        assertEquals("Direct Message", threadHeaderDisplayTitle("123e4567-e89b-12d3-a456-426614174000", RaftThreadSurfaceKind.DirectMessage))
     }
 
     @Test
@@ -4336,7 +4336,7 @@ class ThreadPayloadTest {
         val uuid = "123e4567-e89b-12d3-a456-426614174000"
         val context =
             SharedThreadHeaderContextStore.conversationContext(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 conversation =
                     ConversationSummary(
                         threadId = ThreadId(uuid),
@@ -4349,14 +4349,14 @@ class ThreadPayloadTest {
             )
 
         assertEquals("", context.title)
-        assertEquals("Channel", threadHeaderDisplayTitle(context.title, KuiklyThreadSurfaceKind.Channel))
+        assertEquals("Channel", threadHeaderDisplayTitle(context.title, RaftThreadSurfaceKind.Channel))
     }
 
     @Test
     fun canonicalConversationContextUsesNormalizedChannelTitle() {
         val context =
             SharedThreadHeaderContextStore.conversationContext(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 conversation =
                     ConversationSummary(
                         threadId = ThreadId("channel-1"),
@@ -4375,7 +4375,7 @@ class ThreadPayloadTest {
     fun replyConversationContextKeepsOriginLoadingWhileHydrationIsPending() {
         val context =
             SharedThreadHeaderContextStore.conversationContext(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 conversation =
                     ConversationSummary(
                         threadId = ThreadId("thread-1"),
@@ -4404,7 +4404,7 @@ class ThreadPayloadTest {
         // the peer's @-name — never a # channel tag.
         val context =
             SharedThreadHeaderContextStore.conversationContext(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 conversation =
                     ConversationSummary(
                         threadId = ThreadId("dm-thread-1"),
@@ -4416,7 +4416,7 @@ class ThreadPayloadTest {
                                 parentChannelId = ChannelId("dm-1"),
                                 parentMessageId = MessageId("message-1"),
                                 streamChannelId = ChannelId("dm-thread-1"),
-                                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                                parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                                 parentChannelKind = "dm"
                             )
                     ),
@@ -4431,7 +4431,7 @@ class ThreadPayloadTest {
     fun replyConversationContextStillMarksOriginMissingWhenNoHydrationIsPending() {
         val context =
             SharedThreadHeaderContextStore.conversationContext(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 conversation =
                     ConversationSummary(
                         threadId = ThreadId("thread-1"),
@@ -4486,7 +4486,7 @@ class ThreadPayloadTest {
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("reply-message-1", payload.focusedMessageId)
         assertEquals("thread-channel-1", payload.sourceThreadId)
         assertEquals("thread-channel-1", payload.streamChannelId)
@@ -4576,21 +4576,21 @@ class ThreadPayloadTest {
     @Test
     fun contentSliceUsesPatchHeaderContextInsteadOfSeededReplyOrigin() {
         val origin =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "user-1",
                 authorName = "Artin",
                 body = "Parent message preview"
             )
         val reply =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "reply-message-1",
                 authorId = "agent-1",
                 authorName = "Android-Developer-4",
                 body = "Latest reply"
             )
         val current =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-channel-1-message-1",
                 title = ThreadReplyPageTitle,
                 subtitle = "#seeded",
@@ -4599,7 +4599,7 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 originParentMessageId = "message-1",
                 originMessage = origin,
                 originPreview = "Parent message preview",
@@ -4632,12 +4632,12 @@ class ThreadPayloadTest {
     @Test
     fun contentSliceDoesNotReplaceThreadChromeWhenPatchChangesRoute() {
         val current =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream-1",
                 title = ThreadReplyPageTitle,
                 subtitle = "#general",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-stream-1",
                 streamChannelId = "reply-stream-1",
                 parentChannelId = "channel-1",
@@ -4653,7 +4653,7 @@ class ThreadPayloadTest {
                 dmPeerAvatarLabel = "CP",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-1",
                             authorId = "agent-1",
                             authorName = "Agent",
@@ -4662,7 +4662,7 @@ class ThreadPayloadTest {
                     ),
                 originStatus = "loaded",
                 originMessage =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "parent-message-1",
                         authorId = "user-1",
                         authorName = "Artin",
@@ -4670,12 +4670,12 @@ class ThreadPayloadTest {
                     )
             )
         val patch =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 title = "general",
                 subtitle = null,
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "public",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
@@ -4692,7 +4692,7 @@ class ThreadPayloadTest {
                 dmPeerAvatarLabel = "WP",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "channel-message-1",
                             authorId = "user-1",
                             authorName = "Artin",
@@ -4707,7 +4707,7 @@ class ThreadPayloadTest {
 
         assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel", payload.channelKind)
         assertEquals("reply-stream-1", payload.sourceThreadId)
         assertEquals("reply-stream-1", payload.streamChannelId)
@@ -4730,14 +4730,14 @@ class ThreadPayloadTest {
     @Test
     fun refreshPatchPreservesLoadedOriginWhenNetworkSnapshotOnlyProvesSameParent() {
         val origin =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "user-1",
                 authorName = "Artin",
                 body = "Original task body"
             )
         val previous =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-thread-channel-1",
                 title = ThreadReplyPageTitle,
                 subtitle = "#general",
@@ -4746,13 +4746,13 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 originParentMessageId = "message-1",
                 originMessage = origin,
                 originStatus = "loaded",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-message-1",
                             authorId = "agent-1",
                             authorName = "Android-Developer-4",
@@ -4764,13 +4764,13 @@ class ThreadPayloadTest {
             previous.copy(
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-message-1",
                             authorId = "agent-1",
                             authorName = "Android-Developer-4",
                             body = "Reply body"
                         ),
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-message-2",
                             authorId = "agent-2",
                             authorName = "KMP-专家",
@@ -4794,13 +4794,13 @@ class ThreadPayloadTest {
     @Test
     fun refreshPatchPreservesResolvedLinkedTaskForVisibleTaskMessage() {
         val previous =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 status = "content",
                 sourceThreadId = "thread-channel-1",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "message-240",
                             authorId = "user-artin",
                             authorName = "Artin",
@@ -4814,7 +4814,7 @@ class ThreadPayloadTest {
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task-240",
                             title = "ship task",
                             status = "InReview",
@@ -4868,7 +4868,7 @@ class ThreadPayloadTest {
     @Test
     fun primaryRefreshRetainsAcceptedSavedAndTaskFactsUntilAuxiliaryAuthoritiesCommit() {
         val acceptedMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user-artin",
                 authorName = "Artin",
@@ -4882,7 +4882,7 @@ class ThreadPayloadTest {
                 taskAssigneeName = "Android Developer"
             )
         val previous =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 status = "content",
                 sourceThreadId = "thread-channel-1",
@@ -4943,13 +4943,13 @@ class ThreadPayloadTest {
     @Test
     fun refreshPatchDropsResolvedLinkedTaskWhenVisibleMessagesNoLongerReferenceIt() {
         val previous =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 status = "content",
                 sourceThreadId = "thread-channel-1",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "message-240",
                             authorId = "user-artin",
                             authorName = "Artin",
@@ -4960,7 +4960,7 @@ class ThreadPayloadTest {
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task-240",
                             title = "ship task",
                             status = "InReview",
@@ -4975,7 +4975,7 @@ class ThreadPayloadTest {
             previous.copy(
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "message-241",
                             authorId = "user-artin",
                             authorName = "Artin",
@@ -5010,7 +5010,7 @@ class ThreadPayloadTest {
             buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
         )
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals(null, payload.originMessage)
@@ -5040,7 +5040,7 @@ class ThreadPayloadTest {
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
         assertEquals(null, payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
@@ -5072,7 +5072,7 @@ class ThreadPayloadTest {
         assertEquals(ConversationKind.Channel, conversation.kind)
         assertEquals("", payload.title)
         assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals(null, payload.originParentMessageId)
         assertEquals("latest-channel-message", payload.focusedMessageId)
         assertEquals(true, payload.showModeTabs)
@@ -5127,7 +5127,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-thread-channel-1", launch.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launch.surfaceKind)
         assertEquals(null, launch.threadId)
         assertEquals("channel-1", launch.sourceThreadId)
         assertEquals("channel-1", launch.streamChannelId)
@@ -5148,12 +5148,12 @@ class ThreadPayloadTest {
         assertEquals("shared-shell-thread-channel-1", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
         assertEquals("", initialPayload.title)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.surfaceKind)
         assertEquals("channel-1", initialPayload.sourceThreadId)
         assertEquals("message-focus", initialPayload.focusedMessageId)
         assertEquals(launch.focusedMessageRequestNonce, initialPayload.focusedMessageRequestNonce)
-        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
-        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList<RaftThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<RaftThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
         assertEquals(0, initialPayload.membersCount)
         assertEquals(true, initialPayload.joined)
@@ -5162,7 +5162,7 @@ class ThreadPayloadTest {
         assertEquals(null, initialPayload.dmPeerAvatarUrl)
 
         val composer = initialPayload.resolveThreadComposer()
-        assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, composer.surfaceKind)
         assertEquals("channel-1", composer.streamChannelId)
         assertEquals(null, composer.mentionChannelId)
         assertEquals(null, composer.parentMessageId)
@@ -5227,10 +5227,10 @@ class ThreadPayloadTest {
             )
         val routeIdentity = conversation.resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, routeIdentity.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, routeIdentity.surfaceKind)
         assertEquals("channel-1", routeIdentity.timelineChannelId)
         assertEquals("channel:channel-1", routeIdentity.instanceKey)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launch.surfaceKind)
         assertEquals(null, launch.threadId)
         assertEquals("channel-1", launch.sourceThreadId)
         assertEquals("channel-1", launch.streamChannelId)
@@ -5244,7 +5244,7 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.surfaceKind)
         assertEquals("channel-1", initialPayload.sourceThreadId)
         assertEquals("channel-1", initialPayload.streamChannelId)
         assertEquals(null, initialPayload.parentChannelId)
@@ -5253,13 +5253,13 @@ class ThreadPayloadTest {
 
         val appShellPayload = buildAppShellThreadPayloadFromSummary(conversation)
         val appShellComposer = appShellPayload.resolveThreadComposer()
-        assertEquals(KuiklyThreadSurfaceKind.Channel, appShellPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, appShellPayload.surfaceKind)
         assertEquals("channel-1", appShellPayload.sourceThreadId)
         assertEquals("channel-1", appShellPayload.streamChannelId)
         assertEquals(null, appShellPayload.parentChannelId)
         assertEquals(null, appShellPayload.parentMessageId)
         assertEquals(null, appShellPayload.originParentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, appShellComposer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, appShellComposer.surfaceKind)
         assertEquals("channel-1", appShellComposer.streamChannelId)
         assertEquals(null, appShellComposer.mentionChannelId)
         assertEquals(null, appShellComposer.parentMessageId)
@@ -5286,7 +5286,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-thread-thread-summary-id", launch.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals(null, launch.threadId)
         assertEquals(null, launch.sourceThreadId)
         assertEquals(null, launch.streamChannelId)
@@ -5300,7 +5300,7 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals(null, initialPayload.sourceThreadId)
         assertEquals(null, initialPayload.streamChannelId)
         assertEquals("channel-1", initialPayload.parentChannelId)
@@ -5313,7 +5313,7 @@ class ThreadPayloadTest {
         val launch =
             WireThreadLaunchPayload(
                 instanceId = "shared-shell-thread-channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
                 selectedTab = "chat",
@@ -5338,7 +5338,7 @@ class ThreadPayloadTest {
         val launch =
             WireThreadLaunchPayload(
                 instanceId = "shared-shell-thread-channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
                 selectedTab = "chat"
@@ -5389,18 +5389,18 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-channel-1", launch.threadId)
         assertEquals("thread-channel-1", launch.streamChannelId)
         assertEquals("channel-1", launch.parentChannelId)
         assertEquals("message-1", launch.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launch.parentSurfaceKind)
         assertEquals("message-1", launch.originParentMessageId)
         assertEquals("message-1", launch.originFallbackParentMessageId)
         assertEquals("Parent message preview", launch.originFallbackPreview)
         assertEquals("reply-message-1", launch.focusedMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.parentSurfaceKind)
         assertEquals("message-1", initialPayload.originParentMessageId)
         assertEquals("missing", initialPayload.originStatus)
         assertEquals("Parent message preview", initialPayload.originPreview)
@@ -5442,15 +5442,15 @@ class ThreadPayloadTest {
             )
         val parentPayload = initialPayload.parentMessageContextLoadingPayload("dm-parent-1")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-dm-parent-1", launch.threadId)
         assertEquals("dm-agent-1", launch.parentChannelId)
         assertEquals("dm-parent-1", launch.parentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, initialPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, initialPayload.parentSurfaceKind)
         assertEquals(true, initialPayload.showOpenInChannelAction)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
         assertEquals("dm-agent-1", parentPayload.sourceThreadId)
         assertEquals("dm-agent-1", parentPayload.streamChannelId)
     }
@@ -5458,23 +5458,23 @@ class ThreadPayloadTest {
     @Test
     fun screenPayloadWireLaunchDropsDisplayAndProductState() {
         val launch =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "display-route",
                 title = "Display title",
                 subtitle = "Display subtitle",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-channel-1",
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "channel",
                 originParentMessageId = "parent-message-1",
                 focusedMessageId = "reply-2",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-1",
                             authorId = "agent-1",
                             authorName = "Android Dev",
@@ -5490,7 +5490,7 @@ class ThreadPayloadTest {
             ).toWireThreadLaunchPayload()
 
         assertEquals("display-route", launch.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-channel-1", launch.threadId)
         assertEquals("thread-channel-1", launch.sourceThreadId)
         assertEquals("thread-channel-1", launch.streamChannelId)
@@ -5506,8 +5506,8 @@ class ThreadPayloadTest {
 
         assertEquals("loading", initialPayload.status)
         assertEquals("", initialPayload.title)
-        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
-        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList<RaftThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<RaftThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
         assertEquals(0, initialPayload.membersCount)
         assertEquals(true, initialPayload.joined)
@@ -5520,7 +5520,7 @@ class ThreadPayloadTest {
     fun screenPayloadWireLaunchOrNullRejectsInvalidRouteKinds() {
         assertEquals(
             null,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "invalid-route",
                 surfaceKind = "mystery",
                 sourceThreadId = "thread-channel-1",
@@ -5534,13 +5534,13 @@ class ThreadPayloadTest {
         val launch =
             WireThreadLaunchPayload(
                 instanceId = "thread-route",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 threadId = "thread-channel-1",
                 sourceThreadId = "thread-channel-1",
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelKind = "channel",
                 originParentMessageId = "parent-message-1",
                 focusedMessageId = "reply-2",
@@ -5557,7 +5557,7 @@ class ThreadPayloadTest {
 
         assertEquals("thread-route", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals("thread-channel-1", initialPayload.sourceThreadId)
         assertEquals("thread-channel-1", initialPayload.streamChannelId)
         assertEquals("parent-channel-1", initialPayload.parentChannelId)
@@ -5568,7 +5568,7 @@ class ThreadPayloadTest {
         assertEquals(true, initialPayload.showOpenInChannelAction)
 
         val composer = initialPayload.resolveThreadComposer()
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, composer.surfaceKind)
         assertEquals("thread-channel-1", composer.streamChannelId)
         assertEquals("parent-channel-1", composer.mentionChannelId)
         assertEquals("parent-message-1", composer.parentMessageId)
@@ -5617,8 +5617,8 @@ class ThreadPayloadTest {
                                 canonicalChannelId = "parent-channel-1",
                                 aliases = setOf("parent-channel-1"),
                                 conversationKind = ConversationKind.Channel,
-                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = RaftThreadSurfaceKind.Channel,
                                 title = "bug triage"
                             )
                         ).toSharedConversationDirectoryState(),
@@ -5628,7 +5628,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-thread-parent-channel-1:parent-message-1", launch.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-channel-1", launch.threadId)
         assertEquals("thread-channel-1", launch.sourceThreadId)
         assertEquals("thread-channel-1", launch.streamChannelId)
@@ -5649,13 +5649,13 @@ class ThreadPayloadTest {
         assertEquals("shared-shell-thread-parent-channel-1:parent-message-1", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
         assertEquals("", initialPayload.title)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals("thread-channel-1", initialPayload.sourceThreadId)
         assertEquals("parent-channel-1", initialPayload.parentChannelId)
         assertEquals("parent-message-1", initialPayload.parentMessageId)
         assertEquals("message-1", initialPayload.focusedMessageId)
-        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
-        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList<RaftThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<RaftThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
         assertEquals(0, initialPayload.membersCount)
         assertEquals(null, initialPayload.dmPeerName)
@@ -5665,14 +5665,14 @@ class ThreadPayloadTest {
     @Test
     fun buildsReplyThreadLoadingPayloadWithoutFetchingParentChannel() {
         val parent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
                 body = "Parent message"
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -5690,11 +5690,11 @@ class ThreadPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
         val composer = payload.resolveThreadComposer()
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, composer.surfaceKind)
         assertEquals("channel-1", composer.mentionChannelId)
         assertEquals("message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
@@ -5707,22 +5707,22 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadTerminalEmptyProjectionCannotRegressToLoadingPresentation() {
         val terminalEmpty =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "empty",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 emptyTitle = "Loading...",
                 emptyDetail = "Stale loading detail"
             ).toThreadTimelineSlice()
         val loading =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 emptyTitle = "Loading..."
             ).toThreadTimelineSlice()
         val error =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "error",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 emptyTitle = "Could not load replies",
                 emptyDetail = "Try again"
             ).toThreadTimelineSlice()
@@ -5737,7 +5737,7 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadLoadingPayloadUsesKnownThreadChannelAsRouteIdentityOnly() {
         val parent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
@@ -5745,7 +5745,7 @@ class ThreadPayloadTest {
                 threadChannelId = "thread-message-1"
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -5775,7 +5775,7 @@ class ThreadPayloadTest {
     @Test
     fun nestedReplyOpenFromReplyThreadUsesExplicitParentChannelInsteadOfReplyStream() {
         val parent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "task-parent-541",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -5785,11 +5785,11 @@ class ThreadPayloadTest {
                 taskNumber = 541
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream-541",
                 title = ThreadReplyPageTitle,
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-stream-541",
                 streamChannelId = "reply-stream-541",
                 parentChannelId = "parent-channel",
@@ -5815,14 +5815,14 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadLoadingPayloadOmitsUnreadableChannelSubtitle() {
         val parent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
                 body = "Parent message"
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 title = "76c3c868",
                 sourceThreadId = "channel-1",
                 status = "content",
@@ -5840,11 +5840,11 @@ class ThreadPayloadTest {
     @Test
     fun parentMessageContextLoadingPayloadTargetsParentConversation() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-replies-1",
                 title = ThreadReplyPageTitle,
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-stream-1",
                 streamChannelId = "reply-stream-1",
                 parentChannelId = "channel-1",
@@ -5855,7 +5855,7 @@ class ThreadPayloadTest {
 
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
         assertEquals("loading", payload.status)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
@@ -5865,7 +5865,7 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showOpenInChannelAction)
         assertEquals(true, payload.showModeTabs)
         assertEquals("Loading...", payload.emptyTitle)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.resolveThreadComposer().surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.resolveThreadComposer().surfaceKind)
     }
 
     @Test
@@ -5899,20 +5899,20 @@ class ThreadPayloadTest {
             )
         val parentPayload = initialPayload.parentMessageContextLoadingPayload("joint-parent-1")
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("joint", request.conversationIdentity.thread?.parentChannelKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, launch.parentSurfaceKind)
         assertEquals("joint", launch.parentChannelKind)
         assertEquals("joint", initialPayload.parentChannelKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, parentPayload.surfaceKind)
         assertEquals("joint", parentPayload.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, parentPayload.channelKind.threadChannelHeaderIcon())
     }
 
     @Test
     fun buildsSharedThreadPayloadFromBridgeMessagesResponse() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -6000,7 +6000,7 @@ class ThreadPayloadTest {
         val payload =
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         sourceThreadId = "channel-1",
                         status = "loading",
                     ),
@@ -6112,7 +6112,7 @@ class ThreadPayloadTest {
         val logs = mutableListOf<String>()
 
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "secret-message-id",
                 authorId = "secret-author-id",
                 authorName = "Secret Author",
@@ -6164,7 +6164,7 @@ class ThreadPayloadTest {
                     task = task,
                 )
 
-            val messageItem = message.toKuiklyThreadMessageItem(currentUserId = null)
+            val messageItem = message.toRaftThreadMessageItem(currentUserId = null)
             assertEquals(status.toWireValue(), messageItem.taskStatus, status.name)
             assertEquals(
                 status,
@@ -6188,12 +6188,12 @@ class ThreadPayloadTest {
     @Test
     fun replyThreadMessagesPageRequiresResolvedThreadMembership() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "reply-thread-m1",
                 title = ThreadReplyPageTitle,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 status = "loading"
             )
         val session =
@@ -6251,7 +6251,7 @@ class ThreadPayloadTest {
     @Test
     fun buildsSharedThreadPayloadPreservingActionCardMetadata() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -6313,7 +6313,7 @@ class ThreadPayloadTest {
     @Test
     fun buildsSharedThreadPayloadPreservingChannelActionCardMetadata() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -6404,7 +6404,7 @@ class ThreadPayloadTest {
     @Test
     fun buildsSharedThreadPayloadPreservingIntegrationApproveLoginActionCardMetadata() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -6475,7 +6475,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesCanonicalAuthorAndTimestampForOwnUserRow() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -6525,9 +6525,9 @@ class ThreadPayloadTest {
     @Test
     fun formatsMessageTimestampWithPayloadTimeFormatPreference() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 5, 20),
+                todayEpochDay = raftEpochDayForDate(2026, 5, 20),
                 timeFormat = "12h"
             )
 
@@ -6537,7 +6537,7 @@ class ThreadPayloadTest {
     @Test
     fun formatsMessageTimestampWhenHostOmitsTodayEpochDay() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 localOffsetMinutes = 480,
                 nowEpochMillis = 1779206400000L
             )
@@ -6548,7 +6548,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesCanonicalAgentSenderRow() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "design",
                 sourceThreadId = "channel-1",
@@ -6595,14 +6595,14 @@ class ThreadPayloadTest {
     @Test
     fun appendsSentMessageFromSendResponseWhenRefreshIsUnavailable() {
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u2",
                             authorName = "Cindy",
@@ -6671,11 +6671,11 @@ class ThreadPayloadTest {
     @Test
     fun parsesMessageFooterTaskMetadata() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -6703,17 +6703,17 @@ class ThreadPayloadTest {
     @Test
     fun resolvesThreadMentionsFromMembersButTaskFooterUsesLinkedTaskAssignee() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent_android",
                             displayName = "Android Developer",
                             handle = "Android-Developer",
                             kind = "agent"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "user_artin",
                             displayName = "Artin",
                             handle = "artin",
@@ -6722,7 +6722,7 @@ class ThreadPayloadTest {
                     ),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "agent_android",
                             authorName = "Android Developer",
@@ -6780,7 +6780,7 @@ class ThreadPayloadTest {
     fun linkedTasksAreResolvedByMessageIdAndHideRawIds() {
         val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -6863,7 +6863,7 @@ class ThreadPayloadTest {
             )
         val linkedTasks = listOf(taskWithoutMessageId).threadLinkedTasksByMessageLookup()
         val taskIdMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -6886,7 +6886,7 @@ class ThreadPayloadTest {
     @Test
     fun threadActionMessageUsesLinkedTaskProjectionForHistoricalTasks() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -6902,7 +6902,7 @@ class ThreadPayloadTest {
                 assignee = null,
                 updatedAtLabel = ""
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val linkedTasks = listOf(task).threadLinkedTasksByMessageLookup(payload.threadLinkedTaskReferences())
 
         val actionMessage =
@@ -6919,7 +6919,7 @@ class ThreadPayloadTest {
     @Test
     fun threadActionMessageClearsStaleTaskFactsWhenProjectionIsAuthoritativeEmpty() {
         val staleMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -6930,7 +6930,7 @@ class ThreadPayloadTest {
                 taskAssigneeId = "agent-android",
                 taskAssigneeName = "Android Developer"
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(staleMessage))
+        val payload = RaftThreadScreenPayload(messages = listOf(staleMessage))
 
         val actionMessage =
             payload.threadActionMessage(
@@ -6949,7 +6949,7 @@ class ThreadPayloadTest {
     @Test
     fun findTaskParentMessageUsesLinkedTaskProjectionWithoutProjectedTimeline() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -6965,7 +6965,7 @@ class ThreadPayloadTest {
                 assignee = null,
                 updatedAtLabel = ""
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val timeline = payload.toThreadTimelineSlice()
         val projection =
             ThreadLinkedTasksProjection(
@@ -6982,7 +6982,7 @@ class ThreadPayloadTest {
     @Test
     fun threadTaskStatusChipClickIdentityRebindsByMessageTaskAndStatus() {
         val todoMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-1",
                 authorName = "Agent",
@@ -7033,7 +7033,7 @@ class ThreadPayloadTest {
     @Test
     fun strippedTimelineActionMessageCanRecoverReplyThreadRouteMetadata() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7045,10 +7045,10 @@ class ThreadPayloadTest {
                 isThreadFollowed = true
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 messages = listOf(message)
             )
         val timeline = payload.toThreadTimelineSlice()
@@ -7073,7 +7073,7 @@ class ThreadPayloadTest {
     @Test
     fun findMarkdownTaskIdUsesLinkedTaskProjectionWithoutProjectedTimeline() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7089,7 +7089,7 @@ class ThreadPayloadTest {
                 assignee = null,
                 updatedAtLabel = ""
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val timeline = payload.toThreadTimelineSlice()
         val projection =
             ThreadLinkedTasksProjection(
@@ -7260,9 +7260,9 @@ class ThreadPayloadTest {
     @Test
     fun taskThreadLaunchPayloadUsesTaskIdentityOutsideLoadedTimeline() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-dialog",
                 streamChannelId = "channel-dialog",
                 alignOwnMessagesRight = true,
@@ -7270,7 +7270,7 @@ class ThreadPayloadTest {
                 localOffsetMinutes = 480,
                 todayEpochDay = 20260628,
                 nowEpochMillis = 1_782_690_000_000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             )
         val task =
             TaskSummary(
@@ -7287,7 +7287,7 @@ class ThreadPayloadTest {
 
         val launchPayload = payload.taskThreadLaunchPayload(task, ServerId("server-1"))
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
         assertEquals("channel-dialog", launchPayload?.parentChannelId)
         assertEquals("message-482", launchPayload?.parentMessageId)
         assertEquals("thread-482", launchPayload?.streamChannelId)
@@ -7295,18 +7295,18 @@ class ThreadPayloadTest {
         assertEquals(null, launchPayload?.focusedMessageId)
         assertEquals(true, launchPayload?.alignOwnMessagesRight)
         assertEquals(true, launchPayload?.compactConsecutiveMessages)
-        assertEquals(SlockTimeFormat12Hour, launchPayload?.timeFormat)
-        assertEquals(emptyList<KuiklyThreadMessageItem>(), launchPayload?.messages)
-        assertEquals(emptyList<KuiklyThreadMemberItem>(), launchPayload?.members)
+        assertEquals(RaftTimeFormat12Hour, launchPayload?.timeFormat)
+        assertEquals(emptyList<RaftThreadMessageItem>(), launchPayload?.messages)
+        assertEquals(emptyList<RaftThreadMemberItem>(), launchPayload?.members)
         assertEquals("loading", launchPayload?.status)
     }
 
     @Test
     fun taskThreadLaunchPayloadFocusesTaskReplyWhenDistinctFromOrigin() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-dialog",
                 streamChannelId = "channel-dialog"
             )
@@ -7333,9 +7333,9 @@ class ThreadPayloadTest {
     @Test
     fun taskThreadLaunchPayloadFailsClosedWhenTypedParentIdentityIsMissing() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-dialog",
                 streamChannelId = "channel-dialog"
             )
@@ -7364,9 +7364,9 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 taskNumber = 541,
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         status = "content",
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         sourceThreadId = "parent-channel",
                         streamChannelId = "parent-channel"
@@ -7419,7 +7419,7 @@ class ThreadPayloadTest {
                 canonicalChannelId = "target-channel",
                 aliases = setOf("target-channel"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "target"
             )
@@ -7445,9 +7445,9 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 taskNumber = 340,
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         status = "content",
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         sourceThreadId = "current-channel",
                         streamChannelId = "current-channel"
@@ -7500,9 +7500,9 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 taskNumber = 541,
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         status = "content",
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         sourceThreadId = "parent-channel",
                         streamChannelId = "parent-channel"
@@ -7561,9 +7561,9 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 taskNumber = 343,
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         status = "content",
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         sourceThreadId = "parent-channel",
                         streamChannelId = "parent-channel"
@@ -7599,9 +7599,9 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 taskNumber = 541,
                 currentPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         status = "content",
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         sourceThreadId = "parent-channel",
                         streamChannelId = "parent-channel"
@@ -7629,10 +7629,10 @@ class ThreadPayloadTest {
     @Test
     fun linkedTaskProjectionIsOnlyAuthoritativeAfterTasksLoadSettles() {
         val references =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "message-240",
                             authorId = "user_artin",
                             authorName = "Artin",
@@ -7669,7 +7669,7 @@ class ThreadPayloadTest {
                 updatedAtLabel = ""
             )
         val historicalMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-history",
                 authorId = "user-artin",
                 authorName = "Artin",
@@ -7679,13 +7679,13 @@ class ThreadPayloadTest {
                 taskStatus = "todo"
             )
         val recentMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-recent",
                 authorId = "user-artin",
                 authorName = "Artin",
                 body = "recent task"
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(historicalMessage, recentMessage))
+        val payload = RaftThreadScreenPayload(messages = listOf(historicalMessage, recentMessage))
         val projection =
             SharedTasksProjectionSlice(
                 status = SharedTasksDataStoreStatus.Partial,
@@ -7728,7 +7728,7 @@ class ThreadPayloadTest {
                 assignee = null
             )
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7738,7 +7738,7 @@ class ThreadPayloadTest {
                 taskStatus = "Todo"
             )
         val references =
-            KuiklyThreadScreenPayload(messages = listOf(message)).threadLinkedTaskReferences()
+            RaftThreadScreenPayload(messages = listOf(message)).threadLinkedTaskReferences()
         val projection =
             TasksUiState(
                 loadState =
@@ -7783,7 +7783,7 @@ class ThreadPayloadTest {
             )
         val fallbackLookup = listOf(fallbackTask).threadLinkedTasksByMessageLookup()
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7803,7 +7803,7 @@ class ThreadPayloadTest {
     @Test
     fun threadPayloadProjectsMessageTaskStatusFromLinkedTasksStoreWithoutRewritingPayloadTasks() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-240",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7813,7 +7813,7 @@ class ThreadPayloadTest {
                 taskStatus = "Todo"
             )
         val staleTask =
-            KuiklyThreadTaskItem(
+            RaftThreadTaskItem(
                 id = "task-240",
                 title = "ship task",
                 status = "Todo",
@@ -7830,7 +7830,7 @@ class ThreadPayloadTest {
                 updatedAtLabel = "now"
             )
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 messages = listOf(message),
                 tasks = listOf(staleTask)
             )
@@ -7851,7 +7851,7 @@ class ThreadPayloadTest {
     fun newerServerTaskProjectionEnrichesMessageBehindOlderLoadedChannelSnapshot() = runBlocking {
         val store = SharedTasksDataStore()
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-new",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -7882,7 +7882,7 @@ class ThreadPayloadTest {
                     summaryCounts = emptyMap()
                 )
         )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
 
         val projected =
@@ -7913,7 +7913,7 @@ class ThreadPayloadTest {
         val dataSource =
             SharedTasksDataSource(
                 api =
-                    object : SlockTasksApi {
+                    object : RaftTasksApi {
                         override suspend fun serverTasks(
                             serverId: ServerId,
                             priority: DataRequestPriority
@@ -7966,7 +7966,7 @@ class ThreadPayloadTest {
         val dataSource =
             SharedTasksDataSource(
                 api =
-                    object : SlockTasksApi {
+                    object : RaftTasksApi {
                         override suspend fun serverTasks(
                             serverId: ServerId,
                             priority: DataRequestPriority
@@ -8015,7 +8015,7 @@ class ThreadPayloadTest {
         val dataSource =
             SharedTasksDataSource(
                 api =
-                    object : SlockTasksApi {
+                    object : RaftTasksApi {
                         override suspend fun serverTasks(
                             serverId: ServerId,
                             priority: DataRequestPriority
@@ -8059,7 +8059,7 @@ class ThreadPayloadTest {
         val dataSource =
             SharedTasksDataSource(
                 api =
-                    object : SlockTasksApi {
+                    object : RaftTasksApi {
                         override suspend fun serverTasks(
                             serverId: ServerId,
                             priority: DataRequestPriority
@@ -8098,7 +8098,7 @@ class ThreadPayloadTest {
     fun realtimeTaskUpsertEnrichesMessageInLoadedExactChannelProjection() = runBlocking {
         val store = SharedTasksDataStore()
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-realtime",
                 authorId = "user_artin",
                 authorName = "Artin",
@@ -8122,7 +8122,7 @@ class ThreadPayloadTest {
                     updatedAtLabel = ""
                 )
         )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
 
         val projected =
@@ -8140,13 +8140,13 @@ class ThreadPayloadTest {
     fun unscopedServerTaskEnrichesVisibleMessageOnlyWhileChannelProjectionIsStale() = runBlocking {
         val store = SharedTasksDataStore()
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-unscoped",
                 authorId = "user_artin",
                 authorName = "Artin",
                 body = "unscoped realtime task"
             )
-        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val payload = RaftThreadScreenPayload(messages = listOf(message))
         val unscopedTask =
             TaskSummary(
                 id = TaskId("task-unscoped"),
@@ -8203,10 +8203,10 @@ class ThreadPayloadTest {
     @Test
     fun authoritativeEmptyLinkedTaskProjectionClearsStaleMessageTaskFacts() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "message-240",
                             authorId = "user_artin",
                             authorName = "Artin",
@@ -8237,7 +8237,7 @@ class ThreadPayloadTest {
     fun threadTasksJoinStartsOnlyAfterContentGate() {
         val taskChannelId = ChannelId("channel-1")
         val loadingPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -8292,9 +8292,9 @@ class ThreadPayloadTest {
     @Test
     fun resolvedAuxiliaryThreadIdUsesCurrentPayloadIdentityAfterLoading() {
         val launchPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "activity-thread",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
                 parentChannelId = "channel-1",
@@ -8325,9 +8325,9 @@ class ThreadPayloadTest {
     @Test
     fun resolvedAuxiliaryThreadIdAllowsEmptyReplyThreadAfterLoad() {
         val launchPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "task-thread-task-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
@@ -8360,9 +8360,9 @@ class ThreadPayloadTest {
     @Test
     fun threadTasksJoinUsesParentChannelForReplyThreadTaskStatusHydration() {
         val launchPayload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "activity-thread",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
                 parentChannelId = "channel-1",
@@ -8398,7 +8398,7 @@ class ThreadPayloadTest {
     fun hidesRawUuidTaskAssigneeUntilMemberNameCanBeResolved() {
         val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
         val base =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
@@ -8448,11 +8448,11 @@ class ThreadPayloadTest {
     fun resolvesUuidTaskAssigneeIdFromThreadMembers() {
         val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = assigneeId,
                             displayName = "Android Developer",
                             handle = "Android-Developer",
@@ -8461,7 +8461,7 @@ class ThreadPayloadTest {
                     ),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "user_artin",
                             authorName = "Artin",
@@ -8490,13 +8490,13 @@ class ThreadPayloadTest {
     @Test
     fun threadMemberDetailPageDataCarriesMemberIdentityAndExpectedKindOnly() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 sourceThreadId = "thread-source-1",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             )
 
         val pageData =
@@ -8509,20 +8509,20 @@ class ThreadPayloadTest {
         assertEquals("human", pageData.optString("memberKind"))
         assertEquals("", pageData.optString("sourceServerId"))
         assertEquals("thread-member-detail-thread-1-human-artin", pageData.optString("instanceId"))
-        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("profile"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20623", pageData.optString("todayEpochDay"))
         assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
-        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+        assertEquals(RaftTimeFormat12Hour, pageData.optString("timeFormat"))
     }
 
     @Test
     fun threadAuthorGestureIdentityChangesWhenVirtualizedRowAuthorChanges() {
         val authorA =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-a",
                 authorName = "Agent A",
@@ -8539,13 +8539,13 @@ class ThreadPayloadTest {
     @Test
     fun threadMembersPagerRouteCarriesOnlyScopeAndDisplayContext() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 sourceThreadId = "channel-1",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             )
 
         val pageData =
@@ -8561,8 +8561,8 @@ class ThreadPayloadTest {
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("memberCandidates"))
         assertEquals("", pageData.optString("title"))
-        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals(
             ThreadMembersPageRoute(
                 instanceId = "thread-members-thread-1",
@@ -8571,7 +8571,7 @@ class ThreadPayloadTest {
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             ),
             pageData.toThreadMembersPageRouteOrNull()
         )
@@ -8580,25 +8580,25 @@ class ThreadPayloadTest {
     @Test
     fun threadMembersTargetServerSurvivesDifferentInheritedShellOwnerServer() {
         val pageData =
-            KuiklyThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "channel-1")
+            RaftThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "channel-1")
                 .toThreadMembersPageData(
                     serverId = ServerId("server-target"),
                     channelId = ChannelId("channel-1")
                 )
-                .withSlockShellStoreScope(
-                    SlockShellStoreScope.create("shell-a", "server-owner")
+                .withRaftShellStoreScope(
+                    RaftShellStoreScope.create("shell-a", "server-owner")
                 )
 
         assertEquals("server-target", pageData.optString("serverId"))
-        assertEquals("server-owner", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("server-owner", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals(ServerId("server-target"), pageData.toThreadMembersPageRouteOrNull()?.serverId)
-        assertEquals("server-owner", pageData.slockShellStoreScopeOrNull()?.initialServerId)
+        assertEquals("server-owner", pageData.raftShellStoreScopeOrNull()?.initialServerId)
     }
 
     @Test
     fun threadMemberDetailPageDataCarriesSourceServerIdentityOnly() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 sourceThreadId = "thread-source-1"
             )
@@ -8623,14 +8623,14 @@ class ThreadPayloadTest {
     @Test
     fun threadChannelSearchPageDataCarriesPreselectedChannelIdentityOnly() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 sourceThreadId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             )
 
         val pageData = payload.toThreadChannelSearchPageData()!!
@@ -8645,30 +8645,30 @@ class ThreadPayloadTest {
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20623", pageData.optString("todayEpochDay"))
         assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
-        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+        assertEquals(RaftTimeFormat12Hour, pageData.optString("timeFormat"))
     }
 
     @Test
     fun threadChannelSearchPageDataRejectsNonChannelSurfaces() {
         assertEquals(
             null,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
             ).toThreadChannelSearchPageData()
         )
         assertEquals(
             null,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "thread-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread
             ).toThreadChannelSearchPageData()
         )
         assertEquals(
             null,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "   ",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             ).toThreadChannelSearchPageData()
         )
     }
@@ -8677,23 +8677,23 @@ class ThreadPayloadTest {
     fun threadHeaderSearchKeepsChannelSearchPageAndScopesInlineSearchToThreads() {
         assertEquals(
             ThreadHeaderSearchAction.ChannelSearch,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             ).threadHeaderSearchAction()
         )
         assertEquals(
             ThreadHeaderSearchAction.InlineThreadSearch,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "thread-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread
             ).threadHeaderSearchAction()
         )
         assertEquals(
             null,
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 sourceThreadId = "dm-1",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
             ).threadHeaderSearchAction()
         )
     }
@@ -8744,11 +8744,11 @@ class ThreadPayloadTest {
     @Test
     fun parsesSystemMessageMetadataAndBuildsCollapsedSummary() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m-system",
                             authorId = "system",
                             authorName = "System",
@@ -8786,13 +8786,13 @@ class ThreadPayloadTest {
     @Test
     fun formatsRawTimestampInSharedThreadPayload() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-1",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20583,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -8809,7 +8809,7 @@ class ThreadPayloadTest {
     @Test
     fun parsesReplyContextFields() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-2",
                 title = "Threads",
                 subtitle = "Origin: #general · hello",
@@ -8820,7 +8820,7 @@ class ThreadPayloadTest {
                 originStatus = "message",
                 originParentMessageId = "m-parent",
                 originMessage =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "m-parent",
                         authorId = "u1",
                         authorName = "Artin",
@@ -8842,7 +8842,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellKeepsSupportedThreadEventAffordances() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
                 showReplyActions = true,
@@ -8897,7 +8897,7 @@ class ThreadPayloadTest {
     @Test
     fun sharedShellHidesChannelChromeForReplyThread() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-reply-1",
                 title = "Threads",
                 subtitle = "Origin: #general · hello",
@@ -9045,8 +9045,8 @@ class ThreadPayloadTest {
 
     @Test
     fun threadMessageSavedBadgeTracksSavedStateIndependentlyOfRowActionPreferences() {
-        assertEquals(SlockColor.AccentOrange.copy(alpha = 0.15f), ThreadMessageSavedBadgeColor)
-        assertEquals(SlockColor.AccentOrangeArgb, ThreadMessageSavedBadgeIconColorArgb)
+        assertEquals(RaftColor.AccentOrange.copy(alpha = 0.15f), ThreadMessageSavedBadgeColor)
+        assertEquals(RaftColor.AccentOrangeArgb, ThreadMessageSavedBadgeIconColorArgb)
         assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
@@ -9093,21 +9093,21 @@ class ThreadPayloadTest {
                 isThreadFollowed = false
             )
         val pendingContext =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = "channel-1",
                 body = "Pending message"
             )
 
         assertTrue(
             shouldShowThreadFollowAction(
-                message = KuiklyThreadMessageItem(id = "message-1", authorId = "author-1", authorName = "Author"),
+                message = RaftThreadMessageItem(id = "message-1", authorId = "author-1", authorName = "Author"),
                 replyMetadata = replyMetadata
             )
         )
         assertFalse(
             shouldShowThreadFollowAction(
                 message =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "local-sending",
                         authorId = "author-1",
                         authorName = "Author",
@@ -9120,7 +9120,7 @@ class ThreadPayloadTest {
         assertFalse(
             shouldShowThreadFollowAction(
                 message =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "local-failed",
                         authorId = "author-1",
                         authorName = "Author",
@@ -9135,7 +9135,7 @@ class ThreadPayloadTest {
     @Test
     fun savedBadgeQualifiesAsThreadFooterMeta() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "saved-only",
                 authorId = "author-1",
                 authorName = "Author",
@@ -9180,8 +9180,8 @@ class ThreadPayloadTest {
         id: String,
         authorId: String,
         authorHandle: String
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = authorId,
             authorName = authorHandle,
@@ -9191,8 +9191,8 @@ class ThreadPayloadTest {
     private fun testThreadMessage(
         id: String,
         messageType: String = "chat"
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "u-$id",
             authorName = "User $id",
@@ -9207,7 +9207,7 @@ class ThreadPayloadTest {
         compactConsecutiveMessages: Boolean = false,
         anchorMessageId: String? = null,
         originFallback: ThreadLaunchOriginFallback? = null
-    ): KuiklyThreadScreenPayload =
+    ): RaftThreadScreenPayload =
         requireNotNull(buildAppShellThreadPayload(
             conversation = conversation.toThreadLaunchConversationIdentity(),
             timeContext = timeContext,
@@ -9240,7 +9240,7 @@ class ThreadPayloadTest {
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,
         private val serverTasksBody: String
-    ) : SlockTasksApi {
+    ) : RaftTasksApi {
         val calls = mutableListOf<String>()
 
         override suspend fun serverTasks(

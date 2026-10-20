@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadPendingSendContext
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadPendingSendContext
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.ThreadMessageDeliveryFailed
 import build.raft.app.ThreadMessageDeliverySending
@@ -63,7 +63,7 @@ internal interface ThreadPendingSendDrainStore {
     fun rowsForDrain(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity
-    ): List<KuiklyThreadMessageItem>
+    ): List<RaftThreadMessageItem>
 
     /** Returns true when the row was durably transitioned to "failed". */
     fun markFailed(
@@ -91,7 +91,7 @@ internal class ThreadPendingSendJournalDrainStore(
     override fun rowsForDrain(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity
-    ): List<KuiklyThreadMessageItem> = journal.restore(provenance, route)
+    ): List<RaftThreadMessageItem> = journal.restore(provenance, route)
 
     override fun markFailed(
         provenance: ReplyCacheProvenance,
@@ -127,7 +127,7 @@ internal class ThreadPendingSendDrainer(
     private val scope: CoroutineScope,
     private val provenanceResolver: () -> ReplyCacheProvenance?,
     private val routeResolver: () -> ThreadRouteIdentity?,
-    private val send: suspend (KuiklyThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage>,
+    private val send: suspend (RaftThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage>,
     private val onSent: suspend (
         localId: String,
         page: ThreadMessagesPage,
@@ -370,7 +370,7 @@ internal class ThreadPendingSendDrainer(
     }
 
     private fun handleDrainFailure(
-        row: KuiklyThreadMessageItem,
+        row: RaftThreadMessageItem,
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
         attempt: Int,

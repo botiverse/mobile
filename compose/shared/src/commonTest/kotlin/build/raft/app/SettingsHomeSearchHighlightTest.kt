@@ -39,8 +39,8 @@ class SettingsHomeSearchHighlightTest {
             ),
             annotated.spanStyles.map { it.start until it.end }
         )
-        assertEquals(SlockColor.BrandYellow, annotated.spanStyles.single().item.background)
-        assertEquals(SlockColor.TextBlack, annotated.spanStyles.single().item.color)
+        assertEquals(RaftColor.BrandYellow, annotated.spanStyles.single().item.background)
+        assertEquals(RaftColor.TextBlack, annotated.spanStyles.single().item.color)
     }
 
     @Test
@@ -48,10 +48,10 @@ class SettingsHomeSearchHighlightTest {
         val regular = sharedHomeSearchTimestampTextStyle(compact = false)
         val compact = sharedHomeSearchTimestampTextStyle(compact = true)
 
-        assertEquals(SlockMonoFamily, regular.fontFamily)
+        assertEquals(RaftMonoFamily, regular.fontFamily)
         assertEquals(10.sp, regular.fontSize)
         assertEquals(12.sp, regular.lineHeight)
-        assertEquals(SlockMonoFamily, compact.fontFamily)
+        assertEquals(RaftMonoFamily, compact.fontFamily)
         assertEquals(9.sp, compact.fontSize)
         assertEquals(11.sp, compact.lineHeight)
     }

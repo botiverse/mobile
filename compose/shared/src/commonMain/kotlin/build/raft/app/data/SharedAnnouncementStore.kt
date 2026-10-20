@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** One instance per authenticated account/environment/server lifetime. */
 internal class SharedAnnouncementStore(
-    private val client: SlockAnnouncementsRemindersApiClient,
+    private val client: RaftAnnouncementsRemindersApiClient,
     private val isCurrentOwner: () -> Boolean,
 ) {
     private val mutableAnnouncement = MutableStateFlow<AnnouncementItem?>(null)

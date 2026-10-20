@@ -18,10 +18,10 @@ import build.raft.app.data.KeyValueExternalShareDraftRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockExternalShareEnvelopeRepositoryProvider
-import build.raft.app.data.SlockNetworkClient
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftExternalShareEnvelopeRepositoryProvider
+import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -41,8 +41,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 @Composable
 internal fun ExternalShareLaunchHost(
     pageData: JSONObject,
-    authStore: SlockAuthSessionStore,
-    networkClient: SlockNetworkClient,
+    authStore: RaftAuthSessionStore,
+    networkClient: RaftNetworkClient,
     authority: ExternalShareLaunchAuthority?,
     bridge: BridgeModule,
     onOpenComposer: suspend (ExternalShareComposerHandoff) -> Boolean
@@ -62,7 +62,7 @@ internal fun ExternalShareLaunchHost(
     val draftRepository: ExternalShareDraftRepository =
         remember(readyAuthority.accountId) {
             KeyValueExternalShareDraftRepository(
-                store = slockSharedPreferenceStore(),
+                store = raftSharedPreferenceStore(),
                 ownerAccountId = readyAuthority.accountId
             )
         }
@@ -95,7 +95,7 @@ internal fun ExternalShareLaunchHost(
     val store =
         remember(request.token, readyAuthority, draftRepository, targetRepository, scope) {
             ExternalShareStore(
-                envelopeRepository = SlockExternalShareEnvelopeRepositoryProvider.create(),
+                envelopeRepository = RaftExternalShareEnvelopeRepositoryProvider.create(),
                 draftRepository = draftRepository,
                 targetRepository = targetRepository,
                 scope = scope,
@@ -173,7 +173,7 @@ private fun ExternalShareStatusSurface(
     onClose: (() -> Unit)?,
     retry: (() -> Unit)? = null
 ) {
-    SlockBackHandler(enabled = true, label = "external_share_status") {
+    RaftBackHandler(enabled = true, label = "external_share_status") {
         onClose?.invoke()
     }
     ExternalShareFullScreen {
@@ -182,24 +182,24 @@ private fun ExternalShareStatusSurface(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = title, style = SlockType.PageTitle, color = SlockColor.TextBlack)
+            Text(text = title, style = RaftType.PageTitle, color = RaftColor.TextBlack)
             Text(
                 text = message,
-                style = SlockType.Body,
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body,
+                color = RaftColor.TextMutedGray,
                 modifier = Modifier.padding(top = 12.dp)
             )
             retry?.let {
-                SlockModalActionButton(
+                RaftModalActionButton(
                     label = stringResource(MR.strings.external_share_retry_failed),
-                    icon = SlockLucideIconName.RefreshCw,
+                    icon = RaftLucideIconName.RefreshCw,
                     onClick = it
                 )
             }
             onClose?.let {
-                SlockModalActionButton(
+                RaftModalActionButton(
                     label = stringResource(MR.strings.common_close),
-                    icon = SlockLucideIconName.X,
+                    icon = RaftLucideIconName.X,
                     onClick = it
                 )
             }
@@ -219,8 +219,8 @@ private fun ExternalShareFullScreen(content: @Composable ColumnScope.() -> Unit)
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
-                    .slockNativeDispatchCapture()
+                    .background(RaftColor.SurfaceWhite)
+                    .raftNativeDispatchCapture()
         )
         Column(modifier = Modifier.fillMaxSize(), content = content)
     }

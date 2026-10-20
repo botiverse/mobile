@@ -52,7 +52,7 @@ DECL = re.compile(
     r"^(?P<vis>private|internal)\s+(?:const\s+)?(?:suspend\s+)?(?:inline\s+)?"
     r"(?:fun|val|var|class|object|interface|enum class|data class|typealias)\s+"
     # Receiver handling: the optional receiver group is GREEDY, which is what makes
-    # `private fun KuiklyThreadMessageItem.toMemberProfile()` register
+    # `private fun RaftThreadMessageItem.toMemberProfile()` register
     # `toMemberProfile` rather than the receiver. The trailing (?!\s*\.) is
     # belt-and-braces only - mutation testing shows removing it changes nothing,
     # while making the receiver group lazy or deleting it does break the contract,
@@ -116,12 +116,12 @@ fun render() {
     # Failure shape 1: a plain extension declaration must be read as the FUNCTION
     # name, never the receiver. Misreading this invented phantom private->internal
     # transitions three separate times during task #189.
-    plain_extension = "private fun KuiklyThreadMessageItem.toMemberProfile() = Unit\n"
+    plain_extension = "private fun RaftThreadMessageItem.toMemberProfile() = Unit\n"
     names = declarations(plain_extension)
     if "toMemberProfile" not in names:
         print("self-test: extension declaration did not register its function name", file=sys.stderr)
         return 1
-    if "KuiklyThreadMessageItem" in names:
+    if "RaftThreadMessageItem" in names:
         print(
             "self-test: extension receiver was registered as a declaration name",
             file=sys.stderr,
@@ -142,7 +142,7 @@ fun render() {
     # Failure shape 3: a visual-only EXTENSION left behind must be RED, and GREEN
     # once migrated. The left-behind check is the one the compiler cannot make.
     production_left_behind_extension = production_clean + (
-        "internal fun KuiklyThreadScreenPayload.withVisualOnlyTweak() = this\n"
+        "internal fun RaftThreadScreenPayload.withVisualOnlyTweak() = this\n"
     )
     moved_using_extension = moved + "\nfun more() { payload.withVisualOnlyTweak() }\n"
     stuck = classify(production_left_behind_extension, moved_using_extension)

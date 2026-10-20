@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 
-/// Stringifies an about-field value the same way SlockBridgeString does:
+/// Stringifies an about-field value the same way RaftBridgeString does:
 /// NSString is trimmed, stringValue-capable objects use trimmed stringValue,
 /// everything else becomes "".
 static inline NSString *RaftDiagnosticsEnvironmentValueString(id value) {

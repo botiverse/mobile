@@ -10,7 +10,7 @@ internal const val HEADER_ACCEPT_LANGUAGE: String = "Accept-Language"
  * default" sends the device language. Null sends no header, which the server treats as English.
  */
 internal fun runtimeFormRequestLanguageTag(
-    appLocale: () -> AppLocale = { KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync() },
+    appLocale: () -> AppLocale = { KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync() },
     systemLanguageTag: () -> String? = ::currentSystemLanguageTag,
 ): String? {
     val locale =

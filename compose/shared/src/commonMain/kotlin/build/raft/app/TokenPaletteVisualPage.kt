@@ -29,11 +29,11 @@ internal fun TokenPaletteVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(620.dp)
-                .background(SlockColor.SurfaceCream)
+                .background(RaftColor.SurfaceCream)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Shared Tokens", style = SlockType.PageTitle, color = SlockColor.TextBlack)
+        Text("Shared Tokens", style = RaftType.PageTitle, color = RaftColor.TextBlack)
         TokenSwatchGrid()
         TokenShadowCard()
     }
@@ -58,13 +58,13 @@ private fun TokenSwatchGrid() {
 @Composable
 private fun TokenSwatch(token: SharedColorToken, modifier: Modifier = Modifier) {
     Box(modifier = modifier.height(68.dp)) {
-        Box(Modifier.matchParentSize().padding(start = 2.dp, top = 2.dp).background(SlockColor.ShadowBlack))
+        Box(Modifier.matchParentSize().padding(start = 2.dp, top = 2.dp).background(RaftColor.ShadowBlack))
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(RaftColor.SurfaceWhite)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                     .padding(6.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
@@ -74,10 +74,10 @@ private fun TokenSwatch(token: SharedColorToken, modifier: Modifier = Modifier) 
                         .fillMaxWidth()
                         .height(24.dp)
                         .background(token.color)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
             )
-            Text(token.label, style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(token.hex, style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
+            Text(token.label, style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(token.hex, style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp), color = RaftColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
         }
     }
 }
@@ -85,18 +85,18 @@ private fun TokenSwatch(token: SharedColorToken, modifier: Modifier = Modifier) 
 @Composable
 private fun TokenShadowCard() {
     Box(modifier = Modifier.fillMaxWidth().height(50.dp)) {
-        Box(Modifier.matchParentSize().padding(start = 4.dp, top = 4.dp).background(SlockColor.ShadowBlack))
+        Box(Modifier.matchParentSize().padding(start = 4.dp, top = 4.dp).background(RaftColor.ShadowBlack))
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(RaftColor.SurfaceCream)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                     .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Text("Shadow", style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-            Text("4px 4px 0px #141111", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack.copy(alpha = 0.6f))
+            Text("Shadow", style = RaftType.ButtonBold, color = RaftColor.TextBlack)
+            Text("4px 4px 0px #141111", style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp), color = RaftColor.TextBlack.copy(alpha = 0.6f))
         }
     }
 }
@@ -105,22 +105,22 @@ private data class SharedColorToken(val label: String, val hex: String, val colo
 
 private val SharedTokenPalette =
     listOf(
-        SharedColorToken("Brutal Yellow", "#FFD440", SlockColor.BrandYellow),
-        SharedColorToken("Brutal Pink", "#FE7DA8", SlockColor.AccentPink),
-        SharedColorToken("Brutal Lavender", "#BBAFE6", SlockColor.AccentLavender),
-        SharedColorToken("Brutal Cream", "#FFFAEF", SlockColor.SurfaceCream),
-        SharedColorToken("Brutal Black", "#141111", SlockColor.ShadowBlack),
-        SharedColorToken("Brutal Cyan", "#27CCF3", SlockColor.AccentCyan),
-        SharedColorToken("Brutal Orange", "#F8A16F", SlockColor.AccentOrange),
-        SharedColorToken("Brutal Lime", "#A9D877", SlockColor.AccentLime),
-        SharedColorToken("Brutal Red", "#F97264", SlockColor.AccentRed),
-        SharedColorToken("Brutal Stone", "#C0B9B1", SlockColor.AccentStone),
-        SharedColorToken("Surface White", "#FFFFFF", SlockColor.SurfaceWhite),
-        SharedColorToken("Surface Cream", "#FFFAEF", SlockColor.SurfaceCream),
-        SharedColorToken("App Bg Light Blue", "#E6F8FF", SlockColor.AppBgLightBlue),
-        SharedColorToken("Empty State Gray", "#E7E7E7", SlockColor.EmptyStateGray),
-        SharedColorToken("Text Black", "#000000", SlockColor.TextBlack),
-        SharedColorToken("Text Muted Gray", "#737373", SlockColor.TextMutedGray),
-        SharedColorToken("Border Black", "#000000", SlockColor.BorderBlack),
-        SharedColorToken("Shadow Black", "#141111", SlockColor.ShadowBlack)
+        SharedColorToken("Brutal Yellow", "#FFD440", RaftColor.BrandYellow),
+        SharedColorToken("Brutal Pink", "#FE7DA8", RaftColor.AccentPink),
+        SharedColorToken("Brutal Lavender", "#BBAFE6", RaftColor.AccentLavender),
+        SharedColorToken("Brutal Cream", "#FFFAEF", RaftColor.SurfaceCream),
+        SharedColorToken("Brutal Black", "#141111", RaftColor.ShadowBlack),
+        SharedColorToken("Brutal Cyan", "#27CCF3", RaftColor.AccentCyan),
+        SharedColorToken("Brutal Orange", "#F8A16F", RaftColor.AccentOrange),
+        SharedColorToken("Brutal Lime", "#A9D877", RaftColor.AccentLime),
+        SharedColorToken("Brutal Red", "#F97264", RaftColor.AccentRed),
+        SharedColorToken("Brutal Stone", "#C0B9B1", RaftColor.AccentStone),
+        SharedColorToken("Surface White", "#FFFFFF", RaftColor.SurfaceWhite),
+        SharedColorToken("Surface Cream", "#FFFAEF", RaftColor.SurfaceCream),
+        SharedColorToken("App Bg Light Blue", "#E6F8FF", RaftColor.AppBgLightBlue),
+        SharedColorToken("Empty State Gray", "#E7E7E7", RaftColor.EmptyStateGray),
+        SharedColorToken("Text Black", "#000000", RaftColor.TextBlack),
+        SharedColorToken("Text Muted Gray", "#737373", RaftColor.TextMutedGray),
+        SharedColorToken("Border Black", "#000000", RaftColor.BorderBlack),
+        SharedColorToken("Shadow Black", "#141111", RaftColor.ShadowBlack)
     )

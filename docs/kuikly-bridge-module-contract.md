@@ -46,7 +46,7 @@ Parity:
 
 | Host | Status |
 | --- | --- |
-| Android | Implemented by `SlockKuiklyBridgeModule.authRequest` using `HttpURLConnection`. |
+| Android | Implemented by `RaftBridgeModule.authRequest` using `HttpURLConnection`. |
 | OHOS | Implemented by `KRBridgeModule.authRequest` using ArkTS `http`. |
 
 ### `relationalStore`
@@ -109,7 +109,7 @@ These methods exist because Slock still has migration-era Android islands or dem
 | `openPage` | Demo-style page open | Not implemented in Slock Android bridge | Stub | Use Kuikly `RouterModule` or shared `NavHost` for app routes. |
 | `toast` | User-visible host toast | Implemented | Stub | Optional until product decides shared toast behavior. |
 | `copyToPasteboard` | Clipboard capability | Not implemented | Stub | Promote when shared copy actions must work on OHOS. |
-| `localServeTime` / `dateFormatter` | Demo/time helpers | Not implemented or unused in Android Slock bridge | Partial/stub | Avoid for Slock business time; use shared `SlockTime`. |
+| `localServeTime` / `dateFormatter` | Demo/time helpers | Not implemented or unused in Android Slock bridge | Partial/stub | Avoid for Slock business time; use shared `RaftTime`. |
 | `showAlert`, `reportDT`, `reportRealTime`, `readAssetFile` | Demo or platform helper | Not part of Android Slock bridge | Partial | Keep out of new shared Slock flows unless documented separately. |
 
 ## Production Host Registration

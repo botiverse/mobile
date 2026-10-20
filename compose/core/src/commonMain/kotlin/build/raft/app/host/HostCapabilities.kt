@@ -1,16 +1,16 @@
 package build.raft.app.host
 
-import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import kotlinx.serialization.json.JsonObject
 
 /**
  * Native host capabilities the UI-free layer (data, stores, settings/auth orchestration) calls.
  *
- * Today the only implementation is the Kuikly bridge adapter (`KuiklyHostCapabilities`, which
+ * Today the only implementation is the Kuikly bridge adapter (`RaftHostCapabilities`, which
  * forwards to the `HRBridgeModule` methods of the same name); a Compose Multiplatform host will
  * implement it directly in Kotlin (Android) or via a Swift-implemented protocol (iOS). Nothing here
  * is addressed by a Kuikly pager id, so any host can hand an implementation to
- * `SlockSharedStoreRegistry.get(host)`.
+ * `RaftSharedStoreRegistry.get(host)`.
  *
  * Payloads stay the existing bridge wire contracts: the `JsonObject` arguments are the exact
  * method args the native hosts already parse, and results are the host callback payloads.
@@ -19,7 +19,7 @@ import kotlinx.serialization.json.JsonObject
  * Kuikly pages): page routing (`openPage`, `closePage`, `adaptiveNavigation`,
  * `conversationForwardGesture`), performance scenes/markers, attachment open/save/export/cache
  * and download-owner calls, thread share-image export/probe, motion, and the legacy template
- * methods. Logging never crossed the bridge (it goes through `slockLog*`), so it is not a host
+ * methods. Logging never crossed the bridge (it goes through `raftLog*`), so it is not a host
  * capability either.
  */
 interface HostCapabilities :
@@ -87,7 +87,7 @@ interface HostRealtimeCapability {
         serverId: String,
         accessToken: String,
         shellInstanceId: String = "",
-        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        socketUrl: String = RAFT_SOCKET_BASE_URL,
         lastSeq: Long = 0L,
         forceReconnect: Boolean = false,
         authorityScopeLeaseId: String,
@@ -100,7 +100,7 @@ interface HostRealtimeCapability {
         serverIds: Set<String>,
         accessToken: String,
         environmentId: String,
-        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        socketUrl: String = RAFT_SOCKET_BASE_URL,
         forceReconnect: Boolean = false,
         disconnectReason: String = "auth_invalid",
         authorityScopeLeaseId: String = "",

@@ -34,7 +34,7 @@ class SharedMessageBodyFontSizeStore(
     private val diagnosticsLogger: (String) -> Unit = {},
 ) {
     private val mutex = Mutex()
-    private val _state = slockStoreState(SharedMessageBodyFontSizeState(), "SharedMessageBodyFontSizeStore")
+    private val _state = raftStoreState(SharedMessageBodyFontSizeState(), "SharedMessageBodyFontSizeStore")
     val state: StateFlow<SharedMessageBodyFontSizeState> = _state.asStateFlow()
 
     private val loads = mutableMapOf<String, Deferred<DataResult<SettingsAppearanceSnapshot>>>()

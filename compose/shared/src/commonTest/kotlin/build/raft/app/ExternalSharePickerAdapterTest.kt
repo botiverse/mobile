@@ -37,7 +37,7 @@ class ExternalSharePickerAdapterTest {
         val pending = selecting.toExternalSharePickerSurface(queryOverride = "search")
 
         assertEquals("search", pending.picker.query)
-        assertEquals(SlockForwardPickerLoadState.Loading, pending.picker.loadState)
+        assertEquals(RaftForwardPickerLoadState.Loading, pending.picker.loadState)
         assertFalse(pending.picker.interactive)
     }
 
@@ -45,16 +45,16 @@ class ExternalSharePickerAdapterTest {
     fun staleOrTamperedRowTapFailsClosed() {
         val first = target("channel-a")
         val selecting = state(targets = listOf(first), generation = 9)
-        val rendered = first.toSlockForwardTargetPickerItem()
+        val rendered = first.toRaftForwardTargetPickerItem()
 
         assertNull(
             selecting.toExternalShareIntent(
-                SlockForwardTargetPickerIntent.TargetSelected(rendered, renderGeneration = 8)
+                RaftForwardTargetPickerIntent.TargetSelected(rendered, renderGeneration = 8)
             )
         )
         assertNull(
             selecting.toExternalShareIntent(
-                SlockForwardTargetPickerIntent.TargetSelected(
+                RaftForwardTargetPickerIntent.TargetSelected(
                     rendered.copy(payload = target("channel-other")),
                     renderGeneration = 9
                 )
@@ -62,7 +62,7 @@ class ExternalSharePickerAdapterTest {
         )
         assertIs<ExternalShareIntent.ToggleTarget>(
             selecting.toExternalShareIntent(
-                SlockForwardTargetPickerIntent.TargetSelected(rendered, renderGeneration = 9)
+                RaftForwardTargetPickerIntent.TargetSelected(rendered, renderGeneration = 9)
             )
         )
     }
@@ -72,10 +72,10 @@ class ExternalSharePickerAdapterTest {
         val first = target("channel-a")
         val selecting = state(targets = listOf(first), selected = listOf(first), generation = 3)
 
-        assertEquals(ExternalShareIntent.Continue, selecting.toExternalShareIntent(SlockForwardTargetPickerIntent.Continue))
+        assertEquals(ExternalShareIntent.Continue, selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.Continue))
         val remove =
             assertIs<ExternalShareIntent.ToggleTarget>(
-                selecting.toExternalShareIntent(SlockForwardTargetPickerIntent.RemoveSelection(first.externalKey()))
+                selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.RemoveSelection(first.externalKey()))
             )
         assertEquals(first, remove.target)
     }

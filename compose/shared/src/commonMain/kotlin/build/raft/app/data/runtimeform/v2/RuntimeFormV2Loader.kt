@@ -4,9 +4,9 @@ import build.raft.app.data.AgentSummary
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.ScreenError
-import build.raft.app.data.SlockAgentsApi
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockComputersApi
+import build.raft.app.data.RaftAgentsApi
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftComputersApi
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
@@ -57,8 +57,8 @@ private val runtimeFormV2ErrorJson = Json { ignoreUnknownKeys = true }
  * names. Any failure is returned as an error so the caller can fall back to v1.
  */
 internal class RuntimeFormV2Loader(
-    private val computers: SlockComputersApi,
-    private val agents: SlockAgentsApi? = null,
+    private val computers: RaftComputersApi,
+    private val agents: RaftAgentsApi? = null,
     private val logger: (String) -> Unit = {}
 ) {
     suspend fun loadCreate(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> =
@@ -132,7 +132,7 @@ internal class RuntimeFormV2Loader(
     /** The agent as the server now stores it, read back after a v2 save (the client never maps values to a config). */
     suspend fun agent(agentId: MemberId): DataResult<AgentSummary> {
         val transport = agents ?: return failure("runtime_form_v2_edit_unavailable")
-        return SlockAgentsApiClient(transport).agent(agentId)
+        return RaftAgentsApiClient(transport).agent(agentId)
     }
 
     private suspend fun loadFrom(

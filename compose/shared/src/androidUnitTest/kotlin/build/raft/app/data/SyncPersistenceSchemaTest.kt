@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.shared.data.local.SlockDatabase
+import build.raft.app.shared.data.local.RaftDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -24,7 +24,7 @@ class SyncPersistenceSchemaTest {
     @Test
     fun freshSchemaHasEpochCursorColumnTieBreakIndexAndFkEnforcement() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        SlockDatabase.Schema.create(driver).value
+        RaftDatabase.Schema.create(driver).value
         driver.execute(null, "PRAGMA foreign_keys=ON;", 0) // else FK assertions are false-green
 
         // 1) epoch column present on the fresh schema — TEXT, nullable (no value until first snapshot).
@@ -73,7 +73,7 @@ class SyncPersistenceSchemaTest {
         //    query, not raw SQL): same seq tie-breaks by id (m1 before m2). No seq-null filter needed.
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)
-        val restored = SlockDatabase(driver).slockDatabaseQueries
+        val restored = RaftDatabase(driver).raftDatabaseQueries
             .selectServerBackedMessagesForChannel(
                 environmentId = "legacy",
                 serverId = "s1",

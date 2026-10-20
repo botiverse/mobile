@@ -68,13 +68,13 @@ internal fun buildThreadLaunchConversationIdentity(
  * misrouting a DM thread onto the channel surface (#415, t5/#419).
  *
  * Kind + parent surface/channel kind route through the #417 contract
- * ([parseConversationKindOrNull] / [toKuiklySurfaceKind] / [toWireChannelKindOrNull])
+ * ([parseConversationKindOrNull] / [toRaftSurfaceKind] / [toWireChannelKindOrNull])
  * instead of the old scattered converters and `?: Channel` fallbacks.
  */
 internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIdentity(
     directory: SharedConversationDirectoryState
 ): ThreadLaunchConversationIdentity? {
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
     val parentProjection =
         if (isReplyThread) {
             parentChannelId
@@ -83,7 +83,7 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
                 // resolve can return the thread itself. A parent is never a reply thread, and
                 // never the thread's own canonical id — treat either as an unresolved parent.
                 ?.takeUnless {
-                    it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                    it.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                         it.canonicalChannelId == canonicalChannelId
                 }
         } else {
@@ -96,8 +96,8 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
     }
     val kind =
         when (surfaceKind) {
-            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
-            KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
+            RaftThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+            RaftThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
             // Channel surface: Joint vs Channel comes from channelKind; an unparsable
             // channelKind on a channel surface is genuinely a channel (product default,
             // not a parent-kind fallback).
@@ -114,7 +114,7 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
         threadChannelId = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        parentSurfaceKind = parentKind?.toKuiklySurfaceKind(),
+        parentSurfaceKind = parentKind?.toRaftSurfaceKind(),
         parentChannelKind = parentKind?.toWireChannelKindOrNull(),
         dmPeerIdentity = peerIdentity
     )
@@ -127,7 +127,7 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
  * nullable receiver subsumes both (the notification caller passes a non-null projection).
  */
 internal fun SharedConversationDirectoryProjection?.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
-    if (this?.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (this?.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
     val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
     return ThreadLaunchOriginFallback(
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
@@ -182,7 +182,7 @@ private fun directMessagePeerIdentity(
 
 internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val surfaceKind = threadSurfaceKind()
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
     return resolveThreadRouteIdentity(
         surfaceKind = surfaceKind,
         channelKind = threadRouteChannelKind(),
@@ -209,7 +209,7 @@ internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): Thre
 }
 
 internal fun ThreadLaunchConversationIdentity.threadSurfaceKind(): String =
-    kind.toKuiklySurfaceKind()
+    kind.toRaftSurfaceKind()
 
 internal fun ThreadLaunchConversationIdentity.usesMemberScopedMentions(): Boolean =
     kind == ConversationKind.DirectMessage ||
@@ -261,7 +261,7 @@ internal fun ThreadLaunchConversationIdentity.threadRouteChannelKind(): String? 
         ConversationKind.Joint -> "joint"
         // The kind IS Channel here; the `?: Channel` is that tautology made explicit for a
         // blank channelType (product default, not a parent-kind parse fallback — C-group).
-        ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         else -> channelType.normalizedThreadChannelKind()
     }

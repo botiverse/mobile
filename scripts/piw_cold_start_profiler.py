@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cold-start profiler for Slock Android (SlockKuiklyActivity).
+"""Cold-start profiler for Slock Android (RaftLegacyHostActivity).
 
 Stops the app, clears logcat, launches cold, then at each checkpoint captures:
 - top -H -p <pid>           (per-thread CPU snapshot)
@@ -13,7 +13,7 @@ Usage:
   python3 scripts/piw_cold_start_profiler.py \
       --device emulator-5554 \
       --package build.raft.app \
-      --component build.raft.app/.shared.SlockKuiklyActivity \
+      --component build.raft.app/.shared.RaftLegacyHostActivity \
       --checkpoints 0.5 1 2 3 5 8 \
       --out /Users/artin/Downloads/piw-coldstart
 
@@ -75,7 +75,7 @@ def main() -> int:
     parser.add_argument(
         "--component",
         required=True,
-        help="activity component, e.g. build.raft.app/.shared.SlockKuiklyActivity",
+        help="activity component, e.g. build.raft.app/.shared.RaftLegacyHostActivity",
     )
     parser.add_argument(
         "--checkpoints",

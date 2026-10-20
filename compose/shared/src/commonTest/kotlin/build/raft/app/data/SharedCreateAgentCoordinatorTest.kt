@@ -18,8 +18,8 @@ class SharedCreateAgentCoordinatorTest {
             )
         val coordinator =
             SharedCreateAgentCoordinator(
-                agentsApiClient = SlockAgentsApiClient(FakeCreateAgentAgentsApi()),
-                computersApiClient = SlockComputersApiClient(computersApi)
+                agentsApiClient = RaftAgentsApiClient(FakeCreateAgentAgentsApi()),
+                computersApiClient = RaftComputersApiClient(computersApi)
             )
 
         val result = coordinator.loadRuntimeModels("server-1", "machine-1", "claude")
@@ -43,8 +43,8 @@ class SharedCreateAgentCoordinatorTest {
             )
         val coordinator =
             SharedCreateAgentCoordinator(
-                agentsApiClient = SlockAgentsApiClient(FakeCreateAgentAgentsApi()),
-                computersApiClient = SlockComputersApiClient(computersApi)
+                agentsApiClient = RaftAgentsApiClient(FakeCreateAgentAgentsApi()),
+                computersApiClient = RaftComputersApiClient(computersApi)
             )
 
         val result = coordinator.loadRuntimeModels("server-1", "machine-1", "codex")
@@ -65,7 +65,7 @@ class SharedCreateAgentCoordinatorTest {
 
 private class FakeCreateAgentComputersApi(
     private val runtimeModelsBody: String
-) : SlockComputersApi {
+) : RaftComputersApi {
     val calls = mutableListOf<String>()
 
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
@@ -83,7 +83,7 @@ private class FakeCreateAgentComputersApi(
     override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
 }
 
-private class FakeCreateAgentAgentsApi : SlockAgentsApi {
+private class FakeCreateAgentAgentsApi : RaftAgentsApi {
     override suspend fun agents(): HomeNetworkResponse = error("unused")
     override suspend fun agent(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun createAgent(body: String): HomeNetworkResponse = error("unused")

@@ -180,7 +180,7 @@ class ForwardMessageParserTest {
 
         val rendered = buildSharedThreadPayloadFromMessagesPage(
             basePayload =
-                KuiklyThreadScreenPayload(
+                RaftThreadScreenPayload(
                     instanceId = "thread-channel-1",
                     sourceThreadId = "channel-1",
                     status = "loading"

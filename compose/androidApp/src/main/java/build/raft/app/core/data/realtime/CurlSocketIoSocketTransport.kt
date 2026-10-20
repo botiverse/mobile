@@ -4,10 +4,10 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.RealtimeSocketTransport
-import build.raft.app.network.SlockAndroidCurlSocketIo
-import build.raft.app.network.SlockCurlSocketIoListener
-import build.raft.app.network.SlockCurlSocketIoSession
-import build.raft.app.network.SlockCurlSocketIoState
+import build.raft.app.network.RaftAndroidCurlSocketIo
+import build.raft.app.network.RaftCurlSocketIoListener
+import build.raft.app.network.RaftCurlSocketIoSession
+import build.raft.app.network.RaftCurlSocketIoState
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import org.json.JSONObject
@@ -40,22 +40,22 @@ internal class CurlSocketIoSocketTransport(
     private val sessionFactory: (
         serverUrl: String,
         authJson: String,
-        listener: SlockCurlSocketIoListener,
-    ) -> SlockCurlSocketIoSession? = SlockAndroidCurlSocketIo::create,
+        listener: RaftCurlSocketIoListener,
+    ) -> RaftCurlSocketIoSession? = RaftAndroidCurlSocketIo::create,
     private val closeExecutor: Executor = DefaultCloseExecutor,
     private val logger: (String) -> Unit = { message ->
-        build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", message)
+        build.raft.app.core.data.diagnostics.RaftAppLog.d("SlockRealtime", message)
     },
     // Hands a9971638 (artin, 11301003): on the curl stack no realtime event reached the app for
     // 10 minutes and nothing in the release log said why. Connection lifecycle lines (a handful per
     // connection) are release-visible; per-emit noise stays on [logger].
     private val lifecycleLogger: (String) -> Unit = { message ->
-        build.raft.app.core.data.diagnostics.SlockAppLog.w("SlockRealtime", message)
+        build.raft.app.core.data.diagnostics.RaftAppLog.w("SlockRealtime", message)
     },
 ) : RealtimeSocketTransport {
     private val listeners =
         mutableMapOf<String, MutableSet<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
-    private var session: SlockCurlSocketIoSession? = null
+    private var session: RaftCurlSocketIoSession? = null
 
     override fun <T> linearize(block: () -> T): T = generationFence.linearize(block)
 
@@ -119,29 +119,29 @@ internal class CurlSocketIoSocketTransport(
 
     private inner class ConnectionLifecycle(
         private val generation: RealtimeSocketGeneration,
-    ) : SlockCurlSocketIoListener {
+    ) : RaftCurlSocketIoListener {
         // Touched only inside runIfCurrent (fence lock), and only from this session's native thread.
         private var reconnecting = false
         private var attempts = 0
         // Events received since the last Connected; reported on the first one and on disconnect.
         private var eventsSinceConnect = 0
 
-        override fun onState(state: SlockCurlSocketIoState, code: Int, detail: String) {
+        override fun onState(state: RaftCurlSocketIoState, code: Int, detail: String) {
             lifecycleLogger(
                 "transport_state stack=curl state=${state.name} code=$code " +
                     "detail=${detail.take(LIFECYCLE_DETAIL_MAX_CHARS)} eventsSinceConnect=$eventsSinceConnect"
             )
-            if (state == SlockCurlSocketIoState.Connected) eventsSinceConnect = 0
+            if (state == RaftCurlSocketIoState.Connected) eventsSinceConnect = 0
             generationFence.runIfCurrent(generation) {
                 when (state) {
-                    SlockCurlSocketIoState.Reconnecting -> reconnecting = true
-                    SlockCurlSocketIoState.Connecting ->
+                    RaftCurlSocketIoState.Reconnecting -> reconnecting = true
+                    RaftCurlSocketIoState.Connecting ->
                         if (reconnecting) {
                             attempts += 1
                             deliverLocked(RealtimeSocketEvents.ReconnectAttempt, attempts)
                         }
-                    SlockCurlSocketIoState.EngineOpen -> Unit
-                    SlockCurlSocketIoState.Connected -> {
+                    RaftCurlSocketIoState.EngineOpen -> Unit
+                    RaftCurlSocketIoState.Connected -> {
                         if (reconnecting) {
                             deliverLocked(RealtimeSocketEvents.Reconnect, attempts)
                             reconnecting = false
@@ -149,12 +149,12 @@ internal class CurlSocketIoSocketTransport(
                         }
                         deliverLocked(RealtimeSocketEvents.Connect, null)
                     }
-                    SlockCurlSocketIoState.Disconnected ->
+                    RaftCurlSocketIoState.Disconnected ->
                         // "closed" is the final state after close(); only a dropped connection is a disconnect.
                         if (detail == NATIVE_DETAIL_TRANSPORT_CLOSED) {
                             deliverLocked(RealtimeSocketEvents.Disconnect, "transport close")
                         }
-                    SlockCurlSocketIoState.Error ->
+                    RaftCurlSocketIoState.Error ->
                         when (detail) {
                             NATIVE_DETAIL_WEBSOCKET_CONNECT ->
                                 deliverLocked(

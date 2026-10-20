@@ -9,19 +9,19 @@ internal data class SharedTaskStatusChipMeta(
     val status: TaskStatus,
     val key: String,
     val label: String,
-    val icon: SlockLucideIconName,
+    val icon: RaftLucideIconName,
     val color: Color,
-    val foregroundColor: Color = SlockColor.TextBlack,
+    val foregroundColor: Color = RaftColor.TextBlack,
     val iconSize: Dp = 10.dp
 )
 
 internal val SharedTaskStatusChipMetas: List<SharedTaskStatusChipMeta> =
     listOf(
-        SharedTaskStatusChipMeta(TaskStatus.Todo, "Todo", "Todo", SlockLucideIconName.Circle, SlockColor.AccentOrange),
-        SharedTaskStatusChipMeta(TaskStatus.InProgress, "InProgress", "In progress", SlockLucideIconName.Play, SlockColor.AccentCyan),
-        SharedTaskStatusChipMeta(TaskStatus.InReview, "InReview", "In review", SlockLucideIconName.Eye, SlockColor.AccentLavender),
-        SharedTaskStatusChipMeta(TaskStatus.Done, "Done", "Done", SlockLucideIconName.CircleCheckBig, SlockColor.AccentLime),
-        SharedTaskStatusChipMeta(TaskStatus.Closed, "Closed", "Closed", SlockLucideIconName.Ban, SlockColor.AccentStone)
+        SharedTaskStatusChipMeta(TaskStatus.Todo, "Todo", "Todo", RaftLucideIconName.Circle, RaftColor.AccentOrange),
+        SharedTaskStatusChipMeta(TaskStatus.InProgress, "InProgress", "In progress", RaftLucideIconName.Play, RaftColor.AccentCyan),
+        SharedTaskStatusChipMeta(TaskStatus.InReview, "InReview", "In review", RaftLucideIconName.Eye, RaftColor.AccentLavender),
+        SharedTaskStatusChipMeta(TaskStatus.Done, "Done", "Done", RaftLucideIconName.CircleCheckBig, RaftColor.AccentLime),
+        SharedTaskStatusChipMeta(TaskStatus.Closed, "Closed", "Closed", RaftLucideIconName.Ban, RaftColor.AccentStone)
     )
 
 internal fun TaskStatus.sharedTaskStatusChipMeta(): SharedTaskStatusChipMeta =

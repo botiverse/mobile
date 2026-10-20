@@ -23,7 +23,7 @@ import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.SlockTimeFormat12Hour
+import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
@@ -225,7 +225,7 @@ class SharedMembersParserTest {
               "instanceId": "server-1",
               "members": []
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
 
         assertEquals(true, payload.canCreateAgents)
         assertEquals(true, payload.canInviteHumans)
@@ -245,7 +245,7 @@ class SharedMembersParserTest {
                 }
               ]
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
 
         assertEquals("server-1", payload.instanceId)
         assertEquals(emptyList<MemberProfile>(), payload.members)
@@ -259,14 +259,14 @@ class SharedMembersParserTest {
               "instanceId": "server-1",
               "canCreateAgents": false
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
         val truePayload =
             """
             {
               "instanceId": "server-1",
               "canCreateAgents": true
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
 
         assertEquals(false, falsePayload.canCreateAgents)
         assertEquals(true, truePayload.canCreateAgents)
@@ -280,14 +280,14 @@ class SharedMembersParserTest {
               "instanceId": "server-1",
               "canInviteHumans": false
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
         val truePayload =
             """
             {
               "instanceId": "server-1",
               "canInviteHumans": true
             }
-            """.trimIndent().toKuiklyMembersPayload()
+            """.trimIndent().toRaftMembersPayload()
 
         assertEquals(false, falsePayload.canInviteHumans)
         assertEquals(true, truePayload.canInviteHumans)
@@ -296,7 +296,7 @@ class SharedMembersParserTest {
     @Test
     fun membersDetailPageDataCarriesIdentityKindAndTimeContextOnly() {
         val payload =
-            KuiklyMembersPayload(
+            RaftMembersPayload(
                 instanceId = "members-server-1",
                 title = "Members",
                 members = listOf(
@@ -312,7 +312,7 @@ class SharedMembersParserTest {
                 localOffsetMinutes = 480,
                 todayEpochDay = 20624,
                 nowEpochMillis = 1782240000000,
-                timeFormat = SlockTimeFormat12Hour
+                timeFormat = RaftTimeFormat12Hour
             )
 
         val pageData =
@@ -329,15 +329,15 @@ class SharedMembersParserTest {
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20624", pageData.optString("todayEpochDay"))
         assertEquals("1782240000000", pageData.optString("nowEpochMillis"))
-        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
-        assertEquals(listOf("activity", "profile"), pageData.toKuiklyMemberDetailPayload().agentPanelTabOrder)
+        assertEquals(RaftTimeFormat12Hour, pageData.optString("timeFormat"))
+        assertEquals(listOf("activity", "profile"), pageData.toRaftMemberDetailPayload().agentPanelTabOrder)
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("selectedMemberId"))
     }
 
     @Test
     fun membersDetailPageDataLaunchesSelfAndOtherHumansWithTypedSourceServer() {
-        val payload = KuiklyMembersPayload(instanceId = "members-server-a")
+        val payload = RaftMembersPayload(instanceId = "members-server-a")
 
         listOf("human-self", "human-other").forEach { memberId ->
             val pageData =
@@ -354,7 +354,7 @@ class SharedMembersParserTest {
     @Test
     fun agentDetailPageDataDefaultsInitialTabFromServerOrder() {
         val payload =
-            KuiklyMembersPayload(
+            RaftMembersPayload(
                 instanceId = "members-server-1",
                 title = "Members",
                 members = listOf(
@@ -375,7 +375,7 @@ class SharedMembersParserTest {
 
         assertEquals("agent", pageData.optString("memberKind"))
         assertEquals("activity", pageData.optString("initialAgentTab"))
-        assertEquals(listOf("activity", "profile"), pageData.toKuiklyMemberDetailPayload().agentPanelTabOrder)
+        assertEquals(listOf("activity", "profile"), pageData.toRaftMemberDetailPayload().agentPanelTabOrder)
     }
 
     @Test
@@ -1084,7 +1084,7 @@ class SharedMembersParserTest {
     @Test
     fun memberDetailPageDataCarriesSourceServerIdentityWithoutProfileContent() {
         val payload =
-            KuiklyMembersPayload(
+            RaftMembersPayload(
                 instanceId = "members-server-1",
                 title = "Members",
                 members = listOf(
@@ -1128,7 +1128,7 @@ class SharedMembersParserTest {
                   "memberKind": "human"
                 }
                 """.trimIndent()
-            ).toKuiklyMemberDetailPayload()
+            ).toRaftMemberDetailPayload()
 
         assertEquals("detail-human-artin", payload.instanceId)
         assertEquals("human-artin", payload.identity?.memberId?.value)
@@ -1147,7 +1147,7 @@ class SharedMembersParserTest {
                   "sourceServerId": "server-remote"
                 }
                 """.trimIndent()
-            ).toKuiklyMemberDetailPayload()
+            ).toRaftMemberDetailPayload()
 
         assertEquals("server-remote", payload.identity?.sourceServerId?.value)
     }
@@ -1358,8 +1358,8 @@ class SharedMembersParserTest {
             listOf(MR.strings.member_action_stop_agent.desc(), MR.strings.member_label_restart_reset.desc()),
             onlineItems.map { it.label }
         )
-        assertEquals(SlockLucideIconName.Square, onlineItems[0].icon)
-        assertEquals(SlockLucideIconName.RotateCcw, onlineItems[1].icon)
+        assertEquals(RaftLucideIconName.Square, onlineItems[0].icon)
+        assertEquals(RaftLucideIconName.RotateCcw, onlineItems[1].icon)
 
         val offlineItems =
             buildMembersManagementMenuItems(
@@ -1416,7 +1416,7 @@ class SharedMembersParserTest {
             )
 
         assertEquals(AgentStatus.Working, displayState.status)
-        assertEquals(SlockColor.BrandYellow, displayState.color)
+        assertEquals(RaftColor.BrandYellow, displayState.color)
         assertEquals(true, displayState.pulsing)
     }
 
@@ -1458,7 +1458,7 @@ class SharedMembersParserTest {
             )
 
         assertEquals(AgentStatus.Error, displayState.status)
-        assertEquals(SlockColor.AccentOrange, displayState.color)
+        assertEquals(RaftColor.AccentOrange, displayState.color)
         assertEquals(false, displayState.pulsing)
     }
 
@@ -1478,7 +1478,7 @@ class SharedMembersParserTest {
             member.membersAgentStatusDisplayState(summaryStatus = "active")
 
         assertEquals(null, displayState.status)
-        assertEquals(SlockColor.StatusNeutralGray, displayState.color)
+        assertEquals(RaftColor.StatusNeutralGray, displayState.color)
         assertEquals(false, displayState.pulsing)
     }
 
@@ -1529,10 +1529,10 @@ class SharedMembersParserTest {
         val humanDisplayState = human.membersAgentStatusDisplayState()
 
         assertEquals(AgentStatus.Online, agentDisplayState.status)
-        assertEquals(SlockColor.AccentLime, agentDisplayState.color)
+        assertEquals(RaftColor.AccentLime, agentDisplayState.color)
         assertEquals(false, agentDisplayState.pulsing)
         assertEquals(null, humanDisplayState.status)
-        assertEquals(SlockColor.BrandYellow, humanDisplayState.color)
+        assertEquals(RaftColor.BrandYellow, humanDisplayState.color)
         assertEquals(false, humanDisplayState.pulsing)
     }
 
@@ -1550,7 +1550,7 @@ class SharedMembersParserTest {
                 ),
                 detail = null,
                 statusIndicatorState =
-                    slockAgentStatusIndicatorState(
+                    raftAgentStatusIndicatorState(
                         status = AgentStatus.Working,
                         presence = Presence.Active,
                         external = false

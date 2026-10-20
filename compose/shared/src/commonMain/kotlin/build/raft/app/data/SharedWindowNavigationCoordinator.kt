@@ -84,7 +84,7 @@ internal sealed interface WindowNavigationAction {
 /**
  * Per-window navigation queue.
  *
- * All state is intentionally keyed by [SlockShellStoreScope] by the provider. The coordinator
+ * All state is intentionally keyed by [RaftShellStoreScope] by the provider. The coordinator
  * owns exactly-once deduplication and staging; the UI only executes its returned platform-neutral
  * actions. A terminal request remains recorded until its shell scope is released, preventing an
  * Activity recreation or duplicate PendingIntent from opening the route twice.

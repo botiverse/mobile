@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.flushSlockPlatformDiagnosticsDownstream
-import build.raft.app.flushSlockPlatformLogs
+import build.raft.app.flushRaftPlatformDiagnosticsDownstream
+import build.raft.app.flushRaftPlatformLogs
 import build.raft.app.host.HostCapabilities
 import build.raft.app.optBoolean
 import build.raft.app.optInt
@@ -9,11 +9,11 @@ import build.raft.app.optJsonArray
 import build.raft.app.optJsonObject
 import build.raft.app.optLong
 import build.raft.app.optString
-import build.raft.app.parseSlockJsonArray
-import build.raft.app.parseSlockJsonObject
-import build.raft.app.slockLogInfo
-import build.raft.app.slockPlatformSupportsConversationForwardGesture
-import build.raft.app.toSlockJsonString
+import build.raft.app.parseRaftJsonArray
+import build.raft.app.parseRaftJsonObject
+import build.raft.app.raftLogInfo
+import build.raft.app.raftPlatformSupportsConversationForwardGesture
+import build.raft.app.toRaftJsonString
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -67,7 +67,7 @@ internal class BridgeSettingsPlatformCapabilities(
     private val openUrlHandler: ((String) -> Unit)? = null
 ) : SharedSettingsPlatformCapabilities {
     override val supportsConversationForwardGesture: Boolean
-        get() = slockPlatformSupportsConversationForwardGesture()
+        get() = raftPlatformSupportsConversationForwardGesture()
 
     fun bridgeCopyToClipboard(content: String) {
         host.copyToPasteboard(content)
@@ -92,7 +92,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     /** Same channel `BridgeModule.log` used: bridge-free platform log under the bridge tag. */
     private fun logBridge(message: String) {
-        slockLogInfo(HOST_BRIDGE_LOG_TAG, message)
+        raftLogInfo(HOST_BRIDGE_LOG_TAG, message)
     }
 
     override suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
@@ -118,7 +118,7 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun startWebLogin(): DataResult<Unit> {
         val prep = settingsCapability(buildJsonObject { put("action", "appLoginPrepare") })
         val generation = prep?.optString("generation").orEmpty()
-        val url = SlockAppLogin.start(generation, prep?.optString("codeVerifier").orEmpty(),
+        val url = RaftAppLogin.start(generation, prep?.optString("codeVerifier").orEmpty(),
             prep?.optString("codeChallenge").orEmpty(), prep?.optString("returnUri").orEmpty())
             ?: return DataResult.Error(ScreenError("web_login_prepare_failed", retryable = true))
         val result = settingsCapability(buildJsonObject {
@@ -126,7 +126,7 @@ internal class BridgeSettingsPlatformCapabilities(
             put("authorizationUrl", url)
         })
         if (result?.optString("status") == "started") return DataResult.Content(Unit)
-        SlockAppLogin.cancel(generation)
+        RaftAppLogin.cancel(generation)
         return DataResult.Error(ScreenError("web_login_browser_failed", retryable = true))
     }
 
@@ -148,8 +148,8 @@ internal class BridgeSettingsPlatformCapabilities(
             return DataResult.Error(ScreenError("settings_mobile_oauth_pkce_failed", retryable = true))
         }
         val start =
-            suspendCoroutine<SlockIosMobileOAuthStartResult> { continuation ->
-                SlockIosMobileOAuthBridge.startBrowser(
+            suspendCoroutine<RaftIosMobileOAuthStartResult> { continuation ->
+                RaftIosMobileOAuthBridge.startBrowser(
                     provider = providerId,
                     mode = "link",
                     generation = generation,
@@ -178,7 +178,7 @@ internal class BridgeSettingsPlatformCapabilities(
             )
         if (open?.optString("status") == "started") return DataResult.Content(Unit)
         suspendCoroutine<Unit> { continuation ->
-            SlockIosMobileOAuthBridge.cancel(generation, "browser_failed") { continuation.resume(Unit) }
+            RaftIosMobileOAuthBridge.cancel(generation, "browser_failed") { continuation.resume(Unit) }
         }
         val code = open?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_browser_failed" }
         return DataResult.Error(ScreenError(code, retryable = true))
@@ -272,7 +272,7 @@ internal class BridgeSettingsPlatformCapabilities(
         val payload =
             response.optString("payloadJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { parseSlockJsonObject(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseRaftJsonObject(raw) }.getOrNull() }
                 ?: response
         val itemsJson = payload.optJsonArray("items")
         val items =
@@ -575,8 +575,8 @@ internal class BridgeSettingsPlatformCapabilities(
             return DataResult.Content(submission)
         }
         logBridge("settings_hands_feedback_bridge_request_prepared")
-        flushSlockPlatformLogs()
-        if (!flushSlockPlatformDiagnosticsDownstream()) {
+        flushRaftPlatformLogs()
+        if (!flushRaftPlatformDiagnosticsDownstream()) {
             return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
         }
         val response =
@@ -654,7 +654,7 @@ internal class BridgeSettingsPlatformCapabilities(
             put("token", token)
         })
         if (response?.optString("status") != "ok") {
-            return DataResult.Error(handsUpdateBridgeError(response?.toSlockJsonString()))
+            return DataResult.Error(handsUpdateBridgeError(response?.toRaftJsonString()))
         }
         return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
     }
@@ -666,8 +666,8 @@ internal class BridgeSettingsPlatformCapabilities(
 
     private suspend fun diagnosticsSettingsCapability(action: String): JsonObject? {
         val command = buildJsonObject { put("action", action) }
-        flushSlockPlatformLogs()
-        if (!flushSlockPlatformDiagnosticsDownstream()) return null
+        flushRaftPlatformLogs()
+        if (!flushRaftPlatformDiagnosticsDownstream()) return null
         return settingsCapability(command)
     }
 
@@ -810,7 +810,7 @@ internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
         optJsonArray("rows")
             ?: optString("rowsJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseRaftJsonArray(raw) }.getOrNull() }
     val rows =
         buildList {
             if (rowsJson != null) {
@@ -843,7 +843,7 @@ internal fun JsonObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
         optJsonArray("options")
             ?: optString("optionsJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseRaftJsonArray(raw) }.getOrNull() }
     val options =
         buildList {
             if (optionsJson != null) {
@@ -867,8 +867,8 @@ internal fun JsonObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
     return SharedSettingsDeveloperSnapshot(
         environmentKey = optString("environmentKey"),
         environmentLabel = optString("environmentLabel"),
-        apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
-        socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
+        apiBaseUrl = optString("apiBaseUrl").ifBlank { RAFT_API_BASE_URL },
+        socketBaseUrl = optString("socketBaseUrl").ifBlank { RAFT_SOCKET_BASE_URL },
         webUrl = optString("webUrl"),
         updateCheck =
             SharedSettingsUpdateCheckSnapshot(
@@ -916,7 +916,7 @@ internal fun JsonObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
         optJsonArray("entries")
             ?: optString("entriesJson")
                 .takeIf { it.isNotBlank() }
-                ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
+                ?.let { raw -> runCatching { parseRaftJsonArray(raw) }.getOrNull() }
     val entries =
         buildList {
             if (entriesJson != null) {
@@ -935,11 +935,11 @@ internal fun JsonObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
     val readStateJson =
         optString("readStateV1DiagnosticJson")
             .takeIf { it.isNotBlank() }
-            ?.let { raw -> runCatching { parseSlockJsonObject(raw) }.getOrNull() }
+            ?.let { raw -> runCatching { parseRaftJsonObject(raw) }.getOrNull() }
     val featureFlagOverridesJson =
         optString("diagnosticFeatureFlagOverridesJson")
             .takeIf { it.isNotBlank() }
-            ?.let { raw -> runCatching { parseSlockJsonArray(raw) }.getOrNull() }
+            ?.let { raw -> runCatching { parseRaftJsonArray(raw) }.getOrNull() }
     val featureFlagOverrides =
         buildList {
             if (featureFlagOverridesJson != null) {

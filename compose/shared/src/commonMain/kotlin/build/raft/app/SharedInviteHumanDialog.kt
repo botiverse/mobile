@@ -1,10 +1,10 @@
 package build.raft.app
 
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalReadOnlyValueField
-import build.raft.app.components.SlockBrutalSectionLabel
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalReadOnlyValueField
+import build.raft.app.components.RaftBrutalSectionLabel
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,7 +74,7 @@ internal fun SharedInviteHumanDialog(
     val canSubmit = !submitting && anyFilled && !joinLinkLoading
     val copyableJoinLink = inviteHumanJoinUrlCopyPayload(joinLinkUrl)
 
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.agent_invite_title),
         dismissEnabled = !submitting,
         keyboardAvoidanceEnabled = true,
@@ -88,15 +88,15 @@ internal fun SharedInviteHumanDialog(
                 item {
                     Text(
                         text = err,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
-                            .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
+                            .copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.AccentRed),
+                        color = RaftColor.AccentRed
                     )
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_join_link), required = false)
+                    RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_join_link), required = false)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -107,22 +107,22 @@ internal fun SharedInviteHumanDialog(
                             copyableJoinLink == null -> stringResource(MR.strings.agent_invite_state_join_link_unavailable)
                             else -> copyableJoinLink
                         }
-                        SlockBrutalReadOnlyValueField(
+                        RaftBrutalReadOnlyValueField(
                             value = linkText,
                             modifier = Modifier
                                 .weight(1f),
                             fieldMinHeight = 42.dp,
                             horizontalPadding = 8.dp,
                             verticalPadding = 8.dp,
-                            backgroundColor = SlockColor.SurfaceWhite,
-                            borderColor = SlockColor.BorderBlack,
-                            textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-                            textColor = SlockColor.TextBlack
+                            backgroundColor = RaftColor.SurfaceWhite,
+                            borderColor = RaftColor.BorderBlack,
+                            textStyle = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+                            textColor = RaftColor.TextBlack
                         )
-                        SlockBrutalIconButton(
-                            iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
+                        RaftBrutalIconButton(
+                            iconName = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
                             enabled = !joinLinkLoading && copyableJoinLink != null,
-                            backgroundColor = SlockColor.SurfaceWhite,
+                            backgroundColor = RaftColor.SurfaceWhite,
                             size = 42.dp,
                             iconSize = 16.dp,
                             onClick = { copyableJoinLink?.let(onCopyJoinLink) }
@@ -132,35 +132,35 @@ internal fun SharedInviteHumanDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.Link2,
+                        RaftLucideIcon(
+                            RaftLucideIconName.Link2,
                             modifier = Modifier.size(12.dp),
-                            color = SlockColor.TextMutedGrayArgb
+                            color = RaftColor.TextMutedGrayArgb
                         )
                         Text(
                             text = stringResource(MR.strings.agent_invite_hint_join_link),
-                            style = SlockType.Caption,
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption,
+                            color = RaftColor.TextMutedGray
                         )
                     }
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_emails), required = false)
-                    SlockBrutalInputField(
+                    RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_emails), required = false)
+                    RaftBrutalInputField(
                         value = email1,
                         onValueChange = { email1 = it },
                         placeholder = stringResource(MR.strings.agent_invite_placeholder_email),
                         enabled = !submitting
                     )
-                    SlockBrutalInputField(
+                    RaftBrutalInputField(
                         value = email2,
                         onValueChange = { email2 = it },
                         placeholder = stringResource(MR.strings.agent_invite_label_optional),
                         enabled = !submitting
                     )
-                    SlockBrutalInputField(
+                    RaftBrutalInputField(
                         value = email3,
                         onValueChange = { email3 = it },
                         placeholder = stringResource(MR.strings.agent_invite_label_optional),
@@ -169,15 +169,15 @@ internal fun SharedInviteHumanDialog(
                 }
             }
         }
-        SlockDialogFooter {
-                SlockBrutalActionButton(
+        RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    backgroundColor = RaftColor.SurfaceWhite,
+                    textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
                     onClick = onDismiss
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label =
                         if (submitting) {
                             stringResource(MR.strings.agent_invite_action_sending)
@@ -187,9 +187,9 @@ internal fun SharedInviteHumanDialog(
                     enabled = canSubmit,
                     minWidth = 126.dp,
                     // Web InviteHumanDialog sends with the pink primary action.
-                    backgroundColor = SlockColor.AccentPink,
-                    leadingIcon = SlockLucideIconName.Mail,
-                    textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    backgroundColor = RaftColor.AccentPink,
+                    leadingIcon = RaftLucideIconName.Mail,
+                    textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
                     onClick = {
                         onSubmit(emails.map { it.trim() }.filter { it.isNotBlank() })
                     }

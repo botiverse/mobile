@@ -38,28 +38,28 @@ internal fun settingsComputerRouteIdentityFromPageData(
     params: JSONObject,
 ): SettingsComputerRouteIdentity? =
     settingsComputerRouteIdentity(
-        serverId = params.optString(SLOCK_SHELL_SERVER_ID),
+        serverId = params.optString(RAFT_SHELL_SERVER_ID),
         machineId = params.optString(SETTINGS_COMPUTER_ID),
     )
 
-internal fun settingsComputersPageData(storeScope: build.raft.app.data.SlockShellStoreScope) =
+internal fun settingsComputersPageData(storeScope: build.raft.app.data.RaftShellStoreScope) =
     settingsWebViewPageData(SettingsWebViewSurface.Computers, storeScope)
 
 internal fun settingsComputerPageData(
-    storeScope: build.raft.app.data.SlockShellStoreScope,
+    storeScope: build.raft.app.data.RaftShellStoreScope,
     target: SettingsComputerRouteIdentity,
 ): JSONObject =
     settingsComputersPageData(storeScope).apply {
-        put(SLOCK_SHELL_SERVER_ID, target.serverId)
+        put(RAFT_SHELL_SERVER_ID, target.serverId)
         put(SETTINGS_COMPUTER_ID, target.machineId)
     }
 
-internal fun Pager.openSettingsComputersPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsComputersPage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Computers, storeScope)
 }
 
 internal fun Pager.openSettingsComputerPage(
-    storeScope: build.raft.app.data.SlockShellStoreScope,
+    storeScope: build.raft.app.data.RaftShellStoreScope,
     target: SettingsComputerRouteIdentity,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
@@ -91,7 +91,7 @@ internal fun settingsComputerWebViewSpec(
 
 @Composable
 internal fun SettingsComputersLoadingContent() {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
 }
 
 internal fun settingsComputersWebViewUrl(

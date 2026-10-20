@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.applySelectedServerTerminalRealtimeTransition
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.RealtimeRefreshRequired
@@ -122,10 +122,10 @@ class RealtimeLiveCutoverGateTest {
         val first = assertNotNull(fixture.provider.authorityFlow("shell").value)
         val rawEnvelope =
             buildJsonObject {
-                put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, first.witness.scopeLeaseId)
-                put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, first.witness.principalId)
-                put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, first.witness.authGeneration)
-                put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, first.witness.connectionFamilyId)
+                put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, first.witness.scopeLeaseId)
+                put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, first.witness.principalId)
+                put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, first.witness.authGeneration)
+                put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, first.witness.connectionFamilyId)
             }
 
         fixture.auth.replace(session(), AuthSessionEvent.TokensRotated(generation = 2))
@@ -276,7 +276,7 @@ class RealtimeLiveCutoverGateTest {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = process,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -318,7 +318,7 @@ class RealtimeLiveCutoverGateTest {
         fun close() = scope.cancel()
     }
 
-    private class FakeTypedAuthSessionStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private class FakeTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
         private var session: StoredAuthSession? = null
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 16)
 

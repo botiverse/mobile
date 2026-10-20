@@ -29,7 +29,7 @@ class SocketIoSocketTransport internal constructor(
     override fun <T> linearize(block: () -> T): T = generationFence.linearize(block)
 
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
-        build.raft.app.core.data.diagnostics.SlockAppLog.d(
+        build.raft.app.core.data.diagnostics.RaftAppLog.d(
             "SlockRealtime",
             "transport_connect_start serverId=${auth["serverId"].orEmpty()} hasToken=${auth["token"].isNullOrBlank().not()}"
         )
@@ -58,14 +58,14 @@ class SocketIoSocketTransport internal constructor(
 
     override fun disconnect() {
         generationFence.clear {
-            build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
+            build.raft.app.core.data.diagnostics.RaftAppLog.d("SlockRealtime", "transport_disconnect")
             socket?.disconnect()
         }
     }
 
     override fun emit(eventName: String, payload: Map<String, Any>) {
         generationFence.withCurrent {
-            build.raft.app.core.data.diagnostics.SlockAppLog.d(
+            build.raft.app.core.data.diagnostics.RaftAppLog.d(
                 "SlockRealtime",
                 "transport_emit eventName=$eventName keys=${payload.keys.joinToString("|")}"
             )

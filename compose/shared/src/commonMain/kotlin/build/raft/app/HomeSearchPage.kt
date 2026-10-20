@@ -9,7 +9,7 @@ internal class ComposeHomeSearchPage : AuthenticatedProductPager(AuthenticatedPr
         setAuthenticatedContent {
             HomeSecondaryRouterContent(
                 HomeDestinationSearch,
-                slockPageVisibleResumeTick,
+                raftPageVisibleResumeTick,
                 initialSearchChannelId = pageData.params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).trim().takeIf { it.isNotBlank() },
                 initialSearchOpenFilterId = pageData.params.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID).trim().takeIf { it.isNotBlank() },
                 initialSearchFocusInput = pageData.params.optBoolean(HOME_SEARCH_FOCUS_INPUT, true)

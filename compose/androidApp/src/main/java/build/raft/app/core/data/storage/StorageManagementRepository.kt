@@ -1,22 +1,22 @@
 package build.raft.app.core.data.storage
 
 import android.content.Context
-import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
-import build.raft.app.core.data.diagnostics.SlockGeneralLogRing
-import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.RaftGeneralLogRing
+import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.shared.ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
-import build.raft.app.shared.SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME
+import build.raft.app.shared.RAFT_ANDROID_IMAGE_CACHE_DIR_NAME
 import java.io.File
 
-private const val SlockDatabaseName = SlockAndroidSqlDatabaseContext.DatabaseFileName
+private const val RaftDatabaseName = RaftAndroidSqlDatabaseContext.DatabaseFileName
 // task #13: every name below comes from the code that writes it. Hand-typed copies
 // drifted (the database row counted a non-existent `slock_shared.db` and always
 // showed 0 B; the temp row counted dirs nothing writes and missed the logs).
-private const val SlockImageDiskCacheDir = SLOCK_ANDROID_IMAGE_CACHE_DIR_NAME
-private const val SlockAttachmentDownloadCacheDir = ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
+private const val RaftImageDiskCacheDir = RAFT_ANDROID_IMAGE_CACHE_DIR_NAME
+private const val RaftAttachmentDownloadCacheDir = ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME
 
-/** Picked/compressed thread attachments; written by SlockCmpActivity. */
-internal const val SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+/** Picked/compressed thread attachments; written by RaftCmpActivity. */
+internal const val RAFT_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
 
 data class StorageManagementSnapshot(
         val localDatabaseBytes: Long,
@@ -72,13 +72,13 @@ data class StorageManagementRoots(
         /**
          * Counted in the temporary-and-logs row but NOT deleted by [StorageManagementRepository.clear]:
          * the log ring holds them open, so they are cleared through
-         * SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles instead.
+         * RaftAndroidLocalDiagnostics.clearLocalDiagnosticsFiles instead.
          */
         val diagnosticsLogDirs: List<File> = emptyList()
 ) {
     companion object {
         fun fromContext(context: Context): StorageManagementRoots {
-            val database = context.getDatabasePath(SlockDatabaseName)
+            val database = context.getDatabasePath(RaftDatabaseName)
             return StorageManagementRoots(
                     databaseFiles =
                             listOf(
@@ -87,14 +87,14 @@ data class StorageManagementRoots(
                                     File(database.path + "-shm"),
                                     File(database.path + "-journal")
                             ),
-                    imageCacheDirs = listOf(context.cacheDir.resolve(SlockImageDiskCacheDir)),
-                    attachmentDownloadCacheDirs = listOf(context.cacheDir.resolve(SlockAttachmentDownloadCacheDir)),
+                    imageCacheDirs = listOf(context.cacheDir.resolve(RaftImageDiskCacheDir)),
+                    attachmentDownloadCacheDirs = listOf(context.cacheDir.resolve(RaftAttachmentDownloadCacheDir)),
                     temporaryAndLogDirs =
-                            listOf(context.cacheDir.resolve(SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME)),
+                            listOf(context.cacheDir.resolve(RAFT_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME)),
                     diagnosticsLogDirs =
                             listOf(
-                                    SlockGeneralLogRing.logRoot(context),
-                                    SlockAndroidLocalDiagnostics.feedbackDir(context)
+                                    RaftGeneralLogRing.logRoot(context),
+                                    RaftAndroidLocalDiagnostics.feedbackDir(context)
                             )
             )
         }

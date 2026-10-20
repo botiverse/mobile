@@ -1,7 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.SLOCK_API_BASE_URL
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RAFT_API_BASE_URL
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -43,13 +43,13 @@ internal class AttachmentAuthScopeRegistry {
     val version: StateFlow<Long> = _version.asStateFlow()
 
     fun bind(
-        storeScope: SlockShellStoreScope,
+        storeScope: RaftShellStoreScope,
         session: StoredAuthSession,
         selectedServerId: String?
     ): AttachmentOwnerLease? {
         val serverId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
-        val accountKey = attachmentAccountKey(SLOCK_API_BASE_URL, session.user.id)
-        val principalKey = attachmentPrincipalKey(SLOCK_API_BASE_URL, session.user.id, serverId)
+        val accountKey = attachmentAccountKey(RAFT_API_BASE_URL, session.user.id)
+        val principalKey = attachmentPrincipalKey(RAFT_API_BASE_URL, session.user.id, serverId)
         return synchronized(lock) {
             if (currentAccountKey != null && currentAccountKey != accountKey) {
                 retireAllLocked()
@@ -121,7 +121,7 @@ internal class AttachmentAuthScopeRegistry {
 
 internal val ProcessAttachmentAuthScopes = AttachmentAuthScopeRegistry()
 
-internal fun currentAttachmentOwnerLease(storeScope: SlockShellStoreScope): AttachmentOwnerLease? =
+internal fun currentAttachmentOwnerLease(storeScope: RaftShellStoreScope): AttachmentOwnerLease? =
     ProcessAttachmentAuthScopes.current(storeScope.shellInstanceId)
 
 internal fun attachmentOperationCommitAllowed(
@@ -135,17 +135,17 @@ internal fun attachmentPrincipalKey(
     serverId: String
 ): AttachmentPrincipalKey =
     AttachmentPrincipalKey(
-        slockSha256Hex(
-            slockCanonicalIdentityBytes(
+        raftSha256Hex(
+            raftCanonicalIdentityBytes(
                 listOf(environmentId.trim(), accountId.trim(), serverId.trim())
             )
         )
     )
 
 private fun attachmentAccountKey(environmentId: String, accountId: String): String =
-    slockSha256Hex(slockCanonicalIdentityBytes(listOf(environmentId.trim(), accountId.trim())))
+    raftSha256Hex(raftCanonicalIdentityBytes(listOf(environmentId.trim(), accountId.trim())))
 
-internal fun slockCanonicalIdentityBytes(parts: List<String>): ByteArray {
+internal fun raftCanonicalIdentityBytes(parts: List<String>): ByteArray {
     val encoded = parts.map(String::encodeToByteArray)
     val result = ByteArray(encoded.sumOf { 4 + it.size })
     var offset = 0
@@ -161,7 +161,7 @@ internal fun slockCanonicalIdentityBytes(parts: List<String>): ByteArray {
     return result
 }
 
-internal fun slockSha256Hex(input: ByteArray): String {
+internal fun raftSha256Hex(input: ByteArray): String {
     val initial = intArrayOf(
         0x6a09e667, 0xbb67ae85.toInt(), 0x3c6ef372, 0xa54ff53a.toInt(),
         0x510e527f, 0x9b05688c.toInt(), 0x1f83d9ab, 0x5be0cd19

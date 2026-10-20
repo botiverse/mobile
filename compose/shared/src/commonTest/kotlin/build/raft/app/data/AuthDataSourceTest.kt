@@ -35,7 +35,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginWritesStoredSessionAndFetchesServers() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -54,7 +54,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginPreservesExplicitPendingProfileNullFromServer() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api =
             FakeAuthApi(
                 loginResponse =
@@ -74,7 +74,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaBootstrapConsumePersistsCanonicalSessionAndBindingInOneReplace() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse)
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
         val request = QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot")
@@ -96,7 +96,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaLoginBootstrapImportsExactBoundSessionWithoutServerBootstrapRoute() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
         val digest = "sha256:${"a".repeat(64)}"
@@ -134,7 +134,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaLoginBootstrapBindingMismatchClearsPreviousSessionAndFailsClosed() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val envelope =
             """{"version":"qa-bootstrap-login/v1","run_case_id":"case-1","attempt":1,"ci_job_ref":"gha:job:1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.wrong","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"user@slock.ai"},"access_token":"login-access","refresh_token":"login-refresh"}"""
 
@@ -153,7 +153,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaBootstrapConsumeFailsClosedWhenFrozenServerIsMissing() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val api = FakeAuthApi(
             qaConsumeResponse = qaConsumeResponse,
             serversResponse = AuthNetworkResponse(200, """[{"id":"server-other","name":"Other","slug":"other","role":"owner"}]""")
@@ -170,7 +170,7 @@ class AuthDataSourceTest {
     @Test
     fun qaBootstrapConsumeFailsClosedWhenPrincipalDoesNotMatch() = runBlocking {
         val mismatched = qaConsumeResponse.copy(bodyText = qaConsumeResponse.bodyText!!.replace("\"id\":\"user-1\"", "\"id\":\"user-2\""))
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
 
         val result = SharedAuthDataSource(
             transport = FakeAuthApi(qaConsumeResponse = mismatched),
@@ -193,7 +193,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaBootstrapReadyStoresStableReceiptAndUsesFrozenSessionGeneration() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse, qaReadyResponse = qaReadyResponse)
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
         assertTrue(
@@ -213,7 +213,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaBootstrapReadyResponseForAttemptADoesNotMutateSameAccountAttemptB() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api =
             FakeAuthApi(
                 qaConsumeResponse = qaConsumeResponse,
@@ -253,7 +253,7 @@ class AuthDataSourceTest {
 
     @Test
     fun qaBootstrapRuntimeEnvelopeForAttemptADoesNotEnterSameAccountAttemptB() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source = SharedAuthDataSource(transport = FakeAuthApi(qaConsumeResponse = qaConsumeResponse), sessionStore = store)
         assertTrue(
             source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
@@ -293,7 +293,7 @@ class AuthDataSourceTest {
     @Test
     fun qaBootstrapReadyRejectsEveryFrozenReceiptBindingMutation() = runBlocking {
         frozenReadyReceiptMutations(qaReadyBodyText).forEach { (field, body) ->
-            val store = InMemorySlockAuthSessionStore()
+            val store = InMemoryRaftAuthSessionStore()
             val source = SharedAuthDataSource(
                 transport = FakeAuthApi(
                     qaConsumeResponse = qaConsumeResponse,
@@ -316,7 +316,7 @@ class AuthDataSourceTest {
     @Test
     fun qaBootstrapColdStatusRejectsEveryFrozenReceiptBindingMutation() = runBlocking {
         frozenReadyReceiptMutations(qaReadyStatusResponse.bodyText.orEmpty()).forEach { (field, body) ->
-            val store = InMemorySlockAuthSessionStore()
+            val store = InMemoryRaftAuthSessionStore()
             val source = SharedAuthDataSource(
                 transport = FakeAuthApi(
                     qaConsumeResponse = qaConsumeResponse,
@@ -358,7 +358,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginReusesRememberedServerSelectionForSameAccount() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         store.saveRememberedServerSelection(
             StoredAuthUser(id = "user-1", email = "user@slock.ai"),
             StoredAuthServerSelection(serverId = "server-1", serverSlug = "slock")
@@ -374,7 +374,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginDoesNotReuseRememberedServerSelectionForDifferentAccount() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         store.saveRememberedServerSelection(
             StoredAuthUser(id = "user-2", email = "other@slock.ai"),
             StoredAuthServerSelection(serverId = "server-1", serverSlug = "slock")
@@ -390,7 +390,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginIgnoresRememberedServerSelectionWhenServerIsUnavailable() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         store.saveRememberedServerSelection(
             StoredAuthUser(id = "user-1", email = "user@slock.ai"),
             StoredAuthServerSelection(serverId = "server-old", serverSlug = "old")
@@ -406,7 +406,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginMapsHttpFailureWithoutWritingSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source =
             SharedAuthDataSource(
                 transport = FakeAuthApi(loginResponse = AuthNetworkResponse(401, null, """{"error":"bad"}""")),
@@ -423,7 +423,7 @@ class AuthDataSourceTest {
     @Test
     fun loginClearsStaleCachedSessionBeforeRequestFailure() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "old-user", email = "old@slock.ai"),
                     accessToken = "expired-access",
@@ -451,7 +451,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loginRejectsLegacyTokenAliasesAtTypedApiBoundary() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source =
             SharedAuthDataSource(
                 transport =
@@ -589,7 +589,7 @@ class AuthDataSourceTest {
     @Test
     fun loginMapsServersContractFailureToServersParseStage() = runBlocking {
         val logs = mutableListOf<String>()
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source =
             SharedAuthDataSource(
                 transport = FakeAuthApi(serversResponse = AuthNetworkResponse(200, """{"servers":[]}""")),
@@ -608,7 +608,7 @@ class AuthDataSourceTest {
 
     @Test
     fun googleSocialCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -627,7 +627,7 @@ class AuthDataSourceTest {
 
     @Test
     fun socialCompleteStoresCurrentUserPreferredTimeFormat() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api =
             FakeAuthApi(
                 currentUserResponses =
@@ -650,7 +650,7 @@ class AuthDataSourceTest {
 
     @Test
     fun googleIdTokenCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -669,7 +669,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthStartUsesServerBrokerContract() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -693,7 +693,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthStartHonorsExplicitIosPlatformContract() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -715,7 +715,7 @@ class AuthDataSourceTest {
 
     @Test
     fun appleCannotUseTheBrowserMobileOAuthBroker() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -734,7 +734,7 @@ class AuthDataSourceTest {
 
     @Test
     fun nativeAppleStartAndAuthorizationUseTheDedicatedIosCredentialContract() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -770,7 +770,7 @@ class AuthDataSourceTest {
 
     @Test
     fun nativeAppleLinkStartAndAuthorizationRemainBoundToTheCurrentSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore().apply {
+        val store = InMemoryRaftAuthSessionStore().apply {
             saveSession(storedSession(accessToken = "current-access"))
         }
         val api =
@@ -810,7 +810,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthCompleteStoresReturnedSessionAndFetchesServers() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -833,7 +833,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthLinkStartUsesProviderEndpointWithCurrentSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         store.saveSession(storedSession(accessToken = "current-access"))
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
@@ -856,7 +856,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthLinkCompleteUsesProviderEndpointWithCurrentSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         store.saveSession(storedSession(accessToken = "current-access"))
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
@@ -882,7 +882,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthCompleteMapsLegalAcceptanceRequired() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source =
             SharedAuthDataSource(
                 transport =
@@ -910,7 +910,7 @@ class AuthDataSourceTest {
 
     @Test
     fun mobileOAuthCompleteCanRetryWithLegalAcceptance() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -932,7 +932,7 @@ class AuthDataSourceTest {
 
     @Test
     fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -960,7 +960,7 @@ class AuthDataSourceTest {
                 profileSetupSuggestedHandle = "user"
             )
         )
-        val store = InMemorySlockAuthSessionStore(pending)
+        val store = InMemoryRaftAuthSessionStore(pending)
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -983,7 +983,7 @@ class AuthDataSourceTest {
                 profileSetupSuggestedHandle = "user"
             )
         )
-        val store = InMemorySlockAuthSessionStore(pending)
+        val store = InMemoryRaftAuthSessionStore(pending)
         val api = FakeAuthApi(
             onCompleteProfileRequest = {
                 assertTrue(
@@ -1027,7 +1027,7 @@ class AuthDataSourceTest {
             user = StoredAuthUser(id = "user-2", email = "other@slock.ai"),
             refreshToken = "account-2-refresh"
         )
-        val store = InMemorySlockAuthSessionStore(pending)
+        val store = InMemoryRaftAuthSessionStore(pending)
         val api = FakeAuthApi(onCompleteProfileRequest = { store.replaceAuthenticatedSession(switched) })
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -1039,7 +1039,7 @@ class AuthDataSourceTest {
 
     @Test
     fun resendVerificationSendsBearerFromStoredSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "verify-token"))
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "verify-token"))
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -1051,7 +1051,7 @@ class AuthDataSourceTest {
 
     @Test
     fun resendVerificationWithoutSessionIsUnauthenticated() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
@@ -1063,7 +1063,7 @@ class AuthDataSourceTest {
 
     @Test
     fun resendVerificationSurfacesRateLimitMessage() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val api =
             FakeAuthApi(
                 resendVerificationResponse =
@@ -1079,7 +1079,7 @@ class AuthDataSourceTest {
 
     @Test
     fun resendVerificationSurfacesAlreadyVerifiedMessage() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val api =
             FakeAuthApi(
                 resendVerificationResponse =
@@ -1097,7 +1097,7 @@ class AuthDataSourceTest {
     @Test
     fun verifyEmailConsumesExactTokenThenRefreshesAndPersistsCanonicalUser() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 storedSession().copy(
                     user = StoredAuthUser(
                         id = "user-1",
@@ -1133,7 +1133,7 @@ class AuthDataSourceTest {
     @Test
     fun verifyEmailFailureDoesNotRefreshOrFabricateVerifiedSessionState() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 storedSession().copy(
                     user = StoredAuthUser(
                         id = "user-1",
@@ -1161,7 +1161,7 @@ class AuthDataSourceTest {
     @Test
     fun verifyEmailRejectsBlankTokenBeforeTransport() = runBlocking {
         val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = InMemorySlockAuthSessionStore())
+        val source = SharedAuthDataSource(transport = api, sessionStore = InMemoryRaftAuthSessionStore())
 
         val result = source.verifyEmail("   ")
 
@@ -1235,7 +1235,7 @@ class AuthDataSourceTest {
     @Test
     fun verifyEmailBlankRefreshSnapshotDoesNotClearConcurrentLogin() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 storedSession(accessToken = "stale-access").copy(
                     refreshToken = "",
                     user = StoredAuthUser("user-1", "user@slock.ai", emailVerified = false)
@@ -1310,7 +1310,7 @@ class AuthDataSourceTest {
     @Test
     fun restoreSessionRefreshesUnauthorizedCurrentUserInSharedLayer() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "expired-token",
@@ -1346,7 +1346,7 @@ class AuthDataSourceTest {
     @Test
     fun restoreSessionDoesNotWaitForASlowServerListPastItsBudget() = runBlocking {
         // Hands 79db9fe6: /servers answered nothing for 30 s and the whole restore waited for it.
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val logs = mutableListOf<String>()
         val source =
             SharedAuthDataSource(
@@ -1365,7 +1365,7 @@ class AuthDataSourceTest {
 
     @Test
     fun restoreSessionKeepsCachedSessionWhenCurrentUserThrows() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val source =
             SharedAuthDataSource(
                 transport = FakeAuthApi(throwCurrentUser = true),
@@ -1382,7 +1382,7 @@ class AuthDataSourceTest {
 
     @Test
     fun restoreSessionKeepsCachedSessionWhenCurrentUserServerUnavailable() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val source =
             SharedAuthDataSource(
                 transport =
@@ -1406,7 +1406,7 @@ class AuthDataSourceTest {
 
     @Test
     fun restoreSessionKeepsCachedSessionWhenCurrentUserContractDrifts() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val logs = mutableListOf<String>()
         val source =
             SharedAuthDataSource(
@@ -1451,7 +1451,7 @@ class AuthDataSourceTest {
 
     @Test
     fun restoreSessionKeepsCachedSessionWhenRefreshServerUnavailable() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "expired-token"))
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "expired-token"))
         val source =
             SharedAuthDataSource(
                 transport =
@@ -1477,7 +1477,7 @@ class AuthDataSourceTest {
 
     @Test
     fun realtimeAuthRefreshUpdatesStoredTokensWithoutChangingServerSelection() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "stale-token"))
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "stale-token"))
         val source =
             SharedAuthDataSource(
                 transport =
@@ -1497,7 +1497,7 @@ class AuthDataSourceTest {
 
     @Test
     fun realtimeAuthRefreshPreservesCachedSessionOnUnauthorized() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "stale-token"))
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "stale-token"))
         val source =
             SharedAuthDataSource(
                 transport =
@@ -1517,7 +1517,7 @@ class AuthDataSourceTest {
     @Test
     fun selectServerPersistsSelectionInSharedLayer() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "access-token",
@@ -1545,7 +1545,7 @@ class AuthDataSourceTest {
     @Test
     fun logoutKeepsRememberedServerSelectionForNextLogin() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "access-token",
@@ -1569,10 +1569,10 @@ class AuthDataSourceTest {
     @Test
     fun logoutUnbindsPushInstallationBeforeInvalidatingServerSession() = runBlocking {
         val events = mutableListOf<String>()
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val api = FakeAuthApi(onLogoutRequest = { events += "auth_logout" })
-        SlockPushRegistrationLifecycle.install(
-            object : SlockPushRegistrationLifecycleSink {
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
                 override fun onSessionSaved() = Unit
                 override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
 
@@ -1590,14 +1590,14 @@ class AuthDataSourceTest {
             assertEquals(listOf("push_unbind", "auth_logout"), events)
             assertNull(store.readSession())
         } finally {
-            SlockPushRegistrationLifecycle.clearForTests()
+            RaftPushRegistrationLifecycle.clearForTests()
         }
     }
 
     @Test
     fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "access-token",
@@ -1619,7 +1619,7 @@ class AuthDataSourceTest {
 
     @Test
     fun loadServersPreservesServerAvatarUrlInSharedLayer() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(storedSession())
+        val store = InMemoryRaftAuthSessionStore(storedSession())
         val source =
             SharedAuthDataSource(
                 transport =
@@ -1643,7 +1643,7 @@ class AuthDataSourceTest {
     @Test
     fun loadServersAppliesServerSwitcherOrderPreference() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "access-token",
@@ -1677,7 +1677,7 @@ class AuthDataSourceTest {
         val logs = mutableListOf<String>()
         val criticalLogs = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "expired-token",
@@ -1724,7 +1724,7 @@ class AuthDataSourceTest {
     fun loadServersRetryUnauthorizedDoesNotClearConcurrentSuccessorSession() = runBlocking {
         val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
         val successor = storedSession(accessToken = "successor-access").copy(refreshToken = "successor-refresh")
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         var serverRequests = 0
         val api =
             FakeAuthApi(
@@ -1760,7 +1760,7 @@ class AuthDataSourceTest {
     fun loadServersDropsResponseWhenSessionWasClearedDuringRequest() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "old-token",
@@ -1791,7 +1791,7 @@ class AuthDataSourceTest {
     @Test
     fun createServerSelectsCreatedServerInSharedLayer() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "access-token",
@@ -1825,10 +1825,10 @@ class AuthDataSourceTest {
                 selectedServerSlug = "slock",
                 servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
             )
-        val processStore = InMemorySlockAuthSessionStore(initial)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("chooser-shell", "server-1"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+            SelectedServerStore(RaftShellStoreScope.create("chooser-shell", "server-1"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         val api =
             FakeAuthApi(
                 createServerResponse =
@@ -1857,7 +1857,7 @@ class AuthDataSourceTest {
     @Test
     fun createServerRefreshesUnauthorizedAccessBeforeRetryingOnce() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 storedSession(accessToken = "expired-access").copy(refreshToken = "refresh-token")
             )
         val api =
@@ -1894,7 +1894,7 @@ class AuthDataSourceTest {
     @Test
     fun createServerDoesNotReplayWhenRefreshTransportFails() = runBlocking {
         val original = storedSession(accessToken = "expired-access").copy(refreshToken = "refresh-token")
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         val api =
             FakeAuthApi(
                 createServerResponse =
@@ -1922,7 +1922,7 @@ class AuthDataSourceTest {
                     user = StoredAuthUser(id = "user-2", email = "user2@slock.ai"),
                     refreshToken = "successor-refresh",
                 )
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         val api =
             FakeAuthApi(
                 createServerResponse =
@@ -1949,7 +1949,7 @@ class AuthDataSourceTest {
     fun createServerRetryUnauthorizedDoesNotReportSuccessAfterTokenRotation() = runBlocking {
         val original = storedSession(accessToken = "expired-access").copy(refreshToken = "expired-refresh")
         val successor = original.copy(accessToken = "successor-access", refreshToken = "successor-refresh")
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         val api =
             FakeAuthApi(
                 createServerResponses =
@@ -1987,7 +1987,7 @@ class AuthDataSourceTest {
                 accessToken = "successor-access",
                 refreshToken = "successor-refresh",
             )
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         val api =
             FakeAuthApi(
                 createServerResponses =
@@ -2026,8 +2026,8 @@ class AuthDataSourceTest {
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
         )
 
-    private fun unverifiedSessionStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun unverifiedSessionStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             storedSession().copy(
                 user = StoredAuthUser(
                     id = "user-1",
@@ -2119,7 +2119,7 @@ class AuthDataSourceTest {
         private val onCreateServerRequest: suspend (Int) -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {},
         private val onQaReadyRequest: suspend () -> Unit = {},
-    ) : SlockAuthTransport {
+    ) : RaftAuthTransport {
         var loginBody: String? = null
             private set
         var registerBody: String? = null
@@ -2347,7 +2347,7 @@ class AuthDataSourceTest {
 
     private class ThrowingSaveSessionStore(
         private val throwable: Throwable = IllegalStateException("store unavailable")
-    ) : SlockAuthSessionStore {
+    ) : RaftAuthSessionStore {
         override suspend fun readSession(): StoredAuthSession? = null
 
         override suspend fun saveSession(session: StoredAuthSession) {
@@ -2363,7 +2363,7 @@ class AuthDataSourceTest {
 
     private class ThrowingReadSessionStore(
         private val throwable: Throwable
-    ) : SlockAuthSessionStore {
+    ) : RaftAuthSessionStore {
         override suspend fun readSession(): StoredAuthSession? {
             throw throwable
         }

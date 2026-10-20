@@ -30,7 +30,7 @@ class SharedConversationHeaderProjectionTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general",
                 subtitle = null
@@ -110,7 +110,7 @@ class SharedConversationHeaderProjectionTest {
         val payload =
             activityReplyThreadPayload(subtitle = "#stale").copy(
                 parentChannelId = "dm-parent",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 parentChannelKind = "dm"
             )
         val input = payload.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
@@ -120,7 +120,7 @@ class SharedConversationHeaderProjectionTest {
                 canonicalChannelId = "dm-parent",
                 aliases = setOf("dm-parent"),
                 conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 title = "Cindy"
             )
@@ -134,19 +134,19 @@ class SharedConversationHeaderProjectionTest {
         assertEquals("@Cindy", input.displayModel(exactParent, payload).subtitle)
     }
 
-    private fun activityReplyThreadPayload(subtitle: String): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun activityReplyThreadPayload(subtitle: String): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "activity-thread-1",
             title = ThreadReplyPageTitle,
             subtitle = subtitle,
             status = "content",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             channelKind = "channel",
             sourceThreadId = "thread-1",
             streamChannelId = "thread-1",
             parentChannelId = "channel-1",
             parentMessageId = "message-1",
-            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            parentSurfaceKind = RaftThreadSurfaceKind.Channel,
             parentChannelKind = "channel"
         )
 
@@ -161,7 +161,7 @@ class SharedConversationHeaderProjectionTest {
             canonicalChannelId = canonicalChannelId,
             aliases = aliases,
             conversationKind = ConversationKind.Channel,
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = channelKind,
             title = title
         )

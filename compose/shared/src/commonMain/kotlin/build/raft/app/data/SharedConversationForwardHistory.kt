@@ -4,7 +4,7 @@ import build.raft.app.ConversationOpenResolution
 import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
 import build.raft.app.HomeMessageOpenRequest
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.model.ConversationKind
 import build.raft.app.resolveOpenRequest
@@ -240,11 +240,11 @@ private fun SharedConversationDirectoryProjection.matchesForwardKind(
     expectedKind: ConversationKind?
 ): Boolean =
     when (expectedKind) {
-        ConversationKind.DirectMessage -> surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
-        ConversationKind.Thread -> surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        ConversationKind.DirectMessage -> surfaceKind == RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Thread -> surfaceKind == RaftThreadSurfaceKind.ReplyThread
         ConversationKind.Channel,
         ConversationKind.Joint ->
-            surfaceKind == KuiklyThreadSurfaceKind.Channel && conversationKind == expectedKind
+            surfaceKind == RaftThreadSurfaceKind.Channel && conversationKind == expectedKind
         ConversationKind.Inbox -> false
         ConversationKind.System -> conversationKind == ConversationKind.System
         null -> false

@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
-import build.raft.app.network.SlockCurlSocketIoPolicy
+import build.raft.app.network.RaftCurlSocketIoPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,46 +20,46 @@ import kotlin.test.assertTrue
 class RealtimeCurlSocketIoPreferenceTest {
     @BeforeTest
     fun setUp() {
-        SlockCurlSocketIoPolicy.markPlatformSupported()
+        RaftCurlSocketIoPolicy.markPlatformSupported()
     }
 
     @AfterTest
     fun tearDown() {
-        SlockCurlSocketIoPolicy.resetForTest()
+        RaftCurlSocketIoPolicy.resetForTest()
     }
 
     @Test
     fun absentPreferenceFollowsServerFlagAndStoredChoiceOverridesIt() {
-        val keyValues = InMemorySlockKeyValueStore()
+        val keyValues = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
         var serverFlag = true
-        SlockCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
-        SlockCurlSocketIoPolicy.bindUserChoice { preferenceStore.readCurlSocketIoUserChoiceSync() }
+        RaftCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
+        RaftCurlSocketIoPolicy.bindUserChoice { preferenceStore.readCurlSocketIoUserChoiceSync() }
 
         assertNull(preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
-        assertFalse(SlockCurlSocketIoPolicy.isEnabledFor("server-b"))
+        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-b"))
         serverFlag = false
-        assertFalse(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
 
         keyValues.putString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, "true")
         assertEquals(true, preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
-        assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-b"))
+        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-b"))
 
         serverFlag = true
         keyValues.putString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, "false")
         assertEquals(false, preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertFalse(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
 
         keyValues.putString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, "garbage")
         assertNull(preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
     }
 
     @Test
     fun savingWritesTheExplicitChoiceAsTrueFalseStrings(): Unit = runBlocking {
-        val keyValues = InMemorySlockKeyValueStore()
+        val keyValues = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
 
         preferenceStore.saveCurlSocketIoUserChoice(false)
@@ -73,9 +73,9 @@ class RealtimeCurlSocketIoPreferenceTest {
 
     @Test
     fun mobileSnapshotShowsServerFlagForCurrentServerWhenNoChoiceExists(): Unit = runBlocking {
-        val keyValues = InMemorySlockKeyValueStore()
+        val keyValues = InMemoryRaftKeyValueStore()
         var serverFlag = true
-        SlockCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
+        RaftCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
         val dataSource = dataSource(keyValues)
 
         val enabledByServer = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
@@ -91,11 +91,11 @@ class RealtimeCurlSocketIoPreferenceTest {
     @Test
     fun togglingStoresExplicitChoiceThatServerFlagNoLongerOverrides(): Unit = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val keyValues = InMemorySlockKeyValueStore()
+        val keyValues = InMemoryRaftKeyValueStore()
         var serverFlag = true
-        SlockCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
+        RaftCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
         val preferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
-        SlockCurlSocketIoPolicy.bindUserChoice { preferenceStore.readCurlSocketIoUserChoiceSync() }
+        RaftCurlSocketIoPolicy.bindUserChoice { preferenceStore.readCurlSocketIoUserChoiceSync() }
         val store = SharedSettingsStore(dataSource = dataSource(keyValues), scope = scope)
         try {
             store.accept(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(false))
@@ -105,10 +105,10 @@ class RealtimeCurlSocketIoPreferenceTest {
             assertFalse(afterOff.realtimeCurlSocketIo.enabled)
             assertEquals(MOBILE_ACTION_REALTIME_CURL_SOCKETIO, store.state.value.actionState?.action)
             assertEquals(false, store.state.value.actionState?.inProgress)
-            assertFalse(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
+            assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
 
             serverFlag = true
-            assertFalse(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
+            assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
             assertEquals(false, preferenceStore.readCurlSocketIoUserChoiceSync())
 
             store.accept(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(true))
@@ -117,8 +117,8 @@ class RealtimeCurlSocketIoPreferenceTest {
             assertTrue(afterOn.realtimeCurlSocketIo.enabled)
 
             serverFlag = false
-            assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-a"))
-            assertTrue(SlockCurlSocketIoPolicy.isEnabledFor("server-b"))
+            assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
+            assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-b"))
         } finally {
             scope.cancel()
         }
@@ -126,7 +126,7 @@ class RealtimeCurlSocketIoPreferenceTest {
 
     @Test
     fun rowIsUnavailableWithoutPreferenceStore(): Unit = runBlocking {
-        val dataSource = SharedSettingsDataSource(sessionStore = InMemorySlockAuthSessionStore(sampleSession()))
+        val dataSource = SharedSettingsDataSource(sessionStore = InMemoryRaftAuthSessionStore(sampleSession()))
 
         val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
         assertFalse(snapshot.data.realtimeCurlSocketIo.available)
@@ -135,16 +135,16 @@ class RealtimeCurlSocketIoPreferenceTest {
 
     @Test
     fun rowIsHiddenWhereNoPlatformHostCanUseCurl(): Unit = runBlocking {
-        SlockCurlSocketIoPolicy.resetForTest()
+        RaftCurlSocketIoPolicy.resetForTest()
         val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(
-            dataSource(InMemorySlockKeyValueStore()).loadMobilePreferences()
+            dataSource(InMemoryRaftKeyValueStore()).loadMobilePreferences()
         )
         assertFalse(snapshot.data.realtimeCurlSocketIo.available)
     }
 
-    private fun dataSource(keyValues: InMemorySlockKeyValueStore): SharedSettingsDataSource =
+    private fun dataSource(keyValues: InMemoryRaftKeyValueStore): SharedSettingsDataSource =
         SharedSettingsDataSource(
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             realtimeTransportPreferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
         )
 

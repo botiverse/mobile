@@ -33,7 +33,7 @@ class SharedReplyThreadRouteIdentityTest {
                 canonicalChannelId = "joint-1",
                 aliases = setOf("joint-1"),
                 conversationKind = ConversationKind.Joint,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = JointChannelKindWireValue,
                 title = "raft-mobile-reconcile",
                 subtitle = null,
@@ -52,7 +52,7 @@ class SharedReplyThreadRouteIdentityTest {
                     .toConversationAccessCandidate()
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, restored.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, restored.parentSurfaceKind)
         assertEquals(JointChannelKindWireValue, restored.parentChannelKind)
         assertEquals(ConversationKind.Joint, restored.resolveThreadRouteIdentity().parentConversationKind)
         assertTrue(restored.threadHeaderProjectionInput().acceptsForDisplay(parentProjection))
@@ -93,18 +93,18 @@ class SharedReplyThreadRouteIdentityTest {
         parentChannelId: String,
         parentMessageId: String,
         parentChannelKind: String
-    ): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    ): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "reply-$parentMessageId",
             status = "loading",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             channelKind = "thread",
             sourceThreadId = "thread-1",
             streamChannelId = "thread-1",
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
             originParentMessageId = parentMessageId,
-            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            parentSurfaceKind = RaftThreadSurfaceKind.Channel,
             parentChannelKind = parentChannelKind,
             selectedTab = "chat",
             showComposer = true,
@@ -112,7 +112,7 @@ class SharedReplyThreadRouteIdentityTest {
             canSend = true,
             composer =
                 buildThreadSurfaceComposerPayload(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     displayName = ThreadReplyPageTitle,
                     fallbackId = parentMessageId,
                     enabled = true,

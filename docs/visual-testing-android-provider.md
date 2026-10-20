@@ -85,7 +85,7 @@ entry point is:
 compose/androidApp/src/androidTest/java/build/raft/app/visual/KmpVisualScreenshotCaptureTest.kt
 ```
 
-Each test method launches `SlockKuiklyActivity` with a `compose_*_visual` page
+Each test method launches `RaftLegacyHostActivity` with a `compose_*_visual` page
 and deterministic `pageData`, captures the app window, crops/normalizes to dp
 pixels, validates that the image is non-blank, and writes both PNG and metadata.
 

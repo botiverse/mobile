@@ -7,22 +7,22 @@ import kotlin.test.*
 class AdaptiveSideThreadTest {
     private val channel = WireThreadLaunchPayload(threadId = "channel", sourceThreadId = "channel")
     private val reply = WireThreadLaunchPayload(
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
         sourceThreadId = "reply", streamChannelId = "reply", parentChannelId = "channel",
-        parentMessageId = "message", parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+        parentMessageId = "message", parentSurfaceKind = RaftThreadSurfaceKind.Channel,
     )
     private val otherReply = reply.copy(sourceThreadId = "reply-2", streamChannelId = "reply-2", parentMessageId = "message-2")
     private val foreignReply = reply.copy(sourceThreadId = "reply-x", streamChannelId = "reply-x", parentChannelId = "other-channel")
 
-    private fun pane(widthDp: Int) = SlockAdaptivePaneState(
+    private fun pane(widthDp: Int) = RaftAdaptivePaneState(
         widthPx = widthDp * 2, heightPx = 1600, density = 2f,
-        posture = SlockAdaptivePanePosture.Flat, layout = SlockAdaptivePaneLayout.DualPane,
+        posture = RaftAdaptivePanePosture.Flat, layout = RaftAdaptivePaneLayout.DualPane,
     )
 
     private fun session(widthDp: Int = 1440): SharedAdaptiveWorkspaceSession {
-        val state = SlockAdaptiveWorkspaceState(shellInstanceId = "shell", serverId = "server", pane = pane(widthDp))
+        val state = RaftAdaptiveWorkspaceState(shellInstanceId = "shell", serverId = "server", pane = pane(widthDp))
         return SharedAdaptiveWorkspaceSession(
-            workspace = reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.OpenDetail(channel.toSlockAdaptiveDetailIdentity("server")!!)),
+            workspace = reduceRaftAdaptiveWorkspace(state, RaftAdaptiveWorkspaceIntent.OpenDetail(channel.toRaftAdaptiveDetailIdentity("server")!!)),
             launchPayload = channel,
         )
     }
@@ -30,21 +30,21 @@ class AdaptiveSideThreadTest {
     private fun AdaptiveSideThreadOpen.opened(): SharedAdaptiveWorkspaceSession =
         assertIs<AdaptiveSideThreadOpen.Opened>(this).session
 
-    private fun SharedAdaptiveWorkspaceSession.mainSource(): SlockAdaptiveDetailCloseRequest =
-        SlockAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
+    private fun SharedAdaptiveWorkspaceSession.mainSource(): RaftAdaptiveDetailCloseRequest =
+        RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
 
     @Test fun columnNeedsTheBreakpointAndTheMeasuredDetailWidth() {
-        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
-        assertTrue(slockSideThreadColumnAvailable(true, pane(1440), needed))
+        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        assertTrue(raftSideThreadColumnAvailable(true, pane(1440), needed))
         // 1199 vs 1200dp window.
-        assertFalse(slockSideThreadColumnAvailable(true, pane(1199), 900f))
-        assertTrue(slockSideThreadColumnAvailable(true, pane(1200), needed))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1199), 900f))
+        assertTrue(raftSideThreadColumnAvailable(true, pane(1200), needed))
         // Window at the breakpoint but rail + list + insets leave too little for the body.
-        assertFalse(slockSideThreadColumnAvailable(true, pane(1200), needed - 1f))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1200), needed - 1f))
         // Not measured yet, desktop mode off, or not dual pane.
-        assertFalse(slockSideThreadColumnAvailable(true, pane(1440), null))
-        assertFalse(slockSideThreadColumnAvailable(false, pane(1440), needed))
-        assertFalse(slockSideThreadColumnAvailable(true, pane(1440).copy(layout = SlockAdaptivePaneLayout.Compact), needed))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440), null))
+        assertFalse(raftSideThreadColumnAvailable(false, pane(1440), needed))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact), needed))
     }
 
     @Test fun replyUnderTheShownChannelOpensBesideItWithoutChangingTheMainDetail() {
@@ -81,7 +81,7 @@ class AdaptiveSideThreadTest {
         val withSide = root.openSideThread(root.mainSource(), reply, "server", true).opened()
         val ignored = AdaptiveSideThreadOpen.Ignored
         // An old generation of the main detail, another shell, another server.
-        val staleMain = SlockAdaptiveDetailCloseRequest("shell", root.workspace!!.selection!!.identity.key, 999L)
+        val staleMain = RaftAdaptiveDetailCloseRequest("shell", root.workspace!!.selection!!.identity.key, 999L)
         assertEquals(ignored, withSide.openSideThread(staleMain, otherReply, "server", true))
         val otherShell = withSide.mainSource().copy(shellInstanceId = "other-shell")
         assertEquals(ignored, withSide.openSideThread(otherShell, otherReply, "server", true))
@@ -117,13 +117,13 @@ class AdaptiveSideThreadTest {
         store.update { session() }
         store.update { it.openSideThread(it.mainSource(), reply, "server", true).opened() }
         assertNotNull(store.snapshot().sideThread)
-        val dm = WireThreadLaunchPayload(threadId = "dm", sourceThreadId = "dm", surfaceKind = KuiklyThreadSurfaceKind.DirectMessage)
-        store.update { it.withOpenedDetail(dm.toSlockAdaptiveDetailIdentity("server")!!, dm) }
+        val dm = WireThreadLaunchPayload(threadId = "dm", sourceThreadId = "dm", surfaceKind = RaftThreadSurfaceKind.DirectMessage)
+        store.update { it.withOpenedDetail(dm.toRaftAdaptiveDetailIdentity("server")!!, dm) }
         assertNull(store.snapshot().sideThread)
         // Authority (server/account) change also retires it.
         store.update { session() }
         store.update { it.openSideThread(it.mainSource(), reply, "server", true).opened() }
-        store.update { it.copy(workspace = reduceSlockAdaptiveWorkspace(it.workspace!!, SlockAdaptiveWorkspaceIntent.AuthorityChanged("other"))) }
+        store.update { it.copy(workspace = reduceRaftAdaptiveWorkspace(it.workspace!!, RaftAdaptiveWorkspaceIntent.AuthorityChanged("other"))) }
         assertNull(store.snapshot().sideThread)
     }
 
@@ -133,7 +133,7 @@ class AdaptiveSideThreadTest {
         val folded = opened.foldSideThreadIntoDetail()
         assertNull(folded.sideThread)
         assertEquals(reply, folded.launchPayload)
-        assertEquals(reply.toSlockAdaptiveDetailIdentity("server"), folded.workspace!!.selection!!.identity)
+        assertEquals(reply.toRaftAdaptiveDetailIdentity("server"), folded.workspace!!.selection!!.identity)
         assertEquals(listOf(channel), folded.detailHistory!!.previous)
         // Back returns exactly one level, to the channel.
         val back = folded.backFromDetail(folded.mainSource())
@@ -144,7 +144,7 @@ class AdaptiveSideThreadTest {
     }
 
     @Test fun wideDetailRoutingUsesSessionWidthAndKeepsStaleSourcesInert() {
-        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
         val wide = session().copy(detailPaneWidthDp = needed)
         // Room for the column: opens beside the channel.
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", desktopModeOnLargeScreen = true)
@@ -158,12 +158,12 @@ class AdaptiveSideThreadTest {
         // Desktop mode off behaves like no room.
         assertEquals(reply, wide.openWithinWideDetail(wide.mainSource(), reply, "server", false).launchPayload)
         // Stale source: nothing changes.
-        val stale = SlockAdaptiveDetailCloseRequest("shell", wide.workspace!!.selection!!.identity.key, 999L)
+        val stale = RaftAdaptiveDetailCloseRequest("shell", wide.workspace!!.selection!!.identity.key, 999L)
         assertSame(side, side.openWithinWideDetail(stale, otherReply, "server", true))
     }
 
     @Test fun sideColumnSourceThatCannotUseTheColumnReplacesOnBehalfOfItsOwner() {
-        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
         val wide = session().copy(detailPaneWidthDp = needed)
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
         val sideSource = side.visibleSideThread()!!.closeRequest("shell")
@@ -176,7 +176,7 @@ class AdaptiveSideThreadTest {
     }
 
     @Test fun backClosesAVisibleSideColumnFirst() {
-        val needed = SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
         val wide = session().let { it.copy(detailPaneWidthDp = needed, workspace = it.workspace!!.copy(parentVisible = true)) }
         assertFalse(wide.backClosesSideThreadFirst(true))
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
@@ -194,7 +194,7 @@ class AdaptiveSideThreadTest {
         val oldSideT = s2.sideThread!!.closeRequest("shell")
         val folded = s2.foldSideThreadIntoDetail()
         val mainNow = folded.workspace!!.selection!!
-        assertEquals(otherReply.toSlockAdaptiveDetailIdentity("server"), mainNow.identity)
+        assertEquals(otherReply.toRaftAdaptiveDetailIdentity("server"), mainNow.identity)
         assertNotEquals(oldSideT.generation, mainNow.generation)
         assertFalse(folded.workspace!!.acceptsDetailCallback(oldSideT.identityKey, oldSideT.generation))
         // Through the shell's close dispatcher the retired side close is not a main Back, and a
@@ -214,7 +214,7 @@ class AdaptiveSideThreadTest {
         val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
         val liveSide = s1.sideThread!!.closeRequest("shell")
         val folded = s1.foldSideThreadIntoDetail()
-        val compact = folded.copy(workspace = folded.workspace!!.copy(pane = pane(1440).copy(layout = SlockAdaptivePaneLayout.Compact)))
+        val compact = folded.copy(workspace = folded.workspace!!.copy(pane = pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact)))
         for (session in listOf(folded, compact)) {
             for (desktop in listOf(true, false)) {
                 for (server in listOf("server", "other-server")) {
@@ -239,7 +239,7 @@ class AdaptiveSideThreadTest {
             assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, false, "server"))
             assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, true, "other-server"))
         }
-        val compact = s1.copy(workspace = s1.workspace!!.copy(pane = pane(1440).copy(layout = SlockAdaptivePaneLayout.Compact)))
+        val compact = s1.copy(workspace = s1.workspace!!.copy(pane = pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact)))
         assertEquals(AdaptiveThreadOpenRoute.Standalone, compact.routeThreadOpen(s1.mainSource(), true, "server"))
         // Pages outside the adaptive detail keep opening standalone pages.
         assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(null, true, "server"))
@@ -298,9 +298,9 @@ class AdaptiveSideThreadTest {
         )
         // Another conversation was selected meanwhile.
         val switched = opened.copy(
-            workspace = reduceSlockAdaptiveWorkspace(
+            workspace = reduceRaftAdaptiveWorkspace(
                 opened.workspace!!,
-                SlockAdaptiveWorkspaceIntent.OpenDetail(WireThreadLaunchPayload(threadId = "c2", sourceThreadId = "c2").toSlockAdaptiveDetailIdentity("server")!!),
+                RaftAdaptiveWorkspaceIntent.OpenDetail(WireThreadLaunchPayload(threadId = "c2", sourceThreadId = "c2").toRaftAdaptiveDetailIdentity("server")!!),
             ),
         )
         assertNotEquals(opened.workspace!!.selection, switched.workspace!!.selection)

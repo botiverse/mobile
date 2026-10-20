@@ -18,11 +18,11 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.MyMessageAlignmentPreference
-import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
-import build.raft.app.data.NetworkSlockHomeApi
+import build.raft.app.data.NetworkRaftAnnouncementsRemindersApi
+import build.raft.app.data.NetworkRaftHomeApi
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.ReadReceiptCoordinator
 import build.raft.app.data.ReadReceiptOwner
@@ -49,19 +49,19 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.SharedHomeViewModel
 import build.raft.app.data.SharedServerMembersStore
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockComputersNetworkApi
-import build.raft.app.data.SlockNetworkClient
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftComputersNetworkApi
+import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.mergedSharedConversationDirectoryState
-import build.raft.app.data.parseSlockHome
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.parseRaftHome
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ServerId
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -93,24 +93,24 @@ internal val homeSecondaryDestinationKeys =
 private data class HomeSecondaryRouteEnvironment(
     val pager: Pager,
     val bridge: build.raft.app.base.BridgeModule,
-    val authStore: SlockAuthSessionStore,
-    val networkClient: SlockNetworkClient,
+    val authStore: RaftAuthSessionStore,
+    val networkClient: RaftNetworkClient,
     val serverMembersStore: SharedServerMembersStore,
     val computersStore: SharedComputersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
-    val timeContextProvider: SlockTimeContextProvider,
+    val timeContextProvider: RaftTimeContextProvider,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
     val activitySenderAvatarsEnabled: Boolean,
-    val storeScope: SlockShellStoreScope,
+    val storeScope: RaftShellStoreScope,
     val hasExplicitShellScope: Boolean,
-    val adaptivePane: SlockAdaptivePaneState,
-    val shellScope: SlockAppShellScope,
+    val adaptivePane: RaftAdaptivePaneState,
+    val shellScope: RaftAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
     val readReceiptCoordinator: ReadReceiptCoordinator,
@@ -131,7 +131,7 @@ private data class HomeSecondaryRouteEnvironment(
 @Composable
 private fun rememberHomeSecondaryRouteEnvironment(
     routeVisibleTick: Int = 0,
-    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
     inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     inlineOnClose: (() -> Unit)? = null,
@@ -140,14 +140,14 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val hasExplicitShellScope = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.slockShellStoreScopeOrNull() != null
+        pager.pageData.params.raftShellStoreScopeOrNull() != null
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
@@ -162,7 +162,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val computersStore = remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
-    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { raftSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
@@ -185,20 +185,20 @@ private fun rememberHomeSecondaryRouteEnvironment(
             pager.pageData.params.threadTimeCapabilities()
         }
     val timeContextProvider =
-        rememberLiveSlockTimeContext(
+        rememberLiveRaftTimeContext(
             capabilities = timeCapabilities,
             pageVisibleTick = routeVisibleTick
         )
     val timeContext =
         remember(timeCapabilities) {
             timeCapabilities?.let {
-                SlockTimeContext(
+                RaftTimeContext(
                     localOffsetMinutes = it.localOffsetMinutes,
                     timeFormat = it.timeFormat
                 )
             }
         }
-    val shellScope = rememberSlockAppShellScope(adaptivePane)
+    val shellScope = rememberRaftAppShellScope(adaptivePane)
     return remember(
         pager,
         bridge,
@@ -264,7 +264,7 @@ internal fun HomeSecondaryRouterContent(
     initialSearchChannelId: String? = null,
     initialSearchOpenFilterId: String? = null,
     initialSearchFocusInput: Boolean = false,
-    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
     inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     inlineOnClose: (() -> Unit)? = null,
@@ -282,7 +282,7 @@ internal fun HomeSecondaryRouterContent(
         sceneName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
         active = true
     )
-    CompositionLocalProvider(LocalSlockTimeContextProvider provides environment.timeContextProvider) {
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides environment.timeContextProvider) {
         when (retainedDestination) {
             HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
             HomeDestinationSearch ->
@@ -294,7 +294,7 @@ internal fun HomeSecondaryRouterContent(
                     initialFocusInput = initialSearchFocusInput
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
-            else -> SlockCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+            else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
         }
     }
 }
@@ -309,20 +309,20 @@ private fun HomeActivityRouterContent(
     // selection/detail/lease lifecycle is fully independent of the Home surface it covers.
     // Canonical product state (messages, drafts, permissions) still flows through the
     // existing shared stores; only the surface's selection ownership is private.
-    val sharedStores = remember(environment.bridge) { SlockSharedStoreRegistry.get(environment.bridge) }
+    val sharedStores = remember(environment.bridge) { RaftSharedStoreRegistry.get(environment.bridge) }
     val activityWorkspaceStore = remember { SharedAdaptiveWorkspaceStore() }
     // Lease keeps the detail's realtime rooms subscribed while this surface owns the
     // selection; released when the workspace resets or the page disposes. Registry +
     // events are the same shell-scoped shared instances Home uses — the OWNER record is
     // what is surface-private (consumerId names this surface).
-    val activityRealtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+    val activityRealtimeEvents = remember(sharedStores) { RaftRealtimeEvents(sharedStores.eventBus) }
     val activityRoomLeaseRegistry =
         remember(sharedStores, environment.storeScope) {
             sharedStores.realtimeRoomLeaseRegistry(environment.storeScope)
         }
     val activityWorkspaceSession by activityWorkspaceStore.state.collectAsState()
     val activityWorkspace = activityWorkspaceSession.workspace
-    // The page-level pane state (fed by SlockAdaptivePanePagerEvent on the pushed page's own
+    // The page-level pane state (fed by RaftAdaptivePanePagerEvent on the pushed page's own
     // BasePager) — this is what lets DualPane resolve on a secondary surface; the default
     // shellScope construction never receives those events and would stay compact forever.
     val adaptivePane = environment.adaptivePane
@@ -341,7 +341,7 @@ private fun HomeActivityRouterContent(
         mutableStateOf(DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
     }
     val chatLayoutPreferenceEvents =
-        remember(sharedStores.eventBus) { KuiklyChatLayoutPreferenceEvents(sharedStores.eventBus) }
+        remember(sharedStores.eventBus) { RaftChatLayoutPreferenceEvents(sharedStores.eventBus) }
     DisposableEffect(chatLayoutPreferenceEvents) {
         val subscription =
             chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
@@ -350,7 +350,7 @@ private fun HomeActivityRouterContent(
         onDispose { subscription.close() }
     }
     val activityChatLayoutPreferenceStore =
-        remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+        remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
     LaunchedEffect(activityChatLayoutPreferenceStore) {
         activityAdaptiveEnabled =
             activityChatLayoutPreferenceStore.readDesktopModeOnLargeScreen()
@@ -361,14 +361,14 @@ private fun HomeActivityRouterContent(
         activityWorkspaceStore.update { current ->
             var next =
                 current.workspace
-                    ?: SlockAdaptiveWorkspaceState(
+                    ?: RaftAdaptiveWorkspaceState(
                         shellInstanceId = environment.storeScope.shellInstanceId + ":activity",
                         serverId = serverId,
                     )
             if (next.serverId != serverId) {
-                next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId))
+                next = reduceRaftAdaptiveWorkspace(next, RaftAdaptiveWorkspaceIntent.AuthorityChanged(serverId))
             }
-            next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane))
+            next = reduceRaftAdaptiveWorkspace(next, RaftAdaptiveWorkspaceIntent.WindowChanged(adaptivePane))
             current.copy(workspace = next)
         }
     }
@@ -430,7 +430,7 @@ private fun HomeActivityRouterContent(
     val workspace = activityWorkspace
     val selection = workspace?.selection
     val detailPayload = activityWorkspaceSession.launchPayload
-    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane
     val detailPageData =
         remember(
             detailPayload,
@@ -441,30 +441,30 @@ private fun HomeActivityRouterContent(
                 null
             } else {
                 threadLaunchPageData(detailPayload)
-                    .withSlockShellStoreScope(environment.storeScope)
-                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+                    .withRaftShellStoreScope(environment.storeScope)
+                    .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                    .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                    .put(RAFT_ADAPTIVE_DETAIL_GENERATION, selection.generation)
             }
         }
-    // CloseDetail: the embedded thread's own Back posts SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT
+    // CloseDetail: the embedded thread's own Back posts RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT
     // carrying this surface's namespaced shell id; only this page reduces it (Home's
     // observer filters on the un-suffixed shell id, so events can't cross).
     DisposableEffect(activityWorkspaceStore, environment.storeScope.shellInstanceId) {
         val activityShellId = environment.storeScope.shellInstanceId + ":activity"
         val subscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
+                val request = eventData?.toRaftAdaptiveDetailCloseRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != activityShellId) return@observe
                 val current = activityWorkspaceStore.snapshot().workspace ?: return@observe
                 val next =
-                    reduceSlockAdaptiveWorkspace(
+                    reduceRaftAdaptiveWorkspace(
                         current,
-                        SlockAdaptiveWorkspaceIntent.CloseDetail(
+                        RaftAdaptiveWorkspaceIntent.CloseDetail(
                             identityKey = request.identityKey,
                             generation = request.generation,
                         ),
@@ -514,10 +514,10 @@ private fun HomeActivityRouterContent(
     // task #45: while the desktop-mode setting is OFF the surface must behave as a
     // plain mobile page — a retained workspace selection (kept for the OFF->ON round
     // trip) must neither steal Back nor render the detail slot.
-    SlockBackHandler(enabled = activityAdaptiveEnabled && selection != null) {
-        val current = activityWorkspaceStore.snapshot().workspace ?: return@SlockBackHandler
+    RaftBackHandler(enabled = activityAdaptiveEnabled && selection != null) {
+        val current = activityWorkspaceStore.snapshot().workspace ?: return@RaftBackHandler
         val dismissed =
-            reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail)
+            reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail)
         val releasedGeneration = current.selection?.generation
         activityWorkspaceStore.update { session ->
             session.copy(workspace = dismissed, launchPayload = null)
@@ -541,7 +541,7 @@ private fun HomeActivityRouterContent(
         activityAdaptiveEnabled &&
             !dualPane &&
             selection != null &&
-            workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+            workspace?.presentation == RaftAdaptiveWorkspacePresentation.DetailOnly
     if (dualPane) {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -563,7 +563,7 @@ private fun HomeActivityRouterContent(
                     .fillMaxHeight(),
             ) {
                 if (detailPageData != null && selection != null) {
-                    SlockKuiklyChildPage(
+                    RaftChildPage(
                         pageName = THREAD_PAGE,
                         pageData = detailPageData,
                         modifier = Modifier.fillMaxSize(),
@@ -576,7 +576,7 @@ private fun HomeActivityRouterContent(
                     ) {
                         Text(
                             text = stringResource(MR.strings.home_adaptive_select_conversation),
-                            color = SlockColor.TextMutedGray,
+                            color = RaftColor.TextMutedGray,
                             fontSize = 15.sp,
                         )
                     }
@@ -586,7 +586,7 @@ private fun HomeActivityRouterContent(
     } else if (detailOnly && detailPageData != null) {
         // Compact + live selection = DetailOnly (Home's presentation contract): the detail
         // takes the whole surface; the list stays parked in the workspace, not remounted.
-        SlockKuiklyChildPage(
+        RaftChildPage(
             pageName = THREAD_PAGE,
             pageData = detailPageData,
             modifier = Modifier.fillMaxSize(),
@@ -607,7 +607,7 @@ private fun parkStandaloneSelection(
 ) {
     // Only park while desktop mode is OFF: ON + compact standalone pushes are normal
     // navigation and must not overwrite the live selection shown on the next wide tick.
-    if (KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+    if (KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
             .readDesktopModeOnLargeScreenSync()
     ) {
         return
@@ -623,14 +623,14 @@ private fun parkStandaloneSelection(
             originFallback = request.originFallback,
             onWarn = { environment.bridge.logWarn(it) },
         ) ?: return
-    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return
+    val identity = launchPayload.toRaftAdaptiveDetailIdentity(readyServerId) ?: return
     workspaceStore.update { session ->
         val workspace = session.workspace ?: return@update session
         if (workspace.serverId != identity.serverId) return@update session
         val next =
-            reduceSlockAdaptiveWorkspace(
+            reduceRaftAdaptiveWorkspace(
                 workspace,
-                SlockAdaptiveWorkspaceIntent.ParkSelection(identity),
+                RaftAdaptiveWorkspaceIntent.ParkSelection(identity),
             )
         session.copy(
             workspace = next,
@@ -643,7 +643,7 @@ private fun parkStandaloneSelection(
 private fun releaseActivityAdaptiveLease(
     environment: HomeSecondaryRouteEnvironment,
     workspaceStore: SharedAdaptiveWorkspaceStore,
-    realtimeEvents: KuiklyRealtimeEvents,
+    realtimeEvents: RaftRealtimeEvents,
     roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
     expectedGeneration: Long? = null,
 ) {
@@ -662,14 +662,14 @@ private fun releaseActivityAdaptiveLease(
 private fun openActivityAdaptiveMessageRequest(
     environment: HomeSecondaryRouteEnvironment,
     workspaceStore: SharedAdaptiveWorkspaceStore,
-    workspace: SlockAdaptiveWorkspaceState?,
+    workspace: RaftAdaptiveWorkspaceState?,
     request: HomeMessageOpenRequest,
     serverId: String?,
-    realtimeEvents: KuiklyRealtimeEvents,
+    realtimeEvents: RaftRealtimeEvents,
     roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
 ): Boolean {
     val current = workspace ?: return false
-    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane) return false
+    if (current.pane.layout != RaftAdaptivePaneLayout.DualPane) return false
     val readyServerId = serverId ?: return false
     val launchPayload =
         buildStandaloneConversationThreadLaunchPayload(
@@ -681,8 +681,8 @@ private fun openActivityAdaptiveMessageRequest(
             originFallback = request.originFallback,
             onWarn = { environment.bridge.logWarn(it) },
         ) ?: return false
-    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return false
-    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    val identity = launchPayload.toRaftAdaptiveDetailIdentity(readyServerId) ?: return false
+    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
     if (next.selection?.identity != identity) return false
     val nextSelection = next.selection ?: return false
     // Lease the detail's realtime rooms under an owner tagged to this surface so the
@@ -726,13 +726,13 @@ private fun HomeSearchRouterContent(
         remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
                 sessionStore = environment.authStore,
-                api = NetworkSlockHomeApi(environment.networkClient),
-                announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
-                computersApi = SlockComputersNetworkApi(environment.networkClient),
+                api = NetworkRaftHomeApi(environment.networkClient),
+                announcementsApi = NetworkRaftAnnouncementsRemindersApi(environment.networkClient),
+                computersApi = RaftComputersNetworkApi(environment.networkClient),
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session, slockLogger("SlockHomeSecondaryParse"))
+                    parseRaftHome(payload, session, raftLogger("SlockHomeSecondaryParse"))
                 },
-                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
+                diagnosticsLogger = raftLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeViewModel: SharedHomeViewModel =
@@ -740,7 +740,7 @@ private fun HomeSearchRouterContent(
             SharedHomeViewModel(
                 authStore = environment.authStore,
                 dataSource = homeDataSource,
-                diagnosticsLogger = slockLogger("SlockHomeSecondaryHome", "home_secondary_home")
+                diagnosticsLogger = raftLogger("SlockHomeSecondaryHome", "home_secondary_home")
             )
         }
     val homeState by homeViewModel.state.collectAsState()
@@ -792,14 +792,14 @@ private fun HomeSearchRouterContent(
             ?.value
     val agentStatusResolver =
         remember(environment.serverMembersStore, searchServerId) {
-            slockScopedAgentStatusResolver(environment.serverMembersStore, searchServerId)
+            raftScopedAgentStatusResolver(environment.serverMembersStore, searchServerId)
         }
     val memberAvatarResolver =
         remember(environment.serverMembersStore, searchServerId) {
             if (searchServerId.isNullOrBlank()) {
-                EmptySlockMemberAvatarResolver
+                EmptyRaftMemberAvatarResolver
             } else {
-                slockMemberAvatarResolver(environment.serverMembersStore, searchServerId)
+                raftMemberAvatarResolver(environment.serverMembersStore, searchServerId)
             }
         }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
@@ -1026,9 +1026,9 @@ private fun HomeSavedRouterContent(
     val memberAvatarResolver =
         remember(environment.serverMembersStore, savedServerId) {
             if (savedServerId.isNullOrBlank()) {
-                EmptySlockMemberAvatarResolver
+                EmptyRaftMemberAvatarResolver
             } else {
-                slockMemberAvatarResolver(environment.serverMembersStore, savedServerId)
+                raftMemberAvatarResolver(environment.serverMembersStore, savedServerId)
             }
         }
     // t5/#419 A3: user-initiated opens resolve against the real directory + server id.
@@ -1145,7 +1145,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSavedRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = slockLogger("SlockHomeSecondarySaved", "home_secondary_saved", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockHomeSecondarySaved", "home_secondary_saved", RaftLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -1153,7 +1153,7 @@ private fun rememberHomeSearchSavedViewModel(
             RealSearchRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                warningLogger = slockLogger("SlockHomeSecondarySearch", "home_secondary_search", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockHomeSecondarySearch", "home_secondary_search", RaftLogLevel.Warn)
             )
         }
     val memberRepository =
@@ -1161,8 +1161,8 @@ private fun rememberHomeSearchSavedViewModel(
             RealMemberRepository(
                 sessionStore = environment.authStore,
                 networkClient = environment.networkClient,
-                logger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member"),
-                warningLogger = slockLogger("SlockHomeSecondaryMember", "home_secondary_member_warning", SlockLogLevel.Warn)
+                logger = raftLogger("SlockHomeSecondaryMember", "home_secondary_member"),
+                warningLogger = raftLogger("SlockHomeSecondaryMember", "home_secondary_member_warning", RaftLogLevel.Warn)
             )
         }
     return viewModel(key = key) {

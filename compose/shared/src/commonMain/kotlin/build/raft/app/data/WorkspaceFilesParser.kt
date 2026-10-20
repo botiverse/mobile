@@ -1,9 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberId
-import build.raft.app.model.SlockWorkspaceFileKind
-import build.raft.app.model.SlockWorkspaceFilePreview
-import build.raft.app.model.SlockWorkspaceNode
+import build.raft.app.model.RaftWorkspaceFileKind
+import build.raft.app.model.RaftWorkspaceFilePreview
+import build.raft.app.model.RaftWorkspaceNode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -49,10 +49,10 @@ private data class WireWorkspacePreview(
     val modifiedAt: String? = null,
 )
 
-fun parseSharedWorkspaceFileNodes(bodyText: String): List<SlockWorkspaceNode> =
+fun parseSharedWorkspaceFileNodes(bodyText: String): List<RaftWorkspaceNode> =
     parseSharedWorkspaceFileNodesOrNull(bodyText).orEmpty()
 
-fun parseSharedWorkspaceFileNodesOrNull(bodyText: String): List<SlockWorkspaceNode>? {
+fun parseSharedWorkspaceFileNodesOrNull(bodyText: String): List<RaftWorkspaceNode>? {
     if (bodyText.isBlank()) return emptyList()
     return runCatching {
         workspaceJson.decodeFromString(WireWorkspaceFilesResponse.serializer(), bodyText)
@@ -64,9 +64,9 @@ fun parseSharedWorkspaceFileNodesOrNull(bodyText: String): List<SlockWorkspaceNo
 fun parseSharedWorkspaceFilePreview(
     bodyText: String,
     fallbackPath: String,
-): SlockWorkspaceFilePreview {
+): RaftWorkspaceFilePreview {
     if (bodyText.isBlank()) {
-        return SlockWorkspaceFilePreview.Unsupported(
+        return RaftWorkspaceFilePreview.Unsupported(
             path = fallbackPath,
             reason = "Preview unavailable",
         )
@@ -74,7 +74,7 @@ fun parseSharedWorkspaceFilePreview(
     val preview = runCatching {
         workspaceJson.decodeFromString(WireWorkspacePreview.serializer(), bodyText)
     }.getOrElse {
-        return SlockWorkspaceFilePreview.Unsupported(
+        return RaftWorkspaceFilePreview.Unsupported(
             path = fallbackPath,
             reason = "Preview unavailable",
         )
@@ -100,12 +100,12 @@ fun parseSharedWorkspaceFilePathFromBody(bodyText: String, fallback: String): St
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
 }
 
-private fun WireWorkspaceNode.toDomain(): SlockWorkspaceNode {
+private fun WireWorkspaceNode.toDomain(): RaftWorkspaceNode {
     val resolvedPath = path
     val resolvedName = name.ifBlank {
         resolvedPath.substringAfterLast('/').ifBlank { resolvedPath }
     }
-    return SlockWorkspaceNode(
+    return RaftWorkspaceNode(
         id = resolvedPath,
         name = resolvedName,
         path = resolvedPath,
@@ -115,10 +115,10 @@ private fun WireWorkspaceNode.toDomain(): SlockWorkspaceNode {
     )
 }
 
-private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceFilePreview {
+private fun WireWorkspacePreview.toDomain(fallbackPath: String): RaftWorkspaceFilePreview {
     val resolvedPath = path.ifBlank { fallbackPath }
     if (!binary && content != null) {
-        return SlockWorkspaceFilePreview.Text(
+        return RaftWorkspaceFilePreview.Text(
             path = resolvedPath,
             content = content,
             markdown = mimeType?.contains("markdown", ignoreCase = true)
@@ -129,7 +129,7 @@ private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceF
         )
     }
     if (binary && content != null && encoding == "base64" && mimeType?.startsWith("image/") == true) {
-        return SlockWorkspaceFilePreview.Image(
+        return RaftWorkspaceFilePreview.Image(
             path = resolvedPath,
             imageUrl = "data:$mimeType;base64,$content",
             sizeBytes = size,
@@ -138,7 +138,7 @@ private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceF
         )
     }
     if (resolvedPath.isImagePath()) {
-        return SlockWorkspaceFilePreview.Unsupported(
+        return RaftWorkspaceFilePreview.Unsupported(
             path = resolvedPath,
             reason = "Binary image preview is not available in the current mobile contract.",
             sizeBytes = size,
@@ -146,7 +146,7 @@ private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceF
             mimeType = mimeType,
         )
     }
-    return SlockWorkspaceFilePreview.Unsupported(
+    return RaftWorkspaceFilePreview.Unsupported(
         path = resolvedPath,
         reason = "Preview unavailable",
         sizeBytes = size,
@@ -155,13 +155,13 @@ private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceF
     )
 }
 
-private fun resolveWorkspaceKind(isDirectory: Boolean, path: String): SlockWorkspaceFileKind =
+private fun resolveWorkspaceKind(isDirectory: Boolean, path: String): RaftWorkspaceFileKind =
     when {
-        isDirectory -> SlockWorkspaceFileKind.Folder
-        path.endsWith(".md", ignoreCase = true) -> SlockWorkspaceFileKind.Markdown
-        path.isImagePath() -> SlockWorkspaceFileKind.Image
-        path.hasTextExtension() -> SlockWorkspaceFileKind.Text
-        else -> SlockWorkspaceFileKind.Unsupported
+        isDirectory -> RaftWorkspaceFileKind.Folder
+        path.endsWith(".md", ignoreCase = true) -> RaftWorkspaceFileKind.Markdown
+        path.isImagePath() -> RaftWorkspaceFileKind.Image
+        path.hasTextExtension() -> RaftWorkspaceFileKind.Text
+        else -> RaftWorkspaceFileKind.Unsupported
     }
 
 private fun String.isImagePath(): Boolean =

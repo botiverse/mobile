@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Slock.Starting" parent="Theme.SplashScreen">
+    <style name="Theme.Raft.Starting" parent="Theme.SplashScreen">
         <!-- Resource-qualifier styles REPLACE the base definition, they do not
              merge with it. Every load-bearing item from values/themes.xml must
              be repeated here, or API 31+ silently falls back to the parent
              theme default (task #543: missing windowBackground exposed a white
              window behind the splash exit on Android 12 devices). -->
-        <item name="android:windowBackground">@color/slock_surface_cream</item>
-        <item name="android:windowSplashScreenBackground">@color/slock_surface_cream</item>
+        <item name="android:windowBackground">@color/raft_surface_cream</item>
+        <item name="android:windowSplashScreenBackground">@color/raft_surface_cream</item>
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="postSplashScreenTheme">@style/Theme.Slock</item>
+        <item name="postSplashScreenTheme">@style/Theme.Raft</item>
     </style>
 
     <!-- Android 12 only supplies the icon-bearing system splash to the
          desktop-launched MainActivity. The app-shell Activity therefore uses
-         a regular cream handoff window; SlockKuiklyActivity installs the
+         a regular cream handoff window; RaftLegacyHostActivity installs the
          centered native hold before Kuikly attach. -->
-    <style name="Theme.Slock.AppShellStarting" parent="Theme.Slock">
-        <item name="android:windowBackground">@color/slock_surface_cream</item>
+    <style name="Theme.Raft.AppShellStarting" parent="Theme.Raft">
+        <item name="android:windowBackground">@color/raft_surface_cream</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
 </resources>

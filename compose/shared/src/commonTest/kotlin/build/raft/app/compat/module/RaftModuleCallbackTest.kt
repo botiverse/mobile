@@ -2,8 +2,8 @@ package build.raft.app.compat.module
 
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
-import build.raft.app.cmp.host.SlockCmpHost
-import build.raft.app.cmp.host.SlockCmpNavigator
+import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
@@ -28,7 +28,7 @@ class RaftModuleCallbackTest {
     private val pendingResults = mutableListOf<(String?) -> Unit>()
     private val transport = HostBridgeTransport { _, _, callback -> if (callback != null) pendingResults += callback }
     private val navigator =
-        object : SlockCmpNavigator {
+        object : RaftCmpNavigator {
             override fun openPage(pageName: String, pageData: JsonObject) = Unit
 
             override fun closePage() = Unit
@@ -40,7 +40,7 @@ class RaftModuleCallbackTest {
         }.also { pager ->
             pager.pagerId = id
             pager.pageData = PageData(JSONObject())
-            pager.host = SlockCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
+            pager.host = RaftCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
             PagerManager.register(pager)
         }
 

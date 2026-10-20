@@ -1,7 +1,7 @@
 package build.raft.app
 
-import build.raft.app.components.SlockAnchorPlacement
-import build.raft.app.components.SlockAnchoredMetaChip
+import build.raft.app.components.RaftAnchorPlacement
+import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.data.AppLocale
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.TaskWireDto
@@ -12,7 +12,7 @@ import build.raft.app.data.TasksViewMode
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.compose.runtime.Composable
@@ -181,7 +181,7 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
             Modifier
                 .width(390.dp)
                 .height(844.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         SharedTasksPanel(
             state =
@@ -211,7 +211,7 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
             // labels ("Just now"/"Yesterday"/…) in the capture, matching the fixed
             // fixture "now" the other visual pages use.
             timeContext =
-                SlockTimeContext(
+                RaftTimeContext(
                     localOffsetMinutes = VisualFixtureData.Locale.UTC_OFFSET_MINUTES,
                     todayEpochDay = VisualFixtureData.Locale.TODAY_EPOCH_DAY.toLong(),
                     nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS,
@@ -223,22 +223,22 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
 
 @Composable
 internal fun TasksStatusMenuVisualContent() {
-    // No container padding: SlockAnchoredPopover clamps content to an 8dp viewport
+    // No container padding: RaftAnchoredPopover clamps content to an 8dp viewport
     // gap inside its host, so a padded host used to shove the menu to the host's
     // top-left (+24px/-66px vs react @3x). The chip is offset instead and the menu
-    // anchor is the chip's bottom-left in root PIXELS (SlockFloatingOverlay works in
+    // anchor is the chip's bottom-left in root PIXELS (RaftFloatingOverlay works in
     // px; react's chip box is x 16dp, y 18..42dp and the menu opens 4dp below it at
     // (16, 46)dp — task #370).
-    val anchorRef = remember { SlockLiveRootAnchorRef(identity = "tasks_status_menu_fixture") }
-    var anchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    val anchorRef = remember { RaftLiveRootAnchorRef(identity = "tasks_status_menu_fixture") }
+    var anchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(260.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
-        // Same trigger chip + SlockTaskStatusMenuOverlay call SharedTasksPage opens on a
+        // Same trigger chip + RaftTaskStatusMenuOverlay call SharedTasksPage opens on a
         // status chip tap, held statically open with in_progress selected. Text
         // params mirror the product status chip (SharedTasksPage task card) and the
         // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
@@ -249,31 +249,31 @@ internal fun TasksStatusMenuVisualContent() {
                     .offset(x = 16.dp, y = 18.dp)
                     .width(98.dp)
                     .height(24.dp)
-                    .slockCaptureLiveRootAnchor(anchorRef) {
-                        anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
+                    .raftCaptureLiveRootAnchor(anchorRef) {
+                        anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
                     }
         ) {
-            SlockAnchoredMetaChip(
+            RaftAnchoredMetaChip(
                 label = TaskStatus.InProgress.localizedLabel(),
                 iconName = null,
-                color = SlockColor.AccentCyan,
+                color = RaftColor.AccentCyan,
                 onClick = {},
                 modifier = Modifier.fillMaxSize(),
-                trailingIconName = SlockLucideIconName.Pencil,
+                trailingIconName = RaftLucideIconName.Pencil,
                 minHeight = 22.dp,
                 horizontalPadding = 8.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 14.sp,
-                borderWidth = SlockStroke.Default,
-                anchorPlacement = SlockAnchorPlacement.BottomEnd
+                borderWidth = RaftAppStroke.Default,
+                anchorPlacement = RaftAnchorPlacement.BottomEnd
             )
         }
         anchor?.let { resolvedAnchor ->
-            SlockTaskStatusMenuOverlay(
+            RaftTaskStatusMenuOverlay(
                 anchor = resolvedAnchor,
                 items =
                     TaskStatus.entries.map { status ->
-                        SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
+                        RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                     },
                 selectedId = TaskStatus.InProgress.name,
                 onDismiss = {},

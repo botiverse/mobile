@@ -16,7 +16,7 @@ private const val QaBootstrapLogTag = "SlockQaBootstrap"
 private val qaBootstrapProcessInstanceId by lazy { UUID.randomUUID().toString() }
 private val qaBootstrapProcessGeneration by lazy { Process.getStartUptimeMillis().toString() }
 
-internal actual suspend fun slockPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) {
+internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) {
     var session = authDataSource.readStoredSession() ?: return
     var metadata = session.qaBootstrap ?: return
     qaBootstrapStage("route_ready_started")

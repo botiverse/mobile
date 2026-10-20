@@ -5,19 +5,19 @@ import androidx.lifecycle.LifecycleOwner
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 
 /**
- * Result sink of one native bridge call ([SlockKuiklyBridgeModule.call]): a `Map`, an org.json
+ * Result sink of one native bridge call ([RaftBridgeModule.call]): a `Map`, an org.json
  * value, a String or null, encoded as JSON text for the page by [bridgeResultJson].
  */
 internal typealias RaftBridgeCallback = (result: Any?) -> Unit
 
 /**
- * What the native bridge ([SlockKuiklyBridgeModule]) needs from the Activity hosting a page:
+ * What the native bridge ([RaftBridgeModule]) needs from the Activity hosting a page:
  * its lifecycle (coroutine scope), the activity-result launchers behind the attachment pickers and
  * "save as", native social auth, page close, the page's root view (share image export, pixel
  * probes, performance markers) and the realtime requests a page sends to the app-scope owner.
  *
- * Implemented by [SlockCmpActivity] (and therefore by every host subclass: app shell, document
- * shell, the legacy [SlockKuiklyActivity] entry point).
+ * Implemented by [RaftCmpActivity] (and therefore by every host subclass: app shell, document
+ * shell, the legacy [RaftLegacyHostActivity] entry point).
  */
 internal interface RaftHostActivity : LifecycleOwner {
     /** Root view the page renders into (null once the host is torn down). */

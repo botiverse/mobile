@@ -45,7 +45,7 @@ class PublicPageMarkPredicateTest {
 
     @Test
     fun homeRowSymbolSwapsHashForHashGlobeOnlyOnALiveServer() {
-        val publicChannel = SlockHomeConversationItem(id = "c1", name = "news", kind = "channel", channelType = "channel", guestVisible = true)
+        val publicChannel = RaftHomeConversationItem(id = "c1", name = "news", kind = "channel", channelType = "channel", guestVisible = true)
 
         assertEquals(HomeChannelSymbolHashGlobe, publicChannel.homeChannelSymbol(serverPublicPageLive = true))
         assertEquals("#", publicChannel.homeChannelSymbol(serverPublicPageLive = false))
@@ -83,7 +83,7 @@ class PublicPageMarkPredicateTest {
         val channelHeader = ThreadHeaderDisplayModel(
             title = "news",
             subtitle = null,
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = "channel",
             channelGuestVisible = true,
             serverPublicPageLive = true,
@@ -92,6 +92,6 @@ class PublicPageMarkPredicateTest {
         assertTrue(channelHeader.channelOnPublicPage)
         assertFalse(channelHeader.copy(serverPublicPageLive = false).channelOnPublicPage)
         assertFalse(channelHeader.copy(channelArchived = true).channelOnPublicPage)
-        assertFalse(channelHeader.copy(surfaceKind = KuiklyThreadSurfaceKind.ReplyThread).channelOnPublicPage)
+        assertFalse(channelHeader.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread).channelOnPublicPage)
     }
 }

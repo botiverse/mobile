@@ -3,7 +3,7 @@ package build.raft.app.core.data.network
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.network.HEADER_AUTHORIZATION
@@ -32,11 +32,11 @@ internal object AndroidNetworkPrewarmController {
         val now = System.currentTimeMillis()
         synchronized(lock) {
             if (!shouldStartPrewarm(now, lastAttemptAtMillis, MIN_PREWARM_INTERVAL_MILLIS)) {
-                SlockAppLog.d(LOG_TAG, "network_prewarm_skip reason=rate_limited source=$source")
+                RaftAppLog.d(LOG_TAG, "network_prewarm_skip reason=rate_limited source=$source")
                 return
             }
             if (prewarmJob?.isActive == true) {
-                SlockAppLog.d(LOG_TAG, "network_prewarm_skip reason=in_flight source=$source")
+                RaftAppLog.d(LOG_TAG, "network_prewarm_skip reason=in_flight source=$source")
                 return
             }
             lastAttemptAtMillis = now
@@ -61,7 +61,7 @@ internal object AndroidNetworkPrewarmController {
                 prewarmJob.also { prewarmJob = null }
             }
         job?.cancel()
-        SlockAppLog.d(LOG_TAG, "network_prewarm_cancel reason=$reason")
+        RaftAppLog.d(LOG_TAG, "network_prewarm_cancel reason=$reason")
     }
 
     private suspend fun runPrewarm(
@@ -74,7 +74,7 @@ internal object AndroidNetworkPrewarmController {
         val accessToken = session?.accessToken?.takeIf { it.isNotBlank() }
         val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }
         if (accessToken == null || serverId == null) {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "network_prewarm_skip reason=missing_session source=$source hasToken=${accessToken != null} hasServer=${serverId != null}"
             )
@@ -83,10 +83,10 @@ internal object AndroidNetworkPrewarmController {
 
         val baseUrl = AndroidAuthApiFactory.currentBaseUrl(context)
         val url = "${baseUrl.trimEnd('/')}/auth/me"
-        SlockAppLog.d(LOG_TAG, "network_prewarm_start source=$source path=auth/me")
+        RaftAppLog.d(LOG_TAG, "network_prewarm_start source=$source path=auth/me")
         try {
             val response =
-                RealSlockNetworkClientFactory
+                RealRaftNetworkClientFactory
                     .create(sessionStore, baseUrl = baseUrl)
                     .requestRawAbsoluteUrl(
                         priority = DataRequestPriority.Background,
@@ -97,7 +97,7 @@ internal object AndroidNetworkPrewarmController {
                                 HEADER_SERVER_ID to serverId
                             )
                     )
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "endpoint category=network_prewarm path=auth/me method=GET " +
                     "requestBytes=0 responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
@@ -105,7 +105,7 @@ internal object AndroidNetworkPrewarmController {
                     "code=${response.code} durationMs=${System.currentTimeMillis() - startedAt} " +
                     "result=${if (response.isSuccessful) "success" else "http_or_network_error"}"
             )
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "network_prewarm_result source=$source path=auth/me code=${response.code} " +
                     "durationMs=${System.currentTimeMillis() - startedAt} success=${response.isSuccessful}"
@@ -113,7 +113,7 @@ internal object AndroidNetworkPrewarmController {
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "network_prewarm_failed source=$source path=auth/me " +
                     "durationMs=${System.currentTimeMillis() - startedAt} reason=${error::class.simpleName.orEmpty()}"

@@ -63,8 +63,8 @@ Start at the current source rather than old line numbers:
 - `ThreadLaunchConversationIdentity.kt` and `ThreadLaunchProvenance.kt`
 - `SettingsStandalonePageData.kt`
 - `ExternalShareLaunch.kt`
-- `SlockShellStoreLaunch.kt`
-- `data/SlockDatabaseLaunchRecovery.kt`
+- `RaftShellStoreLaunch.kt`
+- `data/RaftDatabaseLaunchRecovery.kt`
 - Home/Settings/Thread open-request builders and auth-resume conversions
 
 `WireThreadLaunchPayload` currently contains both typed route identity and historical origin fallback/display fields. Audit each field by authority and consumer; do not classify the whole DTO as safe merely because its name starts with `Wire`.

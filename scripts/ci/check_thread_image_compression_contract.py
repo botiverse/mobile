@@ -26,10 +26,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PATHS = {
     "bridge": "compose/shared/src/commonMain/kotlin/build/raft/app/base/BridgeModule.kt",
-    "preview": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockFilePreview.kt",
+    "preview": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFilePreview.kt",
     "thread": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
     "uploaded_preview": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerUploadedImagePreview.kt",
-    "android": "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt",
+    "android": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
     "ios": "compose/iosApp/iosApp/Host/HRBridgeModule.m",
 }
 
@@ -205,12 +205,12 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
         (
             ERROR_CODE,
             SOURCE_MARKER,
-            "SlockFilePreviewComposerImageOperationGate",
+            "RaftFilePreviewComposerImageOperationGate",
             "fun begin(",
             "fun complete(",
             "fun cancel(",
             "fun retire(",
-            "parseSlockFilePreviewCompressedImageResult",
+            "parseRaftFilePreviewCompressedImageResult",
             "composerImageCompressAfterEdit",
             "composerImageEditCompleted",
             "composerImageCompressed",
@@ -222,7 +222,7 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
     )
     parser = _region(
         source,
-        "internal fun parseSlockFilePreviewCompressedImageResult(",
+        "internal fun parseRaftFilePreviewCompressedImageResult(",
         None,
         "shared compression response parser",
     )
@@ -231,9 +231,9 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
         (
             "filesJson.length() != 1",
             'rawMimeType != "image/jpeg"',
-            "rawSource != SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE",
-            "SlockFilePreviewCompressedImageResult.Failure",
-            "SlockFilePreviewCompressedImageResult.Success",
+            "rawSource != RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE",
+            "RaftFilePreviewCompressedImageResult.Failure",
+            "RaftFilePreviewCompressedImageResult.Success",
         ),
         "shared compression response parser",
     )
@@ -249,7 +249,7 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
     policy = _region(
         thread,
         "internal fun shouldCompressThreadAttachmentPickerImages(",
-        "internal fun slockComposerImagePickerFilesAreStrictImages(",
+        "internal fun raftComposerImagePickerFilesAreStrictImages(",
         "ThreadPage mixed-picker compression policy",
     )
     if re.search(r'action\s*==\s*"attachFile"\s*&&\s*!originalImage', policy):
@@ -311,13 +311,13 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
              "threadComposerImageAnnotationPayload(threadInstanceKey, actionId, files, originalImage)",
              "uploaded-preview policy forwarding")
     initial_builder = _region(thread, "internal fun threadComposerImageAnnotationPayload(",
-                              "private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(",
+                              "private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload(",
                               "initial image editor policy")
     _require(initial_builder, "composerImageCompressAfterEdit = !originalImage", "initial image editor policy")
     _require_all(
         thread,
         (
-            "slockComposerImagePickerIsStrictImage",
+            "raftComposerImagePickerIsStrictImage",
             "resolveThreadPickedAttachmentComposerAction",
             "ThreadPickedAttachmentComposerAction.UploadToComposer",
             "ThreadPickedAttachmentComposerAction.OpenImageAnnotation",
@@ -329,7 +329,7 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
     # the dedicated bridge/parser pair.
     combined = thread + "\n" + preview
     _require(combined, "compressThreadImage", "editor-confirmation compression route")
-    _require(combined, "parseSlockFilePreviewCompressedImageResult", "editor-confirmation response admission")
+    _require(combined, "parseRaftFilePreviewCompressedImageResult", "editor-confirmation response admission")
     _require(combined, "withComposerImageFinalResult", "editor-confirmation payload replacement")
 
 
@@ -346,7 +346,7 @@ def _owned_temporary_source_set_names(thread: str) -> set[str]:
             for marker in ('"platform_picker"', '"platform_camera"', '"composer_image_editor"')
         ) and (
             '"composer_image_compressor"' in body
-            or "SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in body
+            or "RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in body
         ):
             names.add(match.group(1))
     return names
@@ -362,7 +362,7 @@ def _require_owned_temporary_sources(
         for marker in ('"platform_picker"', '"platform_camera"', '"composer_image_editor"')
     ) and (
         '"composer_image_compressor"' in region
-        or "SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in region
+        or "RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in region
     )
     shared_source_sets = _owned_temporary_source_set_names(thread)
     if not direct_sources_present and not any(name in region for name in shared_source_sets):
@@ -481,18 +481,18 @@ def _check_pending_journal_upload_propagation(thread: str) -> None:
 
 
 def _check_strict_image_classifier(preview: str) -> None:
-    classifier_start = preview.find("internal fun slockComposerImagePickerIsStrictImage(")
+    classifier_start = preview.find("internal fun raftComposerImagePickerIsStrictImage(")
     if classifier_start < 0:
         raise Violation(
             "shared image/video classifier: start marker "
-            "'internal fun slockComposerImagePickerIsStrictImage(' not found"
+            "'internal fun raftComposerImagePickerIsStrictImage(' not found"
         )
     # The extension set is shared with ThreadPage's pending-send ownership
     # helper.  Its visibility is intentionally allowed to be private (legacy
     # source) or internal (when ThreadPage references the single shared set).
     video_set = re.search(
         r"(?m)^\s*(?:private|internal)\s+(?:const\s+)?val\s+"
-        r"SlockFilePreviewVideoExtensions\b",
+        r"RaftFilePreviewVideoExtensions\b",
         preview[classifier_start:],
     )
     if video_set is None:
@@ -502,7 +502,7 @@ def _check_strict_image_classifier(preview: str) -> None:
     classifier = preview[classifier_start : classifier_start + video_set.start()]
     _require_all(
         classifier,
-        ('mime.startsWith("image/")', "extension in SlockFilePreviewImageExtensions"),
+        ('mime.startsWith("image/")', "extension in RaftFilePreviewImageExtensions"),
         "shared image/video classifier",
     )
     # MIME and extension are both required; this prevents a video MIME or a
@@ -516,7 +516,7 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     _check_strict_image_classifier(preview)
     shared_video_extensions = _kotlin_string_set(
         preview,
-        "SlockFilePreviewVideoExtensions",
+        "RaftFilePreviewVideoExtensions",
         "shared video-extension contract",
     )
 
@@ -607,8 +607,8 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     ios = _source(sources, "ios")
     ios_fn = _region(
         ios,
-        "static BOOL SlockThreadImageCompressionInputIsImage(",
-        "static NSString *SlockCompressedAttachmentFileName",
+        "static BOOL RaftThreadImageCompressionInputIsImage(",
+        "static NSString *RaftCompressedAttachmentFileName",
         "iOS image/video classifier",
     )
     _require_all(
@@ -653,8 +653,8 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     # image/* acceptance so a mismatched provider tuple cannot enter ImageIO.
     ios_picker_fn = _region(
         ios,
-        "static BOOL SlockAttachmentIsImage(",
-        "static NSError *SlockThreadAttachmentImageCompressionError(",
+        "static BOOL RaftAttachmentIsImage(",
+        "static NSError *RaftThreadAttachmentImageCompressionError(",
         "iOS picker image/video classifier",
     )
     _require_all(
@@ -767,7 +767,7 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
             'params[@"mimeType"]',
             "[operation.outputLock lock]",
             "[operation.outputLock unlock]",
-            "SlockWriteCompressedPickedImage",
+            "RaftWriteCompressedPickedImage",
         ),
         "iOS native compression",
     )
@@ -780,7 +780,7 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
     write_region = method[write_lock_start:write_lock_end]
     _require(
         write_region,
-        "SlockWriteCompressedPickedImage",
+        "RaftWriteCompressedPickedImage",
         "iOS native compression output-lock fence",
     )
     # Cleanup may be performed directly in the method or through the operation's

@@ -40,7 +40,7 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun exactHeightChoosesFinalSideBeforeMenuIsDrawn() {
-        val viewport = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         val anchor = Offset(x = 300f, y = 500f)
 
         assertEquals(
@@ -51,7 +51,7 @@ class ThreadMessageMenuLayoutTest {
                 viewportGap = 8f,
                 verticalOffset = 8f,
                 verticalOffsetAbove = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
                 horizontalAutoFlip = true
             )?.y
         )
@@ -63,7 +63,7 @@ class ThreadMessageMenuLayoutTest {
                 viewportGap = 8f,
                 verticalOffset = 8f,
                 verticalOffsetAbove = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
                 horizontalAutoFlip = true
             )?.y
         )
@@ -78,7 +78,7 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun contextMenuPlacementMatchesWebPlaceFloatingOverlay() {
-        val viewport = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         fun place(anchor: Offset, content: Size) =
             viewport.positionContent(
                 anchor = anchor,
@@ -87,8 +87,8 @@ class ThreadMessageMenuLayoutTest {
                 horizontalOffset = 0f,
                 verticalOffset = 0f,
                 verticalOffsetAbove = 0f,
-                verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
-                horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
+                verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+                horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
             )
         // Fits right/below: the top-left corner sits on the press point.
         assertEquals(Offset(40f, 100f), place(Offset(40f, 100f), Size(248f, 375f)))
@@ -108,22 +108,22 @@ class ThreadMessageMenuLayoutTest {
     @Test
     fun horizontalPositionCentersWithinViewport() {
         // Viewport 390 wide, content 288 wide, gap 8 -> max X is 390 - 288 - 8 = 94. Center is (390 - 288)/2 = 51
-        val centeredX = slockHorizontalPosition(
+        val centeredX = raftHorizontalPosition(
             localAnchorX = 350f,
             contentWidth = 288f,
             viewportWidth = 390f,
             viewportGap = 8f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
         )
         assertEquals(51f, centeredX)
 
         // Anchor mode places relative to localAnchorX
-        val anchorX = slockHorizontalPosition(
+        val anchorX = raftHorizontalPosition(
             localAnchorX = 50f,
             contentWidth = 288f,
             viewportWidth = 390f,
             viewportGap = 8f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Anchor
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
         )
         assertEquals(50f, anchorX)
     }

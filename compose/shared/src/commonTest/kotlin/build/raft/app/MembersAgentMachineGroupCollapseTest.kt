@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore
 import build.raft.app.data.MembersAgentMachineGroupNoMachineKey
 import build.raft.app.model.MemberId
@@ -75,7 +75,7 @@ class MembersAgentMachineGroupCollapseTest {
 
     @Test
     fun collapseStoreRoundTripsOnlyUnderTheWebKeyFamily() {
-        val backing = InMemorySlockKeyValueStore()
+        val backing = InMemoryRaftKeyValueStore()
         val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
         assertFalse(store.isCollapsed("user-1", "machine-1"))
         store.setCollapsed("user-1", "machine-1", true)
@@ -98,7 +98,7 @@ class MembersAgentMachineGroupCollapseTest {
 
     @Test
     fun collapseStoreIgnoresBlankScopeOrKey() {
-        val backing = InMemorySlockKeyValueStore()
+        val backing = InMemoryRaftKeyValueStore()
         val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
         store.setCollapsed("", "machine-1", true)
         store.setCollapsed("user-1", "", true)
@@ -145,7 +145,7 @@ class MembersAgentMachineGroupCollapseTest {
     fun collapseSurvivesAFreshStoreInstanceOnTheSameBacking() {
         // Re-entering the members page constructs a new collapse store over
         // the same preference store. The remembered state must still read.
-        val backing = InMemorySlockKeyValueStore()
+        val backing = InMemoryRaftKeyValueStore()
         KeyValueMembersAgentMachineGroupCollapseStore(backing)
             .setCollapsed("user-1", "machine-1", true)
         val reenteredStore = KeyValueMembersAgentMachineGroupCollapseStore(backing)
@@ -163,7 +163,7 @@ class MembersAgentMachineGroupCollapseTest {
         // both arrive asynchronously. If the user id resolves while the list
         // is still empty, no group exists to snapshot — the collapse state
         // must resolve per group when that group's row renders.
-        val backing = InMemorySlockKeyValueStore()
+        val backing = InMemoryRaftKeyValueStore()
         val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
         store.setCollapsed("user-1", "machine-1", true)
 

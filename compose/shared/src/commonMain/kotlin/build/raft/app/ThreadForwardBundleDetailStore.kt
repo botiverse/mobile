@@ -9,7 +9,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.RealConversationRepository
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.candidateCacheScopeId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ForwardMessageBundle
@@ -123,7 +123,7 @@ internal class RealThreadForwardBundleDetailRepository(
 /** Production repository: authority is admitted before even the message cache key is read. */
 internal class AuthenticatedThreadForwardBundleDetailRepository(
     private val messageStore: SharedThreadMessageStore,
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     owner: build.raft.app.data.AuthenticatedRouteOwner,
     gateway: AuthenticatedRouteAuthorityGateway,
     private val logger: (String) -> Unit = {},

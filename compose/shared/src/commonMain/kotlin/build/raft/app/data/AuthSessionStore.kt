@@ -19,10 +19,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 
-const val SLOCK_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
-const val SLOCK_AUTH_SESSION_RECORD_KEY = "session"
-const val SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY = "slockAuthSession:session"
-const val SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY = "authInstallationId"
+const val RAFT_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
+const val RAFT_AUTH_SESSION_RECORD_KEY = "session"
+const val RAFT_AUTH_SESSION_MMKV_STORAGE_KEY = "slockAuthSession:session"
+const val RAFT_AUTH_INSTALLATION_ID_RECORD_KEY = "authInstallationId"
 
 enum class AuthSessionClearOutcome {
     Cleared,
@@ -30,7 +30,7 @@ enum class AuthSessionClearOutcome {
     AuthorityChanged,
 }
 
-interface SlockAuthSessionStore {
+interface RaftAuthSessionStore {
     suspend fun readSession(): StoredAuthSession?
     suspend fun saveSession(session: StoredAuthSession)
     suspend fun updateTokens(accessToken: String, refreshToken: String)
@@ -299,16 +299,16 @@ private fun StoredAuthSession.withPreservedProcessSelection(current: StoredAuthS
     )
 }
 
-interface SlockAuthServerSelectionMemory {
+interface RaftAuthServerSelectionMemory {
     suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection?
     suspend fun saveRememberedServerSelection(user: StoredAuthUser, selection: StoredAuthServerSelection?)
 }
 
-interface SlockAuthSessionInvalidationSource {
+interface RaftAuthSessionInvalidationSource {
     val sessionInvalidations: SharedFlow<Unit>
 }
 
-interface SlockAuthSessionChangeSource {
+interface RaftAuthSessionChangeSource {
     val sessionChanges: SharedFlow<String>
 }
 
@@ -340,7 +340,7 @@ sealed interface AuthSessionEvent {
 }
 
 /** Process-wide auth-session event surface — shared across all store instances backing the same record. */
-interface SlockAuthSessionEventSource {
+interface RaftAuthSessionEventSource {
     val authSessionEvents: SharedFlow<AuthSessionEvent>
 }
 
@@ -354,7 +354,7 @@ data class AuthSessionTerminalSnapshot(
  * The conditional commit executes while the canonical session mutation lock is held, so a
  * successor login cannot land between the final absent-session check and the terminal action.
  */
-internal interface SlockAuthSessionTerminalSource {
+internal interface RaftAuthSessionTerminalSource {
     val authSessionTerminalEvents: SharedFlow<AuthSessionEvent>
 
     suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot
@@ -592,9 +592,9 @@ data class StoredAuthServer(
         )
 }
 
-class InMemorySlockAuthSessionStore(
+class InMemoryRaftAuthSessionStore(
     initialSession: StoredAuthSession? = null
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
+) : RaftAuthSessionStore, RaftAuthSessionInvalidationSource, RaftAuthSessionChangeSource, RaftAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
@@ -875,11 +875,11 @@ class InMemorySlockAuthSessionStore(
 }
 
 class KeyValueAuthSessionStore(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource,
-    SlockAuthSessionEventSource, SlockAuthSessionTerminalSource, SlockAuthServerSelectionMemory {
+) : RaftAuthSessionStore, RaftAuthSessionInvalidationSource, RaftAuthSessionChangeSource,
+    RaftAuthSessionEventSource, RaftAuthSessionTerminalSource, RaftAuthServerSelectionMemory {
     // #466: the serialization lock is SHARED across every KeyValueAuthSessionStore instance
     // (they all back the same MMKV namespace), so cross-instance / cross-subsystem session
     // read-modify-writes can never lose an update. Delegating the existing `mutex` to the
@@ -900,7 +900,7 @@ class KeyValueAuthSessionStore(
     // reads the process-owned decoded snapshot; mutations update MMKV and this cache atomically.
     private fun readSessionRecordStateLocked(): Pair<CachedAuthSessionRecord, Boolean> {
         cachedSessionRecords[store]?.let { return it to true }
-        val encoded = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+        val encoded = store.getString(RAFT_AUTH_SESSION_RECORD_KEY)
         var decodeFailure: String? = null
         val session =
             encoded?.decodeStoredSessionOrNull(
@@ -921,7 +921,7 @@ class KeyValueAuthSessionStore(
 
     private fun writeSessionRecordLocked(session: StoredAuthSession) {
         val encoded = authSessionStoreJson.encodeToString(session)
-        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, encoded)
+        store.putString(RAFT_AUTH_SESSION_RECORD_KEY, encoded)
         cachedSessionRecords[store] =
             CachedAuthSessionRecord(
                 session = session,
@@ -931,7 +931,7 @@ class KeyValueAuthSessionStore(
     }
 
     private fun clearSessionRecordLocked() {
-        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+        store.putString(RAFT_AUTH_SESSION_RECORD_KEY, null)
         cachedSessionRecords[store] =
             CachedAuthSessionRecord(
                 session = null,
@@ -1109,9 +1109,9 @@ class KeyValueAuthSessionStore(
 
     override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
         mutex.withLock {
-            store.getString(SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY)?.takeIf { it.isValidAuthInstallationId() }
+            store.getString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY)?.takeIf { it.isValidAuthInstallationId() }
                 ?: candidate.validatedAuthInstallationId().also { created ->
-                    store.putString(SLOCK_AUTH_INSTALLATION_ID_RECORD_KEY, created)
+                    store.putString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY, created)
                 }
         }
 
@@ -1433,7 +1433,7 @@ class KeyValueAuthSessionStore(
         // backs the same MMKV session record). This is the single serialization domain for all
         // session read-modify-writes — the fix for the #466 cross-subsystem lost-update.
         private val storeMutex = Mutex()
-        private val cachedSessionRecords = mutableMapOf<SlockKeyValueStore, CachedAuthSessionRecord>()
+        private val cachedSessionRecords = mutableMapOf<RaftKeyValueStore, CachedAuthSessionRecord>()
 
         // Process-wide shared event bus + generation counter (#466 gate: cross-instance
         // notification). generation is assigned INSIDE storeMutex; events emit AFTER the lock,

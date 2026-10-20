@@ -4,10 +4,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-const val SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE = "slockActivityUnread"
-const val SLOCK_ACTIVITY_UNREAD_MMKV_STORAGE_KEY = "projections"
-const val SLOCK_ACTIVITY_UNREAD_MMKV_RAW_STORAGE_KEY =
-    "$SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE:$SLOCK_ACTIVITY_UNREAD_MMKV_STORAGE_KEY"
+const val RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE = "slockActivityUnread"
+const val RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY = "projections"
+const val RAFT_ACTIVITY_UNREAD_MMKV_RAW_STORAGE_KEY =
+    "$RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE:$RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY"
 
 @Serializable
 data class PersistedActivityUnreadProjection(
@@ -25,7 +25,7 @@ data class PersistedActivityUnreadProjection(
  * reconciliation.
  */
 class ProcessActivityUnreadProjectionCache(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
     private val nowMillis: () -> Long = ::defaultNowMillis
 ) {
     fun read(
@@ -58,17 +58,17 @@ class ProcessActivityUnreadProjectionCache(
             )
         val entries = readAll().filterNot { entry -> entry.matches(owner) } + replacement
         store.putString(
-            SLOCK_ACTIVITY_UNREAD_MMKV_STORAGE_KEY,
+            RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY,
             cacheJson.encodeToString(PersistedActivityUnreadProjectionDocument(entries = entries))
         )
     }
 
     fun clearAll() {
-        store.putString(SLOCK_ACTIVITY_UNREAD_MMKV_STORAGE_KEY, null)
+        store.putString(RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY, null)
     }
 
     private fun readAll(): List<PersistedActivityUnreadProjection> =
-        store.getString(SLOCK_ACTIVITY_UNREAD_MMKV_STORAGE_KEY)
+        store.getString(RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY)
             ?.takeIf { encoded -> encoded.isNotBlank() }
             ?.let { encoded ->
                 runCatching {

@@ -336,7 +336,7 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     // margin painted with the window background (cream), which the react↔android diff
     // flagged as a spurious "empty beige area" drift. White backing keeps any residual gap
     // aligned with the react baseline. (visual case components.home.search.*-dropdown)
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState,
             homeState = homeSearchVisualHomeState,
@@ -359,7 +359,7 @@ internal fun HomeSearchHomeVisualContent(
     editing: Boolean = false,
     visualTextScale: Float = 1f,
 ) {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchHomeVisualSearchState,
             homeState = homeSearchVisualHomeState,
@@ -388,7 +388,7 @@ internal fun HomeSearchPinVisualContent(query: String = "android") {
             togglePinCount = 0
         }
     }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState.copy(query = query),
             homeState = homeSearchPinVisualHomeState,
@@ -410,7 +410,7 @@ internal fun HomeSearchPinVisualContent(query: String = "android") {
             modifier = Modifier.fillMaxSize()
         )
         if (openedEntityCount > 0) {
-            Box(modifier = Modifier.size(24.dp).background(SlockColor.BrandYellow))
+            Box(modifier = Modifier.size(24.dp).background(RaftColor.BrandYellow))
         }
         if (togglePinCount > 0) {
             Box(
