@@ -735,7 +735,6 @@ private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
-private val SearchLightRowBorderColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.62f)
 
 private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
@@ -21311,6 +21310,7 @@ private fun SharedHomeSearchToolbar(
             RaftBrutalIconButton(
                 iconName = RaftLucideIconName.ArrowLeft,
                 onClick = onClose,
+                contentDescription = stringResource(MR.strings.common_back),
                 backgroundColor = RaftColor.SurfaceWhite,
                 size = RaftMetrics.ControlHeightLg,
                 iconSize = 14.dp
@@ -22330,7 +22330,8 @@ private fun SharedHomeSearchEmptyState(
     )
 }
 
-// raft-ui SearchError: the EmptyState copy with its retry action under it.
+// raft-ui SearchError: the EmptyState with the TriangleAlert icon, its copy and the retry
+// action under it.
 @Composable
 private fun SharedHomeSearchErrorState(
     error: RaftHomeInlineError,
@@ -22342,7 +22343,7 @@ private fun SharedHomeSearchErrorState(
         title = copy.title,
         detail = copy.detail,
         typography = RaftTheme.typography,
-        iconName = null,
+        iconName = RaftLucideIconName.TriangleAlert,
         actions =
             if (showAction) {
                 {
