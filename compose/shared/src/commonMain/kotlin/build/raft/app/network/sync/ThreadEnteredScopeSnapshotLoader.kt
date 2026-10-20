@@ -37,6 +37,24 @@ internal fun interface ThreadEnteredScopeSnapshotLoader {
         replyParent: ThreadDurableReplyParent,
         stillCurrent: () -> Boolean,
     ) = Unit
+
+    /**
+     * Task #14b: the Activity reply-thread prewarm already fetched the thread's latest reply page
+     * ([rawMessages], sent with `limit=`[requestedLimit]); persist THAT page as the `thread` scope's
+     * window instead of discarding it with the in-memory prewarm. Same admission as
+     * [loadReplyThreadOnEnter] (flag, partition generation, server-confirmed parent, `stillCurrent`
+     * re-read under the scope writer) but page-only: no realtime baseline is registered, and a stored
+     * window at least as new as the page is never replaced. Implementations that do not persist reply
+     * threads write nothing.
+     */
+    suspend fun persistReplyThreadPrewarmPage(
+        partition: DurablePartitionKey,
+        threadChannelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent,
+        rawMessages: JsonArray,
+        requestedLimit: Int,
+        stillCurrent: () -> Boolean,
+    ) = Unit
 }
 
 /**

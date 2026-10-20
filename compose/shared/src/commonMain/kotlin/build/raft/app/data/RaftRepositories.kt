@@ -198,6 +198,20 @@ interface ConversationRepository {
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> =
         getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
+    /**
+     * Task #14b: [captureRawMessagePage] asks the implementation to also carry the reply page's raw
+     * `messages` array ([ThreadSnapshot.rawMessagePage]) so the Activity prewarm can persist it.
+     * Implementations that cannot capture it ignore the flag (nothing is persisted then).
+     */
+    suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        priority: DataRequestPriority,
+        captureRawMessagePage: Boolean
+    ): DataResult<ThreadSnapshot> =
+        getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit, priority)
     suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<ThreadSnapshot>
     suspend fun getMessageContext(
         messageId: MessageId,

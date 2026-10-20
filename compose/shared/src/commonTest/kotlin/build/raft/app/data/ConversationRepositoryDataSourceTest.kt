@@ -730,6 +730,47 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun replyThreadCarriesItsRawServerPageOnlyWhenAsked() = runBlocking {
+        // Task #14b: the Activity prewarm asks for the raw reply page (and the limit sent) to persist it.
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "POST channels/channel-1/threads" to """{"threadChannelId":"thread-1","replyCount":2,"ok":true}""",
+                        "GET messages/channel/thread-1" to
+                            """{"messages":[${messageJson("reply-1", "thread-1", seq = 2, content = "reply body")}],"historyLimited":false}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val captured = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getReplyThread(
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("parent-1"),
+                limit = 30,
+                priority = DataRequestPriority.Background,
+                captureRawMessagePage = true
+            )
+        ).data
+        val page = assertNotNull(captured.rawMessagePage.page)
+        assertEquals(listOf("reply-1"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
+        assertEquals(30, page.requestedLimit)
+        assertEquals("thread-1", captured.conversation.thread?.streamChannelId?.value)
+
+        // Negative twin: the same call without the flag carries nothing.
+        val plain = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getReplyThread(
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("parent-1"),
+                limit = 30,
+                priority = DataRequestPriority.Background
+            )
+        ).data
+        assertNull(plain.rawMessagePage.page)
+        assertEquals(captured, plain, "the witness never takes part in equality")
+    }
+
+    @Test
     fun getChannelThreadsParsesParentMessageKeyedRecordResponse() = runBlocking {
         val network =
             FakeConversationNetworkClient(

@@ -3672,6 +3672,8 @@ internal class SharedThreadDataSource(
                 parentMessageId = key.parentMessageId,
                 originParentMessageId = key.parentMessageId
             )
+        // Task #14b: the reply page this prewarm fetched, kept for the durable write below.
+        var fetchedPage: Pair<String?, RawMessagePage?>? = null
         val result =
             payloadCache.prewarm(
                 serverId = key.serverId,
@@ -3683,7 +3685,13 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = basePayload,
                         requestPriority = DataRequestPriority.Background,
-                        replyResolutionScope = replyResolutionScope
+                        replyResolutionScope = replyResolutionScope,
+                        onRawReplyPage =
+                            if (enteredScopeSnapshotLoader == null) {
+                                null
+                            } else {
+                                { threadChannelId, page -> fetchedPage = threadChannelId to page }
+                            }
                     )
                 val payload =
                     when (fetched) {
@@ -3705,6 +3713,14 @@ internal class SharedThreadDataSource(
                     ScreenError(code = "thread_reply_access_authority_changed", retryable = true)
                 )
             }
+            fetchedPage?.let { (threadChannelId, page) ->
+                persistReplyThreadPrewarmPageIfCurrent(
+                    basePayload = basePayload,
+                    context = ReplyCacheProducerContext(session, replyResolutionScope.provenance),
+                    resolvedThreadChannelId = threadChannelId,
+                    rawPage = page
+                )
+            }
         }
         return when (result) {
             is DataResult.Content -> DataResult.Content(Unit)
@@ -3712,6 +3728,54 @@ internal class SharedThreadDataSource(
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }
+    }
+
+    /**
+     * Task #14b ("every authoritative page is persisted"): hand the reply page an Activity prewarm just
+     * fetched to the durable V2 writer as the thread scope's window, so opening the thread later renders
+     * `thread_durable_last_known` even after the in-memory prewarm was invalidated or the process restarted.
+     * Same admission as [loadEnteredScopeSnapshotIfCurrent] for the prewarm's reply route (renderable reply
+     * route with its typed parent, an owning partition, current provenance); additionally the page must be
+     * the one the server resolved for exactly this thread. The parent named here is only the route's claim —
+     * the writer has the server confirm it. Every refusal on this side logs one `canonical_v2_prewarm_page`
+     * line; the writer logs its own.
+     */
+    private suspend fun persistReplyThreadPrewarmPageIfCurrent(
+        basePayload: RaftThreadScreenPayload,
+        context: ReplyCacheProducerContext,
+        resolvedThreadChannelId: String?,
+        rawPage: RawMessagePage?,
+    ) {
+        val loader = enteredScopeSnapshotLoader ?: return
+        val threadChannelId = basePayload.streamChannelId.orEmpty()
+        fun skip(reason: String) =
+            diagnosticsLogger(
+                "canonical_v2_prewarm_page server=${context.provenance.serverId} scope=$threadChannelId " +
+                    "scopeKind=thread outcome=skipped reason=$reason facts=0"
+            )
+        if (rawPage == null) return skip("no_raw_page")
+        if (resolvedThreadChannelId != threadChannelId) return skip("thread_mismatch")
+        val routeIdentity = basePayload.resolveThreadRouteIdentity()
+        if (!routeIdentity.canRenderTimelineCandidates || routeIdentity.timelineChannelId != threadChannelId) {
+            return skip("not_renderable")
+        }
+        val replyParent =
+            basePayload.durableReplyParentOrNull()
+                ?: return skip("no_reply_parent")
+        val admission =
+            durableScopeAdmission(routeIdentity, replyParent) as? DurableScopeAdmission.ReplyThread
+                ?: return skip("no_reply_parent")
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return skip("no_partition")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return skip("identity_changed")
+        loader.persistReplyThreadPrewarmPage(
+            partition = partition,
+            threadChannelId = threadChannelId,
+            replyParent = admission.parent,
+            rawMessages = rawPage.messages,
+            requestedLimit = rawPage.requestedLimit,
+        ) { isCurrentReplyCacheProvenance(context.provenance) }
     }
 
     private suspend fun resolveReplyThreadStream(
@@ -5225,7 +5289,13 @@ internal class SharedThreadDataSource(
         includeFollowedSummaries: Boolean = false,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
         replyResolutionScope: ReplyResolutionScope,
-        replaceReplyAccessFailure: Boolean = false
+        replaceReplyAccessFailure: Boolean = false,
+        /**
+         * Task #14b: when set, the reply page's raw `messages` array is requested and handed here with
+         * the thread channel id the server resolved (both `null`-able: a joined access flight that did not
+         * capture it, or a snapshot without its stream id), before the payload is built.
+         */
+        onRawReplyPage: ((threadChannelId: String?, page: RawMessagePage?) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -5289,7 +5359,8 @@ internal class SharedThreadDataSource(
                         parentMessageId = MessageId(parentMessageId),
                         includeFollowedSummaries = includeFollowedSummaries,
                         limit = pageSize,
-                        priority = requestPriority
+                        priority = requestPriority,
+                        captureRawMessagePage = onRawReplyPage != null
                     )
                 }
             if (accessFlightKey != null &&
@@ -5318,6 +5389,10 @@ internal class SharedThreadDataSource(
         return@coroutineScope when (initialResult) {
             is DataResult.Content -> {
                 onReplyThreadAccessValidatedForTest?.invoke()
+                onRawReplyPage?.invoke(
+                    initialResult.data.conversation.thread?.streamChannelId?.value?.takeIf { it.isNotBlank() },
+                    initialResult.data.rawMessagePage.page
+                )
                 val hasReplyContent = initialResult.data.hasRenderableReplyThreadMessages(basePayload)
                 val parentContextRemainingGraceMillis =
                     (replyOriginHydrationGraceMillis -
