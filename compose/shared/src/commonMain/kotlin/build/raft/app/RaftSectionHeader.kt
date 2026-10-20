@@ -475,6 +475,8 @@ internal fun RaftSectionHeaderIconAction(
 
 /** raft-ui `SidebarSectionControl`: h-7 min-w-7 ghost with a 16dp glyph. */
 internal val RaftSidebarSectionControlSize = 28.dp
+/** The raft-ui icon-sm Button draws its glyph at 18dp. */
+internal val RaftSidebarSectionControlIconSize = 18.dp
 private val RaftSidebarSectionChevronSize = 14.dp
 private val RaftSidebarSectionDisclosureGap = 6.dp
 private val RaftSidebarSectionControlsGap = 4.dp
@@ -577,7 +579,8 @@ internal fun RaftSidebarSectionHeader(
                     icon = RaftLucideIconName.ArrowUpDown,
                     contentDescription = sortContentDescription,
                     onClick2 = onSortClick,
-                    size = RaftSidebarSectionControlSize
+                    size = RaftSidebarSectionControlSize,
+                    iconSize = RaftSidebarSectionControlIconSize
                 )
             }
             trailingContent?.invoke(this)

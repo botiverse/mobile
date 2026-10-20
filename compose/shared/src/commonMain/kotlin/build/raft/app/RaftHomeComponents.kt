@@ -138,6 +138,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.ReadOnlyComposable
@@ -205,8 +207,9 @@ private fun sidebarRowHeight(): Dp =
 // Vertical room around the name inside the 44dp row (1.5 + 8.5 on each side of the 24dp line).
 private val SidebarRowTextInset = 20.dp
 private const val EdgeAutoScrollStepPx = 18f
-// raft-ui SidebarItem: a 1.5dp (transparent) edge, then `pl-2` / `pr-2.5`.
-private val ChannelRowHorizontalPadding = 9.5.dp
+// raft-ui SidebarItem: the transparent edge plus `pl-2` / `pr-2.5` (content measured
+// 17dp from the screen edge in the web capture, with the list's 8dp).
+private val ChannelRowHorizontalPadding = 9.dp
 private val ChannelRowEndPadding = 11.5.dp
 private val ChannelRowShadowOffset = 2.dp
 private val ChannelRowMutedIconSize = 12.dp
@@ -222,7 +225,7 @@ private val HomeUnreadBadgeTextOffsetY = 0.dp
 // Web Sidebar list `px-2`.
 private val HomeListHorizontalPadding = RaftAppSpacing.Sm
 private val HomeListItemGap = 1.dp
-private val HomeListTopSpacer = 3.dp
+private val HomeListTopSpacer = 2.dp
 private const val HomeLargeTitleItemKey = "home-large-title"
 private const val HomeLoadingJointChannelSkeletonRows = 2
 // raft-ui SkeletonRow in the sidebar (`my-px h-9 gap-2 px-2.5`, a 19dp sticker avatar).
@@ -2704,7 +2707,7 @@ private fun RaftStructuralHomeShellContent(
                                                 longPressAnchorIdentity = "$currentServerId:system:channels",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             ) {
-                                                RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction, size = RaftSidebarSectionControlSize)
+                                                RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction, size = RaftSidebarSectionControlSize, iconSize = RaftSidebarSectionControlIconSize)
                                             }
                                         }
                                         if (channelsExpanded) {
@@ -2877,7 +2880,7 @@ private fun RaftStructuralHomeShellContent(
                                                 RaftSectionHeaderIconAction(
                                                     RaftLucideIconName.Ellipsis,
                                                     customSection.name,
-                                                    size = RaftSidebarSectionControlSize,
+                                                    size = RaftSidebarSectionControlSize, iconSize = RaftSidebarSectionControlIconSize,
                                                     onClick2 = { anchor ->
                                                         if (sidebarInteractionsEnabled) {
                                                             activeSectionMenuId = customSection.id
@@ -3819,8 +3822,21 @@ data class RaftHomeSectionCreateRequest(
 @Composable
 private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
     // Web `SidebarSectionDescription tone="subtle"` (`px-2 mb-1 min-h-9 py-1.5`,
-    // text-footnote in foreground-hint).
-    Box(modifier = modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+    // text-footnote in foreground-hint). On the web it sits flush between its section
+    // head and the next one; take back the list's 1dp item gap on both sides.
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    val gap = HomeListItemGap.roundToPx()
+                    layout(placeable.width, (placeable.height - gap * 2).coerceAtLeast(0)) {
+                        placeable.place(0, -gap)
+                    }
+                }
+                .padding(bottom = 4.dp)
+    ) {
         Box(modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = text,
@@ -3832,22 +3848,58 @@ private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modif
 }
 
 /**
+ * One line of text in CSS's line box: when the font is taller than the line height
+ * (text-display 34/40 in Space Grotesk), the platform keeps the first line's full ascent,
+ * so the measured box grows above the glyphs. CSS shrinks the leading instead; report the
+ * line height and draw the overflow above the box, as the web does.
+ */
+private fun Modifier.homeCssSingleLineBox(lineHeight: TextUnit): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        val lineBox = if (lineHeight.isSp) lineHeight.roundToPx() else placeable.height
+        val overflow = (placeable.height - lineBox).coerceAtLeast(0)
+        layout(placeable.width, placeable.height - overflow) {
+            placeable.place(0, -overflow)
+        }
+    }
+
+/**
  * Web LargeTitle on the phone Home root: the frame-coloured block under the 56dp bar
  * (`px-4 pt-1 pb-2`, the page name in `text-display`) that closes with the seam. It
  * scrolls with the list, so the header shrinks as the list moves up.
  */
 @Composable
 private fun HomeLargeTitleBlock(title: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxWidth().background(RaftColor.Frame)) {
+    val frame = RaftColor.Frame
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // The block sits right under the bar, as on the web: pull it up over the
+                // list's 1dp item gap after the pull-to-refresh slot, so bar and title read
+                // as one header and the rows below keep web's offsets.
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    val gap = HomeListItemGap.roundToPx()
+                    layout(placeable.width, (placeable.height - gap).coerceAtLeast(0)) {
+                        placeable.place(0, -gap)
+                    }
+                }
+                .background(frame)
+    ) {
         Box(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) {
+            val display = RaftType.Display
             Text(
                 text = title,
-                style = RaftType.Display,
+                style = display,
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                // `-ml-[0.05em]` of the 34sp display type.
-                modifier = Modifier.offset(x = (-1.7).dp)
+                modifier =
+                    Modifier
+                        // `-ml-[0.05em]` of the 34sp display type.
+                        .offset(x = (-1.7).dp)
+                        .homeCssSingleLineBox(display.lineHeight)
             )
         }
         Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
