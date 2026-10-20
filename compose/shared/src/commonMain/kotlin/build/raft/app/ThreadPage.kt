@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.extension.bouncesEnable
 import build.raft.app.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
@@ -20910,6 +20911,8 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    // QA-only experiment (stuck-thread bisect): Android bounce off on the thread list.
+                    .bouncesEnable(false)
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
