@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // Standalone: no Kuikly, no :shared dependency. See README.md.
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
 }
@@ -14,14 +14,20 @@ kotlin {
     // uses the standard one (commonMain -> iosMain -> ios*Main, ...).
     applyDefaultHierarchyTemplate()
 
-    androidTarget {
+    // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.designsystem"
+        compileSdk = 37
+        minSdk = 21
+        // Compose resources (fonts, ...) ship as Android resources/assets.
+        androidResources { enable = true }
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
+            jvmTarget.set(JvmTarget.JVM_11)
         }
-        publishLibraryVariants("release")
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
@@ -31,13 +37,13 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.ui)
+            implementation(libs.cmp.runtime)
+            implementation(libs.cmp.foundation)
+            implementation(libs.cmp.ui)
             // TooltipBox / PlainTooltip only (the icon button's long-press / hover label);
             // everything else is drawn from raft-ui tokens, not Material.
-            implementation(compose.material3)
-            implementation(compose.components.resources)
+            implementation(libs.cmp.material3)
+            implementation(libs.cmp.components.resources)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -47,8 +53,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(kotlin("test-junit"))
                 // Semantics and input tests (runComposeUiTest).
-                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-                implementation(compose.uiTest)
+                implementation(libs.cmp.ui.test)
             }
         }
     }
@@ -58,18 +63,6 @@ compose.resources {
     packageOfResClass = "build.raft.designsystem.resources"
     publicResClass = false
     generateResClass = always
-}
-
-android {
-    namespace = "build.raft.designsystem"
-    compileSdk = 35
-    defaultConfig {
-        minSdk = 21
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
 }
 
 // Screenshot tests (src/desktopTest): verify against the committed goldens by default;

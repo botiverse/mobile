@@ -1,8 +1,15 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.1.21"
-ksp = "2.1.21-2.0.2"
-composePlugin = "1.8.2"
+agp = "9.1.1"
+kotlin = "2.4.21"
+ksp = "2.3.12"
+composePlugin = "1.12.2"
+# Compose Multiplatform 1.12.x ships Material3 on its own line (1.9.0 = Jetpack Material3 1.4.0).
+cmpMaterial3 = "1.9.0"
+cmpLifecycle = "2.11.0"
+androidxComposeRuntime = "1.12.1"
+kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.11.0"
+atomicfu = "0.33.0"
 coreKtx = "1.10.1"
 media3 = "1.6.1"
 coreSplashscreen = "1.0.1"
@@ -14,7 +21,7 @@ lifecycleRuntimeKtx = "2.6.1"
 window = "1.3.0"
 metricsPerformance = "1.0.0"
 activityCompose = "1.8.0"
-composeBom = "2024.12.01"
+composeBom = "2026.09.00"
 recyclerview = "1.3.2"
 credentials = "1.6.0"
 googleid = "1.2.0"
@@ -22,7 +29,7 @@ okhttp = "4.12.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.1.0"
-coil = "3.4.0"
+coil = "3.6.3"
 androidsvg = "1.4"
 mmkv = "2.4.0"
 firebaseBom = "34.15.0"
@@ -73,10 +80,30 @@ firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.r
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
 
+# Compose Multiplatform artifacts (replace the deprecated `compose.*` Gradle plugin aliases).
+cmp-runtime = { group = "org.jetbrains.compose.runtime", name = "runtime", version.ref = "composePlugin" }
+cmp-foundation = { group = "org.jetbrains.compose.foundation", name = "foundation", version.ref = "composePlugin" }
+cmp-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "composePlugin" }
+cmp-ui-backhandler = { group = "org.jetbrains.compose.ui", name = "ui-backhandler", version.ref = "composePlugin" }
+cmp-ui-test = { group = "org.jetbrains.compose.ui", name = "ui-test", version.ref = "composePlugin" }
+cmp-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "cmpMaterial3" }
+cmp-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composePlugin" }
+cmp-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "cmpLifecycle" }
+cmp-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "cmpLifecycle" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidxComposeRuntime" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+# AGP 9 built-in Kotlin, applied per module while android.builtInKotlin=false (see gradle.properties).
+android-builtin-kotlin = { id = "com.android.built-in-kotlin", version.ref = "agp" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

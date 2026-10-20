@@ -28,7 +28,8 @@ import org.w3c.dom.Element
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // AGP 9 built-in Kotlin replaces org.jetbrains.kotlin.android.
+    alias(libs.plugins.android.builtin.kotlin)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -604,7 +605,7 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
 android {
     namespace = "build.raft.app"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
     testBuildType = "connectedTest"
 
@@ -707,12 +708,19 @@ android {
         }
     }
     sourceSets {
-        getByName("main") {
-            assets.srcDir(layout.buildDirectory.dir("generated/assets/ossLicenses/main"))
-        }
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
+    }
+}
+
+// AGP 9 rejects Provider-backed directories in android.sourceSets; the generated licence asset
+// directory is added through the variant API instead (preBuild still runs the generator).
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
+        )
     }
 }
 
@@ -723,7 +731,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
         listOf(
             ":androidApp:releaseRuntimeClasspath",
             ":shared:commonMainImplementationDependenciesMetadata",
-            ":shared:androidReleaseRuntimeClasspath"
+            ":shared:releaseRuntimeClasspath"
         )
     )
     variantName.set("release")
@@ -822,8 +830,8 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Pinned to the AndroidX Compose runtime line CMP 1.8.x is built against.
-    implementation("androidx.compose.runtime:runtime:1.8.3")
+    // Pinned to the AndroidX Compose runtime line CMP 1.12.x is built against.
+    implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -844,7 +852,7 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.installations)
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

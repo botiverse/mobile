@@ -91,6 +91,3 @@ internal actual fun raftSlugSlashCenteringOffsetDp(): Float = -1.5f
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = true
-
-// androidx.compose.foundation < 1.10 only offers long-press selection on BasicTextField(value).
-internal actual fun raftPlatformTextFieldNeedsMultiTapBackport(): Boolean = true

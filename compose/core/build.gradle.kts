@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
 }
 
 kotlin {
@@ -23,22 +23,28 @@ kotlin {
         optIn.add("build.raft.app.RaftCoreInternalApi")
     }
 
-    androidTarget {
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.app.core"
+        compileSdk = 37
+        minSdk = 21
+        // Runs commonTest on the JVM as before (formerly testDebugUnitTest).
+        withHostTest {}
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-                implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
+                implementation(libs.kotlinx.serialization.json)
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.atomicfu)
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
             }
@@ -46,35 +52,23 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
-        val iosX64Main by getting
         val iosArm64Main by getting
         val iosSimulatorArm64Main by getting
         val iosMain by creating {
             dependsOn(commonMain)
-            iosX64Main.dependsOn(this)
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
         }
-        val iosX64Test by getting
         val iosArm64Test by getting
         val iosSimulatorArm64Test by getting
         val iosTest by creating {
             dependsOn(commonTest)
-            iosX64Test.dependsOn(this)
             iosArm64Test.dependsOn(this)
             iosSimulatorArm64Test.dependsOn(this)
         }
-    }
-}
-
-android {
-    namespace = "build.raft.app.core"
-    compileSdk = 34
-    defaultConfig {
-        minSdk = 21
     }
 }
 

@@ -12,10 +12,10 @@ import org.gradle.api.tasks.TaskProvider
  */
 val kmpAndroidIosConfigurations: List<String> =
     listOf(
-        "debugCompileClasspath",
-        "debugRuntimeClasspath",
+        // The single Android variant of com.android.kotlin.multiplatform.library (AGP 9).
+        "androidCompileClasspath",
+        "androidRuntimeClasspath",
         "iosArm64CompileKlibraries",
-        "iosX64CompileKlibraries",
         "iosSimulatorArm64CompileKlibraries",
         "metadataCommonMainCompileClasspath",
         "metadataIosMainCompileClasspath",

@@ -398,7 +398,17 @@ fun RaftDropdownMenu(
                     modifier
                         .heightIn(max = 480.dp)
                         .pointerInput(Unit) { detectTapGestures { } }
-                        .onPreviewKeyEvent { nav.onKey(it) },
+                        // Escape closes the menu here, not only through the platform popup:
+                        // since CMP 1.10 a skiko popup closes on Escape only where the host feeds
+                        // the key into its back-navigation input (iOS, web, desktop windows).
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                                dismiss()
+                                true
+                            } else {
+                                nav.onKey(event)
+                            }
+                        },
                     minWidth = minWidth,
                     width = width,
                     header = header,

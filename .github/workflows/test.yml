@@ -414,7 +414,7 @@ jobs:
         working-directory: compose
         run: |
           ./gradlew \
-            :core:compileDebugUnitTestKotlinAndroid \
+            :core:compileAndroidHostTest \
             :shared:compileDebugKotlinAndroid \
             :shared:compileDebugUnitTestKotlinAndroid \
             :androidApp:compileDebugKotlin \
@@ -481,7 +481,7 @@ jobs:
       # screenshot goldens in verify mode (compose/designsystem/README.md).
       - name: Run core + shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :core:testDebugUnitTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :ui-cmp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :core:testAndroidHostTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :ui-cmp:testAndroidHostTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
 
       - name: Upload design system screenshot diffs
         if: failure()
@@ -931,7 +931,6 @@ jobs:
           ./gradlew \
             :shared:compileKotlinIosArm64 \
             :shared:compileKotlinIosSimulatorArm64 \
-            :shared:compileKotlinIosX64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
             :designsystem:compileKotlinIosSimulatorArm64 \
             :ui-cmp:compileKotlinIosSimulatorArm64 \

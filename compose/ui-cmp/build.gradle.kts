@@ -14,7 +14,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  */
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
 }
@@ -24,13 +24,22 @@ kotlin {
     // one (commonMain -> iosMain -> ios*Main), like :designsystem.
     applyDefaultHierarchyTemplate()
 
-    androidTarget {
+    // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.app.cmp"
+        compileSdk = 37
+        minSdk = 21
+        // Compose resources (fonts, ...) ship as Android resources/assets.
+        androidResources { enable = true }
+        // Runs commonTest on the JVM as before (formerly testDebugUnitTest).
+        withHostTest {}
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
+            jvmTarget.set(JvmTarget.JVM_11)
         }
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
@@ -39,29 +48,17 @@ kotlin {
             // HostCapabilities is part of this module's public API (RaftCmpHost).
             api(project(":core"))
             implementation(project(":designsystem"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.ui)
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-            implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
+            implementation(libs.cmp.runtime)
+            implementation(libs.cmp.foundation)
+            implementation(libs.cmp.ui)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.atomicfu)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+            implementation(libs.kotlinx.coroutines.test)
         }
-    }
-}
-
-android {
-    namespace = "build.raft.app.cmp"
-    compileSdk = 35
-    defaultConfig {
-        minSdk = 21
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
     }
 }
 

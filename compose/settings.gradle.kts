@@ -1,10 +1,6 @@
 pluginManagement {
-    // D8 8.13.19 (bundled by AGP 8.13.2) truncates a high argument register
-    // in MembersAgentProfileTab. Keep AGP; use the last verified stable dexer.
-    buildscript {
-        repositories { google(); mavenCentral() }
-        dependencies { classpath("com.android.tools:r8:8.10.24") }
-    }
+    // The D8 8.10.24 pin (D8 8.13.19 from AGP 8.13.2 truncated a high argument register in
+    // MembersAgentProfileTab) is gone: AGP 9.1 cannot dex with an 8.x R8. AGP 9.1.1 ships R8 9.1.
 
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
@@ -63,7 +59,7 @@ dependencyResolutionManagement {
             filter {
                 // Kuikly UI (com.tencent.kuikly-open) left the Gradle build with the CMP
                 // switch; this repo now only serves the KBA metadata below.
-                // KuiklyBase resource-core 0.1.0-raft.5 / knoi 0.0.4 still declare these
+                // KuiklyBase resource-core 0.1.0-raft.6 / knoi 0.0.4 still declare these
                 // KuiklyBase (KBA) versions; conflict resolution upgrades them to the
                 // upstream Kotlin/atomicfu pins, but their metadata must stay resolvable.
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-003")
