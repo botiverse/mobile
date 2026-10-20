@@ -699,6 +699,10 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        // Robolectric tests (AndroidUnreadNotificationPosterPreviewTest) resolve the app's own strings.
+        unitTests.isIncludeAndroidResources = true
+    }
     packaging {
         dex {
             useLegacyPackaging = raftDexUseLegacyPackaging.orNull
@@ -853,6 +857,8 @@ dependencies {
     implementation(libs.firebase.installations)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Same version as :shared's androidUnitTest; builds real notifications in JVM unit tests.
+    testImplementation("org.robolectric:robolectric:4.14.1")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

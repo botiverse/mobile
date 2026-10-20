@@ -285,6 +285,10 @@
     <string name="settings_notification_channel_name">設定のテスト通知</string>
     <string name="settings_notification_channel_description">モバイル設定からのローカルテスト通知。</string>
     <string name="notification_unread_default_text">新しい未読メッセージがあります。</string>
+    <string name="push_preview_hidden_message">新しいメッセージがあります</string>
+    <string name="push_preview_hidden_mention">メンションされました</string>
+    <string name="push_preview_sender_only_message">%1$s さんからメッセージが届きました</string>
+    <string name="push_preview_sender_only_mention">%1$s さんがあなたをメンションしました</string>
     <string name="notification_unread_general_channel_name">未読メッセージ</string>
     <string name="notification_unread_general_channel_description">Raft の一般的な未読メッセージ通知。</string>
     <string name="notification_unread_channel_channel_name">チャンネルの未読メッセージ</string>

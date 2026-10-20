@@ -285,6 +285,11 @@
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
     <string name="notification_unread_default_text">You have a new unread message.</string>
+    <string name="push_preview_hidden_title" translatable="false">Raft</string>
+    <string name="push_preview_hidden_message">You have a new message</string>
+    <string name="push_preview_hidden_mention">You were mentioned</string>
+    <string name="push_preview_sender_only_message">%1$s sent a message</string>
+    <string name="push_preview_sender_only_mention">%1$s mentioned you</string>
     <string name="notification_unread_general_channel_name">Unread messages</string>
     <string name="notification_unread_general_channel_description">General unread Raft message notifications.</string>
     <string name="notification_unread_channel_channel_name">Channel unread messages</string>
