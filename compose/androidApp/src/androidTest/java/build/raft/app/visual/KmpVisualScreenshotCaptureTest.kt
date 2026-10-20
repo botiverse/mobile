@@ -3524,7 +3524,21 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureMembersCreateAgentBuiltInProviderDialog() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.builtin-provider-dialog",
+            variant = "builtin-provider"
+        )
+    }
 
+    @Test
+    fun captureMembersCreateAgentPiProviderDialog() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.pi-provider-dialog",
+            variant = "pi-provider"
+        )
+    }
 
     private fun captureMembersCreateAgentStateCase(
         caseId: String,
