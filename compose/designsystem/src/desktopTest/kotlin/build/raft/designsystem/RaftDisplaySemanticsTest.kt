@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
 import build.raft.designsystem.components.LocalRaftPulseClock
+import build.raft.designsystem.components.LocalRaftTooltipTouchTimer
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -61,6 +63,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import org.jetbrains.skia.Bitmap
 
 /** What screen readers and keyboards get from the display components. */
@@ -208,31 +211,32 @@ class RaftDisplaySemanticsTest {
         }
 
     /**
-     * A mouse keeps the tooltip open while it hovers (past Material's 1.5s) and closes it on
-     * leaving; a long press's tooltip still closes itself after 1.5s.
-     *
-     * The 1.5s is a coroutine timeout, and the test scene's effect dispatcher takes its delays
-     * from the wall clock, not [mainClock]: hence the real [Thread.sleep]s; [mainClock] then
-     * runs the fade.
+     * A mouse keeps the tooltip open while it hovers (no 1.5s timer, unlike Material) and
+     * closes it on leaving; a long press's tooltip asks for the 1.5s timer and closes when
+     * it runs out. The timer is a gate the test releases, so no wall-clock waits.
      */
     @Test
     fun aHoveredTooltipStaysOpenUntilThePointerLeaves() =
         runComposeUiTest {
+            val timers = mutableListOf<Long>()
+            val timeUp = CompletableDeferred<Unit>()
             setContent(
                 themed {
-                    Box(Modifier.size(200.dp)) {
-                        RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.Center)) {}
+                    CompositionLocalProvider(
+                        LocalRaftTooltipTouchTimer provides { millis -> timers += millis; timeUp.await() },
+                    ) {
+                        Box(Modifier.size(200.dp)) {
+                            RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.Center)) {}
+                        }
                     }
                 },
             )
             mainClock.autoAdvance = false
             val button = onNodeWithContentDescription("Add Reaction")
             button.performMouseInput { moveTo(center) }
-            mainClock.advanceTimeBy(300)
+            mainClock.advanceTimeBy(3_000)
             onNode(hasText("Add Reaction")).assertExists()
-            Thread.sleep(2_000)
-            mainClock.advanceTimeBy(1_000)
-            onNode(hasText("Add Reaction")).assertExists()
+            assertEquals(emptyList(), timers, "a hovered tooltip must not start the long-press timer")
             // Off the button, below it (the bubble is above).
             button.performMouseInput { moveTo(bottomRight + Offset(30f, 30f)) }
             mainClock.advanceTimeBy(1_000)
@@ -241,7 +245,8 @@ class RaftDisplaySemanticsTest {
             button.performTouchInput { longClick() }
             mainClock.advanceTimeBy(300)
             onNode(hasText("Add Reaction")).assertExists()
-            Thread.sleep(2_000)
+            assertEquals(listOf(1_500L), timers, "a long press starts the 1.5s timer")
+            timeUp.complete(Unit)
             mainClock.advanceTimeBy(1_000)
             onNode(hasText("Add Reaction")).assertDoesNotExist()
         }

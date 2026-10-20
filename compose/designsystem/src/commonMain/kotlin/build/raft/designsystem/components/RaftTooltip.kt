@@ -31,7 +31,7 @@ import build.raft.designsystem.tokens.RaftRadius
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
 
 /** raft-ui tooltip metrics (tooltip.tsx). */
 internal object RaftTooltipMetrics {
@@ -56,6 +56,13 @@ internal object RaftTooltipMetrics {
  * offscreen frame can neither hover nor hold a long press).
  */
 internal val LocalRaftTooltipPreview = staticCompositionLocalOf { false }
+
+/**
+ * Waits out a long-press tooltip's [RaftTooltipMetrics.TouchDuration] before it closes
+ * (`delay`). Tests swap in a gate they release, as the scene's effect dispatcher takes its
+ * delays from the wall clock, not `mainClock`. A mouse-opened tooltip never calls it.
+ */
+internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (durationMillis: Long) -> Unit> { { delay(it) } }
 
 /**
  * raft-ui 0.8.0 Tooltip around [content]: a short label in the dark HUD bubble with a
@@ -85,13 +92,14 @@ fun RaftTooltip(
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
+    val touchTimer = LocalRaftTooltipTouchTimer.current
     val colors = RaftTheme.colors
     // Persistent: open until dismissed. The touch path bounds it with a timeout.
     val state = rememberTooltipState(initialIsVisible = preview, isPersistent = true)
     val scope = rememberCoroutineScope()
     // TooltipBox puts [modifier] on an inner box, where parent-data modifiers (`align`,
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
-    Box(modifier.raftTooltipGestures(state, scope), propagateMinConstraints = true) {
+    Box(modifier.raftTooltipGestures(state, scope, touchTimer), propagateMinConstraints = true) {
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing),
             tooltip = {
@@ -122,8 +130,16 @@ fun RaftTooltip(
 
 /** Opens [state] for [RaftTooltipMetrics.TouchDuration] (outside the restricted pointer scope). */
 @OptIn(ExperimentalMaterial3Api::class)
-private fun CoroutineScope.showForTouch(state: TooltipState) {
-    launch { withTimeoutOrNull(RaftTooltipMetrics.TouchDuration) { state.show(MutatePriority.UserInput) } }
+private fun CoroutineScope.showForTouch(
+    state: TooltipState,
+    timer: suspend (Long) -> Unit,
+) {
+    launch {
+        val show = launch { state.show(MutatePriority.UserInput) }
+        timer(RaftTooltipMetrics.TouchDuration)
+        // Cancelling the show closes it (no-op if a hover or another press took over).
+        show.cancel()
+    }
 }
 
 /**
@@ -136,6 +152,7 @@ private fun CoroutineScope.showForTouch(state: TooltipState) {
 private fun Modifier.raftTooltipGestures(
     state: TooltipState,
     scope: CoroutineScope,
+    touchTimer: suspend (Long) -> Unit,
 ): Modifier =
     pointerInput(state) {
         awaitEachGesture {
@@ -145,7 +162,7 @@ private fun Modifier.raftTooltipGestures(
             try {
                 withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(pass) }
             } catch (_: PointerEventTimeoutCancellationException) {
-                scope.showForTouch(state)
+                scope.showForTouch(state, touchTimer)
                 // The long press was the tooltip's: swallow it up to the release.
                 do {
                     val event = awaitPointerEvent(pass)
