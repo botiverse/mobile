@@ -1776,7 +1776,7 @@
     <string name="settings_mobile_compact_enabled">Repeated avatars hidden</string>
     <string name="settings_mobile_compact_disabled">Show every message avatar</string>
     <string name="settings_mobile_long_message_collapse">Collapse long messages</string>
-    <string name="settings_mobile_long_message_collapse_detail">Clip messages taller than most of the screen behind a Show More link. Each channel or DM can override this in its settings.</string>
+    <string name="settings_mobile_long_message_collapse_detail">Clip long messages to a preview behind a Show More link. Each channel or DM can override this in its settings.</string>
     <string name="settings_mobile_long_message_collapse_enabled">Long messages are clipped with Show More</string>
     <string name="settings_mobile_long_message_collapse_disabled">Show full messages</string>
     <string name="conversation_long_message_collapse">Collapse long messages</string>

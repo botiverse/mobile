@@ -1776,7 +1776,7 @@
     <string name="settings_mobile_compact_enabled">繰り返しのアバターを非表示</string>
     <string name="settings_mobile_compact_disabled">すべてのメッセージのアバターを表示</string>
     <string name="settings_mobile_long_message_collapse">長いメッセージを折りたたむ</string>
-    <string name="settings_mobile_long_message_collapse_detail">画面の大部分を超える長いメッセージを折りたたみ、「全文を表示」で全体を表示します。チャンネルや DM ごとに、それぞれの設定で個別に切り替えられます。</string>
+    <string name="settings_mobile_long_message_collapse_detail">長いメッセージをプレビューに折りたたみ、「全文を表示」で全体を表示します。チャンネルや DM ごとに、それぞれの設定で個別に切り替えられます。</string>
     <string name="settings_mobile_long_message_collapse_enabled">長いメッセージを折りたたんで表示</string>
     <string name="settings_mobile_long_message_collapse_disabled">メッセージ全文を表示</string>
     <string name="conversation_long_message_collapse">長いメッセージを折りたたむ</string>

@@ -17,7 +17,7 @@ internal const val RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED: Boolean = true
 
 /** English fallback detail of the global switch (the Settings card renders the localized MR string). */
 internal const val RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL =
-    "Clip messages taller than most of the screen behind a Show More link. Each channel or DM can override this in its settings."
+    "Clip long messages to a preview behind a Show More link. Each channel or DM can override this in its settings."
 
 /**
  * Persisted key prefix of a per-conversation override. The value is "on@<rev>" / "off@<rev>" where

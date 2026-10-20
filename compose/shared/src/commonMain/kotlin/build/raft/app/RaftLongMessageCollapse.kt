@@ -46,14 +46,18 @@ import kotlin.math.roundToInt
  * Long-message collapse ("Collapse long messages" / 折叠长消息).
  *
  * Every message renders in full (markdown, code blocks, images, tables). The body is measured
- * with an unbounded max height; when its real height is taller than a threshold derived from the
- * thread viewport, it is *visually* clipped to the threshold with a bottom fade and a
- * "Show More" link. Nothing is truncated or re-laid out: copy, selection, search and links all
- * keep operating on the full content. Web parity: CollapsibleMessageContent.tsx (fixed 320px,
- * 48px fade, "Show More" / 展开全文); mobile uses a viewport fraction instead of a fixed height.
+ * with an unbounded max height; when its real height is taller than the threshold, it is
+ * *visually* clipped to the threshold with a bottom fade and a "Show More" link. Nothing is
+ * truncated or re-laid out: copy, selection, search and links all keep operating on the full
+ * content. Web parity: CollapsibleMessageContent.tsx (fixed 320px, 48px fade, "Show More" /
+ * 展开全文). The threshold is the web's 320dp, capped at a share of the thread viewport so a
+ * short viewport (landscape, split screen) still shows the toggle on screen.
  */
 
-/** Share of the thread viewport height a collapsed body may take. */
+/** Height a collapsed body is clipped to (dp); web: fixed 320px. */
+internal const val RaftLongMessageCollapseMaxHeightDp = 320
+
+/** Share of the thread viewport height a collapsed body may take at most (short viewports). */
 internal const val RaftLongMessageCollapseViewportFraction = 0.8f
 
 /**
@@ -68,7 +72,7 @@ internal const val RaftLongMessageCollapseFadeDp = 48
 /** Fixed height of the Show More / Show Less row, so its space can be reserved in the same pass (dp). */
 internal const val RaftLongMessageCollapseToggleRowDp = 28
 
-/** Width x height of the thread viewport the threshold is derived from (px). */
+/** Width x height of the thread viewport that caps the threshold (px). */
 internal data class RaftLongMessageViewport(val width: Int, val height: Int)
 
 /**
@@ -86,10 +90,20 @@ internal fun raftLongMessageStableViewport(
         RaftLongMessageViewport(measured.width, max(previous.height, measured.height))
     }
 
+/**
+ * The collapsed height: [maxThresholdPx] (the web's fixed 320), or [fraction] of the viewport when
+ * that is smaller. Without a viewport yet there is no threshold (nothing collapses).
+ */
 internal fun raftLongMessageCollapseThresholdPx(
     viewportHeightPx: Int,
+    maxThresholdPx: Int,
     fraction: Float = RaftLongMessageCollapseViewportFraction
-): Int = if (viewportHeightPx <= 0) 0 else (viewportHeightPx * fraction).roundToInt()
+): Int =
+    if (viewportHeightPx <= 0) {
+        0
+    } else {
+        minOf(maxThresholdPx, (viewportHeightPx * fraction).roundToInt()).coerceAtLeast(0)
+    }
 
 /**
  * Whether a body is collapsible after a measurement. The body must exceed the threshold by
@@ -202,12 +216,15 @@ internal class RaftLongMessageCollapseController {
     var thresholdPx by mutableIntStateOf(0)
         private set
 
-    /** Called from the list container's measure pass, so the first frame already has a threshold. */
-    fun onViewportMeasured(width: Int, height: Int) {
+    /**
+     * Called from the list container's measure pass, so the first frame already has a threshold.
+     * [maxThresholdPx] is [RaftLongMessageCollapseMaxHeightDp] in px.
+     */
+    fun onViewportMeasured(width: Int, height: Int, maxThresholdPx: Int) {
         if (width <= 0 || height <= 0) return
         val next = raftLongMessageStableViewport(viewport, RaftLongMessageViewport(width, height))
         viewport = next
-        val threshold = raftLongMessageCollapseThresholdPx(next.height)
+        val threshold = raftLongMessageCollapseThresholdPx(next.height, maxThresholdPx)
         if (threshold != thresholdPx) thresholdPx = threshold
     }
 
@@ -253,8 +270,8 @@ internal class RaftLongMessageCollapseController {
 
 /**
  * Feeds the list container's own constraints (minus its content padding) to [controller] in the
- * measure pass, before any row is measured: the threshold follows the visible list area and is
- * known on the first frame.
+ * measure pass, before any row is measured: the threshold's viewport cap follows the visible list
+ * area and is known on the first frame.
  */
 @Composable
 internal fun Modifier.raftLongMessageCollapseViewport(
@@ -276,7 +293,8 @@ private fun raftLongMessageCollapseViewportModifier(
         if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
             controller.onViewportMeasured(
                 constraints.maxWidth,
-                (constraints.maxHeight - verticalContentPaddingPx).coerceAtLeast(0)
+                (constraints.maxHeight - verticalContentPaddingPx).coerceAtLeast(0),
+                RaftLongMessageCollapseMaxHeightDp.dp.roundToPx()
             )
         }
         val placeable = measurable.measure(constraints)
