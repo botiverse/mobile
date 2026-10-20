@@ -55,7 +55,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftMarkdownTest {
-    private val expectedLinkBlue = Color(0xFF1D4ED8)
+    // web `text-foreground-link` (light theme in unit tests).
+    private val expectedLinkBlue = build.raft.app.RaftAppThemeState.colors.foregroundLink
     private val raftInlineCodeAnnotationTag = RAFT_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
     private val raftInlineCodeTrailingMarginAnnotationTag = RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 
@@ -1365,7 +1366,9 @@ class RaftMarkdownTest {
         assertEquals(expectedLinkBlue, typography.link.color)
         assertEquals(TextDecoration.Underline, typography.link.textDecoration)
         assertEquals(RaftType.Body.fontWeight, typography.link.fontWeight)
-        assertEquals(RaftType.Caption.fontFamily, typography.code.fontFamily)
+        // web pre `font-mono [font-size:inherit]`: bundled Space Mono at the body size.
+        assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), typography.code.fontFamily)
+        assertEquals(RaftType.Body.fontSize, typography.code.fontSize)
         assertFalse(typography.code.fontFamily == FontFamily.Monospace)
     }
 
