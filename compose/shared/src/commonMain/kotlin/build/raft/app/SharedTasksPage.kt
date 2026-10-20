@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAnchorPlacement
@@ -723,8 +724,12 @@ private fun SharedTasksLoadedBodyContent(
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
                         // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
+                        val backSwipeRowState = rememberLazyListState()
+                        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
                         LazyRow(
-                            modifier = Modifier.fillMaxSize(),
+                            state = backSwipeRowState,
+                            userScrollEnabled = backSwipeRow.userScrollEnabled,
+                            modifier = Modifier.then(backSwipeRow.modifier).fillMaxSize(),
                             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                             contentPadding = PaddingValues(RaftAppSpacing.Md)
                         ) {
@@ -1170,8 +1175,12 @@ private fun SharedTasksToolbar(
                     .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
+            val backSwipeRowState = rememberLazyListState()
+            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
             LazyRow(
-                modifier = Modifier.fillMaxWidth(),
+                state = backSwipeRowState,
+                userScrollEnabled = backSwipeRow.userScrollEnabled,
+                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 items(filterControls.size, key = { index -> "tasks-filter-${filterControls[index]}" }) { index ->

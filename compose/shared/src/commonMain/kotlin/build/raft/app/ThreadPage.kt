@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
@@ -13400,6 +13402,10 @@ private fun ThreadImagePreviewOverlay(
             )
             Column(modifier = Modifier.fillMaxSize()) {
                 val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
+                // Past the first image a back-direction drag pages the preview, not the host's back swipe.
+                val galleryBackSwipe = rememberRaftBackSwipeRegion {
+                    hasMultiple && currentPreviewState.currentIndex > 0
+                }
                 Box(
                     modifier = Modifier.fillMaxWidth()
                         .weight(1f)
@@ -13416,6 +13422,7 @@ private fun ThreadImagePreviewOverlay(
                             .raftThemedCorners(RaftAppRadius.Container)
                             .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Container))
                             .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
+                            .then(galleryBackSwipe)
                             .then(
                                 if (hasMultiple) {
                                     Modifier.pointerInput(state.currentIndex, state.images.size) {
@@ -13482,8 +13489,12 @@ private fun ThreadImagePreviewOverlay(
                     }
                 }
                 if (hasMultiple) {
+                    val backSwipeRowState = rememberLazyListState()
+                    val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth()
+                        state = backSwipeRowState,
+                        userScrollEnabled = backSwipeRow.userScrollEnabled,
+                        modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth()
                             .height(74.dp + bottomSafeArea)
                             .background(RaftColor.SurfaceWhite)
                             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
@@ -29849,8 +29860,12 @@ private fun ThreadMessageAttachments(
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         if (imageAttachments.isNotEmpty()) {
+            val backSwipeRowState = rememberLazyListState()
+            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
             LazyRow(
-                modifier = Modifier.fillMaxWidth(),
+                state = backSwipeRowState,
+                userScrollEnabled = backSwipeRow.userScrollEnabled,
+                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
                 horizontalArrangement =
                     Arrangement.spacedBy(
                         RaftAppSpacing.Sm,
@@ -31655,7 +31670,9 @@ internal fun <T> RaftForwardTargetPicker(
                         style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val backSwipeRowState = rememberLazyListState()
+                    val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
+                    LazyRow(state = backSwipeRowState, userScrollEnabled = backSwipeRow.userScrollEnabled, modifier = backSwipeRow.modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
                             val selected = state.selectedItems[index]
                             RaftModalActionButton(

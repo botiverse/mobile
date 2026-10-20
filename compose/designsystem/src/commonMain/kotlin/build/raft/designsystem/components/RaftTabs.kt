@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -112,6 +113,7 @@ fun RaftTabStrip(
     val colors = RaftTheme.colors
     val scroll = rememberScrollState()
     val strip = remember(scroll) { RaftTabStripScroll(scroll) }
+    val backSwipe = rememberRaftBackSwipeScroll(scroll)
     SideEffect { strip.composed = true }
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         Box(
@@ -119,7 +121,8 @@ fun RaftTabStrip(
                 .fillMaxWidth()
                 // Read in the draw phase: reaching an edge redraws, the modifiers stay.
                 .raftEdgeFade(colors.layerCanvas, start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
-                .horizontalScroll(scroll),
+                .then(backSwipe.modifier)
+                .horizontalScroll(scroll, enabled = backSwipe.userScrollEnabled),
         ) {
             CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
                 RaftTabs(

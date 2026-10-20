@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,7 +36,9 @@ internal fun <T> RaftServerChoice(
             style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
             color = RaftColor.TextMutedGray
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val backSwipeRowState = rememberLazyListState()
+        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
+        LazyRow(state = backSwipeRowState, userScrollEnabled = backSwipeRow.userScrollEnabled, modifier = backSwipeRow.modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(options.size, key = { index -> optionId(options[index]) }) { index ->
                 val option = options[index]
                 val id = optionId(option)

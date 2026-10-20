@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -8008,7 +8009,11 @@ private fun RaftFilePreviewImageGallerySurface(
         } else {
             Modifier
         }
-    Box(modifier = modifier.clipToBounds().then(galleryModifier)) {
+    // Past the first image a back-direction drag pages the gallery, not the host's back swipe.
+    val galleryBackSwipe = rememberRaftBackSwipeRegion {
+        progressLabel != null && onImageGalleryIndexChange != null && payload.imageGalleryIndex > 0
+    }
+    Box(modifier = modifier.clipToBounds().then(galleryBackSwipe).then(galleryModifier)) {
         Box(
             modifier =
                 Modifier

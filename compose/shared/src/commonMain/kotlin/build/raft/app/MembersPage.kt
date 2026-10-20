@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalActionButton
@@ -7680,9 +7681,11 @@ private fun MembersAgentTabBar(
             .height(RaftTopTabBarDefaults.Height)
             .background(RaftColor.SurfaceWhite)
     ) {
+        val backSwipeRow = rememberRaftBackSwipeScroll(listState)
         LazyRow(
+            userScrollEnabled = backSwipeRow.userScrollEnabled,
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier.then(backSwipeRow.modifier).weight(1f).fillMaxWidth()
         ) {
             items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
                 val tab = tabs[index]

@@ -11,13 +11,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
+import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftSpacing
@@ -27,16 +31,23 @@ import build.raft.designsystem.tokens.RaftSpacing
  * and the native host ([LocalRaftHost]), paints the canvas edge to edge and renders the page
  * registered for [args]'s page name. Pages own their insets (`WindowInsets.safeDrawing`).
  * [onDarkThemeResolved] reports the resolved appearance after each change (system bar icons).
+ * [backSwipeRegions] is the host's full-page back swipe probe (iOS); null on hosts without one.
  */
 @Composable
 fun RaftCmpRoot(
     args: RaftCmpPageArgs,
     host: RaftCmpHost,
     onDarkThemeResolved: ((Boolean) -> Unit)? = null,
+    backSwipeRegions: RaftBackSwipeRegions? = null,
 ) {
+    if (backSwipeRegions != null) {
+        val density = LocalDensity.current.density
+        SideEffect { backSwipeRegions.density = density }
+    }
     CompositionLocalProvider(
         LocalRaftHost provides host,
         LocalRaftPageArgs provides args,
+        LocalRaftBackSwipeRegions provides backSwipeRegions,
     ) {
         RaftTheme {
             val dark = RaftTheme.isDark
