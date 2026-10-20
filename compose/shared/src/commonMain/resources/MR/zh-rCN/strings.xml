@@ -809,6 +809,7 @@
     <string name="activity_list_pinned">已置顶</string>
     <string name="activity_list_all_conversations">全部会话</string>
     <string name="activity_list_system_sender">系统</string>
+    <string name="activity_list_self_sender">你</string>
     <string name="activity_list_thread_channel">%1$s ·</string>
     <string name="activity_list_mentioned_you">提到了你</string>
     <string name="activity_list_unread_count_description">%1$d 条新消息</string>

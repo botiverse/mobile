@@ -110,6 +110,7 @@ class ActivityConversationListTest {
                 ),
             mutedChannelIds = setOf("random", "design"),
             dmPeersByChannelId = mapOf("dm-fable" to fablePeer),
+            currentMemberId = "user-me",
         )
 
     @Test
@@ -192,6 +193,39 @@ class ActivityConversationListTest {
     }
 
     @Test
+    fun theCurrentMembersOwnMessageReadsAsSelfAndKeepsTheirFace() {
+        val cases =
+            listOf(
+                Triple("channel", channel("channel:a", "a").copy(lastMessageSenderId = "user-me", lastMessageSenderName = "Me"), true),
+                Triple("thread", thread.copy(latestActivitySenderId = "user-me", latestActivitySenderName = "Me"), true),
+                // The thread falls back to the last message's sender like senderDisplayName does.
+                Triple(
+                    "thread via last message",
+                    thread.copy(
+                        latestActivitySenderId = null,
+                        latestActivitySenderName = null,
+                        latestActivitySenderKind = null,
+                        lastMessageSenderId = "user-me",
+                        lastMessageSenderName = "Me",
+                        lastMessageSenderKind = MemberKind.Human,
+                    ),
+                    true,
+                ),
+                // DM rows already lead with the peer: no inline face, for "You" either.
+                Triple("dm", dm("dm:fable", "dm-fable", senderId = "user-me"), false),
+            )
+        for ((name, item, faced) in cases) {
+            val self = assertIs<ActivityConversationSender.Self>(item.activityConversationRowModel(context, InboxFilter.All).sender, name)
+            assertEquals(faced, self.avatar != null, name)
+            // Without a known current member the name stays.
+            assertIs<ActivityConversationSender.Named>(
+                item.activityConversationRowModel(context.copy(currentMemberId = null), InboxFilter.All).sender,
+                name,
+            )
+        }
+    }
+
+    @Test
     fun taskBadgeFollowsTheTaskStatusBadgeGate() {
         val model =
             thread.activityConversationRowModel(context, InboxFilter.All, activityTaskStatusBadgesEnabled = false)
@@ -254,9 +288,9 @@ class ActivityConversationListTest {
         assertEquals("Fable", fromPeer.title) // `@`/`#` prefix stripped like the web title.
         assertNull(fromPeer.sender)
 
-        val fromMe = dm("dm:fable", "dm-fable", senderId = "user-me").activityConversationRowModel(context, InboxFilter.All)
-        val sender = assertIs<ActivityConversationSender.Named>(fromMe.sender)
-        assertEquals("Sender user-me", sender.name)
+        val fromOther = dm("dm:fable", "dm-fable", senderId = "user-other").activityConversationRowModel(context, InboxFilter.All)
+        val sender = assertIs<ActivityConversationSender.Named>(fromOther.sender)
+        assertEquals("Sender user-other", sender.name)
         // DM rows already lead with a face: no inline sender avatar.
         assertNull(sender.avatar)
     }
@@ -326,6 +360,8 @@ class ActivityConversationListTest {
                     .filter { it.item == ActivityConversationSenderAvatarInlineId }
             assertEquals(case.faces, faces.size, "$case")
         }
+        // The body wraps to a second line before it ellipsizes.
+        assertEquals(2, ActivityConversationPreviewMaxLines)
     }
 
     private fun homeSnapshot(serverId: String = "server-1"): HomeSnapshot =
@@ -371,6 +407,7 @@ class ActivityConversationListTest {
     fun homeSnapshotProjectsPinsMutesAndDmPeersForTheSameServerOnly() {
         val snapshot = homeSnapshot()
         val projected = snapshot.toActivityConversationListContext("server-1")
+        assertEquals("me", projected.currentMemberId)
         assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-fable")), projected.pinnedRefs)
         assertEquals(setOf("random"), projected.mutedChannelIds)
         assertEquals(

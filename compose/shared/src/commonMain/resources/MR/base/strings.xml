@@ -811,6 +811,7 @@
     <string name="activity_list_pinned">Pinned</string>
     <string name="activity_list_all_conversations">All conversations</string>
     <string name="activity_list_system_sender">System</string>
+    <string name="activity_list_self_sender">You</string>
     <string name="activity_list_thread_channel">%1$s ·</string>
     <string name="activity_list_mentioned_you">Mentioned you</string>
     <string name="activity_list_unread_count_description">%1$d new</string>
