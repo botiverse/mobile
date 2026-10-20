@@ -6,6 +6,12 @@ import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftMessagePermalinkTarget
 import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppThemeState
+import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
+import build.raft.app.raftArgbHex
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.model.TaskStatus
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftType
 import build.raft.app.ReplyCacheProvenance
@@ -717,6 +723,7 @@ internal fun raftMarkdownAnnotator(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     softLineBreaksAsNewLines: Boolean = true,
+    taskStatuses: Map<Int, TaskStatus>? = null,
     tokenPlan: MarkdownInlineTokenPlan =
         RaftMarkdownInlineTokenRegistry.plan(
             content,
@@ -741,7 +748,8 @@ internal fun raftMarkdownAnnotator(
                 { action: RaftRichTextAction -> resolver(action.toThreadMarkdownTag()) }
             },
         onDiagnostics = onDiagnostics,
-        softLineBreaksAsNewLines = softLineBreaksAsNewLines
+        softLineBreaksAsNewLines = softLineBreaksAsNewLines,
+        taskStatuses = { taskStatuses }
     )
 }
 
@@ -751,10 +759,11 @@ internal fun raftMarkdownAnnotator(
     resolveActionLabel: ((RaftRichTextAction) -> String?)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     capabilities: RaftRichTextCapabilities = RaftMarkdownRendererRichTextCapabilities,
-    softLineBreaksAsNewLines: Boolean = true
+    softLineBreaksAsNewLines: Boolean = true,
+    taskStatuses: () -> Map<Int, TaskStatus>? = { null }
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val rendererInput = RaftRichTextRendererInput(document, capabilities)
+    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -794,7 +803,7 @@ internal fun raftMarkdownAnnotator(
             )
         },
         inlineContent = {
-            rendererInput.activeActionSpinnerInlineContent()
+            rendererInput.activeActionSpinnerInlineContent() + rendererInput.taskChipInlineContent()
         },
         config = markdownAnnotatorConfig(eolAsNewLine = softLineBreaksAsNewLines)
     )
@@ -802,7 +811,8 @@ internal fun raftMarkdownAnnotator(
 
 private data class RaftRichTextRendererInput(
     val document: RaftRichTextDocument,
-    val capabilities: RaftRichTextCapabilities
+    val capabilities: RaftRichTextCapabilities,
+    val taskStatuses: () -> Map<Int, TaskStatus>? = { null }
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -826,6 +836,20 @@ private data class RaftRichTextRendererInput(
 
     fun actionFor(token: RaftRichTextInlineToken): RaftRichTextAction? =
         token.actionId?.let(actionsById::get)
+
+    private val hasTaskRefs: Boolean =
+        document.actions.any { action -> action.refKind == RaftRichTextRefKind.Task }
+
+    /** Status-coloured task chip styles are in use (web parity) only when the surface has a task source. */
+    fun taskStatusesOrNull(): Map<Int, TaskStatus>? =
+        if (hasTaskRefs) taskStatuses() else null
+
+    fun taskChipInlineContent(): Map<String, InlineTextContent> {
+        if (taskStatusesOrNull() == null) return emptyMap()
+        return raftMarkdownTaskChipInlineContent(
+            (TaskStatus.entries + listOf<TaskStatus?>(null)).map { status -> raftMarkdownTaskChipStyle(status) }
+        )
+    }
 
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
         raftRefTokens.filter { token ->
@@ -1056,6 +1080,13 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
 ) {
     val action = rendererInput.actionFor(token) ?: return append(token.text)
     val label = resolveRaftRichTextTokenLabel(token, resolveActionLabel?.invoke(action))
+    if (action.refKind == RaftRichTextRefKind.Task) {
+        val taskStatuses = rendererInput.taskStatusesOrNull()
+        if (taskStatuses != null) {
+            appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, onOpenAction)
+            return
+        }
+    }
     pushStringAnnotation(
         tag = RaftMarkdownTagAnnotationTag,
         annotation = action.id
@@ -1076,6 +1107,39 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
         if (token.active && token.trailingIndicator.isEmpty()) {
             append(" ")
             appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+        }
+    }
+    pop()
+}
+
+/**
+ * Task ref on a surface with a task source: raft-ui inline `TaskChip` in the task's status colours,
+ * or the neutral muted badge for an unknown task (web MessageItem `renderTaskBadge`).
+ */
+private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
+    token: RaftRichTextInlineToken,
+    action: RaftRichTextAction,
+    label: String,
+    taskStatuses: Map<Int, TaskStatus>,
+    onOpenAction: (RaftRichTextAction) -> Unit,
+) {
+    val style = raftMarkdownTaskChipStyle(taskNumberFromRefLabel(action.label)?.let(taskStatuses::get))
+    pushStringAnnotation(
+        tag = RaftMarkdownTagAnnotationTag,
+        annotation = action.id
+    )
+    withLink(
+        LinkAnnotation.Clickable(
+            tag = action.id,
+            styles = style.linkStyles(),
+            linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
+        )
+    ) {
+        appendRaftMarkdownTaskChip(style, label) {
+            if (token.active && token.trailingIndicator.isEmpty()) {
+                append(" ")
+                appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+            }
         }
     }
     pop()
@@ -2117,6 +2181,8 @@ fun RaftMarkdownBody(
     val currentOnOpenTagAction by rememberUpdatedState(onOpenTagAction)
     val currentOnOpenUrl = rememberUpdatedState(onOpenUrl)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
+    val taskStatuses = LocalRaftMarkdownTaskStatuses.current
+    val currentTaskStatuses by rememberUpdatedState(taskStatuses)
     val colors = RaftMarkdownColorsDefault
     val typography = remember(markdownTextStyle) { raftMarkdownTypography(markdownTextStyle) }
     val markdownParserContent = remember(content) {
@@ -2223,7 +2289,8 @@ fun RaftMarkdownBody(
                         }
                     }
                 },
-            softLineBreaksAsNewLines = softLineBreaksAsNewLines
+            softLineBreaksAsNewLines = softLineBreaksAsNewLines,
+            taskStatuses = { currentTaskStatuses }
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -2253,6 +2320,10 @@ fun RaftMarkdownBody(
                 richTextDocument.actions.forEach { action ->
                     add(currentResolveTagLabel?.invoke(action.toThreadMarkdownTag()))
                 }
+            }
+            // Task chips read the status map and the theme at annotation time.
+            if (taskStatuses != null) {
+                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, RaftAppThemeState.isDark))
             }
         }
     val padding = remember {
@@ -2556,7 +2627,8 @@ private fun RaftMarkdownSingleParagraphLightBody(
 // recomposition, which caused the downstream `Markdown(content, ...)` composable
 // to see fresh `colors` references each time and run full recomposition + initial
 // Text measure even when nothing actually changed.
-private val RaftMarkdownLinkBlue = Color(0xFF1D4ED8)
+// web MarkdownLink: `text-foreground-link` (light #1447E6 / dark #8EC5FF).
+private val RaftMarkdownLinkBlue: Color get() = RaftAppThemeState.colors.foregroundLink
 
 // File-level singleton for the same #192 stable-reference reason as the colors
 // above (`markdownDimens(...)` is @Composable and would allocate a fresh
@@ -2570,11 +2642,16 @@ private object RaftMarkdownDimens : MarkdownDimens {
     override val tableMaxWidth: Dp = Dp.Unspecified
     override val tableCellWidth: Dp = 160.dp
     override val tableSeparatorThickness: Dp = 1.dp
-    override val tableCellPadding: Dp = 12.dp
+    // web td/th `px-2 py-1`; the vendor table takes one uniform inset.
+    override val tableCellPadding: Dp = 6.dp
     override val tableCornerSize: Dp = 8.dp
 }
-// web MarkdownContent pre: bg-[#07111f] (artin: 对齐, task #67 thread).
-private val RaftMarkdownCodeBlockBackground = Color(0xFF07111F)
+// web MarkdownContent BaseCodePre: `bg-layer-code text-code-foreground border
+// border-line-hairline rounded-container px-3 py-2 pr-12 font-mono
+// [font-size:inherit]` (light: white surface, dark: #0A0C10).
+private val RaftMarkdownCodeBlockBackground: Color get() = RaftAppThemeState.colors.layerCode
+private val RaftMarkdownCodeBlockForeground: Color get() = RaftAppThemeState.colors.codeForeground
+private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
 private val RaftMarkdownMinimumInlineLineHeight = 22.sp
 private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
 private val RaftMarkdownDividerThickness = 2.dp
@@ -2619,7 +2696,7 @@ private fun RaftMarkdownCodeBlockContent(
         }
     }
     Box(modifier = Modifier.fillMaxWidth()) {
-        MarkdownCode(code = code, language = language, style = style)
+        RaftMarkdownCodeSurface(code = code, style = style)
         Box(
             // Generous transparent hit target hugging the block's top-right
             // (the code surface is dark #111827 — translucent white icon).
@@ -2634,10 +2711,36 @@ private fun RaftMarkdownCodeBlockContent(
         ) {
             RaftLucideIcon(
                 name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
-                color = "#B3FFFFFF",
+                // web CopyIconButton surface="code": follows the code palette.
+                color = raftArgbHex(RaftMarkdownCodeBlockForeground.copy(alpha = 0.7f)),
                 modifier = Modifier.size(14.dp)
             )
         }
+    }
+}
+
+/**
+ * Code block surface. Replaces the vendor `MarkdownCode`, whose background is
+ * drawn before the clip (square corners) and which has no border.
+ */
+@Composable
+private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
+    val shape = RoundedCornerShape(RaftAppRadius.Container)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .clip(shape)
+                .background(RaftMarkdownCodeBlockBackground)
+                .border(1.dp, RaftColor.BorderHairline, shape)
+    ) {
+        MarkdownBasicText(
+            text = code,
+            color = RaftMarkdownCodeBlockForeground,
+            style = style,
+            modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
+        )
     }
 }
 
@@ -2670,7 +2773,7 @@ internal fun raftMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
 private val RaftMarkdownColorsDefault: DefaultMarkdownColors
     get() = DefaultMarkdownColors(
         text = RaftColor.TextBlack,
-        codeText = RaftColor.SurfaceWhite,
+        codeText = RaftMarkdownCodeBlockForeground,
         inlineCodeText = RaftColor.TextBlack,
         linkText = RaftMarkdownLinkBlue,
         codeBackground = RaftMarkdownCodeBlockBackground,
@@ -2679,8 +2782,9 @@ private val RaftMarkdownColorsDefault: DefaultMarkdownColors
         dividerColor = RaftColor.BorderBlack,
         tableText = RaftColor.TextBlack,
         tableBackground = RaftColor.SurfaceWhite,
-        tableHeaderBackground = RaftColor.BrandYellow,
-        tableStroke = RaftColor.BorderBlack
+        // web th `bg-fill-muted`, every cell `border border-line-hairline`.
+        tableHeaderBackground = RaftAppThemeState.colors.fillMuted,
+        tableStroke = RaftColor.BorderHairline
     )
 
 internal fun raftMarkdownTextStyleWithInlineLineHeight(base: TextStyle): TextStyle {
@@ -2698,25 +2802,41 @@ internal fun raftMarkdownTextStyleWithInlineLineHeight(base: TextStyle): TextSty
     }
 }
 
+/** web MarkdownContent h1..h6: `text-[1.286em]`, 1.143em, 1.071em, 1em ×3; bold, leading-tight. */
+internal val RaftMarkdownHeadingScale = listOf(1.286f, 1.143f, 1.071f, 1f, 1f, 1f)
+
+internal fun raftMarkdownHeadingStyle(base: TextStyle, scale: Float): TextStyle {
+    val baseSize = base.fontSize.takeIf { it.isSpecified }?.value ?: 14f
+    val size = baseSize * scale
+    return base.withRaftFontWeight(FontWeight.Bold).copy(
+        fontSize = size.sp,
+        // leading-tight (1.25)
+        lineHeight = (size * 1.25f).sp,
+    )
+}
+
 internal fun raftMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
     val resolvedBase = raftMarkdownTextStyleWithInlineLineHeight(base)
+    // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
-        RaftType.Caption.copy(
-            fontSize = 14.sp,
-            lineHeight = 20.sp
+        resolvedBase.copy(
+            fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
+            fontWeight = FontWeight.Normal,
         )
     val inlineCode = raftMarkdownInlineCodeTextStyle(resolvedBase)
     return DefaultMarkdownTypography(
-        h1 = RaftType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
-        h2 = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
-        h3 = RaftType.Button.withRaftFontWeight(FontWeight.SemiBold).copy(fontSize = 16.sp, lineHeight = 22.sp),
-        h4 = RaftType.Button,
-        h5 = RaftType.Button,
-        h6 = RaftType.Button,
+        h1 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[0]),
+        h2 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[1]),
+        h3 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[2]),
+        h4 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[3]),
+        h5 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[4]),
+        h6 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[5])
+            .copy(color = RaftAppThemeState.colors.foregroundMuted),
         text = resolvedBase,
         code = codeBlock,
         inlineCode = inlineCode,
-        quote = resolvedBase.copy(color = RaftColor.TextMutedGray),
+        // web blockquote `text-foreground-muted`.
+        quote = resolvedBase.copy(color = RaftColor.TextMuted),
         paragraph = resolvedBase,
         ordered = resolvedBase,
         bullet = resolvedBase,
