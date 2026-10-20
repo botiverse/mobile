@@ -170,10 +170,10 @@ kotlin {
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
                 // by the library's Compose Multiplatform renderer (mermaid-compose, built against
                 // CMP 1.8; the app's newer CMP wins resolution) inside RaftMermaidViewport.
-                implementation("build.raft.mermaid:mermaid-core:0.1.13")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.13")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.13")
-                implementation("build.raft.mermaid:mermaid-compose:0.1.13")
+                implementation("build.raft.mermaid:mermaid-core:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
+                implementation("build.raft.mermaid:mermaid-compose:0.1.14")
             }
         }
         val commonTest by getting {
@@ -213,9 +213,9 @@ kotlin {
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
                 implementation(libs.androidx.recyclerview)
                 implementation(libs.androidx.core.ktx)
-                implementation("build.raft.mermaid:mermaid-core:0.1.13")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.13")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.13")
+                implementation("build.raft.mermaid:mermaid-core:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
             }
         }
         val androidInstrumentedTest by getting {
